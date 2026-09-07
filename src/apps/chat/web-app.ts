@@ -6750,11 +6750,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					piboSessionId: selectedSession.id,
 					id: randomUUID(),
 					action: body.action,
+					...(cancelledPending ? {clearedBeforeRuntime:cancelledPending} : {}),
 					...(body.params === undefined ? {} : { params: body.params }),
 				});
-				if (cancelledPending && output.type === "execution_result" && isJsonObject(output.result)) {
-					return responseJson({...output,result:{...output.result,cleared:Number(output.result.cleared ?? 0)+cancelledPending}});
-				}
 				return responseJson(output);
 			}
 

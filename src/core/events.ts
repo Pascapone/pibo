@@ -151,6 +151,8 @@ export type PiboUserInputRequest = {
 export type PiboRuntimeRequestResolution = "responded" | "cleared" | "aborted" | "expired";
 
 export type PiboExecutionEventBase<TAction extends PiboExecutionAction = PiboExecutionAction> = {
+	/** Trusted ingress count already removed from its durable queue before runtime dispatch. */
+	clearedBeforeRuntime?: number;
 	type: "execution";
 	piboSessionId: string;
 	action: TAction;
@@ -570,3 +572,8 @@ export type PiboOutputEvent = PiboOutputEventPayload extends infer TEvent
 	: never;
 
 export type PiboEventListener = (event: PiboOutputEvent) => void;
+
+/** Only queue-clear actions can carry an already-completed ingress count. */
+export function previouslyClearedMessages(event: PiboExecutionEvent): number {
+	return event.action === "clear_queue" && Number.isSafeInteger(event.clearedBeforeRuntime) && event.clearedBeforeRuntime! > 0 ? event.clearedBeforeRuntime! : 0;
+}

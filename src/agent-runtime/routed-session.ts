@@ -1,3 +1,4 @@
+import { previouslyClearedMessages } from "../core/events.js";
 import type { CapacityLease } from "../core/runtime-capacity.js";
 import type { ModelProfile } from "../core/profiles.js";
 import {
@@ -1268,7 +1269,7 @@ export class RuntimeRoutedSession {
 					? await this.options.logoutRuntimeAuth(input)
 					: await this.pluginRegistry.logoutAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				getProviderUsage: () => this.getActionProviderUsage(),
-				clearQueue: () => this.clearQueue(),
+				clearQueue: () => this.clearQueue()+previouslyClearedMessages(event),
 				abort: async () => {
 					if (this.inFlightMessage && !this.inFlightMessage.started) { await this.cancelMessage(this.inFlightMessage.event.id!); return; }
 					if (this.activeMessage) this.notifyMessagesInterrupted([this.activeMessage], "abort requested");
