@@ -118,7 +118,7 @@ function spanAttributes(node: PiboTraceNode): Record<string, unknown> {
 	}
 	if (node.type === "user.message") {
 		attributes.content = node.output ?? node.summary ?? "";
-		const pendingDelivery = node.messageDeliveryState ? "queue" : pendingUserMessageDelivery(node);
+		const pendingDelivery = pendingUserMessageDelivery(node) ?? (node.status === "running" && node.messageDeliveryState ? "queue" : undefined);
 		attributes["message.delivery_state"] = node.messageDeliveryState;
 		if (pendingDelivery) attributes["message.pending_delivery"] = pendingDelivery;
 	}

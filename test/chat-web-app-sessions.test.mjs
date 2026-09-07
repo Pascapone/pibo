@@ -360,6 +360,13 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 	const harness = createHarness();
 	let db;
 	try {
+		// Force the storage worker to open and apply the schema before the legacy ALTER below; a
+		// worker-startup migration landing mid-request would rebuild rooms under live reads.
+		const warmupRoom = (await json(await harness.request("/api/chat/rooms", { method: "POST", body: JSON.stringify({ name: "Warmup room" }) }))).room;
+		const warmupSession = harness.sessions.create({ channel: "pibo.chat-web", kind: "chat", profile: "base", metadata: { chatRoomId: warmupRoom.id } });
+		const warmup = await harness.request("/api/chat/message", { method: "POST", body: JSON.stringify({ piboSessionId: warmupSession.id, roomId: warmupRoom.id, text: "warmup" }) });
+		assert.equal(warmup.status, 200);
+
 		db = new DatabaseSync(harness.dataStorePath);
 		insertHistoricalRoom(db, { id: "room_shared_history", legacyPartition: PRE_CUTOVER_LEGACY_PARTITION_SCOPE, name: "Shared room", metadata: { default: true }, updatedAt: "2026-05-01T00:00:00.000Z" });
 		insertHistoricalRoom(db, { id: "room_legacy_history", legacyPartition: "user:legacy-account", name: "Legacy account room", updatedAt: "2026-05-02T00:00:00.000Z" });

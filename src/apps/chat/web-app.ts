@@ -4745,12 +4745,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (disposed) return;
 			disposed = true;
 			earlyTraceCache.clear();
-			await state.commandDispatcher?.dispose();
 			state.unsubscribe?.();
 			state.unsubscribe = undefined;
 			if(state.subscribedContext)sharedSessionSnapshots.delete(state.subscribedContext.channelContext);
 			state.subscribedContext = undefined;
 			state.eventLoopDelay.disable();
+			await state.commandDispatcher?.dispose();
 			disposeTelemetryRetentionMaintenance(state.telemetryRetentionMaintenance);
 			state.outputPersistenceRetries.dispose();
 			state.workflowService.close();

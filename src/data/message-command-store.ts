@@ -111,12 +111,12 @@ export class MessageCommandStore {
 		const row = this.store.transaction(() => {
 			const now = Date.now();
 			// Never replay an expired command that may already have reached a provider or tool.
-			this.store.db.prepare(`UPDATE message_commands SET state=CASE WHEN state='waiting_slot' THEN 'accepted' ELSE 'interrupted' END, error=CASE WHEN state='waiting_slot' THEN NULL ELSE 'Runtime ownership expired; execution requires reconciliation.' END, owner=NULL,lease_until=0,updated_at=? WHERE id IN (SELECT id FROM message_commands WHERE owner IS NOT NULL AND lease_until <= ? ORDER BY lease_until LIMIT 100)`).run(now,now);
+			this.store.db.prepare(`UPDATE message_commands SET state=CASE WHEN state='waiting_slot' THEN 'accepted' ELSE 'interrupted' END, error=CASE WHEN state='waiting_slot' THEN NULL ELSE 'Runtime ownership expired; execution requires reconciliation.' END, owner = NULL,lease_until=0,updated_at=? WHERE id IN (SELECT id FROM message_commands WHERE owner IS NOT NULL AND lease_until <= ? ORDER BY lease_until LIMIT 100)`).run(now,now);
 			const candidate = this.store.db.prepare(candidateSql).get() as Row | undefined;
 			if (!candidate) return undefined;
 			this.store.db.prepare("UPDATE message_dispatch_clock SET sequence=sequence+1 WHERE id=1").run();
 			this.store.db.prepare("INSERT INTO message_dispatch_rooms(room_id,sequence) SELECT ?,sequence FROM message_dispatch_clock WHERE id=1 ON CONFLICT(room_id) DO UPDATE SET sequence=excluded.sequence").run(candidate.room_id);
-			this.store.db.prepare("UPDATE message_commands SET state='waiting_slot',owner=?,token=token+1,lease_until=?,updated_at=? WHERE id=?").run(owner,now+leaseMs,now,candidate.id);
+			this.store.db.prepare("UPDATE message_commands SET state='waiting_slot',owner = ?,token=token+1,lease_until=?,updated_at=? WHERE id=?").run(owner,now+leaseMs,now,candidate.id);
 			return this.store.db.prepare("SELECT * FROM message_commands WHERE id=?").get(candidate.id) as Row;
 		});
 		if (!row) return undefined;
@@ -129,13 +129,13 @@ export class MessageCommandStore {
 		}
 	}
 	cancelPending(sessionId: string): number {
-		return Number(this.store.db.prepare("UPDATE message_commands SET state='failed',error='Cancelled before runtime dispatch.',owner=NULL,lease_until=0,updated_at=? WHERE session_id=? AND state IN ('accepted','waiting_slot')").run(Date.now(),sessionId).changes);
+		return Number(this.store.db.prepare("UPDATE message_commands SET state='failed',error='Cancelled before runtime dispatch.',owner = NULL,lease_until=0,updated_at=? WHERE session_id=? AND state IN ('accepted','waiting_slot')").run(Date.now(),sessionId).changes);
 	}
 	transition(id: string, owner: string, token: number, state: MessageCommandState, error?: string): boolean {
-		return Number(this.store.db.prepare(`UPDATE message_commands SET state=?,error=?,updated_at=?,owner=CASE WHEN ? IN ('completed','failed','interrupted') THEN NULL ELSE owner END WHERE id=? AND owner=? AND token=? AND lease_until>? AND state IN (${active})`).run(state,error?.slice(0,500)??null,Date.now(),state,id,owner,token,Date.now()).changes) === 1;
+		return Number(this.store.db.prepare(`UPDATE message_commands SET state=?,error=?,updated_at=?,owner = CASE WHEN ? IN ('completed','failed','interrupted') THEN NULL ELSE owner END WHERE id=? AND owner = ? AND token=? AND lease_until>? AND state IN (${active})`).run(state,error?.slice(0,500)??null,Date.now(),state,id,owner,token,Date.now()).changes) === 1;
 	}
 	heartbeat(id: string, owner: string, token: number, leaseMs: number): boolean {
-		return Number(this.store.db.prepare(`UPDATE message_commands SET lease_until=? WHERE id=? AND owner=? AND token=? AND lease_until>? AND state IN (${active})`).run(Date.now()+leaseMs,id,owner,token,Date.now()).changes) === 1;
+		return Number(this.store.db.prepare(`UPDATE message_commands SET lease_until=? WHERE id=? AND owner = ? AND token=? AND lease_until>? AND state IN (${active})`).run(Date.now()+leaseMs,id,owner,token,Date.now()).changes) === 1;
 	}
 	recordOutput(sessionId: string, eventId: string | undefined, type: string): void {
 		if (!eventId) return;
@@ -143,7 +143,7 @@ export class MessageCommandStore {
 		const state = states[type];
 		if (!state) return;
 		const eligible = state === "session_queue" ? "'initializing','waiting_slot'" : state === "running" ? "'initializing','waiting_slot','session_queue'" : `${active},'interrupted'`;
-		this.store.db.prepare(`UPDATE message_commands SET state=?,error=NULL,updated_at=?,owner=CASE WHEN ? IN ('completed','failed') THEN NULL ELSE owner END WHERE session_id=? AND event_id=? AND state IN (${eligible})`).run(state,Date.now(),state,sessionId,eventId);
+		this.store.db.prepare(`UPDATE message_commands SET state=?,error=NULL,updated_at=?,owner = CASE WHEN ? IN ('completed','failed') THEN NULL ELSE owner END WHERE session_id=? AND event_id=? AND state IN (${eligible})`).run(state,Date.now(),state,sessionId,eventId);
 	}
 }
 function receipt(row: Row): MessageReceipt {
