@@ -68,6 +68,7 @@ export class BoundedWorkerClient {
 	private nextId = 0;
 	private ready = false;
 	private closed = false;
+	private exited = false;
 	private readonly startupTimer: ReturnType<typeof setTimeout>;
 	private completed = 0;
 	private rejected = 0;
@@ -110,7 +111,7 @@ export class BoundedWorkerClient {
 			this.pump();
 		});
 		this.worker.on("error", () => this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker failed; in-flight commit state must be reconciled.")));
-		this.worker.on("exit", () => { if (!this.closed) this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker exited.")); });
+		this.worker.on("exit", () => { this.exited=true; if (!this.closed) this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker exited.")); });
 	}
 
 	request<T>(command: unknown, options: { priority?: StoragePriority; timeoutMs?: number } = {}): Promise<T> {
@@ -151,7 +152,7 @@ export class BoundedWorkerClient {
 	}
 
 	status() {
-		return { ready: this.ready, closed: this.closed, queued: this.queue.length, inFlight: Boolean(this.inFlight), pendingBytes: this.pendingBytes, oldestAgeMs: Math.max(0, ...this.queue.map(entry => performance.now() - entry.queuedAt), this.inFlight ? performance.now() - this.inFlight.queuedAt : 0), lastResponseAgeMs: this.lastResponseAt === undefined ? undefined : performance.now() - this.lastResponseAt, completed: this.completed, rejected: this.rejected, worker: this.workerIdentity, limits: { ...this.maximum } };
+		return { ready: this.ready, closed: this.closed, exited:this.exited, queued: this.queue.length, inFlight: Boolean(this.inFlight), pendingBytes: this.pendingBytes, oldestAgeMs: Math.max(0, ...this.queue.map(entry => performance.now() - entry.queuedAt), this.inFlight ? performance.now() - this.inFlight.queuedAt : 0), lastResponseAgeMs: this.lastResponseAt === undefined ? undefined : performance.now() - this.lastResponseAt, completed: this.completed, rejected: this.rejected, worker: this.workerIdentity, limits: { ...this.maximum } };
 	}
 	async close(): Promise<void> {
 		if (this.closed) return;
