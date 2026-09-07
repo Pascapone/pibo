@@ -211,3 +211,18 @@ test("receipt polling retains an older active turn after a long stream of termin
   const receipts=commands.list("a");assert.equal(receipts.length,65);assert.equal(receipts.find(r=>r.id===running.id).state,"running");
  } finally {store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+
+test("FIFO predecessor checks use the state-and-stream covering index instead of scanning terminal history",()=>{
+ const root=mkdtempSync(join(tmpdir(),"pibo-command-index-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);
+ try {
+  const prepared=commands.prepare({sessionId:"a",roomId:"room",text:"x",delivery:"queue"});
+  store.transaction(()=>commands.insert({key:"indexed",sessionId:"a",roomId:"room",eventId:"indexed",streamId:1,delivery:"queue",...prepared}));
+  const prepare=store.db.prepare.bind(store.db);let sql;
+  store.db.prepare=text=>{if(text.includes("WITH occupied AS"))sql=text;return prepare(text);};
+  assert.ok(commands.claim("owner",30000));assert.ok(sql);
+  const details=prepare(`EXPLAIN QUERY PLAN ${sql}`).all().map(row=>row.detail).join("\n");
+  assert.match(details,/p USING COVERING INDEX message_commands_dispatch_order/);
+  assert.doesNotMatch(details,/p USING INDEX message_commands_recent/);
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});

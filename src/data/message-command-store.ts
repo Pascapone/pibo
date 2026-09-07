@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS message_commands (
  created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, error TEXT,
  UNIQUE(session_id,event_id)
 );
+CREATE INDEX IF NOT EXISTS message_commands_dispatch_order ON message_commands(session_id,state,stream_id,delivery);
 CREATE INDEX IF NOT EXISTS message_commands_recent ON message_commands(session_id,stream_id DESC);
 CREATE INDEX IF NOT EXISTS message_commands_pending ON message_commands(state,created_at,id);
 CREATE INDEX IF NOT EXISTS message_commands_session ON message_commands(session_id,state,created_at,id);

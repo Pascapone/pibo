@@ -1175,6 +1175,8 @@ async function deliverWebOutputPersistenceState(
 				checkpoint();
 			}
 
+			state.commandDispatcher?.outputPersisted(delivery.event);
+
 			if (!delivery.reliabilityDelivered) {
 				if (delivery.reliabilityPayload === undefined) {
 					delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
