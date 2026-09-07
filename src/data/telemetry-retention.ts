@@ -68,7 +68,8 @@ export function pruneTelemetryRetention(db: DatabaseSync, input: TelemetryPruneI
  const maintenance=new TelemetryMaintenance(db);let state=maintenance.start(input.before,input.retentionClass);
  if(state.status==="paused")state=maintenance.control("resume")!;
  const previous=state.deleted,started=performance.now();let scanned=0;
- while(state.status==="running"&&scanned<128&&performance.now()-started<20){const before=state.scanned;state=maintenance.step({rows:Math.min(128-scanned,128),milliseconds:4})!;scanned+=state.scanned-before;}
+ do{const before=state.scanned;state=maintenance.step({rows:Math.min(128-scanned,128),milliseconds:4})!;scanned+=state.scanned-before;}
+ while(state.status==="running"&&scanned<128&&performance.now()-started<20);
  const rowsDeleted=state.deleted-previous;
 
 	return { retentionClass: input.retentionClass, before: state.cutoff, applied: true, rowsMatched: scanned, bytesMatched: 0, rowsDeleted, completed:state.status==="completed" };
