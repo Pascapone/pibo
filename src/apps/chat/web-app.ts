@@ -6621,7 +6621,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const sessionId=url.searchParams.get("piboSessionId") ?? "";
 				if (!sessionId) throw new PiboWebHttpError("Session ID required",400);
 				resolveRequestedSession(state,context,webSession,defaultProfile,sessionId);
-				return responseJson({receipts:await state.asyncStorage?.commandReceipts(sessionId) ?? []},{headers:{"cache-control":"no-store"}});
+				return responseJson(await state.asyncStorage?.commandReceiptPage(sessionId) ?? {receipts:[]},{headers:{"cache-control":"no-store"}});
 			}
 			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/message-receipts/`) && request.method === "GET") {
 				const webSession = await requireSession(request,context);
@@ -6742,6 +6742,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					throw new PiboWebHttpError("Archived rooms are read-only", 403);
 				}
 				state.sessionQuery.upsertSession(selectedSession);
+				const cancelledPending = body.action === "clear_queue" ? await state.asyncStorage?.cancelPendingCommands(selectedSession.id) ?? 0 : 0;
 				const output = await context.channelContext.emit({
 					type: "execution",
 					piboSessionId: selectedSession.id,
@@ -6749,6 +6750,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					action: body.action,
 					...(body.params === undefined ? {} : { params: body.params }),
 				});
+				if (cancelledPending && output.type === "execution_result" && isJsonObject(output.result)) {
+					return responseJson({...output,result:{...output.result,cleared:Number(output.result.cleared ?? 0)+cancelledPending}});
+				}
 				return responseJson(output);
 			}
 

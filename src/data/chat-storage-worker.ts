@@ -17,8 +17,10 @@ export type ChatStorageCommand =
 	| { type: "ingestOutput"; input: OutputEventIngestInput }
 	| { type: "resolveRoom"; roomId?: string; required?: boolean }
 	| { type: "admit"; input: ChatEventAppendInput; session: PiboSession; text: string; durableCommand?: { eventId: string; delivery: "queue" | "steer" } }
+	| { type: "cancelPendingCommands"; sessionId: string }
 	| { type: "commandReceipt"; id: string }
 	| { type: "commandReceipts"; sessionId: string }
+	| { type: "commandReceiptPage"; sessionId: string }
 	| { type: "claimCommand"; owner: string; leaseMs: number }
 	| { type: "transitionCommand"; id: string; owner: string; token: number; state: MessageCommandState; error?: string }
 	| { type: "heartbeatCommand"; id: string; owner: string; token: number; leaseMs: number }
@@ -44,6 +46,8 @@ let lastOperationMs = 0;
 
 function execute(command: ChatStorageCommand): unknown {
 	switch (command.type) {
+		case "cancelPendingCommands": return messageCommands.cancelPending(command.sessionId);
+		case "commandReceiptPage": return {receipts:messageCommands.list(command.sessionId),queue:messageCommands.queueStatus(command.sessionId)};
 		case "commandReceipts": return messageCommands.list(command.sessionId);
 		case "commandReceipt": return messageCommands.get(command.id);
 		case "claimCommand": return messageCommands.claim(command.owner,command.leaseMs);

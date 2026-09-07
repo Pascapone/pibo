@@ -140,3 +140,33 @@ test('atomic worker admissions have one winner, persist after restart and avoid 
     assert.equal(await storage.find(room.id, 'test', 'locked'), undefined, 'no successful ACK or late insert for blocked write');
   } finally { if (lock) { lock.exec('ROLLBACK'); lock.close(); } await storage.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('room fairness rotates storage admission and reserves control queue space',async()=>{
+ const client=new BoundedWorkerClient(controlled,{maxPending:6,reservedControlRequests:1,maxPendingBytes:4096,reservedControlBytes:256,maxAgeMs:2000,agingMs:1000});
+ try {
+  await ready(client);const order=[];
+  const request=(value,key,priority='admission',blockMs=0)=>client.request({value,blockMs},{priority,fairnessKey:key}).then(value=>order.push(value));
+  const first=request('active','noisy','admission',80);
+  const noisy1=request('noisy-1','noisy');const noisy2=request('noisy-2','noisy');
+  const quiet=request('quiet','quiet');const third=request('third','third');
+  await assert.rejects(client.request({value:'overflow'}),{code:'storage_overloaded'});
+  const control=request('control','control','control');
+  await Promise.all([first,noisy1,noisy2,quiet,third,control]);
+  assert.deepEqual(order,['active','control','quiet','third','noisy-1','noisy-2']);
+  assert.equal(client.status().pendingBytes,0);
+ } finally {await client.close();}
+});
+
+
+test('storage fairness remembers Rooms across drained bursts without delaying control work',async()=>{
+ const client=new BoundedWorkerClient(controlled,{maxAgeMs:2000,agingMs:1000,admissionWindowMs:1});
+ try {
+  await ready(client);const order=[];
+  const request=(value,key,priority='admission')=>client.request({value},{priority,fairnessKey:key}).then(value=>order.push(value));
+  await request('quiet-baseline','quiet');
+  await Promise.all([request('noisy-1','noisy'),request('quiet-1','quiet'),request('noisy-2','noisy')]);
+  await request('status','control','control');
+  await Promise.all([request('noisy-3','noisy'),request('quiet-2','quiet'),request('noisy-4','noisy')]);
+  assert.ok(order.indexOf('quiet-2')<order.indexOf('noisy-3'),JSON.stringify(order));
+ } finally {await client.close();}
+});

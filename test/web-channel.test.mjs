@@ -2033,7 +2033,7 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 	let inspectHistoryCalls = 0;
 	let readHistoryCalls = 0;
 	const capabilities = fakeRuntimeCapabilities();
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutputAndDrain: emitOutput } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		capabilityCatalog: {
 			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
@@ -2062,9 +2062,9 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 		assert.equal(messageResponse.status, 200);
 		const messagePayload = await messageResponse.json();
 		const eventId = messagePayload.output.eventId;
-		emitOutput({ type: "message_started", piboSessionId, eventId, text: "product-owned prompt", source: "user" });
-		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "product-owned answer" });
-		emitOutput({ type: "message_finished", piboSessionId, eventId });
+		await emitOutput({ type: "message_started", piboSessionId, eventId, text: "product-owned prompt", source: "user" });
+		await emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "product-owned answer" });
+		await emitOutput({ type: "message_finished", piboSessionId, eventId });
 
 		const summaryResponse = await fetch(
 			`${baseURL}/api/chat/trace/summary?piboSessionId=${encodeURIComponent(piboSessionId)}`,
@@ -9211,4 +9211,25 @@ test("web startup dispatches a committed command without an HTTP request", async
  const host=await startWebHostChannel({storageDir,sessions,auth:createFakeAuthService()});
  try {await waitForCondition(()=>host.emitted.length===1,"startup did not dispatch durable work",5000);assert.equal(host.emitted[0].id,"restart-txn");assert.equal(host.emitted[0].text,"restart");}
  finally {await host.channel.stop();rmSync(storageDir,{recursive:true,force:true});}
+});
+
+
+test("clear_queue cancels undispatched durable receipts without cancelling an initializing message",async()=>{
+ let unblock;const blocked=new Promise(resolve=>{unblock=resolve;});let dispatches=0;
+ const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(event){
+  if(event.type==="execution")return {type:"execution_result",piboSessionId:event.piboSessionId,action:event.action,result:{cleared:0}};
+  dispatches++;await blocked;return {type:"message_queued",piboSessionId:event.piboSessionId,eventId:event.id,queuedMessages:1,text:event.text};
+ }});
+ const headers={"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"};
+ try {
+  const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers})).json();
+  const send=async id=>{const response=await fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers,body:JSON.stringify({admissionVersion:2,piboSessionId:session.id,text:id,clientTxnId:id})});assert.equal(response.status,202);return await response.json();};
+  const first=await send("clear-first");await waitForCondition(()=>dispatches===1,"first dispatch did not initialize");const second=await send("clear-second");
+  const cleared=await fetch(`${host.baseURL}/api/chat/action`,{method:"POST",headers,body:JSON.stringify({piboSessionId:session.id,action:"clear_queue"})});
+  assert.equal(cleared.status,200);assert.equal((await cleared.json()).result.cleared,1);
+  const page=await(await fetch(`${host.baseURL}/api/chat/message-receipts?piboSessionId=${session.id}`,{headers})).json();
+  assert.equal(page.receipts.find(r=>r.id===second.receipt.id).state,"failed");
+  assert.equal(page.receipts.find(r=>r.id===first.receipt.id).state,"initializing");
+  assert.equal(page.queue.queue.count,1);assert.equal(page.queue.queue.limits.count,64);assert.equal(dispatches,1);
+ } finally {unblock();await host.channel.stop?.();}
 });

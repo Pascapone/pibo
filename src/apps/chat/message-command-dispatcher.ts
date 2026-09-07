@@ -29,7 +29,7 @@ export class MessageCommandDispatcher {
 			if (this.disposed) return;
 			if (!await this.storage.heartbeatCommand(id,this.owner,claim.token,this.leaseMs)) this.claims.delete(id);
 		}
-		while (!this.disposed && this.claims.size < 10) {
+		while (!this.disposed && this.claims.size < 12) {
 			const claim = await this.storage.claimCommand(this.owner,this.leaseMs);
 			if (!claim) break;
 			this.claims.set(claim.id,claim);
@@ -51,7 +51,13 @@ export class MessageCommandDispatcher {
 			// Output ingest advances queued/running/terminal state. No late emit result may downgrade it.
 		} catch (error) {
 			if (!this.disposed) {
-				try { await this.storage.transitionCommand(claim.id,this.owner,claim.token,error instanceof PiboSteeringUnavailableError ? "failed" : "interrupted",error instanceof PiboSteeringUnavailableError ? "Steering is unavailable; the message was not queued as a normal turn." : "Runtime dispatch outcome is unclear; inspect the session before retrying."); } catch { /* Lease expiry retains the uncertain outcome. */ }
+				const cancelled = Boolean(error && typeof error === "object" && "code" in error && error.code === "runtime_start_cancelled");
+				const steering = error instanceof PiboSteeringUnavailableError;
+				const capacity = Boolean(error && typeof error === "object" && "code" in error && error.code === "runtime_capacity_unavailable");
+				try {
+					await this.storage.transitionCommand(claim.id,this.owner,claim.token,cancelled || steering || capacity ? "failed" : "interrupted",
+						cancelled ? "Message cancelled before runtime dispatch." : capacity ? "Runtime capacity was unavailable before dispatch; the message did not run." : steering ? "Steering is unavailable; the message was not queued as a normal turn." : "Runtime dispatch outcome is unclear; inspect the session before retrying.");
+				} catch { /* Lease expiry retains the uncertain outcome. */ }
 			}
 		}
 	}

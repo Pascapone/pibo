@@ -1,3 +1,5 @@
+import { createProviderCapacityExtension } from "./provider-capacity.js";
+import { RuntimeCapacity, type RuntimeCapacityOptions, type RuntimeCapacityStatus, type RuntimeInitializationTiming } from "./runtime-capacity.js";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -165,6 +167,7 @@ export type PiboSessionRouterOptions = Omit<
 	runtimeResourceService?: PiboRuntimeResourceService;
 	/** Portable product-history source used for cross-runtime rebind handoff. */
 	portableHistoryProvider?: AgentRuntimePortableHistoryProvider;
+	runtimeCapacity?: RuntimeCapacityOptions;
 };
 
 const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
@@ -544,6 +547,10 @@ function providerEventTelemetryModeFromEnv(env: NodeJS.ProcessEnv = process.env)
 
 export class PiboSessionRouter {
 	private readonly sessions = new Map<string, RoutedSession>();
+	private readonly capacity: RuntimeCapacity;
+	private creatingRuntimes = 0;
+	private readonly initializationTimings: RuntimeInitializationTiming[] = [];
+	private readonly pendingStartAborts = new Map<string,AbortController>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly outputRenderSequencer: OutputRenderSequencer;
@@ -589,6 +596,7 @@ export class PiboSessionRouter {
 	private closing = false;
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
+		this.capacity = new RuntimeCapacity(options.runtimeCapacity);
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		// Historical custom registries supplied only actions/profiles while runtime creation was implicit.
 		// Preserve that composition contract during the adapter migration without branching on adapter ids.
@@ -660,6 +668,15 @@ export class PiboSessionRouter {
 
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
 		if (this.closing) throw new Error("Pibo session router is disposed.");
+		if(event.type === "execution" && !this.sessions.has(event.piboSessionId) && (event.action === "abort" || event.action === "clear_queue")) {
+			this.resolvePiboSession(event.piboSessionId);
+			if(event.action === "abort") {
+				this.invalidateRunReminders([event.piboSessionId]);
+				this.pendingStartAborts.get(event.piboSessionId)?.abort(Object.assign(new Error("Runtime start aborted before message dispatch."),{code:"runtime_start_cancelled"}));
+			}
+			const output: PiboOutputEvent={type:"execution_result",piboSessionId:event.piboSessionId,eventId:event.id,action:event.action,result:event.action === "abort" ? {aborted:true} : {cleared:0}};
+			this.emitOutput(output);return output;
+		}
 		let messageSignalAccepted = false;
 		const acceptMessageSignal = () => {
 			if (event.type !== "message" || !event.id || messageSignalAccepted) return;
@@ -1365,6 +1382,7 @@ export class PiboSessionRouter {
 	async disposeAll(): Promise<void> {
 		if (this.disposePromise) return this.disposePromise;
 		this.closing = true;
+		this.capacity.close();
 		this.disposePromise = this.disposeAllUnsafe();
 		return this.disposePromise;
 	}
@@ -1482,16 +1500,56 @@ export class PiboSessionRouter {
 		const pending = this.pendingSessions.get(piboSessionId);
 		if (pending) return pending;
 
-		const created = this.createRoutedSession(piboSessionId);
+		const startAbort = new AbortController();
+		this.pendingStartAborts.set(piboSessionId,startAbort);
+		const created = this.createRoutedSessionWithinCapacity(piboSessionId,startAbort.signal);
 		this.pendingSessions.set(piboSessionId, created);
 		try {
 			return await created;
 		} finally {
 			this.pendingSessions.delete(piboSessionId);
+			if(this.pendingStartAborts.get(piboSessionId)===startAbort)this.pendingStartAborts.delete(piboSessionId);
 		}
 	}
 
-	private async createRoutedSession(piboSessionId: string): Promise<RoutedSession> {
+	getRuntimeCapacityStatus(): RuntimeCapacityStatus { return { ...this.capacity.snapshot(), activeRuntimes: this.sessions.size, initializingRuntimes: this.creatingRuntimes, recentInitializations: this.initializationTimings.map(item=>({...item,phases:{...item.phases}})) }; }
+
+	private async createRoutedSessionWithinCapacity(piboSessionId: string, signal: AbortSignal): Promise<RoutedSession> {
+		const stored = this.resolvePiboSession(piboSessionId);
+		const room = typeof stored.metadata?.chatRoomId === "string" ? stored.metadata.chatRoomId : piboSessionId;
+		const queuedAt = performance.now();
+		const lease = await this.capacity.starts.acquire(room,signal);
+		const startedAt = performance.now();
+		const phases: Record<string,number> = {};
+		let outcome: "ready" | "failed" = "failed";
+		try {
+			signal.throwIfAborted();
+			if (this.closing || this.quiescingSessions.has(piboSessionId)) throw new Error("Runtime start cancelled during session shutdown.");
+			if (this.sessions.size + this.creatingRuntimes >= this.capacity.maxRuntimes) {
+				const idle = [...this.sessions].find(([id,session])=>{if(this.pendingSessions.has(id))return false;const status=session.getStatus();return !status.disposed&&!status.processing&&!status.streaming&&status.queuedMessages===0;});
+				if (idle) await this.evictIdleSession(idle[0],idle[1]);
+			}
+			if (this.sessions.size + this.creatingRuntimes >= this.capacity.maxRuntimes) throw Object.assign(new Error("Active runtime capacity reached."),{code:"runtime_capacity_unavailable"});
+			this.creatingRuntimes++;
+			try {
+				const session = await this.createRoutedSession(piboSessionId,phases);
+				if(signal.aborted) {
+					if(this.sessions.get(piboSessionId)===session)this.sessions.delete(piboSessionId);
+					await this.disposeRoutedSession(piboSessionId,session,"cold start aborted");
+					throw signal.reason;
+				}
+				outcome="ready"; return session;
+			}
+			finally { this.creatingRuntimes--; }
+		} finally {
+			lease.release();
+			this.initializationTimings.push({sessionId:piboSessionId,waitMs:startedAt-queuedAt,totalMs:performance.now()-startedAt,phases,outcome});
+			if(this.initializationTimings.length>32)this.initializationTimings.shift();
+		}
+	}
+
+	private async createRoutedSession(piboSessionId: string, phases: Record<string,number> = {}): Promise<RoutedSession> {
+		let phaseStarted = performance.now();
 		const piboSession = this.resolvePiboSession(piboSessionId);
 		let session: RoutedSession | undefined;
 		this.signalRegistry.project({ type: "session_created", session: piboSession });
@@ -1553,6 +1611,7 @@ export class PiboSessionRouter {
 		if (invalidProfile) {
 			throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
 		}
+		phases.bindingAndProfileMs=performance.now()-phaseStarted;phaseStarted=performance.now();
 		let historyHandoff: AgentRuntimeHistoryHandoff | undefined;
 		if (persistedHistoryHandoff?.mode === "import") {
 			if (!runtimeAdapter.descriptor.capabilities.historyImport) {
@@ -1575,6 +1634,7 @@ export class PiboSessionRouter {
 		} else if (persistedHistoryHandoff?.mode === "fresh") {
 			historyHandoff = { mode: "fresh" };
 		}
+		phases.portableHistoryMs=performance.now()-phaseStarted;phaseStarted=performance.now();
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
 		const agentsController = this.createAgentsController(piboSession.id);
 		const runToolController = this.createRunToolController(piboSession.id);
@@ -1616,6 +1676,7 @@ export class PiboSessionRouter {
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
 		}
+		phases.resourcesAndToolsMs=performance.now()-phaseStarted;phaseStarted=performance.now();
 		const bindingSync = { expectedRevision: binding.revision };
 		const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(this.sessionStore, {
 			piboSessionId: piboSession.id,
@@ -1658,6 +1719,7 @@ export class PiboSessionRouter {
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
 						retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
 						extensionFactories: [
+						createProviderCapacityExtension(this.capacity,piboRoomIdFromMetadata(piboSession.metadata) ?? piboSession.id,Boolean(piboSession.parentId)),
 							...(telemetryExtension ? [telemetryExtension] : []),
 							...(this.options.extensionFactories ?? []),
 						],
@@ -1724,6 +1786,7 @@ export class PiboSessionRouter {
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
 			throw error;
 		}
+		phases.adapterOpenAndBindingMs=performance.now()-phaseStarted;
 		const resourceInspection = resources.getInspection();
 		const statusResources = {
 			enabledSkills: [...new Set(resourceInspection.skills.map((skill) => skill.name))],
@@ -1770,6 +1833,7 @@ export class PiboSessionRouter {
 					this.handleInterruptedRunReminders(messages);
 				},
 				messagePreflight: this.options.messagePreflight,
+				acquireProviderCapacity: runtimeAdapter.descriptor.id === "pi" ? undefined : (provider,signal) => this.capacity.acquireProvider(provider,typeof piboSession.metadata?.chatRoomId === "string" ? piboSession.metadata.chatRoomId : piboSession.id,signal,Boolean(piboSession.parentId)),
 				modelFallbacks,
 				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),
 				startRuntimeAuth: async (input) => {
