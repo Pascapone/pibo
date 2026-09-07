@@ -88,6 +88,7 @@ import {
 } from "./models.js";
 import { CodexNativeAuthController } from "./auth.js";
 import { injectPortableHistoryIntoCodex } from "./portable-history.js";
+import { readCodexNativeProviderUsage } from "./provider-usage.js";
 import {
 	CODEX_FIRST_USE_METADATA_KEY,
 	CODEX_FIRST_USE_METADATA_VERSION,
@@ -655,6 +656,16 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 					: []),
 			],
 		};
+	}
+
+	async getStatusSnapshot(): Promise<AgentRuntimeStatus> {
+		const status = this.getStatus();
+		try {
+			const providerUsage = await readCodexNativeProviderUsage(this.process.client);
+			return providerUsage ? { ...status, providerUsage } : status;
+		} catch {
+			return status;
+		}
 	}
 
 	getNativeCompatibilityHandle(): unknown {

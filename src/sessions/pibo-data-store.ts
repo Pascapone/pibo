@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
 import type { OutputPartTransition, OutputToolInvocationTransition } from "../core/output-render-sequence.js";
-import { ChatDataIngestService } from "../data/ingest-service.js";
+import { ChatDataIngestService, outputIdempotencyKey } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import type { StoredTelemetryTurn, TelemetryInterruptedTurnOutcome } from "../data/telemetry.js";
 import type { PiboRunSnapshot } from "../runs/registry.js";
@@ -595,9 +595,26 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		const at = input.at ?? new Date().toISOString();
 		const runsBySession = groupRunsByController(input.recoveredRuns ?? []);
 		return this.dataStore.transaction(() => {
+			// Durable terminal output wins over stale telemetry. Do not send a different
+			// recovery payload through the same output identity during startup.
+			const terminalErrors = new Map<string, Extract<PiboOutputEvent, { type: "session_error" }>>();
 			const recoveredTurns = this.dataStore.telemetry.recoverInterruptedTurns({
 				at,
-				resolveOutcome: (turn) => recoveryOutcomeForTurn(turn, runsBySession.get(turn.piboSessionId) ?? []),
+				resolveOutcome: (turn) => {
+					const identity = { type: "session_error" as const, piboSessionId: turn.piboSessionId, eventId: recoveryEventId(turn), error: "" };
+					const existing = this.dataStore.eventLog.findByIdempotencyKey(outputIdempotencyKey(identity)!);
+					if (existing) {
+						const event = {
+							...identity,
+							error: typeof existing.attributes.error === "string" ? existing.attributes.error : existing.previewText ?? "Runtime error",
+							errorDetails: existing.attributes.errorDetails as Extract<PiboOutputEvent, { type: "session_error" }>["errorDetails"],
+						};
+						terminalErrors.set(turn.turnId, event);
+						const details = event.errorDetails;
+						return { status: details?.code === "timeout" ? "timeout" : details?.errorClass === "runtime_abort" ? "aborted" : "error", summary: event.error };
+					}
+					return recoveryOutcomeForTurn(turn, runsBySession.get(turn.piboSessionId) ?? []);
+				},
 			});
 			if (recoveredTurns.length === 0) return [];
 			const ingest = new ChatDataIngestService(this.dataStore);
@@ -606,7 +623,8 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				const session = this.get(recovered.turn.piboSessionId);
 				if (!session) continue;
 				const row = this.db.prepare("SELECT room_id FROM sessions WHERE id = ?").get(session.id) as { room_id: string | null } | undefined;
-				const event: Extract<PiboOutputEvent, { type: "session_error" }> = {
+				const existingError = terminalErrors.get(recovered.turn.turnId);
+				const event: Extract<PiboOutputEvent, { type: "session_error" }> = existingError ?? {
 					type: "session_error",
 					piboSessionId: session.id,
 					eventId: recoveryEventId(recovered.turn),
@@ -636,7 +654,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 						updated_at = ?
 					WHERE session_id = ?
 				`).run(at, at, at, session.id);
-				ingest.ingestOutputEvent({
+				if (!existingError) ingest.ingestOutputEvent({
 					session,
 					roomId: row?.room_id ?? undefined,
 					actorId: session.id,

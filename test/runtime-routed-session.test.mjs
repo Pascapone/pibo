@@ -534,6 +534,8 @@ test("fork identity reads and transitions reject queued or active routed work", 
 			source: "service",
 		});
 		await waitFor(() => routed.getStatus().processing && routed.getStatus().streaming);
+		assert.equal(routed.getStatus().activeEventId, "fork-race-message");
+		assert.deepEqual(routed.getStatus().queuedEventIds, []);
 		await assert.rejects(() => routed.getForkCandidates(), /must be idle to inspect fork candidates/);
 		await assert.rejects(() => routed.forkSession("native-user"), /must be idle to fork/);
 		assert.equal(candidateReads, 0);

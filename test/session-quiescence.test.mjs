@@ -763,6 +763,8 @@ test("forced disposal terminates a real routed session after its normal drain st
 	assert.deepEqual(routed.getStatus(), {
 		piboSessionId: "ps_real_stuck",
 		queuedMessages: 0,
+		activeEventId: "stuck-message",
+		queuedEventIds: [],
 		processing: false,
 		streaming: false,
 		activeTools: [],
