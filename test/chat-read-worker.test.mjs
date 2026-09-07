@@ -78,3 +78,21 @@ test('navigation status pages use stable bounded keysets without dropping sessio
   const plan=store.db.prepare("EXPLAIN QUERY PLAN SELECT id FROM sessions WHERE room_id=? AND deleted_at IS NULL AND id>? ORDER BY id LIMIT 500").all('room_default','');assert.match(JSON.stringify(plan),/idx_sessions_navigation_cursor/);assert.doesNotMatch(JSON.stringify(plan),/TEMP B-TREE/);
  }finally{await reader?.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
+
+test('the isolated read worker answers a timeline query with the same content as the in-process fallback',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pibo-read-hydration-')),path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
+ const store=new PiboDataStore(path,{payloadRootDir}),reader=new AsyncChatReadQueries(path,payloadRootDir);
+ try{
+  // Larger than a 64 KiB worker budget, inside the shared 1 MiB hydration default.
+  const body='assistant answer body '.repeat(8000);
+  const payload=store.payloads.writePayload({value:body,contentType:'text/plain',retentionClass:'product_history'});
+  store.eventLog.appendEvent({sessionId:'ps_large_answer',sessionSequence:1,roomId:'room_large',topic:'chat',type:'assistant_message',source:'agent',
+   retentionClass:'chat_message',payloadRef:payload.id,previewText:'TRUNCATED PREVIEW',attributes:{assistantIndex:0,contentIndex:0},createdAt:'2026-09-07T00:00:00.000Z'});
+  const {ChatTimelineQueryService}=await import('../dist/apps/chat/data/timeline-query-service.js');
+  const listed={piboSessionId:'ps_large_answer',limit:10};
+  const viaWorker=await reader.timeline.listEvents(listed);
+  // StoredChatEvent carries no payload reference, so a dropped body is unrecoverable on this path.
+  assert.equal(viaWorker[0].payload.text,body);
+  assert.deepEqual(viaWorker,new ChatTimelineQueryService(store).listEvents(listed));
+ }finally{await reader.close();store.close();rmSync(root,{recursive:true,force:true});}
+});

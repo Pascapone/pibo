@@ -10,7 +10,11 @@ import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service
 if (!parentPort) throw Error("Chat reads require a worker");
 const store = new PiboDataStore(workerData.path,{payloadRootDir:workerData.payloadRootDir,readOnly:true});
 store.db.exec("PRAGMA busy_timeout=10");
-const services = {navigation:new ChatReadStateService(store),timeline:new ChatTimelineQueryService(store,64*1024),history:new ChatHistoryQueryService(store,2*1024*1024)};
+// Timeline hydration must match the in-process default. A smaller worker budget silently replaces
+// message bodies with their preview and StoredChatEvent carries no payload reference to recover them,
+// so the same query would answer with less content than the fallback it replaced. The IPC bound stays
+// owned by maxMessageBytes plus the bounded page-halving recovery in the event stream replay loop.
+const services = {navigation:new ChatReadStateService(store),timeline:new ChatTimelineQueryService(store),history:new ChatHistoryQueryService(store,2*1024*1024)};
 let operations=0;
 const maintenanceDb=new DatabaseSync(workerData.path);maintenanceDb.exec("PRAGMA busy_timeout=10; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL");
 const maintenance=new ChatReadProjectionStore(maintenanceDb);

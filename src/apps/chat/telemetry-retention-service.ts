@@ -27,6 +27,9 @@ export const TELEMETRY_RETENTION_CLASSES: TelemetryRetentionClass[] = [
 ];
 
 export const DEFAULT_TELEMETRY_RETENTION_MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Bounded recovery: back off a failing maintenance job, then leave it visible instead of respawning. */
+export const TELEMETRY_RETENTION_MAINTENANCE_FAILURE_LIMIT = 8;
+export const TELEMETRY_RETENTION_MAINTENANCE_MAX_RETRY_MS = 30_000;
 
 export type TelemetryRetentionMaintenanceState = {
 	lastCheckedAt?: number;
@@ -99,7 +102,9 @@ export function maybeRunTelemetryRetentionMaintenance(input: {
 	input.state.running = true;
  const cutoff=telemetryRetentionCutoff(input.settings.days,now);
  const local=input.dataStore.path===":memory:"?new TelemetryMaintenance(input.dataStore.db):undefined;
+ let consecutiveFailures=0;
  const run=async()=>{
+  let failed=false;
   try{
    if(input.state.disposed)return;
    if(local){if(!local.status()||local.status()?.status==="completed"||local.status()?.status==="cancelled")local.start(cutoff);local.step();}
@@ -108,9 +113,18 @@ export function maybeRunTelemetryRetentionMaintenance(input: {
    if(input.state.disposed)return;
    if(status?.status==="completed"){input.onPruned?.(now.toISOString());input.state.running=false;await input.state.worker?.close();input.state.worker=undefined;return;}
    if(status?.status==="cancelled"||status?.status==="paused"){input.state.running=false;await input.state.worker?.close();input.state.worker=undefined;return;}
-  }catch{input.state.failures=(input.state.failures??0)+1;await input.state.worker?.close();input.state.worker=undefined;}
+  }catch{failed=true;input.state.failures=(input.state.failures??0)+1;await input.state.worker?.close();input.state.worker=undefined;}
   if(input.state.disposed)return;
-  input.state.timer=setTimeout(()=>{input.state.timer=undefined;void run();},local?25:250);input.state.timer.unref?.();
+  if(!failed){
+   consecutiveFailures=0;
+   input.state.timer=setTimeout(()=>{input.state.timer=undefined;void run();},local?25:250);input.state.timer.unref?.();return;
+  }
+  // A persistent failure must not respawn a worker thread every 250 ms forever. Back off, then stop
+  // with the failure count visible so a later due check retries instead of burning one worker per attempt.
+  consecutiveFailures++;
+  if(consecutiveFailures>=TELEMETRY_RETENTION_MAINTENANCE_FAILURE_LIMIT){input.state.running=false;input.state.timer=undefined;return;}
+  const backoffMs=Math.min(TELEMETRY_RETENTION_MAINTENANCE_MAX_RETRY_MS,250*2**(consecutiveFailures-1));
+  input.state.timer=setTimeout(()=>{input.state.timer=undefined;void run();},backoffMs);input.state.timer.unref?.();
  };
  input.state.timer=setTimeout(()=>{input.state.timer=undefined;void run();},0);input.state.timer.unref?.();
 }

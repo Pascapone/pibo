@@ -159,3 +159,35 @@ test("disposing telemetry retention cancels a scheduled database callback", asyn
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("a persistently failing retention job backs off instead of respawning a worker forever", async () => {
+	const { dir, store } = createStore();
+	const state = {};
+	try {
+		// A differently scoped job that a live owner still steps rejects the unscoped background job.
+		store.db.prepare("INSERT INTO telemetry_maintenance_job(id,cutoff,status,updated_at,retention_scope) VALUES(1,?,'running',?,'diagnostic')")
+			.run("2026-01-01T00:00:00.000Z", new Date().toISOString());
+		maybeRunTelemetryRetentionMaintenance({
+			state,
+			dataStore: store,
+			settings: { enabled: true, days: 30 },
+			now: new Date("2026-02-15T00:00:00.000Z"),
+			intervalMs: 0,
+			context: { channelContext: { listSessionRuntimeStatuses: () => [] } },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 2500));
+		const failures = state.failures ?? 0;
+		// Unbounded retry spawned a replacement worker roughly every 250 ms (>= 7 in this window).
+		assert.ok(failures >= 3, `expected bounded retries to keep running, got ${failures}`);
+		assert.ok(failures <= 5, `expected exponential backoff, got ${failures} worker respawns in 2.5s`);
+		assert.equal(state.running, true, "the job stays scheduled below its bounded failure limit");
+		assert.ok(state.timer, "a backed-off retry is scheduled");
+		await disposeTelemetryRetentionMaintenance(state);
+		assert.equal(state.running, false);
+		assert.equal(state.timer, undefined);
+	} finally {
+		await disposeTelemetryRetentionMaintenance(state);
+		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
