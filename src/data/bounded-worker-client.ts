@@ -37,10 +37,12 @@ type Pending = {
 export function boundedMessageBytes(value: unknown, maximum: number): number {
 	let bytes = 0;
 	let nodes = 0;
-	const stack: unknown[] = [value];
+	const stack: Array<{ value: unknown; leave?: boolean }> = [{ value }];
 	const seen = new Set<object>();
 	while (stack.length) {
-		const item = stack.pop();
+		const frame = stack.pop()!;
+		const item = frame.value;
+		if (frame.leave) { seen.delete(item as object); continue; }
 		if (++nodes > 100_000) throw new StorageUnavailableError("storage_payload_limit", "Storage message has too many fields.");
 		if (typeof item === "string") bytes += Buffer.byteLength(item, "utf8") + 8;
 		else if (item === null || item === undefined || typeof item === "boolean" || typeof item === "number") bytes += 8;
@@ -49,12 +51,13 @@ export function boundedMessageBytes(value: unknown, maximum: number): number {
 		else if (typeof item === "object") {
 			if (seen.has(item)) throw new StorageUnavailableError("storage_payload_limit", "Storage messages must be acyclic.");
 			seen.add(item);
+			stack.push({ value: item, leave: true });
 			bytes += 16;
 			for (const key in item) {
 				if (!Object.hasOwn(item, key)) continue;
 				const child = (item as Record<string, unknown>)[key];
 				bytes += Buffer.byteLength(key, "utf8") + 8;
-				stack.push(child);
+				stack.push({ value: child });
 				if (stack.length > 100_000 || bytes > maximum) throw new StorageUnavailableError("storage_payload_limit", "Storage message exceeds its budget.");
 			}
 		} else throw new StorageUnavailableError("storage_payload_limit", "Unsupported storage message value.");

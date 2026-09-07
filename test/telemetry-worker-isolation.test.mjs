@@ -12,14 +12,14 @@ const session={id:'ps_isolated',channel:'test',kind:'chat',profile:'base',create
 function fixture(options){const root=mkdtempSync(join(tmpdir(),'pibo-isolated-telemetry-'));const store=new PiboDataStore(join(root,'db.sqlite'),{payloadRootDir:join(root,'payloads')});const writer=new AsyncTelemetryWriter(store.telemetry,options);const runtime=new PiboRuntimeTelemetryRecorder(store.telemetry,undefined,{writer});return {root,store,writer,runtime,async close(){await writer.dispose();store.close();rmSync(root,{recursive:true,force:true});}};}
 function output(runtime,eventId,type){runtime.recordOutput({type,piboSessionId:session.id,eventId,text:'private text must not enter telemetry IPC',queuedMessages:0,source:'user'},{session});}
 test('file telemetry persists ordered cross-recorder facts only on its worker',async()=>{
- const f=fixture({flushIntervalMs:60000});const provider=new PiboProviderTelemetryRecorder({store:f.store.telemetry,writer:f.writer,session});
+ const f=fixture({flushIntervalMs:60000});const model={provider:'test',model:'model'};const provider=new PiboProviderTelemetryRecorder({store:f.store.telemetry,writer:f.writer,session,model});
  const original=f.store.db.exec.bind(f.store.db);let producerTransactions=0;f.store.db.exec=sql=>{if(/^BEGIN/i.test(sql))producerTransactions++;return original(sql);};
  try{
-  output(f.runtime,'event','message_started');provider.recordRequestStart({model:'test',input:'not retained'});provider.recordResponse({status:200});provider.recordMessageEnd({role:'assistant',stopReason:'stop'});output(f.runtime,'event','message_finished');
+  output(f.runtime,'event','message_started');provider.recordRequestStart({model:'test',input:'not retained'},{model});provider.recordResponse({status:200});provider.recordMessageEnd({role:'assistant',stopReason:'stop'});output(f.runtime,'event','message_finished');
   assert.equal(f.store.telemetry.getTurn(turnIdForEvent('event')),undefined);await f.writer.flush();
   const timeline=f.store.telemetry.getTurnTimeline(turnIdForEvent('event'));
   assert.equal(timeline.turn.status,'ok');assert.equal(timeline.providerRequests.length,1);assert.equal(timeline.providerRequests[0].status,'completed');
-  assert.equal(producerTransactions,0);assert.equal(f.writer.status().mode,'worker');assert.ok(f.writer.status().worker.threadId>0);assert.equal(f.writer.status().failed,0);
+  assert.equal(f.writer.status().rejected,0);assert.equal(producerTransactions,0);assert.equal(f.writer.status().mode,'worker');assert.ok(f.writer.status().worker.threadId>0);assert.equal(f.writer.status().failed,0);
  }finally{await f.close();}
 });
 test('SQLite lock contention delays diagnostics without blocking the producer or losing an unlocked batch',async()=>{

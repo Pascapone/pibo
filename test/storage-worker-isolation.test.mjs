@@ -170,3 +170,13 @@ test('storage fairness remembers Rooms across drained bursts without delaying co
   assert.ok(order.indexOf('quiet-2')<order.indexOf('noisy-3'),JSON.stringify(order));
  } finally {await client.close();}
 });
+
+ test('payload accounting permits shared acyclic metadata and counts every serialized occurrence', () => {
+  const model={provider:'test',id:'model'};
+  const shared={model,options:{model}};
+  const copied={model:{...model},options:{model:{...model}}};
+  assert.equal(boundedMessageBytes(shared,4096),boundedMessageBytes(copied,4096));
+  assert.throws(()=>boundedMessageBytes(shared,boundedMessageBytes({model},4096)),{code:'storage_payload_limit'});
+  const cycle={model};cycle.self=cycle;
+  assert.throws(()=>boundedMessageBytes(cycle,4096),{code:'storage_payload_limit'});
+ });
