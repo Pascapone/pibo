@@ -1,3 +1,4 @@
+import { tracePayloadRefForStoredPayload } from "../trace-v2.js";
 import { ChatReadProjectionStore } from "../../../data/chat-read-projections.js";
 import type { AgentRuntimeHistoryEntry } from "../../../agent-runtime/history.js";
 import type { PiboJsonObject } from "../../../core/events.js";
@@ -44,7 +45,7 @@ export class ChatHistoryQueryService {
 			clauses.push("COALESCE(e.session_sequence, m.sequence) < ?");
 			values.push(input.beforeSequence);
 		}
-        const complete=new ChatReadProjectionStore(this.store.db).status().complete;
+        const complete=new ChatReadProjectionStore(this.store.db).status().historyComplete;
         const rows = complete ? this.store.db.prepare(`
           SELECT m.*,h.event_sequence FROM chat_history_index h JOIN chat_messages m ON m.id=h.message_id
           WHERE h.session_id=? AND h.role IN ('user','assistant','system') ${input.beforeSequence!==undefined?"AND h.event_sequence < ?":""}
@@ -81,6 +82,7 @@ export class ChatHistoryQueryService {
 					sourceStreamId: row.source_stream_id ?? undefined,
 					completedAt: row.completed_at ?? undefined,
 					payloadRef: row.content_payload_ref ?? undefined,
+                    tracePayloadRef: contentTruncated && row.content_payload_ref ? tracePayloadRefForStoredPayload({payloadStore:this.store.payloads,piboSessionId:row.session_id,payloadId:row.content_payload_ref,nodeId:`product:${row.id}`,payloadKind:"output"}) as unknown as PiboJsonObject : undefined,
 					contentTruncated:contentTruncated || undefined,
 					contentBytes:contentTruncated?contentBytes:undefined,
 				}),
@@ -89,7 +91,7 @@ export class ChatHistoryQueryService {
 	}
 
 	getProductHistoryCoverage(piboSessionId: string): ChatProductHistoryCoverage {
-        const complete=new ChatReadProjectionStore(this.store.db).status().complete;
+        const complete=new ChatReadProjectionStore(this.store.db).status().historyComplete;
         const count=this.store.db.prepare("SELECT message_count,revision FROM chat_history_counts WHERE session_id=?").get(piboSessionId) as {message_count:number;revision:number}|undefined;
         const edge=(column:"event_sequence"|"created_at",order:"ASC"|"DESC") => this.store.db.prepare(`SELECT ${column} AS value FROM chat_history_index WHERE session_id=? ORDER BY ${column} ${order},message_id ${order} LIMIT 1`).get(piboSessionId) as {value:number|string}|undefined;
         return {messageCount:count?.message_count??0,revision:count?.revision??0,complete,

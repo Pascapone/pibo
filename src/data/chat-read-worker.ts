@@ -1,3 +1,4 @@
+import { ChatReadStateService } from "../apps/chat/data/read-state-service.js";
 import { DatabaseSync } from "node:sqlite";
 import { ChatReadProjectionStore } from "./chat-read-projections.js";
 import { parentPort, workerData, threadId } from "node:worker_threads";
@@ -9,7 +10,7 @@ import { ChatHistoryQueryService } from "../apps/chat/data/history-query-service
 if (!parentPort) throw Error("Chat reads require a worker");
 const store = new PiboDataStore(workerData.path,{payloadRootDir:workerData.payloadRootDir,readOnly:true});
 store.db.exec("PRAGMA busy_timeout=10");
-const services = {timeline:new ChatTimelineQueryService(store,64*1024),history:new ChatHistoryQueryService(store,2*1024*1024)};
+const services = {navigation:new ChatReadStateService(store),timeline:new ChatTimelineQueryService(store,64*1024),history:new ChatHistoryQueryService(store,2*1024*1024)};
 let operations=0;
 const maintenanceDb=new DatabaseSync(workerData.path);maintenanceDb.exec("PRAGMA busy_timeout=10; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL");
 const maintenance=new ChatReadProjectionStore(maintenanceDb);
@@ -36,10 +37,10 @@ parentPort.on("message", (request:{id:number;deadline:number;maxResultBytes:numb
   const service=services[group] as unknown as Record<string,(...args:unknown[])=>unknown>;
   const value=service[method]!.apply(service,args);
   boundedMessageBytes(value,request.maxResultBytes);operations++;
-  parentPort!.postMessage({id:request.id,value,worker:{pid:process.pid,threadId,operations,readOnly:true}});
+  parentPort!.postMessage({id:request.id,value,worker:{pid:process.pid,threadId,operations,readOnly:true,maintenance:{...maintenance.status(),failures:maintenanceFailures}}});
  } catch(error) {
   const code=error && typeof error === "object" && "code" in error && typeof error.code === "string" && error.code.startsWith("storage_") ? error.code : "storage_read_failed";
   parentPort!.postMessage({id:request.id,error:{code,message:"Bounded chat read failed; retry the page."}});
  }
 });
-parentPort.postMessage({ready:true,worker:{pid:process.pid,threadId,operations,readOnly:true}});
+parentPort.postMessage({ready:true,worker:{pid:process.pid,threadId,operations,readOnly:true,maintenance:{...maintenance.status(),failures:maintenanceFailures}}});

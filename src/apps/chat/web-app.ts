@@ -392,7 +392,7 @@ type ChatSessionQuery = {
 	upsertSession(session: PiboSession, status?: ChatWebSessionIndexItem["status"]): void;
 	upsertSessionsIfChanged(sessions: PiboSession[]): ChatWebSessionBootstrapIndexResult;
 	recordEvent(event: PiboOutputEvent, session?: PiboSession, streamId?: number, createdAt?: string): ChatWebStoredPiboEvent | undefined;
-	listSessions(): ChatWebSessionIndexItem[];
+	listSessions(roomId?:string): ChatWebSessionIndexItem[];
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined;
 	hasSessionActivity(piboSessionId: string): boolean;
 	deleteSessions(piboSessionIds: string[]): number;
@@ -448,6 +448,9 @@ type ChatWebAppState = {
 	sessionQuery: ChatSessionQuery;
 	timelineQuery: ChatTimelineQuery;
 	readQueries?: AsyncChatReadQueries;
+	boundedStreams:Set<BoundedEventStream>;
+	boundedStreamDisconnects:number;
+	navigationIndexed?:{context:PiboWebAppContext["channelContext"];key:string};
 	historyQuery: ChatHistoryQuery;
 	eventCommands: ChatEventCommands;
 	readState: ChatReadState;
@@ -949,7 +952,12 @@ function serializeGatewayResourceDiagnostics(state: ChatWebAppState) {
 			maxMs: Number.isFinite(state.eventLoopDelay.max) ? state.eventLoopDelay.max / 1_000_000 : 0,
 			p95Ms: state.eventLoopDelay.percentile(95) / 1_000_000,
 		},
+		readWorker:state.readQueries?.status(),
 		streams: {
+			boundedConnections:state.boundedStreams.size,
+			queuedBytes:[...state.boundedStreams].reduce((sum,stream)=>sum+stream.status().bytes,0),
+			oldestQueuedAgeMs:Math.max(0,...[...state.boundedStreams].map(stream=>stream.status().oldestAgeMs)),
+			budgetDisconnects:state.boundedStreamDisconnects,
 			liveListeners: state.liveListeners.size,
 			activeEventStreams,
 			activeTraceSessions: state.activeTraceSessions.size,
@@ -1417,12 +1425,31 @@ function markActiveSessionRead(state: ChatWebAppState, piboSessionId: string, st
 	state.readState.markSessionRead(piboSessionId, streamId);
 }
 
+async function readNavigationIndex(state:ChatWebAppState,roomId:string) {
+ if(!state.readQueries)return state.sessionQuery.listSessions(roomId);
+ const items:ReturnType<ChatSessionQueryService["listSessions"]>=[];
+ let afterId:string|undefined;
+ for(;;){const page=await state.readQueries.navigation.sessionIndexPage({roomId,afterId,limit:500});items.push(...page);if(page.length<500)break;afterId=page.at(-1)!.piboSessionId;}
+ return items;
+}
+
+const sharedSessionSnapshots=new Map<PiboWebAppContext["channelContext"],{revision:number;profiles:string;sessions:PiboSession[];bytes:number}>();
 function listSharedSessions(context: PiboWebAppContext): PiboSession[] {
-	const sessions = context.channelContext.listSessions?.() ?? context.channelContext.findSessions({});
-	const profiles = context.channelContext.getProfiles?.();
-	return sessions
-		.map((session) => canonicalizeSessionProfile(context, session, profiles))
-		.sort(compareChatWebSessionsBySidebarOrder);
+ const revision=context.channelContext.getSessionStructureRevision?.();
+ const profiles=context.channelContext.getProfiles?.();
+ const profileKey=JSON.stringify(profiles?.map(profile=>[profile.name,profile.aliases])??[]);
+ const cached=sharedSessionSnapshots.get(context.channelContext);
+ if(revision!==undefined&&cached?.revision===revision&&cached.profiles===profileKey)return cached.sessions.slice();
+ const sessions=(context.channelContext.listSessions?.()??context.channelContext.findSessions({})).map(session=>canonicalizeSessionProfile(context,session,profiles)).sort(compareChatWebSessionsBySidebarOrder);
+ if(revision!==undefined){
+  sharedSessionSnapshots.delete(context.channelContext);
+  try{
+   let bytes=16;for(const session of sessions){bytes+=boundedMessageBytes(session,16*1024*1024-bytes);if(bytes>16*1024*1024)throw Error("Session snapshot budget exceeded");}
+   sharedSessionSnapshots.set(context.channelContext,{revision:context.channelContext.getSessionStructureRevision?.()??revision,profiles:profileKey,sessions,bytes});
+   while(sharedSessionSnapshots.size>4||[...sharedSessionSnapshots.values()].reduce((total,item)=>total+item.bytes,0)>16*1024*1024)sharedSessionSnapshots.delete(sharedSessionSnapshots.keys().next().value!);
+  }catch{}
+ }
+ return sessions.slice();
 }
 
 function canonicalizeSessionProfile(
@@ -3774,14 +3801,15 @@ function sessionSubtree(sessions: readonly PiboSession[], rootSessionId: string)
 	return [...subtree.values()];
 }
 
-function buildSessionUnreadCounts(
+async function buildSessionUnreadCounts(
 	state: ChatWebAppState,
 	sessions: PiboSession[],
-): Map<string, number> {
+): Promise<Map<string, number>> {
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	const visibleSessionIds = sessions
 		.filter((session) => !hasArchivedSessionInPath(session, sessionsById))
 		.map((session) => session.id);
+	if(state.readQueries)return new Map(await state.readQueries.navigation.unreadCountsPage({piboSessionIds:visibleSessionIds}));
 	return state.readState.countUnreadMessagesBySession({
 		piboSessionIds: visibleSessionIds,
 	});
@@ -4194,6 +4222,11 @@ function chatLiveEventCreatedAt(event: ChatLiveEvent): string | undefined {
 	return undefined;
 }
 
+function trackedEventStream(state:ChatWebAppState,onClose:()=>void):BoundedEventStream {
+ const stream=new BoundedEventStream(reason=>{state.boundedStreams.delete(stream);if(reason.startsWith("slow")||reason==="error")state.boundedStreamDisconnects++;onClose();});
+ state.boundedStreams.add(stream);return stream;
+}
+
 function createEventStream(input: {
 	roomId?: string;
 	piboSessionId?: string;
@@ -4207,7 +4240,7 @@ function createEventStream(input: {
 
  let unsubscribe:(()=>void)|undefined;let heartbeat:ReturnType<typeof setInterval>|undefined;let registeredLiveObserver=false;
  const streamId=randomUUID();
- const stream=new BoundedEventStream(()=>{
+ const stream=trackedEventStream(input.state,()=>{
   unsubscribe?.();unsubscribe=undefined;if(heartbeat)clearInterval(heartbeat);heartbeat=undefined;
   if(registeredLiveObserver&&input.activePiboSessionId){markEventStreamDisconnected({state:input.state,piboSessionId:input.activePiboSessionId,streamId});registeredLiveObserver=false;}
  });
@@ -4645,6 +4678,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 	const state: ChatWebAppState = {
 		sessionQuery: new ChatSessionQueryService(dataStore),
 		timelineQuery: new ChatTimelineQueryService(dataStore),
+		boundedStreams:new Set(),
+		boundedStreamDisconnects:0,
 		readQueries: dataStore.path === ":memory:" ? undefined : new AsyncChatReadQueries(dataStore.path, options.dataPayloadRootDir ?? piboHomePath("payloads")),
 		historyQuery: new ChatHistoryQueryService(dataStore),
 		eventCommands: new ChatEventCommandService(dataStore),
@@ -4713,6 +4748,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			await state.commandDispatcher?.dispose();
 			state.unsubscribe?.();
 			state.unsubscribe = undefined;
+			if(state.subscribedContext)sharedSessionSnapshots.delete(state.subscribedContext.channelContext);
 			state.subscribedContext = undefined;
 			state.eventLoopDelay.disable();
 			disposeTelemetryRetentionMaintenance(state.telemetryRetentionMaintenance);
@@ -4722,6 +4758,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			state.reliabilityStore.close();
 			state.cronStore.close();
 			state.loopStore.close();
+			for(const stream of state.boundedStreams)stream.fail();
 			state.outputCompactor.disposeAll();
 			state.outputRenderSequencer.disposeAll();
 			await state.asyncStorage?.close();
@@ -4900,11 +4937,16 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					includeArchived,
 				});
 				const defaultRoom = state.roomService.ensureDefaultRoom();
-				indexSharedSessions(state.sessionQuery, roomSessions);
-				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions);
+				const structuralRevision=context.channelContext.getSessionStructureRevision?.();
+                const indexKey=()=>JSON.stringify([context.channelContext.getSessionStructureRevision?.(),selectedRoomId,includeArchived,selectedSession.id]);
+                if(structuralRevision===undefined||state.navigationIndexed?.context!==context.channelContext||state.navigationIndexed.key!==indexKey()){
+                  indexSharedSessions(state.sessionQuery,roomSessions);
+                  if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey()};
+                }
+                const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
 				const sessions = await buildSessionNodes(
 					roomSessions,
-					sessionIndexItemsWithSignalState(context, roomSessions, state.sessionQuery.listSessions(), sessionUnreadCounts),
+					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadCounts),
 					process.cwd(),
 					sessionUnreadCounts,
 					{ skipPiMetadataFallback: true },
@@ -4954,12 +4996,17 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (markRead) {
 					markSessionsRead(state, sessionSubtree(ownedSessions, selectedSession.id));
 				}
-				indexSharedSessions(state.sessionQuery, roomSessions);
-				const sessionUnreadCounts = buildSessionUnreadCounts(state, ownedSessions);
+				const structuralRevision=context.channelContext.getSessionStructureRevision?.();
+                const indexKey=()=>JSON.stringify([context.channelContext.getSessionStructureRevision?.(),selectedRoomId,includeArchived,selectedSession.id]);
+                if(structuralRevision===undefined||state.navigationIndexed?.context!==context.channelContext||state.navigationIndexed.key!==indexKey()){
+                  indexSharedSessions(state.sessionQuery,roomSessions);
+                  if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey()};
+                }
+                const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
 				const [sessions, catalog] = await Promise.all([
 					buildSessionNodes(
 						roomSessions,
-						sessionIndexItemsWithSignalState(context, roomSessions, state.sessionQuery.listSessions(), sessionUnreadCounts),
+						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadCounts),
 						process.cwd(),
 						sessionUnreadCounts,
 						sessionNodeHistoryOptions(context),
@@ -5097,7 +5144,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						if (heartbeat) clearInterval(heartbeat);
 						heartbeat = undefined;
                 };
-                const bounded=new BoundedEventStream(cleanup);
+                const bounded=trackedEventStream(state,cleanup);
                 { const controller=bounded.writer;
 						writeJsonSse(controller, "signal_status_snapshot", context.channelContext.snapshotSignalStatuses!());
 						unsubscribe = context.channelContext.subscribeSignalStatuses!((patch) => {
@@ -5153,7 +5200,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						if (heartbeat) clearInterval(heartbeat);
 						heartbeat = undefined;
                 };
-                const bounded=new BoundedEventStream(cleanup);
+                const bounded=trackedEventStream(state,cleanup);
                 { const controller=bounded.writer;
 						writeJsonSse(controller, "signal_snapshot", context.channelContext.snapshotSignalTree!(rootPiboSessionId));
 						unsubscribeTree = context.channelContext.subscribeSignalTree!(rootPiboSessionId, (patch) => {
