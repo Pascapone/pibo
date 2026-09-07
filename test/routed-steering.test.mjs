@@ -83,6 +83,8 @@ test("routed sessions support steering and queued follow-up turns at the same ti
 		source: "user",
 	});
 	assert.equal(harness.routed.getStatus().queuedMessages, 1, "steering must not consume or duplicate the routed queue");
+	assert.equal(harness.routed.getStatus().activeEventId, "active");
+	assert.deepEqual(harness.routed.getStatus().queuedEventIds, ["queued"]);
 	assert.deepEqual(harness.order, ["prompt:active", "steer:steered"]);
 
 	harness.releasePrompt();
@@ -90,6 +92,8 @@ test("routed sessions support steering and queued follow-up turns at the same ti
 	harness.releasePrompt();
 	await waitUntil(() => harness.events.some((event) => event.type === "message_finished" && event.eventId === "queued"), "queued turn did not finish");
 	assert.deepEqual(harness.order, ["prompt:active", "steer:steered", "prompt:queued"]);
+	assert.equal(harness.routed.getStatus().activeEventId, undefined);
+	assert.deepEqual(harness.routed.getStatus().queuedEventIds, []);
 });
 
 test("steering rejects idle sessions instead of silently queueing", async () => {

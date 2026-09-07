@@ -221,6 +221,9 @@ export type PiboSessionStatus = {
 		revision?: number;
 	};
 	queuedMessages: number;
+	/** Semantic work identities used for snapshot-bound restart approval. */
+	activeEventId?: string;
+	queuedEventIds?: string[];
 	processing: boolean;
 	streaming: boolean;
 	/** @deprecated Use enabledTools. This lists configured/available tools, not currently executing tool calls. */
