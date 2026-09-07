@@ -4708,6 +4708,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		name: CHAT_WEB_APP_NAME,
 		mountPath: CHAT_WEB_MOUNT_PATH,
 		apiPrefix: CHAT_WEB_API_PREFIX,
+		async drain() {
+			await state.outputPersistenceRetries.drain();
+		},
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
