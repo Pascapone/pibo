@@ -18,6 +18,18 @@
   },
   "records": [
     {
+      "path": "docs/reports/performance-scalability-handoff-2026-09-07.md",
+      "state": "conformant",
+      "classification": "implementation handoff",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 14673,
+      "file_sha256": "354842b46d6a718a67d28049e5f55b89a6551e8e017c922c74e8b1d483f1dde9",
+      "body_sha256": "18ce9d29283991191573c1a33f4e568a2d48a49c22ecaf124b5f119d6ef212e1",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-p0-2026-09-06.md",
       "state": "conformant",
       "classification": "performance validation",

@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-07
+
+- **Performance continuation**: Preserved the [A–H handoff and local integration correction](/reports/performance-scalability-handoff-2026-09-07.md), including explicit persistence barriers, 131 passing Web tests and 39 passing storage/recovery regressions; renewed Pibo2 acceptance and C–H remain outstanding.
+
 ## 2026-09-06
 
 - **Indexed admission implementation**: Recorded the [P0 implementation and isolated validation](/reports/performance-scalability-p0-2026-09-06.md), including synthetic million-event lookups, concurrency regressions and remaining acceptance gates.

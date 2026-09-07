@@ -52,6 +52,7 @@
 * [Pi Runtime Adapter Parity Validation](pi-runtime-adapter-parity-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo 1&#46;4&#46;6](release-1-4-6-notes.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo VS Code Extension 1&#46;4&#46;1 — Release Report](vscode-webview-sidecar-fixes-release-2026-06-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Pibo performance and scalability implementation handoff](performance-scalability-handoff-2026-09-07.md) - Transfers the exact implementation, validation, branch, environment, and open&#45;test state for packages A through H&#46;
 * [Pibo2 server&#45;development completion audit — 2026&#45;08&#45;07](pibo2-server-development-completion-audit-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo2 yielded&#45;run resource hang — 2026&#45;08&#45;08](pibo2-yielded-run-resource-hang-2026-08-08.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Pluggable Transcription Validation — 2026&#45;08&#45;22](pluggable-transcription-validation-2026-08-22.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

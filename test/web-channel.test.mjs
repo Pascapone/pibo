@@ -818,7 +818,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 			Buffer.alloc(7 * 1024 - 8, 5),
 		]);
 		for (const [toolCallId, bytes] of [["inline-image-a", inlineBytesA], ["inline-image-b", inlineBytesB], ["inline-image-c", inlineBytesA]]) {
-			emitOutput({
+			await emitOutputAndDrain({
 				type: "tool_execution_finished",
 				piboSessionId,
 				eventId: `turn-${toolCallId}`,
