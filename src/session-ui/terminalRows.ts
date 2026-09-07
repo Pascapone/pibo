@@ -64,6 +64,13 @@ export type CompactTerminalImagePreview = {
 	mimeType?: string;
 };
 
+export type CompactTerminalToolCallReference = {
+	traceNodeId: string;
+	toolCallId: string;
+	eventId?: string;
+	invocationOrdinal?: number;
+};
+
 export type CompactTerminalDetailItem = {
 	id: string;
 	label: string;
@@ -72,6 +79,7 @@ export type CompactTerminalDetailItem = {
 	output?: unknown;
 	error?: string;
 	linkedPiboSessionId?: string;
+	toolCallReference?: CompactTerminalToolCallReference;
 	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	previewOmission?: CompactTerminalPreviewOmission;
 	imagePreviews?: readonly CompactTerminalImagePreview[];
@@ -80,6 +88,7 @@ export type CompactTerminalDetailItem = {
 export type CompactTerminalRow = {
 	toolMetrics?: import("../shared/tool-call-metrics.js").ToolCallMetrics;
 	isToolCall?: boolean;
+	toolCallReference?: CompactTerminalToolCallReference;
 	id: string;
 	kind: CompactTerminalRowKind;
 	status: CompactTerminalRowStatus;
@@ -294,16 +303,31 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			};
 			break;
 	}
+	const isToolCall = node.type === "tool.call" || node.type === "tool.result" || (node.type === "agent.delegation" && Boolean(node.toolCallId));
+	const reference = isToolCall ? toolCallReference(node) : undefined;
 	return {
 		...candidate,
 		row: {
 			...candidate.row,
 			id: compactTerminalRowIdentity(node),
 			intent: node.intent,
-			isToolCall: node.type === "tool.call" || node.type === "tool.result" || (node.type === "agent.delegation" && Boolean(node.toolCallId)),
+			isToolCall,
+			toolCallReference: reference,
+			expandable: reference ? true : candidate.row.expandable,
 			toolMetrics: node.toolMetrics,
 			...debugFields(node),
 		},
+	};
+}
+
+function toolCallReference(node: PiboTraceNode): CompactTerminalToolCallReference | undefined {
+	if (!node.toolCallId) return undefined;
+	const parsed = parseTraceToolNodeIdentity(node.id);
+	return {
+		traceNodeId: node.id,
+		toolCallId: node.toolCallId,
+		eventId: node.eventId ?? parsed?.qualifier?.eventId,
+		invocationOrdinal: node.toolInvocationOrdinal ?? parsed?.qualifier?.invocationOrdinal,
 	};
 }
 
@@ -1142,7 +1166,7 @@ function createExploringGroup(candidates: readonly RowCandidate[]): CompactTermi
 		orderStreamId: firstRow?.orderStreamId,
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
-		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		expandable: detailItems.some((item) => item.toolCallReference || item.input !== undefined || item.output !== undefined || Boolean(item.error)),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
 			visibleLineCount: visibleDetailItems.length,
@@ -1192,7 +1216,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		orderStreamId: firstRow?.orderStreamId,
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
-		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		expandable: detailItems.some((item) => item.toolCallReference || item.input !== undefined || item.output !== undefined || Boolean(item.error)),
 		imagePreviews: detailItems.flatMap((item) => item.imagePreviews ?? []).slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
@@ -1216,6 +1240,7 @@ function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "explori
 			error: candidate.row.error,
 			payloadRefs: candidate.row.payloadRefs,
 			linkedPiboSessionId: candidate.row.linkedPiboSessionId,
+			toolCallReference: candidate.row.toolCallReference,
 			previewOmission: candidate.row.previewOmission,
 			imagePreviews: candidate.row.imagePreviews,
 		};
