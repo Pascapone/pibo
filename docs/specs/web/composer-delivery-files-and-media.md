@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-07T08:35:34.027058Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -24,8 +24,34 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "cf81614fef17fd32ccf48427e2a2065ba8845cf7"
   requirements:
+    - id: "WEB-COMPOSER-ADMISSION-006"
+      status: "implemented"
+      sources:
+        - path: "src/data/message-command-store.ts"
+          symbol: "MessageCommandStore"
+        - path: "src/apps/chat/message-command-dispatcher.ts"
+          symbol: "MessageCommandDispatcher"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "sendChatMessage"
+        - path: "src/apps/chat-ui/src/composer-send.ts"
+          symbol: "rememberPendingMessageTransaction"
+      tests:
+        - path: "test/web-channel.test.mjs"
+          name: "versioned durable admission acknowledges before cold runtime dispatch and preserves its receipt"
+        - path: "test/web-channel.test.mjs"
+          name: "web startup dispatches a committed command without an HTTP request"
+        - path: "test/message-command-store.test.mjs"
+          name: "process death preserves committed commands and fences uncertain dispatch"
+        - path: "test/message-command-store.test.mjs"
+          name: "independent dispatcher processes claim one committed command only once"
+        - path: "test/chat-ui-pending-message-delivery.test.mjs"
+          name: "message API distinguishes unknown acceptance from explicit rejection"
+      failures:
+        - "Expired dispatched ownership becomes interrupted and is not automatically replayed."
+        - "Schema v10 cannot be opened by binaries that reject versions newer than v9."
+      confidence: "high"
     - id: "WEB-COMPOSER-DRAFTS-001"
       status: "implemented"
       sources:
@@ -275,6 +301,21 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 ## Requirements and invariants
 
+### Requirement: WEB-COMPOSER-ADMISSION-006
+
+An explicit `admissionVersion: 2` on the message route commits a durable command, receipt and accepted product event atomically before returning HTTP 202. The response contains `receipt` and `statusPath`. Unversioned callers retain the legacy response and dispatch contract; unsupported versions return 400. The browser uses version 2. Its accepted user history already carries the Pibo input identity, so a reload can resolve the receipt before any runtime output. Admission preserves existing runtime status.
+
+The room/actor/client transaction key retains its scope. For version 2 it binds the target Session, effective message content and delivery mode. An unchanged retry returns the same receipt; conflicting reuse or a key already accepted under the legacy contract returns 409. Command payloads are bounded to 1 MiB, with reference-backed durable storage. Compact receipts have no time-based expiry and remain independent of optional trace/telemetry retention for the lifetime of this database. This does not promise identity across database replacement or restore to a state before acceptance.
+
+The startup dispatcher uses durable fenced claims, at most ten local outstanding dispatches, and 30-second renewable leases. Normal commands remain FIFO per Session; Steering keeps its separate delivery mode and bypasses an active normal turn. Runtime outputs advance receipt state through `accepted`, `waiting_slot`, `initializing`, `session_queue`, `running` and `completed`/`failed`. Expired unstarted claims can be reclaimed; expired potentially dispatched claims become `interrupted`. They require reconciliation and are never blindly replayed. A later durable terminal output can reconcile an interrupted receipt. This is not an exactly-once guarantee for provider/tool effects.
+
+Authenticated `GET /api/chat/message-receipts/:id` returns one receipt after Session/Room access resolution. The Session receipt-list endpoint returns at most 64 recent entries. The UI polls that bounded metadata, displays durable acceptance separately from runtime queue/start, and preserves unchanged node identities. Unknown acceptance is explicitly reported; unchanged retries retain their transaction ID in memory and, when available, tab session storage. Explicit rejection preserves composer text and attachments. A trace refresh failure after acceptance does not roll back the accepted send.
+
+The provisional durable queue rejects new work before commit at 1,000 active commands globally, 256 per Room, 64 per Session, or 64 MiB active command payloads. These guards do not establish the fair scheduler, provider/cold-start limits or capacity SLOs; those remain in the [performance plan](/plans/pibo-performance-and-scalability.md). Control requests continue through their existing routes.
+
+Schema v10 adds the durable command table. Rollback must preserve accepted commands: keep a compatible dispatcher until work is terminal or explicitly reconciled. Redeploying a v9-only binary against this database is unsupported; dropping the table or lowering `user_version` is not a safe rollback.
+
+
 ### Requirement: WEB-COMPOSER-DRAFTS-001
 
 Composer drafts, bounded history, keyboard submission, attachments, and delivery controls MUST follow the selected Pibo Session and MUST NOT leak when navigation changes selection.
@@ -296,7 +337,7 @@ upstream/dev refresh source inspection defines the current contract. No named te
 
 ### Requirement: WEB-COMPOSER-DELIVERY-002
 
-Sending MUST preserve the selected Session, support queue and steer choices, create an optimistic queued event and pending feedback, reject duplicates, and reconcile explicit steering conflicts.
+Sending MUST preserve the selected Session, support queue and steer choices, create optimistic sending feedback, reject duplicates, and reconcile explicit steering conflicts.
 
 #### Current
 

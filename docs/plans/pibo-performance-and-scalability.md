@@ -391,6 +391,8 @@ Nach Unit-/Lasttests im isolierten Worker und nach Deployment auf Dev:
 
 # 8. Reihenfolge, Arbeitspakete und Freigaben
 
+Stand 7. September 2026: A und B sind separat zur Review vorbereitet. C hat den lokalen Build, Recovery-/Crash-Tests und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Command-Abnahmebericht](/reports/performance-scalability-commands-2026-09-07.md). D–H und die übergreifende Last-/Soak-Abnahme sind weiterhin offen.
+
 | Paket | Priorität | Abhängigkeit | Ergebnis / Gate |
 |---|---|---|---|
 | A: Index-Fix + minimale Spans | P0 | Legacy-Vertrag, schmale Regression | Warme Großraum-Annahme schnell; kein Scan |

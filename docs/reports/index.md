@@ -18,6 +18,7 @@
 * [Codex Native Process and Isolation Validation](codex-native-process-isolation-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Codex Native Thread Lifecycle Validation](codex-native-thread-lifecycle-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Debug trace session&#45;status validation — 2026&#45;08&#45;07](debug-trace-session-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Durable message admission: package C validation](performance-scalability-commands-2026-09-07.md) - Records versioned durable receipts, startup dispatch recovery, UI confirmation semantics and the candidate acceptance evidence&#46;
 * [Expert Report: Chat Web Trace Performance and Gateway Responsiveness](chat-web-trace-performance-expert-report-2026-07-04.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Failed message signal reconciliation validation — 2026&#45;08&#45;07](failed-message-signal-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Full Test Suite Hermeticity Triage — 2026&#45;08&#45;10](full-test-hermeticity-triage-2026-08-10.md) - Preserves the original report body as stable research without promoting historical claims&#46;

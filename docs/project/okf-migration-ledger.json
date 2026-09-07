@@ -13767,6 +13767,18 @@
       "file_bytes": 11022,
       "file_sha256": "037de3a9cc10a968087e53dbeb39826d76ff78095dd5d178720009b96194c56e",
       "body_sha256": "f78f9ca04c8273eaca23c75ab3f827f15b5831d7f61efc605a1fd2fd91a2f700"
+    },
+    {
+      "path": "docs/reports/performance-scalability-commands-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 8085,
+      "file_sha256": "080ae9eb897e3c591b48b1219fbd5d10a856559e13627b0448d6f390ca7973f1",
+      "body_sha256": "0fcd9ca8dc9207b2ff936b5f122820779019911705399a2fd1d8711a01be3cab"
     }
   ]
 }

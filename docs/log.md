@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **Durable message admission**: Added the [versioned receipt and recovery contract](/specs/web/composer-delivery-files-and-media.md#requirement-web-composer-admission-006) and [package-C validation record](/reports/performance-scalability-commands-2026-09-07.md), separating committed acceptance, runtime state and unknown client outcomes.
+
 - **Storage integration acceptance**: Recorded [204 passing integration tests and renewed exact-candidate Pibo2 evidence](/reports/performance-scalability-storage-final-2026-09-07.md), including Composer, duplicate bursts, health and durable output after reload.
 
 - **Performance continuation**: Preserved the [A–H handoff and local integration correction](/reports/performance-scalability-handoff-2026-09-07.md), including explicit persistence barriers, 131 passing Web tests and 39 passing storage/recovery regressions; renewed Pibo2 acceptance and C–H remain outstanding.
