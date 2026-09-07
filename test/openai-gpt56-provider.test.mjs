@@ -8,6 +8,7 @@ import {
 	OPENAI_CODEX_BASE_URL,
 	OPENAI_CODEX_GPT_6_ASTRA_MODEL,
 	OPENAI_CODEX_PROVIDER_ID,
+	OPENAI_CODEX_RESERVE_MODEL,
 	OPENAI_CODEX_RESPONSES_API,
 	OPENAI_GPT_56_MODELS,
 	OPENAI_PROVIDER_ID,
@@ -73,7 +74,7 @@ test("OpenAI supplemental model registration leaves native provider auth ownersh
 
 	assert.equal(result.registered, true);
 	assert.equal(result.providers, 2);
-	assert.equal(result.added, (OPENAI_GPT_56_MODELS.length * 2) + 1);
+	assert.equal(result.added, (OPENAI_GPT_56_MODELS.length * 2) + 2);
 	assert.equal(fake.registrations.length, 2);
 
 	const openAi = fake.registrations.find((registration) => registration.name === OPENAI_PROVIDER_ID);
@@ -106,6 +107,41 @@ test("supplemental model registration preserves native Codex OAuth in ModelRunti
 	assert.equal(typeof registeredProvider?.auth.oauth?.login, "function");
 	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-5.6-sol"));
 	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-6-astra"));
+	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, OPENAI_CODEX_RESERVE_MODEL.id));
+});
+
+function borrowedMetadata(model) {
+	return {
+		reasoning: model.reasoning,
+		thinkingLevelMap: model.thinkingLevelMap,
+		input: model.input,
+		cost: model.cost,
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxTokens,
+	};
+}
+
+test("Luna Reserve is ChatGPT Subscription only and borrows Luna metadata", () => {
+	const models = buildOpenAiCodexSupplementalModels([baseCodexModel]);
+	const reserve = models.find((model) => model.id === OPENAI_CODEX_RESERVE_MODEL.id);
+	const luna = models.find((model) => model.id === "gpt-5.6-luna");
+
+	assert.ok(reserve);
+	assert.equal(reserve.name, OPENAI_CODEX_RESERVE_MODEL.name);
+	assert.equal(reserve.provider, OPENAI_CODEX_PROVIDER_ID);
+	assert.equal(reserve.api, OPENAI_CODEX_RESPONSES_API);
+	assert.equal(reserve.baseUrl, OPENAI_CODEX_BASE_URL);
+	assert.deepEqual(borrowedMetadata(reserve), borrowedMetadata(luna));
+	assert.equal(
+		buildOpenAiGpt56Models([baseOpenAiModel]).some((model) => model.id === OPENAI_CODEX_RESERVE_MODEL.id),
+		false,
+	);
+
+	const upstreamReserve = { ...baseCodexModel, id: "gpt-reserve", name: "Upstream Reserve" };
+	assert.equal(
+		buildOpenAiCodexSupplementalModels([upstreamReserve]).find((model) => model.id === "gpt-reserve")?.name,
+		"Upstream Reserve",
+	);
 });
 
 test("GPT-5.6 OpenAI API models preserve built-ins and add Sol Terra Luna", () => {

@@ -77,6 +77,10 @@ export const OPENAI_CODEX_GPT_6_ASTRA_MODEL = {
 	cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
 } as const;
 
+// Codex serves the Reserve quota alias from the Luna-class model, so Reserve borrows Luna's metadata.
+export const OPENAI_CODEX_RESERVE_MODEL = { id: "gpt-reserve", name: "Luna Reserve" } as const;
+const OPENAI_CODEX_RESERVE_BASE_MODEL_ID = "gpt-5.6-luna";
+
 const OPENAI_GPT_56_MODEL_IDS = new Set(OPENAI_GPT_56_MODELS.map((model) => model.id));
 
 export function getBuiltInOpenAiModels(): Model<any>[] {
@@ -119,6 +123,10 @@ export function buildOpenAiCodexSupplementalModels(
 	baseModels: readonly Model<any>[] = getBuiltInOpenAiCodexModels(),
 ): Model<any>[] {
 	const models = buildOpenAiCodexGpt56Models(baseModels);
+	const reserveBase = models.find((model) => model.id === OPENAI_CODEX_RESERVE_BASE_MODEL_ID);
+	if (reserveBase && !models.some((model) => model.id === OPENAI_CODEX_RESERVE_MODEL.id)) {
+		models.push({ ...cloneModel(reserveBase), ...OPENAI_CODEX_RESERVE_MODEL });
+	}
 	if (models.some((model) => model.id === OPENAI_CODEX_GPT_6_ASTRA_MODEL.id)) return models;
 	return [...models, openAiCodexAstraModelToRegistryModel()];
 }
@@ -132,7 +140,7 @@ export function registerOpenAiSupplementalModels(
 ): OpenAiSupplementalRegistrationResult {
 	const baseOpenAiModels = options.baseOpenAiModels ?? getBuiltInOpenAiModels();
 	const openAiModels = buildOpenAiGpt56Models(baseOpenAiModels);
-	const openAiAdded = countMissingGpt56Models(baseOpenAiModels, OPENAI_PROVIDER_ID);
+	const openAiAdded = countAddedModels(baseOpenAiModels, OPENAI_PROVIDER_ID, openAiModels);
 
 	modelRegistry.registerProvider(OPENAI_PROVIDER_ID, {
 		baseUrl: OPENAI_BASE_URL,
@@ -143,11 +151,7 @@ export function registerOpenAiSupplementalModels(
 
 	const baseOpenAiCodexModels = options.baseOpenAiCodexModels ?? getBuiltInOpenAiCodexModels();
 	const openAiCodexModels = buildOpenAiCodexSupplementalModels(baseOpenAiCodexModels);
-	const hasBuiltInAstra = baseOpenAiCodexModels.some(
-		(model) => model.provider === OPENAI_CODEX_PROVIDER_ID && model.id === OPENAI_CODEX_GPT_6_ASTRA_MODEL.id,
-	);
-	const openAiCodexAdded = countMissingGpt56Models(baseOpenAiCodexModels, OPENAI_CODEX_PROVIDER_ID)
-		+ (hasBuiltInAstra ? 0 : 1);
+	const openAiCodexAdded = countAddedModels(baseOpenAiCodexModels, OPENAI_CODEX_PROVIDER_ID, openAiCodexModels);
 
 	modelRegistry.registerProvider(OPENAI_CODEX_PROVIDER_ID, {
 		baseUrl: OPENAI_CODEX_BASE_URL,
@@ -203,9 +207,13 @@ function buildProviderGpt56Models(options: {
 	return [...providerBaseModels, ...additions];
 }
 
-function countMissingGpt56Models(baseModels: readonly Model<any>[], providerId: string): number {
+function countAddedModels(
+	baseModels: readonly Model<any>[],
+	providerId: string,
+	registeredModels: readonly Model<any>[],
+): number {
 	const existingIds = new Set(baseModels.filter((model) => model.provider === providerId).map((model) => model.id));
-	return OPENAI_GPT_56_MODELS.filter((model) => !existingIds.has(model.id)).length;
+	return registeredModels.filter((model) => !existingIds.has(model.id)).length;
 }
 
 function cloneModel(model: Model<any>): Model<any> {
