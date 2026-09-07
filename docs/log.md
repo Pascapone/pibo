@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **Runtime-isolation decision**: Added the [package-H measurement decision](/reports/performance-scalability-runtime-isolation-decision-2026-09-07.md); records that the assembled B–G event-loop, fairness, memory and recovery evidence stays inside PERF-LOOP-001 and the runtime ramp gate, so a documented capacity proof suffices and Pibo-managed runtime-host isolation is deferred with explicit revisit triggers.
+
 - **Bounded maintenance**: Added the [package-G validation report](/reports/performance-scalability-maintenance-2026-09-07.md) and its artifacts; records the resumable bounded telemetry maintenance worker, SQLite online backups with external payload manifests, opt-in scoped capture storage, bounded manual prune and backup WAL quotas, and the isolated Pibo2 slot acceptance (lease released).
 
 - **Isolated read models**: Added the [package-F validation report](/reports/performance-scalability-reads-2026-09-07.md) and its artifacts; records the isolated read worker, resumable history and unread projections, bounded SSE/HTTP streaming, the startup sequence-repair index fix, ten-million-event load evidence, and the isolated Pibo2 slot acceptance (lease released).

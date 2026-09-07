@@ -13851,6 +13851,18 @@
       "file_bytes": 6353,
       "file_sha256": "e0e6f6edb9d0672d7c48b72effc082b0545239857f315c998f397d4f070df35a",
       "body_sha256": "7f0dcf06028c9e4d409a6e62d3ec639d0af558c448c8486b68d526680cb4b070"
+    },
+    {
+      "path": "docs/reports/performance-scalability-runtime-isolation-decision-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 5305,
+      "file_sha256": "97e5f383757c3b1c1b6432e3282fea20fdf725ae86f99ac452b41457ca25a00d",
+      "body_sha256": "4eb57880bd7a49b1866a23b61534f0daa2afdc884c83a5e8e8a8f07ff1461f1f"
     }
   ]
 }
