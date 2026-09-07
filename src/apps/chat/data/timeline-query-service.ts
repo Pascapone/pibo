@@ -8,7 +8,7 @@ import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from 
 import { parseTraceToolNodeIdentity } from "../../../shared/trace-tool-identity.js";
 
 export class ChatTimelineQueryService {
-	constructor(private readonly store: PiboDataStore) {}
+	constructor(private readonly store: PiboDataStore, private readonly hydrationBytes=1024*1024) {}
 
 	listEvents(input: ChatEventListInput = {}): StoredChatEvent[] {
 		const clauses: string[] = [];
@@ -19,7 +19,7 @@ export class ChatTimelineQueryService {
 		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		const limit = Math.max(1, Math.min(input.limit ?? 1000, 5000));
 		const rows = this.store.db.prepare(`SELECT * FROM event_log ${where} ORDER BY stream_id ASC LIMIT ?`).all(...values, limit) as EventLogRow[];
-		return rows.map((row) => storedChatEventFromV2Row(row, this.store.payloads));
+		return rows.map((row) => storedChatEventFromV2Row(row, this.store.payloads, this.hydrationBytes));
 	}
 
 	listSessionEvents(piboSessionId: string, limit = 1000): ChatWebStoredPiboEvent[] {
@@ -36,14 +36,14 @@ export class ChatTimelineQueryService {
 
 	scanMessageTurnTimings(piboSessionId: string): { timings: TraceMessageTurnTiming[]; overflow: boolean } {
 		const rows = this.store.db.prepare(`
-			SELECT * FROM event_log
+			SELECT * FROM event_log INDEXED BY idx_event_log_timing_sequence
 			WHERE session_id = ?
 				AND type IN ('message_queued', 'message_steered', 'message_started', 'message_finished', 'session_error', 'thinking_finished', 'assistant_message')
 			ORDER BY session_sequence ASC, stream_id ASC
 			LIMIT ?
 		`).all(piboSessionId, TRACE_RECONCILIATION_TIMING_CAP + 1) as EventLogRow[];
 		if (rows.length > TRACE_RECONCILIATION_TIMING_CAP) return { timings: [], overflow: true };
-		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads, this.hydrationBytes)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 		return { timings: messageTurnTimingsFromEvents(events), overflow: false };
 	}
 
@@ -65,14 +65,14 @@ export class ChatTimelineQueryService {
 		}
 		const rows = this.store.db.prepare(`
 			SELECT * FROM (
-				SELECT * FROM event_log
+				SELECT * FROM event_log ${includeLive ? "" : "INDEXED BY idx_event_log_semantic_sequence"}
 				WHERE ${clauses.join(" AND ")}
 				ORDER BY session_sequence DESC, stream_id DESC
 				LIMIT ?
 			)
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(...values, limit) as EventLogRow[];
-		return rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		return rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads, this.hydrationBytes)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 	}
 
 	isPayloadAttachedToTraceNode(input: {

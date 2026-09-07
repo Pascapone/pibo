@@ -66,6 +66,7 @@ export type PiboChannelContext = {
 	deleteSession?(id: string): boolean | Promise<boolean>;
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
+	getSessionStructureRevision?(): number | undefined;
 	getSessionRuntimeBinding?(piboSessionId: string): RuntimeSessionBinding | undefined;
 	getSessionRuntimeProfile?(piboSessionId: string): InitialSessionContext;
 	inspectSessionRuntimeHistory?(piboSessionId: string): Promise<AgentRuntimeHistoryInspection>;

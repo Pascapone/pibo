@@ -25,11 +25,12 @@ export class ChatSessionQueryService {
 		let written = 0;
 		let skipped = 0;
 		for (const session of sessions) {
-			if (this.sessionIndexMatches(session)) {
+			const status=this.getSession(session.id)?.status ?? "idle";
+			if (this.sessionIndexMatches(session,status)) {
 				skipped++;
 				continue;
 			}
-			this.upsertSession(session);
+			this.upsertSession(session,status);
 			written++;
 		}
 		return { checked: sessions.length, written, skipped };

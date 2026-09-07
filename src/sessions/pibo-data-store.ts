@@ -112,6 +112,8 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		return row ? sessionFromRow(row) : undefined;
 	}
 
+	getStructureRevision():number { return (this.db.prepare("SELECT revision FROM chat_navigation_clock WHERE id=1").get() as {revision:number}).revision; }
+
 	list(): PiboSession[] {
 		return (this.db.prepare(`${SESSION_SELECT} WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC`).all() as SessionRow[]).map(sessionFromRow);
 	}

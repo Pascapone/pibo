@@ -332,8 +332,6 @@ export function useSessionTraceLiveStream({
 			const traceRefreshDelay = eventTraceRefreshDelay(event);
 			if (targetPiboSessionId === selectedPiboSessionId && traceRefreshDelay !== undefined) {
 				scheduleTraceRefresh(traceRefreshDelay, true);
-			} else if (targetPiboSessionId === selectedPiboSessionId && event.type !== "ready" && event.type !== "RAW_EVENT") {
-				scheduleTraceRefresh(1500, true);
 			}
 			if (eventShouldRefreshNavigation(event)) {
 				const terminal = event.type === "RUN_FINISHED" || event.type === "RUN_ERROR" || event.type === "TEXT_MESSAGE_END";
