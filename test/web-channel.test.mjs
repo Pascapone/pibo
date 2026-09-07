@@ -9217,7 +9217,7 @@ test("web startup dispatches a committed command without an HTTP request", async
 test("clear_queue cancels undispatched durable receipts without cancelling an initializing message",async()=>{
  let unblock;const blocked=new Promise(resolve=>{unblock=resolve;});let dispatches=0;
  const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(event){
-  if(event.type==="execution")return {type:"execution_result",piboSessionId:event.piboSessionId,action:event.action,result:{cleared:0}};
+  if(event.type==="execution")return {type:"execution_result",piboSessionId:event.piboSessionId,action:event.action,result:{cleared:event.clearedBeforeRuntime??0}};
   dispatches++;await blocked;return {type:"message_queued",piboSessionId:event.piboSessionId,eventId:event.id,queuedMessages:1,text:event.text};
  }});
  const headers={"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"};

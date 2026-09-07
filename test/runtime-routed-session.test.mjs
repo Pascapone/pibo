@@ -1032,3 +1032,15 @@ test("abort acknowledges a blocked cold start before adapter initialization sett
   assert.equal(fixture.router.getRuntimeCapacityStatus().activeRuntimes,0);
  } finally {gate.resolve();await fixture.router.disposeAll();}
 });
+
+
+test("queue clear persists the same ingress-plus-runtime count that its caller receives",async()=>{
+ const fixture=createFakeRuntimeFixture();const events=[];fixture.router.subscribe(e=>events.push(e));
+ try {
+  for(const active of [false,true]){
+   if(active)await fixture.router.emit({type:"execution",piboSessionId:"ps_router_fake",action:"status"});
+   const id=`clear-${active}`;const result=await fixture.router.emit({type:"execution",piboSessionId:"ps_router_fake",id,action:"clear_queue",clearedBeforeRuntime:3});
+   assert.equal(result.result.cleared,3);assert.equal(events.find(e=>e.type==="execution_result"&&e.eventId===id).result.cleared,3);
+  }
+ }finally{await fixture.router.disposeAll();}
+});

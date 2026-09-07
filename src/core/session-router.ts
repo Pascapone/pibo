@@ -1,3 +1,4 @@
+import { previouslyClearedMessages } from "./events.js";
 import { createProviderCapacityExtension } from "./provider-capacity.js";
 import { RuntimeCapacity, type RuntimeCapacityOptions, type RuntimeCapacityStatus, type RuntimeInitializationTiming } from "./runtime-capacity.js";
 import { randomUUID } from "node:crypto";
@@ -674,7 +675,7 @@ export class PiboSessionRouter {
 				this.invalidateRunReminders([event.piboSessionId]);
 				this.pendingStartAborts.get(event.piboSessionId)?.abort(Object.assign(new Error("Runtime start aborted before message dispatch."),{code:"runtime_start_cancelled"}));
 			}
-			const output: PiboOutputEvent={type:"execution_result",piboSessionId:event.piboSessionId,eventId:event.id,action:event.action,result:event.action === "abort" ? {aborted:true} : {cleared:0}};
+			const output: PiboOutputEvent={type:"execution_result",piboSessionId:event.piboSessionId,eventId:event.id,action:event.action,result:event.action === "abort" ? {aborted:true} : {cleared:previouslyClearedMessages(event)}};
 			this.emitOutput(output);return output;
 		}
 		let messageSignalAccepted = false;
