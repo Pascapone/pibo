@@ -35,7 +35,7 @@ const runtimes=new Map<string,PiboRuntimeTelemetryRecorder>();
 function runtimeFor(input:Extract<TelemetryCommand,{recorder:"runtime"}>){
  const key=`${input.providerEventMode}:${input.progressFlushIntervalMs}`;
  let runtime=runtimes.get(key);
- if(!runtime){if(runtimes.size>=4)runtimes.delete(runtimes.keys().next().value!);runtime=new PiboRuntimeTelemetryRecorder(store,()=>{errors++;},{providerEventMode:"aggregate",progressFlushIntervalMs:input.progressFlushIntervalMs});runtimes.set(key,runtime);}
+ if(!runtime){if(runtimes.size>=4)runtimes.delete(runtimes.keys().next().value!);runtime=new PiboRuntimeTelemetryRecorder(store,()=>{errors++;},{providerEventMode:input.providerEventMode,progressFlushIntervalMs:input.progressFlushIntervalMs});runtimes.set(key,runtime);}
  return runtime;
 }
 parentPort!.on("message",(request:{id:number;command:{commands:TelemetryCommand[]};deadline:number})=>{
