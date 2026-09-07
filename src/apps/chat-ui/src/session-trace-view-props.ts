@@ -200,13 +200,16 @@ export function resolveSessionTraceModelBadge(input: {
 		? findSessionNode(input.bootstrap.sessions, input.selectedPiboSessionId)
 		: undefined;
 	const traceThinkingState = resolveTraceThinkingState(input.currentTraceView);
+	const selectedRuntimeStatus = input.bootstrap.runtimeStatus?.piboSessionId === input.selectedPiboSessionId
+		? input.bootstrap.runtimeStatus
+		: undefined;
 	return formatSessionModelBadge(
 		input.selectedSessionActiveModel,
-		input.bootstrap.runtimeStatus?.thinkingLevel
+		selectedRuntimeStatus?.thinkingLevel
 			?? traceThinkingState.level
 			?? selectedSessionNode?.initialThinkingLevel
 			?? resolveSessionThinkingLevel(input.bootstrap, input.selectedSessionProfile, Boolean(selectedSessionNode?.parentId)),
-		input.bootstrap.runtimeStatus?.fastMode
+		selectedRuntimeStatus?.fastMode
 			?? traceThinkingState.fast
 			?? resolveSessionFastMode(input.bootstrap, input.selectedSessionProfile, Boolean(selectedSessionNode?.parentId))
 			?? false,
