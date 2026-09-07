@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **Runtime capacity**: Added the [bounded admission, Room scheduling and provider-capacity contract](/specs/runtime/capacity-and-scheduling.md) and [package-D validation record](/reports/performance-scalability-capacity-2026-09-07.md), including control reservations, cold-start cancellation and the remaining integrated measurement boundary.
+
 - **Durable message admission**: Added the [versioned receipt and recovery contract](/specs/web/composer-delivery-files-and-media.md#requirement-web-composer-admission-006) and [package-C validation record](/reports/performance-scalability-commands-2026-09-07.md), separating committed acceptance, runtime state and unknown client outcomes.
 
 - **Storage integration acceptance**: Recorded [204 passing integration tests and renewed exact-candidate Pibo2 evidence](/reports/performance-scalability-storage-final-2026-09-07.md), including Composer, duplicate bursts, health and durable output after reload.

@@ -1,0 +1,81 @@
+{
+  "at": "2026-09-07T09:52:33.408Z",
+  "node": "v24.15.0",
+  "fixture": {
+    "events": 1000000,
+    "sessions": 2,
+    "payloadBytes": 1024,
+    "requestedSamples": 10000
+  },
+  "scope": "Synthetic worker admission plus fenced immediate dispatch completion. No real provider, HTTP, browser, sustained-rate or full integrated SLO claim. Warm fixture; cache residency unverified.",
+  "elapsedMs": 167632.66370700003,
+  "accepted": 10000,
+  "rejected": 0,
+  "completed": 10100,
+  "admissionMs": {
+    "samples": 10000,
+    "p50": 6.436264000003575,
+    "p95": 11.306707999996434,
+    "p99": 19.444511000008788,
+    "max": 68.10605699999724
+  },
+  "quietMs": {
+    "samples": 5000,
+    "p50": 7.610018999999738,
+    "p95": 13.261294000003545,
+    "p99": 23.4733899999992,
+    "max": 68.10605699999724
+  },
+  "quietBaselineMs": {
+    "samples": 100,
+    "p50": 4.3726949999982025,
+    "p95": 6.083921999997983,
+    "p99": 6.392331999999442,
+    "max": 10.634079999999813
+  },
+  "quietP95Ratio": 2.179727813737247,
+  "peakPendingBytes": 7540,
+  "rssBytes": {
+    "first": 124764160,
+    "last": 210690048,
+    "max": 210690048,
+    "samples": 500
+  },
+  "callerEventLoopMs": {
+    "p99": 14.811135,
+    "max": 28.590079
+  },
+  "storage": {
+    "ready": true,
+    "closed": false,
+    "writer": {
+      "ready": true,
+      "closed": false,
+      "queued": 0,
+      "inFlight": false,
+      "pendingBytes": 0,
+      "oldestAgeMs": 0,
+      "lastResponseAgeMs": 8.458616999996593,
+      "completed": 35401,
+      "rejected": 0,
+      "worker": {
+        "pid": 3238,
+        "operations": 35401,
+        "busyRetries": 0,
+        "lastOperationMs": 0.22414199999184348,
+        "busyTimeoutMs": 10
+      },
+      "limits": {
+        "maxPending": 128,
+        "admissionWindowMs": 1,
+        "reservedControlRequests": 8,
+        "reservedControlBytes": 262144,
+        "maxPendingBytes": 8388608,
+        "maxMessageBytes": 4194304,
+        "maxAgeMs": 2000,
+        "agingMs": 100,
+        "startupTimeoutMs": 10000
+      }
+    }
+  }
+}

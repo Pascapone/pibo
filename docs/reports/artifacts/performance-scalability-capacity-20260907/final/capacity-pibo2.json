@@ -1,0 +1,520 @@
+{
+  "candidate": {
+    "commit": "e52bd62f86953da2fc316c22b6de55a0c70233a4",
+    "packageSha256": "7c8e4414beb27a7f552f22595e305e1519b1c4bcd6d576fb8d5d052cf0973032"
+  },
+  "created": {
+    "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+    "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+    "url": "https://slot-01.pool.pibo2.neuralnexus.me/apps/chat/rooms/room_e057e970-6fb6-4749-8af4-7b2ad27758af/sessions/ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883"
+  },
+  "lease": {
+    "id": "lease_da03ca98ae1c012e37",
+    "slotId": "slot-01",
+    "holder": "ps_87cdcbbc-3dde-4266-889f-a87fb5a6a786",
+    "seedMode": "full",
+    "artifactSha256": "e59bf1de14a87d7a5630c23c5ede4eeb94d653a030aa1f88473eb8e175cf3904",
+    "artifactRuntimePath": "/opt/pibo-candidates/performance-capacity/e52bd62f86953da2fc316c22b6de55a0c70233a4/runtime",
+    "packageVersion": "1.7.2",
+    "commit": "e52bd62f86953da2fc316c22b6de55a0c70233a4",
+    "containerName": "pibo-pool-slot-01",
+    "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+    "status": "released",
+    "createdAt": "2026-09-07T10:29:47.231Z",
+    "expiresAt": "2026-09-07T11:29:47.231Z",
+    "releasedAt": "2026-09-07T10:34:36.580Z"
+  },
+  "runningTool": {
+    "at": "2026-09-07T10:32:05.061Z",
+    "providers": [],
+    "receipts": [
+      {
+        "id": "cmd_d6297d10-b073-405b-98ec-4aa19eaf21b6",
+        "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+        "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+        "eventId": "web-mtr3pa2p-d6010c4a-6add-4948-82a1-37e81d380c9a",
+        "streamId": 987973,
+        "state": "running",
+        "createdAt": 1788777102995,
+        "updatedAt": 1788777103270
+      }
+    ],
+    "nodes": [
+      {
+        "type": "user.message",
+        "status": "done",
+        "output": "Call the bash tool directly once with command sleep 45; do not use pibo_run_start or other yielded-run tools. After the command finishes, reply exactly CAPACITY_FINAL_FIRST. Do no other work."
+      },
+      {
+        "type": "agent.turn",
+        "status": "running"
+      },
+      {
+        "type": "model.reasoning",
+        "status": "done",
+        "output": "**Planning single bash execution**"
+      },
+      {
+        "type": "tool.call",
+        "status": "running",
+        "output": {
+          "content": []
+        }
+      }
+    ]
+  },
+  "clear": {
+    "at": "2026-09-07T10:32:05.291Z",
+    "before": {
+      "receipts": [
+        {
+          "id": "cmd_d6297d10-b073-405b-98ec-4aa19eaf21b6",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "web-mtr3pa2p-d6010c4a-6add-4948-82a1-37e81d380c9a",
+          "streamId": 987973,
+          "state": "running",
+          "createdAt": 1788777102995,
+          "updatedAt": 1788777103270
+        }
+      ],
+      "queue": {
+        "queue": {
+          "count": 1,
+          "bytes": 191,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 64,
+            "bytes": 4194304,
+            "waitMs": 600000
+          }
+        },
+        "steer": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 4,
+            "bytes": 1048576,
+            "waitMs": 60000
+          }
+        }
+      }
+    },
+    "second": {
+      "status": 202,
+      "ms": 18.199999809265137,
+      "body": {
+        "admissionVersion": 2,
+        "receipt": {
+          "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "capacity-final-cancelled-20260907",
+          "streamId": 987982,
+          "state": "accepted",
+          "createdAt": 1788777125245,
+          "updatedAt": 1788777125245
+        },
+        "event": {
+          "streamId": 987982,
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "piboSessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "eventId": "ce_4a83b472-dd9a-4b17-93df-307ee0412593",
+          "eventType": "user.message.accepted",
+          "actorType": "user",
+          "actorId": "ueR3mwuqBMPNTber3xuTwLmODbUlF4Sa",
+          "clientTxnId": "capacity-final-cancelled-20260907",
+          "createdAt": "2026-09-07T10:32:05.243Z",
+          "retentionClass": "chat_message",
+          "payload": {
+            "type": "user.message.accepted",
+            "piboSessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+            "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+            "text": "Reply exactly CAPACITY_MUST_NOT_RUN.",
+            "delivery": "queue",
+            "clientTxnId": "capacity-final-cancelled-20260907"
+          }
+        },
+        "statusPath": "/api/chat/message-receipts/cmd_70742007-1fb9-4a03-9585-32c6c9774b24"
+      }
+    },
+    "clear": {
+      "status": 200,
+      "ms": 21.5,
+      "body": {
+        "type": "execution_result",
+        "piboSessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+        "eventId": "43762f46-b6fe-4d3a-8360-95ade387ad04",
+        "action": "clear_queue",
+        "result": {
+          "cleared": 1
+        }
+      }
+    },
+    "after": {
+      "receipts": [
+        {
+          "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "capacity-final-cancelled-20260907",
+          "streamId": 987982,
+          "state": "failed",
+          "createdAt": 1788777125245,
+          "updatedAt": 1788777125262,
+          "error": "Cancelled before runtime dispatch."
+        },
+        {
+          "id": "cmd_d6297d10-b073-405b-98ec-4aa19eaf21b6",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "web-mtr3pa2p-d6010c4a-6add-4948-82a1-37e81d380c9a",
+          "streamId": 987973,
+          "state": "running",
+          "createdAt": 1788777102995,
+          "updatedAt": 1788777103270
+        }
+      ],
+      "queue": {
+        "queue": {
+          "count": 1,
+          "bytes": 191,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 64,
+            "bytes": 4194304,
+            "waitMs": 600000
+          }
+        },
+        "steer": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 4,
+            "bytes": 1048576,
+            "waitMs": 60000
+          }
+        }
+      }
+    }
+  },
+  "network": [
+    {
+      "url": "/api/chat/message",
+      "status": 202,
+      "ms": 174.30000019073486,
+      "at": "2026-09-07T10:31:43.123Z",
+      "receipt": {
+        "id": "cmd_d6297d10-b073-405b-98ec-4aa19eaf21b6",
+        "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+        "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+        "eventId": "web-mtr3pa2p-d6010c4a-6add-4948-82a1-37e81d380c9a",
+        "streamId": 987973,
+        "state": "accepted",
+        "createdAt": 1788777102995,
+        "updatedAt": 1788777102995
+      },
+      "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=124.91, chat_ingest;dur=0.00, chat_ack;dur=138.43, json_serialize;dur=0.0, response_compress;dur=0.3"
+    },
+    {
+      "url": "/api/chat/message",
+      "status": 202,
+      "ms": 19.59999990463257,
+      "at": "2026-09-07T10:32:05.251Z",
+      "receipt": {
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+        "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+        "eventId": "capacity-final-cancelled-20260907",
+        "streamId": 987982,
+        "state": "accepted",
+        "createdAt": 1788777125245,
+        "updatedAt": 1788777125245
+      },
+      "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=6.85, chat_ingest;dur=0.00, chat_ack;dur=9.36, json_serialize;dur=0.0, response_compress;dur=0.2"
+    },
+    {
+      "url": "/api/chat/action",
+      "status": 200,
+      "ms": 23.59999990463257,
+      "at": "2026-09-07T10:32:05.274Z",
+      "result": {
+        "cleared": 1
+      },
+      "serverTiming": "json_serialize;dur=0.0"
+    },
+    {
+      "url": "/api/chat/message",
+      "status": 202,
+      "ms": 18.5,
+      "at": "2026-09-07T10:33:13.676Z",
+      "receipt": {
+        "id": "cmd_28eac955-880c-479a-9508-5dddd34fe83f",
+        "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+        "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+        "eventId": "capacity-final-after-clear-20260907",
+        "streamId": 987988,
+        "state": "accepted",
+        "createdAt": 1788777193669,
+        "updatedAt": 1788777193669
+      },
+      "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=5.15, chat_ingest;dur=0.00, chat_ack;dur=7.70, json_serialize;dur=0.0, response_compress;dur=0.1"
+    }
+  ],
+  "reload": {
+    "at": "2026-09-07T10:34:24.499Z",
+    "page": {
+      "receipts": [
+        {
+          "id": "cmd_28eac955-880c-479a-9508-5dddd34fe83f",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "capacity-final-after-clear-20260907",
+          "streamId": 987988,
+          "state": "completed",
+          "createdAt": 1788777193669,
+          "updatedAt": 1788777195615
+        },
+        {
+          "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "capacity-final-cancelled-20260907",
+          "streamId": 987982,
+          "state": "failed",
+          "createdAt": 1788777125245,
+          "updatedAt": 1788777125262,
+          "error": "Cancelled before runtime dispatch."
+        },
+        {
+          "id": "cmd_d6297d10-b073-405b-98ec-4aa19eaf21b6",
+          "sessionId": "ps_b6be60fa-0d56-4fc7-a57c-aa1c04104883",
+          "roomId": "room_e057e970-6fb6-4749-8af4-7b2ad27758af",
+          "eventId": "web-mtr3pa2p-d6010c4a-6add-4948-82a1-37e81d380c9a",
+          "streamId": 987973,
+          "state": "completed",
+          "createdAt": 1788777102995,
+          "updatedAt": 1788777152318
+        }
+      ],
+      "queue": {
+        "queue": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 64,
+            "bytes": 4194304,
+            "waitMs": 600000
+          }
+        },
+        "steer": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 4,
+            "bytes": 1048576,
+            "waitMs": 60000
+          }
+        }
+      }
+    },
+    "nodes": [
+      {
+        "type": "user.message",
+        "status": "done",
+        "output": "Call the bash tool directly once with command sleep 45; do not use pibo_run_start or other yielded-run tools. After the command finishes, reply exactly CAPACITY_FINAL_FIRST. Do no other work."
+      },
+      {
+        "type": "agent.turn",
+        "status": "done"
+      },
+      {
+        "type": "model.reasoning",
+        "status": "done",
+        "output": "**Planning single bash execution**"
+      },
+      {
+        "type": "tool.call",
+        "status": "done",
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "(no output)"
+            }
+          ]
+        }
+      },
+      {
+        "type": "execution.command",
+        "status": "done",
+        "output": {
+          "cleared": 1
+        }
+      },
+      {
+        "type": "assistant.message",
+        "status": "done",
+        "output": "CAPACITY_FINAL_FIRST"
+      },
+      {
+        "type": "user.message",
+        "status": "done",
+        "output": "Reply exactly CAPACITY_MUST_NOT_RUN."
+      },
+      {
+        "type": "user.message",
+        "status": "done",
+        "output": "Reply exactly CAPACITY_FINAL_AFTER_CLEAR. Do not use tools."
+      },
+      {
+        "type": "agent.turn",
+        "status": "done"
+      },
+      {
+        "type": "assistant.message",
+        "status": "done",
+        "output": "CAPACITY_FINAL_AFTER_CLEAR"
+      }
+    ],
+    "composer": true
+  },
+  "duplicates": {
+    "at": "2026-09-07T10:34:10.922Z",
+    "rows": [
+      {
+        "status": 202,
+        "ms": 15.900000095367432,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.799999713897705,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 14,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 13,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.5,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.400000095367432,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.099999904632568,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.600000381469727,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.899999618530273,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 13.300000190734863,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.199999809265137,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.5,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.600000381469727,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.699999809265137,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 13.099999904632568,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.600000381469727,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 17,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 12.5,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.899999618530273,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      },
+      {
+        "status": 202,
+        "ms": 11.800000190734863,
+        "id": "cmd_70742007-1fb9-4a03-9585-32c6c9774b24",
+        "state": "failed"
+      }
+    ],
+    "conflictStatus": 409
+  },
+  "health": {
+    "at": "2026-09-07T10:33:09.728Z",
+    "samples": 300,
+    "ok": 300,
+    "p95": 7.900000095367432,
+    "p99": 9.400000095367432,
+    "max": 15.5
+  }
+}

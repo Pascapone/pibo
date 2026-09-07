@@ -1,0 +1,80 @@
+{
+  "at": "2026-09-07T09:32:29.934Z",
+  "node": "v24.15.0",
+  "fixture": {
+    "events": 1000000,
+    "sessions": 1,
+    "payloadBytes": 1024,
+    "requestedSamples": 10000
+  },
+  "scope": "Synthetic worker admission plus fenced immediate dispatch completion. No real provider, HTTP, browser, sustained-rate or full integrated SLO claim. Warm fixture; cache residency unverified.",
+  "elapsedMs": 139730.882296,
+  "accepted": 10000,
+  "rejected": 0,
+  "completed": 10100,
+  "admissionMs": {
+    "samples": 10000,
+    "p50": 3.10005100001581,
+    "p95": 4.6992170000012266,
+    "p99": 7.407159000002139,
+    "max": 13.381327999995847
+  },
+  "quietMs": {
+    "samples": 10000,
+    "p50": 3.10005100001581,
+    "p95": 4.6992170000012266,
+    "p99": 7.407159000002139,
+    "max": 13.381327999995847
+  },
+  "quietBaselineMs": {
+    "samples": 100,
+    "p50": 3.0805660000005446,
+    "p95": 4.735485000001063,
+    "p99": 6.014455000000453,
+    "max": 11.69877600000109
+  },
+  "quietP95Ratio": 0.992341227984076,
+  "peakPendingBytes": 3770,
+  "rssBytes": {
+    "first": 123867136,
+    "last": 213368832,
+    "max": 213499904,
+    "samples": 1000
+  },
+  "callerEventLoopMs": {
+    "p99": 11.026431,
+    "max": 13.361151
+  },
+  "storage": {
+    "ready": true,
+    "closed": false,
+    "writer": {
+      "ready": true,
+      "closed": false,
+      "queued": 0,
+      "inFlight": false,
+      "pendingBytes": 0,
+      "oldestAgeMs": 0,
+      "lastResponseAgeMs": 11.95934900001157,
+      "completed": 40401,
+      "rejected": 0,
+      "worker": {
+        "pid": 2032,
+        "operations": 40401,
+        "busyRetries": 0,
+        "lastOperationMs": 0.2275789999985136,
+        "busyTimeoutMs": 10
+      },
+      "limits": {
+        "maxPending": 128,
+        "reservedControlRequests": 8,
+        "reservedControlBytes": 262144,
+        "maxPendingBytes": 8388608,
+        "maxMessageBytes": 4194304,
+        "maxAgeMs": 2000,
+        "agingMs": 100,
+        "startupTimeoutMs": 10000
+      }
+    }
+  }
+}
