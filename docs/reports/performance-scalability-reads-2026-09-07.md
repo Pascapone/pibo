@@ -3,7 +3,7 @@ type: "Validation Report"
 title: "Isolated read models and bounded navigation: package F validation"
 description: "Records the isolated read worker, resumable history and unread projections, bounded SSE and HTTP streaming, the startup sequence-repair index fix and the ten-million-event load evidence."
 tags: ["performance", "read-models", "storage", "streaming"]
-status: "final"
+status: "stable"
 authority: "evidentiary"
 generated: { by: "qwen/qwen3.8-max", at: "2026-09-07T20:32:00Z" }
 sources:
