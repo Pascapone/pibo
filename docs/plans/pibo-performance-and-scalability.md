@@ -41,7 +41,7 @@ Die Produktionsprüfung belegt zwei getrennte Probleme:
 
 Die 18,34 Sekunden des Erstberichts wurden nicht erneut erzwungen. Der zugrunde liegende Ausfallmodus ist bestätigt; warme Cache-Zustände machen ihn nur weniger sichtbar. Alle neuen Messungen, Einschränkungen und Codebezüge stehen im [Produktionsaudit](/reports/production-performance-audit-2026-09-06.md).[^audit]
 
-**Stand:** Paket A ist in Umsetzung; [Implementierung und Nachweise](/reports/performance-scalability-p0-2026-09-06.md). Die Gesamtabnahme ist offen; keine Produktionsfreigabe erteilt. Dieser Plan erlaubt keine Löschung von Datenbanken oder Sessions und keine automatische Event-Bereinigung.
+**Stand:** Paket A ist implementiert und als PR #953 offen; [Implementierung und Nachweise](/reports/performance-scalability-p0-2026-09-06.md). Paket B hat das lokale Integrationsgate und die erneute Pibo2-Abnahme bestanden; [204 Tests und exakte Kandidatenevidenz](/reports/performance-scalability-storage-final-2026-09-07.md). Pakete C–H bleiben offen. Die Gesamtabnahme ist offen; keine Produktionsfreigabe erteilt. Dieser Plan erlaubt keine Löschung von Datenbanken oder Sessions und keine automatische Event-Bereinigung.
 
 # 1. Ziel und Nichtziele
 

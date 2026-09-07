@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **Storage integration acceptance**: Recorded [204 passing integration tests and renewed exact-candidate Pibo2 evidence](/reports/performance-scalability-storage-final-2026-09-07.md), including Composer, duplicate bursts, health and durable output after reload.
+
 - **Performance continuation**: Preserved the [A–H handoff and local integration correction](/reports/performance-scalability-handoff-2026-09-07.md), including explicit persistence barriers, 131 passing Web tests and 39 passing storage/recovery regressions; renewed Pibo2 acceptance and C–H remain outstanding.
 - **Snapshot-bound production restart approval**: Updated the [gateway restart contract](/specs/security/gateway-admission-and-restart.md#requirement-sec-gw-004-bind-production-restart-approval-to-freshly-inspected-work) for issue #914. Force now discloses and rechecks active event, queue, and run identities; rejects stale or incomplete approval; and records restart decisions before invoking the service manager. Dev restart remains ungated. No production restart or deployment.
 

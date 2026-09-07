@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/performance-scalability-storage-final-2026-09-07.md",
+      "state": "conformant",
+      "classification": "storage integration validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-handoff-2026-09-07.md",
       "state": "conformant",
       "classification": "implementation handoff",
