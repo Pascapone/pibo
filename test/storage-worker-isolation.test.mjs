@@ -170,3 +170,37 @@ test('storage fairness remembers Rooms across drained bursts without delaying co
   assert.ok(order.indexOf('quiet-2')<order.indexOf('noisy-3'),JSON.stringify(order));
  } finally {await client.close();}
 });
+
+test('an exited storage worker is replaced instead of disabling durable admission permanently', { timeout: 20000 }, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pibo-storage-restart-'));
+  const path = join(root, 'data.sqlite'), payloads = join(root, 'payloads');
+  new PiboDataStore(path, { payloadRootDir: payloads }).close();
+  const storage = new AsyncChatStorage(path, payloads, { maxAgeMs: 2000 });
+  try {
+    await ready(storage);
+    const room = await storage.resolveRoom();
+    const now = new Date().toISOString();
+    const session = { id: 'ps_restart', piSessionId: '', channel: 'web', kind: 'chat', profile: 'default', metadata: { chatRoomId: room.id }, createdAt: now, updatedAt: now };
+    const input = (clientTxnId) => ({ piboSessionId: session.id, roomId: room.id, actorId: 'test', clientTxnId, eventType: 'user.message.accepted', retentionClass: 'chat_message', payload: { type: 'user.message.accepted', text: 'durable' } });
+    assert.equal((await storage.admit(input('restart-one'), session, 'durable')).created, true);
+
+    const crashedWorker = storage.writer.worker;
+    await crashedWorker.terminate();
+    assert.equal(storage.status().writer.exited, true);
+    // Inside the bounded replacement window the failure stays visible and is never a false ACK.
+    await assert.rejects(storage.append(input('restart-two')), (error) => ['storage_closed', 'storage_worker_failed', 'storage_unknown'].includes(error.code));
+    await delay(1100);
+
+    // The replacement reopens the same durable store: the committed admission is found, not replayed.
+    assert.equal((await storage.admit(input('restart-one'), session, 'durable')).created, false);
+    assert.equal((await storage.admit(input('restart-two'), session, 'durable')).created, true);
+    assert.equal(storage.status().restarts.writer, 1);
+    assert.notEqual(storage.writer.worker, crashedWorker);
+    assert.equal(storage.status().ready, true);
+
+    const persisted = new PiboDataStore(path, { payloadRootDir: payloads });
+    try {
+      assert.equal(persisted.db.prepare('SELECT count(*) AS count FROM chat_messages WHERE session_id = ?').get(session.id).count, 2);
+    } finally { persisted.close(); }
+  } finally { await storage.close(); rmSync(root, { recursive: true, force: true }); }
+});
