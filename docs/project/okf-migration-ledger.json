@@ -69,9 +69,9 @@
       "type": "Plan",
       "authority": "directive",
       "status": "draft",
-      "file_bytes": 42554,
-      "file_sha256": "1413badc0ecb22d27805f0be649e028095483fe2980e027b2db23c82d16465f7",
-      "body_sha256": "86ca3f679b89ab66c27a54a823eb74f0a570f8a99878e4e972f4c304b9e0169d",
+      "file_bytes": 43646,
+      "file_sha256": "a5882a2dceabe19b458ffb79ab1a6a62b95523d7fe400463f42ab3b288d0b1ff",
+      "body_sha256": "47868ec9f2dd824f221f17d8c4947ca583f8c2e2b1f2780004c7e067a2965a23",
       "lineage": null
     },
     {
@@ -12456,9 +12456,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 14783,
-      "file_sha256": "906beb1cf32ac1fe12fa51ffbd5f2e5c0ec619d09054e99080a337348b27880e",
-      "body_sha256": "3dc00b11f4eafdb590d8065b8a894cf47c763a31ac4a31134dda34513c3d6747",
+      "file_bytes": 15449,
+      "file_sha256": "797586e19744d66506709bae2fbafd99a810727ddbdd8f519532d670034608d5",
+      "body_sha256": "cc92de35fbfedf039c11a94995dcbf8a97e98b54ec9eadd9cf8e56af4bb0e5c6",
       "lineage": null
     },
     {
@@ -12492,9 +12492,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 13402,
-      "file_sha256": "834c75e06c480d0bd5a814555cc7c0c9379b63b41c040bb082901d72364121ba",
-      "body_sha256": "bbf12ad251fe85ad7564e187a41fd3113ffdd59110724129570f26fd64b00372",
+      "file_bytes": 17111,
+      "file_sha256": "88937016f7545d3e9647d9e35447c472345a20f410f9b2716e99688575847ad5",
+      "body_sha256": "bdb096b394a4b24245a312a66efa49896f0589e22b19a14b369fc8f797b03819",
       "lineage": null
     },
     {
@@ -13803,6 +13803,18 @@
       "file_bytes": 8107,
       "file_sha256": "3f6cec696dc0fd33e3c429b1dc5f0e7111315c9c6f6acc18fea87b1bec0d5bc5",
       "body_sha256": "fb973ca5c2ce5ad2b5f6ba64d77af2d4069d8b0b71d741adff69b68d335f3c7b"
+    },
+    {
+      "path": "docs/reports/performance-scalability-telemetry-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 7378,
+      "file_sha256": "8310140b70c1eef07ff09b0fc29b745c2190cace8662c97f4e740c7021d4bd6e",
+      "body_sha256": "290dcc443861e4cd7a9a033cc0d1edfc41a29893bfb40b6a233ac9282d2e9913"
     }
   ]
 }

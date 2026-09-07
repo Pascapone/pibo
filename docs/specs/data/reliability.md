@@ -11,7 +11,7 @@ generated:
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "2700e24d3f9597cc1467af67e09804983a115325"
   requirements:
     - id: "WP02-DATA-REL-001"
       status: "implemented"
@@ -59,9 +59,13 @@ traceability:
           symbol: "requeueDead"
         - path: "src/core/output-persistence-retry.ts"
           symbol: "OutputPersistenceRetryQueue"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "deliverWebOutputPersistenceState"
         - path: "src/reliability/store.ts"
           symbol: "recordDeliveryReceipt"
       tests:
+        - path: "test/web-output-write-budget.test.mjs"
+          name: "semantic output keeps its durable receipt with at most two full-envelope checkpoint rewrites"
         - path: "test/reliability-store.test.mjs"
           name: "job claims are exclusive, retry backs off, and exhausted retry moves to DLQ"
         - path: "test/reliability-store.test.mjs"
@@ -203,6 +207,8 @@ Reliability events SHALL append in monotonic order and deduplicate by event ID o
 ## Requirement: WP02-DATA-REL-002
 
 Job claims SHALL be atomic and lease/worker/generation exact; retry backoff, per-job attempt exhaustion, dead-lettering, replay, delivery receipts, and versioned output-persistence recovery SHALL be durable and bounded.
+
+Web semantic output retains checkpoints after canonical V2 identity and reliability append. A reconstructible reliability payload does not require its own checkpoint. A committed delivery receipt is authoritative for completed side effects, so it does not require a further full-envelope rewrite before job acknowledgment. Existing replay, claim fencing and duplicate render identity remain unchanged.
 
 ## Requirement: WP02-DATA-REL-003
 

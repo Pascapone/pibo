@@ -31,6 +31,7 @@
 * [Indexed chat admission: P0 validation](performance-scalability-p0-2026-09-06.md) - Records the isolated indexed&#45;admission implementation, measurements and remaining acceptance gates&#46;
 * [Ink CLI V2 PTY Smoke Scenarios](ink-cli-v2-pty-smoke-scenarios.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Isolated Deployment Pool Validation Report](isolated-deployment-pool-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Isolated telemetry and output write budgets: package E validation](performance-scalability-telemetry-2026-09-07.md) - Records bounded diagnostic workers, output checkpoint reductions, contention measurements and exact candidate validation&#46;
 * [LangGraphJS&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-langgraphjs.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Live Recording Waveform Validation](live-recording-waveform-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Machine&#45;key Web authentication validation](machine-key-web-auth-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

@@ -391,7 +391,7 @@ Nach Unit-/Lasttests im isolierten Worker und nach Deployment auf Dev:
 
 # 8. Reihenfolge, Arbeitspakete und Freigaben
 
-Stand 7. September 2026: A und B sind separat zur Review vorbereitet. C hat den lokalen Build, Recovery-/Crash-Tests und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Command-Abnahmebericht](/reports/performance-scalability-commands-2026-09-07.md). D hat die 1/2/5/10/20-Rampen, begrenzte Runtime-Aktivierung und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Capacity-Abnahmebericht](/reports/performance-scalability-capacity-2026-09-07.md). E–H und die übergreifende Last-/Soak-Abnahme sind weiterhin offen.
+Stand 7. September 2026: A und B sind separat zur Review vorbereitet. C hat den lokalen Build, Recovery-/Crash-Tests und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Command-Abnahmebericht](/reports/performance-scalability-commands-2026-09-07.md). D hat die 1/2/5/10/20-Rampen, begrenzte Runtime-Aktivierung und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Capacity-Abnahmebericht](/reports/performance-scalability-capacity-2026-09-07.md). E hat die isolierte Telemetrie, reduzierten Outbox-Checkpoints und abschließende Pibo2-Abnahme bestanden; Messgrenzen und Belege stehen im [Telemetrie-Abnahmebericht](/reports/performance-scalability-telemetry-2026-09-07.md). F–H und die übergreifende Last-/Soak-Abnahme sind weiterhin offen.
 
 | Paket | Priorität | Abhängigkeit | Ergebnis / Gate |
 |---|---|---|---|

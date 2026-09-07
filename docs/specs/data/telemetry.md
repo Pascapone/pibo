@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-07T10:39:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "2700e24d3f9597cc1467af67e09804983a115325"
   requirements:
     - id: "WP02-DATA-TEL-001"
       status: "implemented"
@@ -89,6 +89,12 @@ traceability:
       tests:
         - path: "test/telemetry-store.test.mjs"
           name: "best-effort telemetry service swallows unavailable-store write failures"
+        - path: "test/telemetry-worker-isolation.test.mjs"
+          name: "file telemetry persists ordered cross-recorder facts only on its worker"
+        - path: "test/telemetry-worker-isolation.test.mjs"
+          name: "SQLite lock contention delays diagnostics without blocking the producer or losing an unlocked batch"
+        - path: "test/telemetry-worker-isolation.test.mjs"
+          name: "expired diagnostics never reach SQLite and oversized messages do not enter the queue"
         - path: "test/telemetry-writer.test.mjs"
           name: "async telemetry writer preserves cross-recorder order in one transaction"
         - path: "test/telemetry-writer.test.mjs"
@@ -163,7 +169,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 - Persistence and models: telemetry_turns; telemetry_phases; telemetry_provider_requests; telemetry_provider_events; telemetry_tool_calls; turn/phase/provider/tool status unions; metadata_only, bounded_preview, disabled capture modes.
 - Routes and protocols: No product HTTP route is owned; debug formatters are a consumer boundary.
-- State transitions: Correlated turns, phases, provider requests/events, and tool calls upsert through lifecycle statuses. recoverInterruptedTurns settles active work after restart. AsyncTelemetryWriter preserves global enqueue order and flushes synchronously at the hard queue bound. Staleness reads active records and never cancels sessions.
+- State transitions: Correlated turns, phases, provider requests/events, and tool calls upsert through lifecycle statuses. recoverInterruptedTurns settles active work after restart. AsyncTelemetryWriter preserves global record order through bounded worker batches for file-backed stores; queue pressure never triggers producer-side SQL. Staleness reads active records and never cancels sessions.
 - Failure and security: BestEffortTelemetryService swallows store failures through onError so runtime work continues. Provider detailed events are opt-in; default capture is aggregate/metadata. Tool argument progress is stored without argument bodies; runtime/provider snapshots allow-list metadata and omit result/partial/output bodies. getPayloadPreview is unavailable; prune mutates only when apply is explicit.
 - Compatibility: Detailed provider event mode remains optional. Unsupported archive isolation is not part of current behavior.
 
@@ -179,7 +185,17 @@ Default capture SHALL minimize content: aggregate provider metadata, no tool arg
 
 ## Requirement: WP02-DATA-TEL-003
 
-Telemetry writes SHALL be best-effort and globally ordered; queue pressure SHALL force a flush rather than drop lifecycle work.
+File-backed diagnostic writes SHALL execute on an isolated worker through structured commands, ordered across runtime and provider recorders. The producer SHALL NOT synchronously drain SQLite at queue pressure. The explicit in-memory adapter retains closures for tests, runs asynchronously, and uses bounded batches.
+
+The default queue admits at most 1,024 operations and 4 MiB including its in-flight batch, with a two-second age bound. One command is limited to 64 KiB. Batches hold at most 64 operations and 256 KiB, with an eight-millisecond cooperative execution target between operations. A native SQL operation, lock wait or commit may exceed that target; it is not a preemptive deadline. SQLite lock waiting is ten milliseconds per attempt, with asynchronous retry between batches. The worker keeps `synchronous=FULL` and enables foreign keys.
+
+Progress diagnostics leave 128 queue places and 512 KiB available for other diagnostic records. The reserves scale down for smaller configured budgets. Accepted diagnostic ordering is preserved; overload, age expiry, oversized commands, SQL errors and worker failure are counted explicitly. Optional diagnostic projections, including lifecycle copies, may be absent after these failures. Product lifecycle/final events remain owned by the durable output outbox and its claims/receipts; this best-effort queue is not their source of truth and does not acknowledge product delivery.
+
+`flush()` waits for work accepted before that call, not an indefinitely growing future stream. Disposal refuses new diagnostics, drains its finite accepted prefix, and closes the worker. A failed worker never causes fallback SQL on the gateway thread. Its closed transport is visible in health status. Subsequent diagnostics may restart it only after the previous worker has actually exited, at most once per second; uncertain batches are not replayed. Batches with less than the smaller of 50 milliseconds or one quarter of their age budget remaining expire before dispatch rather than starting with an unusable execution deadline.
+
+Snapshots omit message text where only progress/lifecycle metadata is used, copy only needed Room/root metadata and do not copy active/enabled-tool arrays. Each runtime progress cache is capped at 1,024 keys in addition to normal terminal cleanup. Open-phase queries use partial indexes; bounded per-turn/name sequence caches avoid repeatedly counting completed phases. Sequence caches advance only after successful upserts and recorder caches are discarded on transaction rollback. The worker holds at most four recorder configurations. Provider command execution reconstructs current request identity from indexed store state rather than retaining an unbounded recorder registry.
+
+Small in-memory health counters expose accepted/completed/rejected/failed/expired counts, queue count/bytes/age, batch maximum, worker identity/memory and transport state through `runtimeCapacity.telemetry`. SQL statement classification and WAL file-size measurement are opt-in benchmark instrumentation; statement counts classify UPSERT as INSERT and do not establish physical insert/update or fsync counts.
 
 ## Requirement: WP02-DATA-TEL-004
 
@@ -209,7 +225,9 @@ Implemented public contracts:
 - `createTelemetryBoundedPreview`
 - `TelemetryStore.getPayloadPreview`
 - `BestEffortTelemetryService`
-- `AsyncTelemetryWriter.enqueue`
+- `AsyncTelemetryWriter.record`
+- `AsyncTelemetryWriter.enqueue` (in-memory compatibility only)
+- `AsyncTelemetryWriter.status`
 - `AsyncTelemetryWriter.flush`
 - `AsyncTelemetryWriter.dispose`
 - `TelemetryStore.recoverInterruptedTurns`
@@ -241,11 +259,11 @@ Related ownership boundaries:
 - Non-current claim excluded: claim raw provider payload retrieval is available; getPayloadPreview returns unavailable.
 - Non-current claim excluded: claim telemetry staleness cancels work or that archive isolation exists.
 - Current limit or evidence gap: If bounded_preview capture is enabled later, generic secret redaction is not implemented by createTelemetryBoundedPreview.
-- Current limit or evidence gap: Real-provider and credential capture remains unperformed in this read-only audit.
+- Current limit: Worker telemetry is optional diagnostic projection. This contract does not claim lossless diagnostic capture or isolated archival storage.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `2700e24d3f9597cc1467af67e09804983a115325`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 
