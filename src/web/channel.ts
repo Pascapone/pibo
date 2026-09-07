@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
@@ -216,11 +217,12 @@ function createGatewayRuntimeStatuses(channelContext: PiboChannelContext): unkno
 	});
 }
 
-function createGatewayStatusResponse(channelContext: PiboChannelContext, options: WebHostChannelOptions): Response {
+function createGatewayStatusResponse(channelContext: PiboChannelContext, options: WebHostChannelOptions, generation: string): Response {
 	const mode = gatewayMode(options);
 	return responseJson({
 		status: "ok",
 		mode,
+		generation,
 		health: { status: "ok", mode },
 		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
 		activeRuns: collectActiveRuns(channelContext),
@@ -267,6 +269,7 @@ async function waitForServerClose(closePromise: Promise<void>, timeoutMs: number
 }
 
 export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHostChannel {
+	const generation = randomUUID();
 	const host = options.host ?? DEFAULT_WEB_CHANNEL_HOST;
 	const port = options.port ?? DEFAULT_WEB_CHANNEL_PORT;
 	const shutdownDrainTimeoutMs = options.shutdownDrainTimeoutMs ?? DEFAULT_SHUTDOWN_DRAIN_TIMEOUT_MS;
@@ -351,7 +354,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 
 			if (url.pathname === "/gateway/status") {
-				await sendResponse(nodeResponse, createGatewayStatusResponse(requireContext(), options));
+				await sendResponse(nodeResponse, createGatewayStatusResponse(requireContext(), options, generation));
 				return;
 			}
 

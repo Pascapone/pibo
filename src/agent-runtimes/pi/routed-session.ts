@@ -1373,6 +1373,8 @@ export class RoutedSession {
 		return {
 			piboSessionId: this.piboSessionId,
 			queuedMessages: this.queue.length,
+			activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id,
+			queuedEventIds: this.queue.map((item) => item.event.id ?? ""),
 			processing: this.disposed ? false : this.processing,
 			streaming: this.disposed ? false : this.runtime.session.isStreaming,
 			activeTools: enabledTools,

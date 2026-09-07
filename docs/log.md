@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-07
+
+- **Snapshot-bound production restart approval**: Updated the [gateway restart contract](/specs/security/gateway-admission-and-restart.md#requirement-sec-gw-004-bind-production-restart-approval-to-freshly-inspected-work) for issue #914. Force now discloses and rechecks active event, queue, and run identities; rejects stale or incomplete approval; and records restart decisions before invoking the service manager. Dev restart remains ungated. No production restart or deployment.
+
 ## 2026-09-06
 
 - **Production admission and concurrency audit**: Added the [read-only production investigation](/reports/production-performance-audit-2026-09-06.md) and [performance/scalability plan](/plans/pibo-performance-and-scalability.md). Confirmed the synchronous room scan, cross-session blocking, and a separate cold-runtime admission delay; defined staged fixes, durable admission, resource budgets, load tests, and release gates. No product-code change, database/session deletion, gateway restart, or production deployment.
