@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **F–H handoff**: Added the [F–H continuation handoff](/reports/performance-scalability-fgh-handoff-2026-09-07.md) after the rework session hit the provider quota and a run-reminder loop (#967); records accepted packages A–E with open stacked PRs, the exact F and G work-in-progress, branch topology, and remaining gates.
+
 - **Isolated telemetry**: Updated the [diagnostic worker contract](/specs/data/telemetry.md), [durable output checkpoint contract](/specs/data/reliability.md) and [package-E validation report](/reports/performance-scalability-telemetry-2026-09-07.md), preserving failed load evidence and the remaining integrated acceptance boundary.
 
 - **Runtime capacity**: Added the [bounded admission, Room scheduling and provider-capacity contract](/specs/runtime/capacity-and-scheduling.md) and [package-D validation record](/reports/performance-scalability-capacity-2026-09-07.md), including control reservations, cold-start cancellation and the remaining integrated measurement boundary.
