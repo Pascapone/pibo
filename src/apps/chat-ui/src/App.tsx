@@ -301,6 +301,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
 	const routePiboSessionId = route.area === "sessions" || route.area === "context" ? route.piboSessionId : undefined;
 	const routeSessionViewId = route.area === "sessions" ? route.sessionViewId : undefined;
+	const routeToolCallNodeId = route.area === "sessions" ? route.toolCallNodeId : undefined;
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -2002,6 +2003,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
 							selectedRoomId={selectedRoomId}
+							targetToolCallNodeId={routeToolCallNodeId}
 							contextLabel={selectedRoomContextLabel}
 							selectedRoomArchived={selectedRoomArchived}
 							roomNavigationPending={loadingSelectedRoom}
@@ -2242,6 +2244,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						bootstrap={bootstrap}
 						selectedPiboSessionId={selectedPiboSessionId}
 						selectedRoomId={selectedRoomId}
+						targetToolCallNodeId={routeToolCallNodeId}
 						contextLabel={selectedRoomContextLabel}
 						selectedRoomArchived={selectedRoomArchived}
 						roomNavigationPending={loadingSelectedRoom}

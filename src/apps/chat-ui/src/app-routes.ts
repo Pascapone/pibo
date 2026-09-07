@@ -1,9 +1,10 @@
 import type { NavigateOptions } from "@tanstack/react-router";
 import { parseChatSessionViewId, type ChatSessionViewId } from "./session-views/types";
 import type { SettingsPanel } from "./settings/types";
+import { TOOL_CALL_REFERENCE_QUERY_PARAM } from "./tool-call-reference";
 
 export type ChatAppRoute =
-	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId }
+	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId; toolCallNodeId?: string }
 	| { area: "vscode" }
 	| { area: "workflows"; draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }
 	| { area: "agents" }
@@ -18,7 +19,7 @@ export type NavigationOptions = {
 	preserveSearch?: boolean;
 };
 
-type SessionViewSearch = { view: ChatSessionViewId };
+type SessionViewSearch = { view: ChatSessionViewId; toolCall?: string };
 type ContextSearch = { piboSessionId?: string };
 
 type SettingsNavigationTo = "/settings/debug" | "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
@@ -56,6 +57,7 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 		.filter(Boolean)
 		.map((part) => decodeURIComponent(part));
 	const sessionViewId = parseChatSessionViewId(search.view);
+	const toolCallNodeId = nonEmptySearchString(search[TOOL_CALL_REFERENCE_QUERY_PARAM]);
 	if (parts[0] === "context") return { area: "context", ...(contextPiboSessionId ? { piboSessionId: contextPiboSessionId } : {}) };
 	if (parts[0] === "vscode") return { area: "vscode" };
 	if (parts[0] === "workflows" && parts[1] === "drafts" && parts[2]) return { area: "workflows", draftId: parts[2] };
@@ -66,15 +68,18 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 	if (parts[0] === "loops" || parts[0] === "ralph") return { area: "loops" };
 	if (parts[0] === "settings") return { area: "settings", panel: settingsPanelFromPathPart(parts[1]) };
 	if (parts[0] === "rooms" && parts[1] && parts[2] === "sessions" && parts[3]) {
-		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3], sessionViewId };
+		return { area: "sessions", roomId: parts[1], piboSessionId: parts[3], sessionViewId, ...(toolCallNodeId ? { toolCallNodeId } : {}) };
 	}
-	if (parts[0] === "rooms" && parts[1]) return { area: "sessions", roomId: parts[1], sessionViewId };
-	if (parts[0] === "sessions" && parts[1]) return { area: "sessions", piboSessionId: parts[1], sessionViewId };
-	return { area: "sessions", sessionViewId };
+	if (parts[0] === "rooms" && parts[1]) return { area: "sessions", roomId: parts[1], sessionViewId, ...(toolCallNodeId ? { toolCallNodeId } : {}) };
+	if (parts[0] === "sessions" && parts[1]) return { area: "sessions", piboSessionId: parts[1], sessionViewId, ...(toolCallNodeId ? { toolCallNodeId } : {}) };
+	return { area: "sessions", sessionViewId, ...(toolCallNodeId ? { toolCallNodeId } : {}) };
 }
 
 export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, nextSessionViewId: ChatSessionViewId): ChatRouteNavigationRequest {
-	const sessionViewSearch = { view: nextSessionViewId };
+	const sessionViewSearch = {
+		view: nextSessionViewId,
+		...(target.area === "sessions" && target.toolCallNodeId ? { toolCall: target.toolCallNodeId } : {}),
+	};
 	if (target.area === "vscode") return { to: "/vscode", replace };
 	if (target.area === "workflows") {
 		if (target.draftId) return { to: "/workflows/drafts/$draftId", params: { draftId: target.draftId }, replace };
@@ -116,6 +121,10 @@ export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, ne
 		};
 	}
 	return { to: "/", search: sessionViewSearch, replace };
+}
+
+function nonEmptySearchString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function stringifyChatSearchValue(value: unknown): string {

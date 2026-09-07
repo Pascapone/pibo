@@ -11,6 +11,7 @@ import { PendingUserMessageDelivery } from "../../components/PendingUserMessageD
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
 import { SessionGoalIndicator, formatSessionGoalTokenUsage, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
+import { findToolCallReferenceRowIndex } from "../../tool-call-reference";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
@@ -39,6 +40,7 @@ type TerminalImageDialogState = {
 
 export function CompactTerminalSessionView({
 	traceView,
+	targetToolCallNodeId,
 	isLoading,
 	terminalFullscreen,
 	showThinking,
@@ -67,14 +69,17 @@ export function CompactTerminalSessionView({
 	onThinkingLevelChange,
 	onModelChanged,
 }: ChatSessionViewProps) {
+	const effectiveToolDisplayMode = targetToolCallNodeId ? "default" : toolDisplayMode;
 	const rows = useMemo(
-		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode, debugMode }),
-		[showThinking, toolDisplayMode, debugMode, traceView],
+		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode: effectiveToolDisplayMode, debugMode }),
+		[showThinking, effectiveToolDisplayMode, debugMode, traceView],
 	);
 	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
 	const piboSessionId = traceView?.piboSessionId ?? "";
 	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
 	const requestedRestorePageRef = useRef<string | undefined>(undefined);
+	const requestedToolCallPageRef = useRef<string | undefined>(undefined);
+	const resolvedToolCallTargetRef = useRef<string | undefined>(undefined);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 	const [imageDialog, setImageDialog] = useState<TerminalImageDialogState | null>(null);
 	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
@@ -175,15 +180,42 @@ export function CompactTerminalSessionView({
 
 	useEffect(() => {
 		requestedRestorePageRef.current = undefined;
+		requestedToolCallPageRef.current = undefined;
+		resolvedToolCallTargetRef.current = undefined;
 		olderTraceRequestPendingRef.current = false;
 		scrollbarDragActiveRef.current = false;
 		scrollbarDragDeferredLoadRef.current = false;
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
 		setImageDialog(null);
-	}, [piboSessionId]);
+	}, [piboSessionId, targetToolCallNodeId]);
 
 	useEffect(() => {
-		if (!piboSessionId || !reloadReadingPosition) return undefined;
+		if (!piboSessionId || !targetToolCallNodeId) return undefined;
+		const targetRowIndex = findToolCallReferenceRowIndex(rows, targetToolCallNodeId);
+		if (targetRowIndex >= 0) {
+			const targetRow = rows[targetRowIndex]!;
+			const targetKey = `${piboSessionId}:${targetToolCallNodeId}`;
+			setExpandedRows((current) => current.has(targetRow.id) ? current : new Set(current).add(targetRow.id));
+			setFocusedNavigationRowId(targetRow.id);
+			if (resolvedToolCallTargetRef.current === targetKey) return undefined;
+			resolvedToolCallTargetRef.current = targetKey;
+			const frame = requestAnimationFrame(() => {
+				stickyView.scrollToIndex(targetRowIndex, "center", "auto");
+				focusToolCallReferenceAfterScroll(targetRow.id, targetToolCallNodeId);
+			});
+			return () => cancelAnimationFrame(frame);
+		}
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return undefined;
+		const cursor = String(traceView?.nextBeforeCursor ?? traceView?.nextBeforeSequence ?? rows.length);
+		const requestKey = `${piboSessionId}:${targetToolCallNodeId}:${cursor}`;
+		if (requestedToolCallPageRef.current === requestKey) return undefined;
+		requestedToolCallPageRef.current = requestKey;
+		onLoadOlderTracePage?.();
+		return undefined;
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, rows, stickyView.scrollToIndex, targetToolCallNodeId, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+
+	useEffect(() => {
+		if (!piboSessionId || !reloadReadingPosition || targetToolCallNodeId) return undefined;
 		const rowIndex = rowKeys.indexOf(reloadReadingPosition.rowId);
 		if (rowIndex >= 0) {
 			const frame = requestAnimationFrame(() => {
@@ -205,7 +237,7 @@ export function CompactTerminalSessionView({
 		requestedRestorePageRef.current = requestKey;
 		onLoadOlderTracePage?.();
 		return undefined;
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, reloadReadingPosition, rowKeys, rows.length, stickyView.restoreAnchor, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, reloadReadingPosition, rowKeys, rows.length, stickyView.restoreAnchor, targetToolCallNodeId, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
 
 	useEffect(() => {
 		if (!piboSessionId) return undefined;
@@ -279,6 +311,7 @@ export function CompactTerminalSessionView({
 				expanded={expandedRows.has(row.id)}
 				focused={focusedNavigationRowId === row.id}
 				piboSessionId={traceView?.piboSessionId ?? ""}
+				targetToolCallNodeId={targetToolCallNodeId}
 				onToggle={() => toggleRow(row)}
 				onFork={onFork}
 				onOpenSession={onOpenSession}
@@ -288,7 +321,7 @@ export function CompactTerminalSessionView({
 				signals={signals}
 			/>
 		</div>
-	), [debugMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, toolMetricThresholds, traceView?.piboSessionId]);
+	), [debugMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, targetToolCallNodeId, toolMetricThresholds, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -488,6 +521,7 @@ function TerminalRow({
 	expanded,
 	focused,
 	piboSessionId,
+	targetToolCallNodeId,
 	onToggle,
 	onFork,
 	onOpenSession,
@@ -502,6 +536,7 @@ function TerminalRow({
 	expanded: boolean;
 	focused: boolean;
 	piboSessionId: string;
+	targetToolCallNodeId?: string;
 	onToggle: () => void;
 	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
@@ -598,7 +633,14 @@ function TerminalRow({
 				</div>
 				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
-			{expanded ? <TerminalDetails row={row} onOpenSession={onOpenSession} /> : null}
+			{expanded ? (
+				<TerminalDetails
+					row={row}
+					piboSessionId={piboSessionId}
+					targetToolCallNodeId={targetToolCallNodeId}
+					onOpenSession={onOpenSession}
+				/>
+			) : null}
 			{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
 		</div>
 	);
@@ -899,6 +941,24 @@ function focusTerminalRowAfterScroll(rowId: string): void {
 		if (attempts < 8) requestAnimationFrame(focusRow);
 	};
 	requestAnimationFrame(() => requestAnimationFrame(focusRow));
+}
+
+function focusToolCallReferenceAfterScroll(rowId: string, traceNodeId: string): void {
+	let attempts = 0;
+	const focusReference = () => {
+		const reference = Array.from(document.querySelectorAll<HTMLElement>("[data-pibo-tool-call-reference]"))
+			.find((element) => element.dataset.piboToolCallReference === traceNodeId);
+		const row = Array.from(document.querySelectorAll<HTMLElement>('[data-pibo-component="TerminalRow"]'))
+			.find((element) => element.dataset.rowId === rowId);
+		if (reference && row) {
+			reference.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+			row.focus({ preventScroll: true });
+			return;
+		}
+		attempts += 1;
+		if (attempts < 8) requestAnimationFrame(focusReference);
+	};
+	requestAnimationFrame(() => requestAnimationFrame(focusReference));
 }
 
 function collapsedToolCallPreviewLines(row: { kind: string; lines: CompactTerminalLine[] }) {

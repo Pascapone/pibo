@@ -1,22 +1,31 @@
 import { useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { JsonRenderer } from "../../tracing/JsonRenderer";
-import type { CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
+import type { CompactTerminalRow, CompactTerminalToolCallReference } from "../../../../../session-ui/terminalRows.js";
 import { renderableTerminalValue } from "../../../../../session-ui/terminalValue.js";
 import { getTracePayload } from "../../api-trace-signals";
+import { copyTextToClipboard } from "../../clipboard";
+import { buildToolCallReferenceUrl, formatToolCallReference } from "../../tool-call-reference";
 import type { TracePayloadRef } from "../../types";
 
 type TerminalDetailsProps = {
 	row: CompactTerminalRow;
+	piboSessionId: string;
+	targetToolCallNodeId?: string;
 	onOpenSession: (piboSessionId: string) => void;
 };
 
-export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
+export function TerminalDetails({ row, piboSessionId, targetToolCallNodeId, onOpenSession }: TerminalDetailsProps) {
 	return (
 		<div className="mt-2 border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-[12px] text-[#d4d4d4]" data-shared-terminal-details={row.kind}>
 			{row.detailItems?.length ? (
 				<div className="space-y-3">
 					{row.detailItems.map((item) => (
-						<div key={item.id} className="space-y-2">
+						<div
+							key={item.id}
+							className={`space-y-2 ${item.toolCallReference?.traceNodeId === targetToolCallNodeId ? "border-l-2 border-[#38bdf8] pl-2" : ""}`}
+							data-pibo-tool-call-target={item.toolCallReference?.traceNodeId === targetToolCallNodeId ? "true" : undefined}
+						>
 							<div className="flex items-center gap-2 text-[11px]">
 								<span className="font-semibold text-[#d4d4d4]">{item.label}</span>
 								{item.linkedPiboSessionId ? (
@@ -29,6 +38,7 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 									</button>
 								) : null}
 							</div>
+							<ToolCallReferenceDetails piboSessionId={piboSessionId} reference={item.toolCallReference} />
 							<DetailPayload label="Input" value={item.input} />
 							<DetailPayload label="Output" value={item.output} />
 							<PayloadRefs refs={item.payloadRefs} />
@@ -38,7 +48,11 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 					))}
 				</div>
 			) : (
-				<div className="space-y-3">
+				<div
+					className={`space-y-3 ${row.toolCallReference?.traceNodeId === targetToolCallNodeId ? "border-l-2 border-[#38bdf8] pl-2" : ""}`}
+					data-pibo-tool-call-target={row.toolCallReference?.traceNodeId === targetToolCallNodeId ? "true" : undefined}
+				>
+					<ToolCallReferenceDetails piboSessionId={piboSessionId} reference={row.toolCallReference} />
 					<DetailPayload label="Input" value={row.input} />
 					<DetailPayload label="Output" value={row.output} />
 					<PayloadRefs refs={row.payloadRefs} />
@@ -58,6 +72,50 @@ export function TerminalDetails({ row, onOpenSession }: TerminalDetailsProps) {
 					) : null}
 				</div>
 			)}
+		</div>
+	);
+}
+
+function ToolCallReferenceDetails({
+	piboSessionId,
+	reference,
+}: {
+	piboSessionId: string;
+	reference?: CompactTerminalToolCallReference;
+}) {
+	const [copied, setCopied] = useState(false);
+	if (!reference) return null;
+
+	const copyReference = async () => {
+		try {
+			const url = buildToolCallReferenceUrl(window.location.href, piboSessionId, reference);
+			await copyTextToClipboard(formatToolCallReference(piboSessionId, reference, url));
+			setCopied(true);
+		} catch {
+			setCopied(false);
+		}
+	};
+
+	return (
+		<div className="space-y-1 border border-[#2a2a2a] bg-[#0b0b0b] p-2" data-pibo-tool-call-reference={reference.traceNodeId}>
+			<div className="flex items-center justify-between gap-2">
+				<div className="text-[11px] font-semibold text-[#737373]">Tool Call Reference</div>
+				<button
+					type="button"
+					onClick={() => void copyReference()}
+					title={copied ? "Copied Tool Call Reference" : "Copy Tool Call Reference"}
+					aria-label={copied ? "Copied Tool Call Reference" : "Copy Tool Call Reference"}
+					className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-[#3a3a3a] text-[#a3a3a3] transition-colors hover:border-[#38bdf8] hover:text-[#38bdf8]"
+				>
+					{copied ? <Check size={12} /> : <Copy size={12} />}
+				</button>
+			</div>
+			<div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono text-[11px]">
+				<span className="text-[#737373]">Tool Call ID</span>
+				<code className="min-w-0 break-all text-[#d4d4d4]">{reference.toolCallId}</code>
+				<span className="text-[#737373]">Reference</span>
+				<code className="min-w-0 break-all text-[#38bdf8]">{piboSessionId} / {reference.traceNodeId}</code>
+			</div>
 		</div>
 	);
 }

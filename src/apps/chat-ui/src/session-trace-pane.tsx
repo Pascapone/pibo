@@ -107,6 +107,7 @@ export function SessionTracePane({
   bootstrap,
   selectedPiboSessionId,
   selectedRoomId,
+  targetToolCallNodeId,
   contextKind = "room",
   contextLabel,
   selectedRoomArchived,
@@ -162,6 +163,7 @@ export function SessionTracePane({
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
   selectedRoomId: string | null;
+  targetToolCallNodeId?: string;
   contextKind?: "room";
   contextLabel?: string;
   selectedRoomArchived: boolean;
@@ -650,6 +652,7 @@ export function SessionTracePane({
     signals,
     sessionGoal: sessionGoalQuery.data?.goal,
     selectedPiboSessionId,
+    targetToolCallNodeId,
     workflowSessionLinked,
     sessionNodes: bootstrap.sessions,
     sessionLinks,

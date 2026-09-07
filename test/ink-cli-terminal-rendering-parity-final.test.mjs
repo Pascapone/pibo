@@ -159,7 +159,7 @@ test("Web compact terminal source keeps shared descriptor hooks for final parity
 	for (const hook of ["data-pibo-terminal-row=\"true\"", "data-row-kind={row.kind}", "data-row-status={row.status}", "data-event-id={row.eventId}", "data-run-id={row.runId}", "data-order-source={row.orderSource}"]) {
 		assert.match(compactSource, new RegExp(hook.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 	}
-	assert.match(compactSource, /TerminalDetails row=\{row\}/, "Web details stay row-owned and expanded below the parent row");
+	assert.match(compactSource, /<TerminalDetails\s+row=\{row\}/, "Web details stay row-owned and expanded below the parent row");
 	assert.match(detailsSource, /data-shared-terminal-details=\{row\.kind\}/);
 	assert.match(detailsSource, /data-shared-terminal-detail-json=\{label\}/);
 	assert.match(detailsSource, /data-shared-terminal-detail-text=\{label\}/);

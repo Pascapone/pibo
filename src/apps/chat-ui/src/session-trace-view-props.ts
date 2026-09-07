@@ -229,6 +229,7 @@ export function createSessionTraceViewProps(input: {
 	signals?: PiboSignalSnapshot;
 	sessionGoal?: PiboLoopJob | null;
 	selectedPiboSessionId: string | null;
+	targetToolCallNodeId?: string;
 	workflowSessionLinked: boolean;
 	sessionNodes: readonly PiboWebSessionNode[];
 	sessionLinks: SessionTraceViewLinks;
@@ -264,6 +265,7 @@ export function createSessionTraceViewProps(input: {
 		signals: input.signals,
 		sessionGoal: input.sessionGoal,
 		selectedPiboSessionId: input.selectedPiboSessionId,
+		targetToolCallNodeId: input.targetToolCallNodeId,
 		workflowSessionLinked: input.workflowSessionLinked,
 		sessionNodes: input.sessionNodes,
 		sessionBreadcrumbs: input.sessionLinks.sessionBreadcrumbs,

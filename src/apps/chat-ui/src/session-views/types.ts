@@ -22,6 +22,7 @@ export function parseChatSessionViewId(value: unknown): ChatSessionViewId | unde
 export type ChatSessionViewProps = {
 	traceView: PiboSessionTraceView | null;
 	selectedPiboSessionId: string | null;
+	targetToolCallNodeId?: string;
 	workflowSessionLinked: boolean;
 	selectedTrace: Trace | null;
 	isLoading: boolean;
