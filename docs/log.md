@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **Bounded maintenance**: Added the [package-G validation report](/reports/performance-scalability-maintenance-2026-09-07.md) and its artifacts; records the resumable bounded telemetry maintenance worker, SQLite online backups with external payload manifests, opt-in scoped capture storage, bounded manual prune and backup WAL quotas, and the isolated Pibo2 slot acceptance (lease released).
+
 - **Isolated read models**: Added the [package-F validation report](/reports/performance-scalability-reads-2026-09-07.md) and its artifacts; records the isolated read worker, resumable history and unread projections, bounded SSE/HTTP streaming, the startup sequence-repair index fix, ten-million-event load evidence, and the isolated Pibo2 slot acceptance (lease released).
 
 - **F–H handoff**: Added the [F–H continuation handoff](/reports/performance-scalability-fgh-handoff-2026-09-07.md) after the rework session hit the provider quota and a run-reminder loop (#967); records accepted packages A–E with open stacked PRs, the exact F and G work-in-progress, branch topology, and remaining gates.
