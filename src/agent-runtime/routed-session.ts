@@ -410,6 +410,8 @@ export class RuntimeRoutedSession {
 				revision: binding.revision,
 			},
 			queuedMessages: this.queue.length,
+			activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id,
+			queuedEventIds: this.queue.map((item) => item.event.id ?? ""),
 			processing: this.disposed ? false : this.processing,
 			streaming: this.disposed ? false : status.streaming,
 			activeTools: [...status.enabledTools],

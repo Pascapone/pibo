@@ -1,5 +1,6 @@
 import { spawn, execFile } from "node:child_process";
-import { existsSync, mkdirSync, openSync, readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -27,6 +28,8 @@ type RuntimeTelemetryHint = {
 type RuntimeStatus = {
 	piboSessionId?: string;
 	queuedMessages?: number;
+	activeEventId?: string;
+	queuedEventIds?: string[];
 	processing?: boolean;
 	streaming?: boolean;
 	activeTelemetry?: RuntimeTelemetryHint;
@@ -41,6 +44,7 @@ type ActiveRunSummary = {
 
 export type GatewaySafetyStatus = {
 	reachable: boolean;
+	generation?: string;
 	mode: GatewayMode;
 	health?: unknown;
 	runtimeStatuses: RuntimeStatus[];
@@ -245,10 +249,13 @@ function runtimeTelemetryHint(value: unknown): RuntimeTelemetryHint | undefined 
 
 function runtimeStatus(value: unknown): RuntimeStatus | undefined {
 	const obj = objectValue(value);
-	if (!obj) return undefined;
+	if (!obj || !stringValue(obj.piboSessionId) || typeof obj.processing !== "boolean" || typeof obj.streaming !== "boolean"
+		|| !Number.isInteger(obj.queuedMessages) || Number(obj.queuedMessages) < 0) return undefined;
 	return {
 		piboSessionId: stringValue(obj.piboSessionId),
 		queuedMessages: numberValue(obj.queuedMessages),
+		activeEventId: stringValue(obj.activeEventId),
+		queuedEventIds: Array.isArray(obj.queuedEventIds) && obj.queuedEventIds.every((id) => typeof id === "string") ? obj.queuedEventIds as string[] : undefined,
 		processing: booleanValue(obj.processing),
 		streaming: booleanValue(obj.streaming),
 		activeTelemetry: runtimeTelemetryHint(obj.activeTelemetry),
@@ -257,12 +264,13 @@ function runtimeStatus(value: unknown): RuntimeStatus | undefined {
 
 function activeRun(value: unknown): ActiveRunSummary | undefined {
 	const obj = objectValue(value);
-	if (!obj) return undefined;
+	if (!obj || !stringValue(obj.runId) || !stringValue(obj.status)
+		|| !(stringValue(obj.controllerPiboSessionId) || stringValue(obj.piboSessionId))) return undefined;
 	return {
 		runId: stringValue(obj.runId),
 		status: stringValue(obj.status),
 		toolName: stringValue(obj.toolName),
-		piboSessionId: stringValue(obj.piboSessionId),
+		piboSessionId: stringValue(obj.controllerPiboSessionId) ?? stringValue(obj.piboSessionId),
 	};
 }
 
@@ -271,7 +279,9 @@ function parseGatewaySafetyPayload(payload: unknown, reachable: boolean): Gatewa
 	const mode = obj && (obj.mode === "dev" || obj.mode === "prod" || obj.mode === "fallback") ? obj.mode : "unknown";
 	const runtimeStatuses = Array.isArray(obj?.runtimeStatuses) ? obj.runtimeStatuses.map(runtimeStatus).filter((item): item is RuntimeStatus => Boolean(item)) : [];
 	const activeRuns = Array.isArray(obj?.activeRuns) ? obj.activeRuns.map(activeRun).filter((item): item is ActiveRunSummary => Boolean(item)) : [];
-	return { reachable, mode, health: obj?.health, runtimeStatuses, activeRuns, ambiguous: booleanValue(obj?.ambiguous) };
+	const incomplete = !Array.isArray(obj?.runtimeStatuses) || !Array.isArray(obj?.activeRuns)
+		|| runtimeStatuses.length !== obj.runtimeStatuses.length || activeRuns.length !== obj.activeRuns.length;
+	return { reachable, mode, generation: stringValue(obj?.generation), health: obj?.health, runtimeStatuses, activeRuns, ambiguous: incomplete || booleanValue(obj?.ambiguous) };
 }
 
 export function checkActiveWork(status: GatewaySafetyStatus, target: GatewayTarget = "web"): ActiveWorkCheck {
@@ -284,7 +294,7 @@ export function checkActiveWork(status: GatewaySafetyStatus, target: GatewayTarg
 		const id = session.piboSessionId ?? "unknown session";
 		if (session.processing === true) reasons.push(`${id} is processing`);
 		if (session.streaming === true) reasons.push(`${id} is streaming`);
-		if ((session.queuedMessages ?? 0) > 0) reasons.push(`${id} has queued messages`);
+		if ((session.queuedMessages ?? 0) > 0 || (session.activeTelemetry?.queueDepth ?? 0) > 0) reasons.push(`${id} has queued messages`);
 		if (session.activeTelemetry?.isStale === true) {
 			const phase = session.activeTelemetry.activePhase ? ` in ${session.activeTelemetry.activePhase}` : "";
 			reasons.push(`${id} has stale telemetry${phase}`);
@@ -292,6 +302,56 @@ export function checkActiveWork(status: GatewaySafetyStatus, target: GatewayTarg
 	}
 	for (const run of status.activeRuns) reasons.push(`${run.runId ?? "yielded run"} is ${run.status ?? "active"}`);
 	return { unsafe: reasons.length > 0, reasons };
+}
+
+function blockingSessions(status: GatewaySafetyStatus): RuntimeStatus[] {
+	return status.runtimeStatuses.filter((session) => session.processing || session.streaming
+		|| (session.queuedMessages ?? 0) > 0 || (session.activeTelemetry?.queueDepth ?? 0) > 0 || session.activeTelemetry?.isStale);
+}
+
+export function restartConfirmationToken(status: GatewaySafetyStatus): string | undefined {
+	if (!status.reachable || status.error || status.ambiguous || status.mode !== "prod" || !status.generation) return undefined;
+	const sessions = blockingSessions(status);
+	if (status.runtimeStatuses.some((session) => !session.piboSessionId || typeof session.processing !== "boolean"
+		|| typeof session.streaming !== "boolean" || !Number.isInteger(session.queuedMessages) || session.queuedMessages! < 0)) return undefined;
+	if (sessions.some((session) => ((session.processing || session.streaming || session.activeTelemetry?.isStale)
+		&& !(session.activeEventId || session.activeTelemetry?.activeTurnId))
+		|| (session.queuedMessages! > 0 && (session.queuedEventIds?.length !== session.queuedMessages || session.queuedEventIds?.some((id) => !id)))
+		|| (session.activeTelemetry?.queueDepth ?? 0) > (session.queuedMessages ?? 0))) return undefined;
+	if (status.activeRuns.some((run) => !run.runId || !run.piboSessionId || !run.status)) return undefined;
+	// Exclude clock/progress counters: approval describes work identities, not polling time.
+	const snapshot = {
+		generation: status.generation,
+		target: "web", port: targetPort("web"), service: gatewayServiceName("web"), home: managedGatewayHome("web"),
+		sessions: sessions.map((session) => ({
+			id: session.piboSessionId, activeEventId: session.activeEventId,
+			processing: session.processing, streaming: session.streaming,
+			queuedEventIds: [...(session.queuedEventIds ?? [])], queuedMessages: session.queuedMessages,
+			telemetryTurnId: session.activeTelemetry?.activeTurnId,
+			stale: session.activeTelemetry?.isStale === true,
+		})).sort((a, b) => a.id!.localeCompare(b.id!)),
+		runs: [...status.activeRuns].sort((a, b) => a.runId!.localeCompare(b.runId!)),
+	};
+	return `${RESTART_CONFIRMATION_TOKEN}:${createHash("sha256").update(JSON.stringify(snapshot)).digest("hex")}`;
+}
+
+function printRestartApproval(status: GatewaySafetyStatus): void {
+	const token = restartConfirmationToken(status);
+	if (token) {
+		console.log("Review the listed work and obtain user approval before running:");
+		console.log(`  pibo gateway web restart --force --confirm ${token}`);
+	} else console.log("Snapshot approval unavailable: status must identify the gateway generation and all active work. Inspect: pibo gateway web doctor");
+}
+
+function auditRestart(status: GatewaySafetyStatus, decision: "blocked" | "approved", force: boolean, reason: string): void {
+	const home = managedGatewayHome("web");
+	mkdirSync(home, { recursive: true });
+	appendFileSync(join(home, "gateway-restart-audit.jsonl"), `${JSON.stringify({
+		at: new Date().toISOString(), decision, force, reason, snapshot: restartConfirmationToken(status),
+		generation: status.generation,
+		sessionIds: [...new Set([...blockingSessions(status).map((session) => session.piboSessionId), ...status.activeRuns.map((run) => run.piboSessionId)].filter(Boolean))],
+		runIds: status.activeRuns.map((run) => run.runId), reasons: checkActiveWork(status).reasons,
+	})}\n`, { mode: 0o600 });
 }
 
 async function readGatewaySafetyStatus(target: GatewayTarget): Promise<GatewaySafetyStatus> {
@@ -313,6 +373,8 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	console.log(`  runtime sessions: ${status.runtimeStatuses.length}`);
 	for (const session of status.runtimeStatuses) {
 		console.log(`    ${session.piboSessionId ?? "unknown"}: processing=${session.processing === true} streaming=${session.streaming === true} queued=${session.queuedMessages ?? 0}`);
+		if (session.activeEventId) console.log(`      active event: ${session.activeEventId}`);
+		if (session.queuedEventIds?.length) console.log(`      queued events: ${session.queuedEventIds.join(", ")}`);
 		if (session.activeTelemetry) {
 			const parts = [
 				session.activeTelemetry.activePhase ? `phase=${session.activeTelemetry.activePhase}` : undefined,
@@ -326,7 +388,7 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 		}
 	}
 	console.log(`  active yielded runs: ${status.activeRuns.length}`);
-	for (const run of status.activeRuns) console.log(`    ${run.runId ?? "unknown"}: ${run.status ?? "active"}${run.toolName ? ` (${run.toolName})` : ""}`);
+	for (const run of status.activeRuns) console.log(`    ${run.runId ?? "unknown"}: ${run.status ?? "active"}${run.toolName ? ` (${run.toolName})` : ""} session=${run.piboSessionId ?? "unknown"}`);
 }
 
 function managerRequiresShell(command: string): boolean {
@@ -363,6 +425,7 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 				console.log("  restart safety: blocked");
 				for (const reason of active.reasons) console.log(`    - ${reason}`);
 			} else console.log("  restart safety: idle");
+			printRestartApproval(status);
 		}
 		if (command === "doctor") process.exitCode = status.reachable && !status.error && status.mode === expectedMode(target) ? 0 : 1;
 		return true;
@@ -402,18 +465,35 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 		const force = args.includes("--force");
 		const confirmIndex = args.indexOf("--confirm");
 		const confirmation = confirmIndex >= 0 ? args[confirmIndex + 1] : undefined;
-		if (force && confirmation !== RESTART_CONFIRMATION_TOKEN) {
+		if (target === "dev" && force && confirmation !== RESTART_CONFIRMATION_TOKEN) {
 			console.error(`Force restart requires: --confirm ${RESTART_CONFIRMATION_TOKEN}`);
 			process.exitCode = 1;
 			return true;
 		}
-		if (target === "web" && !force) {
-			const active = checkActiveWork(await readGatewaySafetyStatus(target), target);
-			if (active.unsafe) {
-				console.error("Restart blocked: active agent work is running.");
-				console.error("Do not restart the gateway now.");
-				console.error("Ask the user before interrupting active sessions.");
+		if (target === "web") {
+			// Both normal and delayed/forced commands inspect again at execution time.
+			let current = await readGatewaySafetyStatus(target);
+			for (let inspection = 0; inspection < 2; inspection += 1) {
+				const active = checkActiveWork(current, target);
+				const token = restartConfirmationToken(current);
+				printSafetyStatus(target, current);
 				for (const reason of active.reasons) console.error(`- ${reason}`);
+				const blocked = force ? !token || confirmation !== token : active.unsafe;
+				if (blocked) {
+					const reason = force ? "Snapshot approval is missing, unavailable, or changed." : "Active work or unavailable gateway status.";
+					console.error(`Restart blocked: ${reason}`);
+					console.error("Ask the user before interrupting active sessions. Obtain fresh approval with: pibo gateway web status");
+					printRestartApproval(current);
+					try { auditRestart(current, "blocked", force, reason); }
+					catch (error) { console.error(`Restart audit failed: ${error instanceof Error ? error.message : String(error)}`); }
+					process.exitCode = 1;
+					return true;
+				}
+				if (inspection === 0) current = await readGatewaySafetyStatus(target);
+			}
+			try { auditRestart(current, "approved", force, force ? "Unchanged snapshot explicitly approved" : "Gateway idle"); }
+			catch (error) {
+				console.error(`Restart blocked: cannot record restart audit: ${error instanceof Error ? error.message : String(error)}`);
 				process.exitCode = 1;
 				return true;
 			}
@@ -532,8 +612,8 @@ Commands:
   dev doctor       Check dev gateway health
 
 Options:
-  --force --confirm ${RESTART_CONFIRMATION_TOKEN}
-                 Force a production restart after explicit confirmation
+  --force --confirm <snapshot-token>
+                 Restart only the work explicitly approved from web status
 
 Next:
   pibo gateway web status

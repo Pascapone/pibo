@@ -541,8 +541,9 @@ test("tool display modes preserve default output and support hide, slim, and int
 
 	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
 	assert.equal(slimRows[1].lines.length, 1);
-	assert.equal(slimRows[1].output, undefined);
-	assert.equal(slimRows[1].expandable, false);
+	assert.deepEqual(slimRows[1].input, { path: "src/runtime.ts" });
+	assert.equal(slimRows[1].output, "line one\nline two");
+	assert.equal(slimRows[1].expandable, true);
 	assert.equal(slimRows[1].singleLine, true);
 	assert.doesNotMatch(rowText(slimRows[1]), /line one/);
 
@@ -574,7 +575,8 @@ test("tool display modes include shell tools rendered as command rows", () => {
 	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
 	assert.equal(slimRows.length, 1);
 	assert.equal(slimRows[0].singleLine, true);
-	assert.equal(slimRows[0].output, undefined);
+	assert.equal(slimRows[0].output, "completed output");
+	assert.equal(slimRows[0].expandable, true);
 	assert.doesNotMatch(rowText(slimRows[0]), /completed output/);
 
 	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
@@ -603,7 +605,8 @@ test("tool display modes recognize qualified streaming tool rows", () => {
 	const slimRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "slim" });
 	assert.equal(slimRows.length, 1);
 	assert.equal(slimRows[0].singleLine, true);
-	assert.equal(slimRows[0].output, undefined);
+	assert.equal(slimRows[0].output, "streaming output");
+	assert.equal(slimRows[0].expandable, true);
 
 	const intentRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "intent" });
 	assert.equal(intentRows.length, 1);

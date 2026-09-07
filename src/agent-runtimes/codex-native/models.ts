@@ -468,11 +468,11 @@ function setBoundedPending<T>(map: Map<string, T>, threadId: string, value: T): 
 }
 
 function parseContextUsage(value: CodexAppServerThreadTokenUsageUpdatedNotification): AgentRuntimeContextUsage {
-	if (!isRecord(value.tokenUsage) || !isRecord(value.tokenUsage.total)) {
-		throw new CodexNativeModelProtocolError("Codex token-usage notification is missing total usage.");
+	if (!isRecord(value.tokenUsage) || !isRecord(value.tokenUsage.last)) {
+		throw new CodexNativeModelProtocolError("Codex token-usage notification is missing last response usage.");
 	}
-	const total = value.tokenUsage.total;
-	const tokens = requiredNonNegativeNumber(total.totalTokens, "total token usage");
+	const last = value.tokenUsage.last;
+	const tokens = requiredNonNegativeNumber(last.totalTokens, "last response token usage");
 	const contextWindow = value.tokenUsage.modelContextWindow === undefined || value.tokenUsage.modelContextWindow === null
 		? undefined
 		: requiredNonNegativeNumber(value.tokenUsage.modelContextWindow, "model context window");

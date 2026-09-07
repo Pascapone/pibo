@@ -1,6 +1,12 @@
 # Pibo documentation update log
 
+## 2026-09-07
+
+- **Snapshot-bound production restart approval**: Updated the [gateway restart contract](/specs/security/gateway-admission-and-restart.md#requirement-sec-gw-004-bind-production-restart-approval-to-freshly-inspected-work) for issue #914. Force now discloses and rechecks active event, queue, and run identities; rejects stale or incomplete approval; and records restart decisions before invoking the service manager. Dev restart remains ungated. No production restart or deployment.
+
 ## 2026-09-06
+
+- **Production admission and concurrency audit**: Added the [read-only production investigation](/reports/production-performance-audit-2026-09-06.md) and [performance/scalability plan](/plans/pibo-performance-and-scalability.md). Confirmed the synchronous room scan, cross-session blocking, and a separate cold-runtime admission delay; defined staged fixes, durable admission, resource budgets, load tests, and release gates. No product-code change, database/session deletion, gateway restart, or production deployment.
 
 - **Selectable Tool payload calculation**: Added `Settings > Debug` controls for bounded character-count factors or opt-in Tiktoken encodings. Each Tool signal rail now records and displays its calculation basis, while legacy metrics remain readable and provider usage/billing stays distinct. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail).
 - **Configurable Tool Debug thresholds**: Added a dedicated `Settings > Debug` panel with the persisted Debug toggle, validated Time/Input/Output severity thresholds, default restoration, and explicit estimated-token caveats. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rail).

@@ -88,6 +88,7 @@ import {
 } from "./models.js";
 import { CodexNativeAuthController } from "./auth.js";
 import { injectPortableHistoryIntoCodex } from "./portable-history.js";
+import { readCodexNativeProviderUsage } from "./provider-usage.js";
 import {
 	CODEX_FIRST_USE_METADATA_KEY,
 	CODEX_FIRST_USE_METADATA_VERSION,
@@ -657,6 +658,16 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		};
 	}
 
+	async getStatusSnapshot(): Promise<AgentRuntimeStatus> {
+		const status = this.getStatus();
+		try {
+			const providerUsage = await readCodexNativeProviderUsage(this.process.client);
+			return providerUsage ? { ...status, providerUsage } : status;
+		} catch {
+			return status;
+		}
+	}
+
 	getNativeCompatibilityHandle(): unknown {
 		return this.process.client;
 	}
@@ -781,8 +792,10 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 		let reboundSettings = false;
 		let phase = "stopping the previous process";
 		try {
-			await previousProcess.close();
+			await previousProcess.stop();
 			this.resourceProcessUnavailable = true;
+			// Generation cleanup may race with exiting MCP children and must not block App Server replacement.
+			void previousProcess.close().catch(() => {});
 			phase = "starting the replacement process";
 			next = await this.reloadProcess();
 			phase = "resuming the native thread";

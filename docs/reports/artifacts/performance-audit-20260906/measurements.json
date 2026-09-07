@@ -1,0 +1,482 @@
+{
+  "schema": "pibo-performance-audit/1",
+  "date": "2026-09-06",
+  "sourceCommit": "90ba3a562b168a9329a7f0917ad6dcf53ccd78df",
+  "productionVersion": "3.4.3",
+  "method": {
+    "browser": "Existing authenticated headful Chrome, MCP DevTools; viewport 1920x911",
+    "uiSample": "A: trusted type_text and Send click; resource observer",
+    "apiSamples": "B-F: same-origin fetch in the existing browser, not UI-composer acceptance tests",
+    "clock": "Browser durations are monotonic; runtime phases use server timestamps. No synchronized cross-host wall-clock latency calculation.",
+    "health": "Separate SSH-side Python process, loopback HTTP, timeout 3 seconds, sleep 0.5 seconds after each response. Closed-loop probe: max is not a complete tail distribution.",
+    "sql": "Read-only Python connection with query_only and per-query progress-handler deadline; separate from browser tests. OS cache not flushed."
+  },
+  "browser": {
+    "ui_a": {
+      "audit": {
+        "started": "2026-09-06T19:10:06.188Z",
+        "resources": [
+          {
+            "url": "/api/chat/message",
+            "startUtc": "2026-09-06T19:12:32.772Z",
+            "durationMs": 2092.400000035763,
+            "ttfbMs": 2090.599999964237,
+            "serverTiming": [
+              {
+                "name": "json_serialize",
+                "duration": 0,
+                "description": ""
+              },
+              {
+                "name": "response_compress",
+                "duration": 0.1,
+                "description": ""
+              }
+            ]
+          }
+        ],
+        "longTasks": []
+      },
+      "finalAnswerObserved": "PERF-AUDIT-A-OK",
+      "pendingLabelObserved": "QUEUED FOR NEXT TURN / Waiting for the active turn to finish."
+    },
+    "cold_small": {
+      "test": "cold-small-room",
+      "status": 200,
+      "ms": 2882.399999976158,
+      "event": {
+        "id": "ce_06d1d572-0bd2-4e50-b82a-21fb7b0aaa84",
+        "createdAt": "2026-09-06T19:16:16.831Z"
+      },
+      "output": "message_queued"
+    },
+    "warm_small": {
+      "status": 200,
+      "ms": 91.80000001192093,
+      "output": "message_queued"
+    },
+    "simultaneous": {
+      "start": "2026-09-06T19:18:10.284Z",
+      "results": [
+        {
+          "txn": "PERF-AUDIT-20260906-C-PARALLEL",
+          "status": 200,
+          "ms": 2297,
+          "output": "message_queued",
+          "queuedMessages": 1,
+          "acceptedCreatedAt": "2026-09-06T19:18:11.697Z"
+        },
+        {
+          "txn": "PERF-AUDIT-20260906-D-PARALLEL",
+          "status": 200,
+          "ms": 109.60000002384186,
+          "output": "message_queued",
+          "queuedMessages": 1,
+          "acceptedCreatedAt": "2026-09-06T19:18:10.556Z"
+        }
+      ]
+    },
+    "staggered": [
+      {
+        "txn": "PERF-AUDIT-20260906-E-STAGGER",
+        "start": "2026-09-06T19:19:05.551Z",
+        "status": 200,
+        "ms": 2268.800000011921,
+        "output": "message_queued",
+        "queuedMessages": 1
+      },
+      {
+        "txn": "PERF-AUDIT-20260906-F-STAGGER",
+        "start": "2026-09-06T19:19:05.707Z",
+        "status": 200,
+        "ms": 2215.100000023842,
+        "output": "message_queued",
+        "queuedMessages": 1
+      }
+    ],
+    "duplicate_retries": [
+      {
+        "txn": "PERF-AUDIT-20260906-C-PARALLEL",
+        "status": 200,
+        "ms": 1028.9000000357628,
+        "duplicate": true,
+        "eventId": "ce_0e9ad3d1-6607-4506-bb36-427ff6a66969"
+      },
+      {
+        "txn": "PERF-AUDIT-20260906-D-PARALLEL",
+        "status": 200,
+        "ms": 288,
+        "duplicate": true,
+        "eventId": "ce_774ae655-aa27-4262-bd04-893cf06d5352"
+      }
+    ],
+    "read_routes": [
+      {
+        "path": "/api/chat/status",
+        "n": 0,
+        "status": 200,
+        "ms": 40.80000001192093,
+        "bodyBytes": 2353,
+        "serverTiming": "json_serialize;dur=0.0, response_compress;dur=0.2"
+      },
+      {
+        "path": "/api/chat/status",
+        "n": 1,
+        "status": 200,
+        "ms": 45.799999952316284,
+        "bodyBytes": 2353,
+        "serverTiming": "json_serialize;dur=0.0, response_compress;dur=0.1"
+      },
+      {
+        "path": "/api/chat/status",
+        "n": 2,
+        "status": 200,
+        "ms": 40.39999997615814,
+        "bodyBytes": 2353,
+        "serverTiming": "json_serialize;dur=0.1, response_compress;dur=0.1"
+      },
+      {
+        "path": "/api/chat/navigation",
+        "n": 0,
+        "status": 200,
+        "ms": 235.70000004768372,
+        "bodyBytes": 40651,
+        "serverTiming": "navigation;desc=\"no_catalog_no_jsonl\", json_serialize;dur=0.3, response_compress;dur=0.5"
+      },
+      {
+        "path": "/api/chat/navigation",
+        "n": 1,
+        "status": 200,
+        "ms": 240.60000002384186,
+        "bodyBytes": 40651,
+        "serverTiming": "navigation;desc=\"no_catalog_no_jsonl\", json_serialize;dur=0.2, response_compress;dur=0.5"
+      },
+      {
+        "path": "/api/chat/navigation",
+        "n": 2,
+        "status": 200,
+        "ms": 242.39999997615814,
+        "bodyBytes": 40651,
+        "serverTiming": "navigation;desc=\"no_catalog_no_jsonl\", json_serialize;dur=0.2, response_compress;dur=0.4"
+      },
+      {
+        "path": "/api/chat/trace/timeline",
+        "n": 0,
+        "status": 200,
+        "ms": 197.9000000357628,
+        "bodyBytes": 124150,
+        "serverTiming": "trace_timeline;dur=150.8, trace_history;dur=0.0, trace_events;desc=\"100\", trace_cache;desc=\"miss\", json_serialize;dur=0.8"
+      },
+      {
+        "path": "/api/chat/trace/timeline",
+        "n": 1,
+        "status": 200,
+        "ms": 110.89999997615814,
+        "bodyBytes": 124150,
+        "serverTiming": "trace_timeline;dur=71.8, trace_history;dur=0.0, trace_events;desc=\"0\", trace_cache;desc=\"page-hit\", json_serialize;dur=0.8"
+      },
+      {
+        "path": "/api/chat/trace/timeline",
+        "n": 2,
+        "status": 200,
+        "ms": 160.4000000357628,
+        "bodyBytes": 124150,
+        "serverTiming": "trace_timeline;dur=66.7, trace_history;dur=0.0, trace_events;desc=\"0\", trace_cache;desc=\"page-hit\", json_serialize;dur=0.7"
+      }
+    ]
+  },
+  "turns": [
+    {
+      "piboSessionId": "ps_5568beb9-fbf4-447f-b732-7affbff84043",
+      "eventId": "web-mtq6v8gj-e7d5b293-3255-4232-ac42-fe919f0f4fb7",
+      "queuedAt": "2026-09-06T19:12:35.723Z",
+      "startedAt": "2026-09-06T19:12:35.744Z",
+      "completedAt": "2026-09-06T19:12:39.206Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 21.0,
+      "runtimeMs": 3462.0,
+      "tools": 0,
+      "providerRequests": [
+        {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-sol",
+          "startedAt": "2026-09-06T19:12:35.767Z",
+          "firstByteAt": "2026-09-06T19:12:37.327Z",
+          "completedAt": "2026-09-06T19:12:39.166Z",
+          "rawEventCount": 11,
+          "bytesReceived": 1864,
+          "captureMode": "metadata_only"
+        }
+      ]
+    },
+    {
+      "piboSessionId": "ps_5568beb9-fbf4-447f-b732-7affbff84043",
+      "eventId": "PERF-AUDIT-20260906-C-PARALLEL",
+      "queuedAt": "2026-09-06T19:18:12.754Z",
+      "startedAt": "2026-09-06T19:18:12.783Z",
+      "completedAt": "2026-09-06T19:18:17.384Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 29.0,
+      "runtimeMs": 4601.0,
+      "tools": 0,
+      "providerRequests": [
+        {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-sol",
+          "startedAt": "2026-09-06T19:18:12.812Z",
+          "firstByteAt": "2026-09-06T19:18:14.461Z",
+          "completedAt": "2026-09-06T19:18:17.341Z",
+          "rawEventCount": 8,
+          "bytesReceived": 1332,
+          "captureMode": "metadata_only"
+        }
+      ]
+    },
+    {
+      "piboSessionId": "ps_6b932a63-bc5d-4016-beca-d12bb78bd838",
+      "eventId": "PERF-AUDIT-20260906-D-PARALLEL",
+      "queuedAt": "2026-09-06T19:18:10.562Z",
+      "startedAt": "2026-09-06T19:18:10.581Z",
+      "completedAt": "2026-09-06T19:18:16.849Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 19.0,
+      "runtimeMs": 6268.0,
+      "tools": 0,
+      "providerRequests": [
+        {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-sol",
+          "startedAt": "2026-09-06T19:18:10.596Z",
+          "firstByteAt": "2026-09-06T19:18:14.378Z",
+          "completedAt": "2026-09-06T19:18:16.814Z",
+          "rawEventCount": 8,
+          "bytesReceived": 1332,
+          "captureMode": "metadata_only"
+        }
+      ]
+    },
+    {
+      "piboSessionId": "ps_6b932a63-bc5d-4016-beca-d12bb78bd838",
+      "eventId": "PERF-AUDIT-20260906-B-SOLO",
+      "queuedAt": "2026-09-06T19:17:14.142Z",
+      "startedAt": "2026-09-06T19:17:14.162Z",
+      "completedAt": "2026-09-06T19:17:17.026Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 20.0,
+      "runtimeMs": 2864.0,
+      "tools": 0,
+      "providerRequests": []
+    },
+    {
+      "piboSessionId": "ps_6b932a63-bc5d-4016-beca-d12bb78bd838",
+      "eventId": "PERF-AUDIT-20260906-B-WARMUP",
+      "queuedAt": "2026-09-06T19:16:19.631Z",
+      "startedAt": "2026-09-06T19:16:19.648Z",
+      "completedAt": "2026-09-06T19:16:22.327Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 17.0,
+      "runtimeMs": 2679.0,
+      "tools": 0,
+      "providerRequests": []
+    },
+    {
+      "piboSessionId": "ps_5568beb9-fbf4-447f-b732-7affbff84043",
+      "eventId": "PERF-AUDIT-20260906-E-STAGGER",
+      "queuedAt": "2026-09-06T19:19:08.003Z",
+      "startedAt": "2026-09-06T19:19:08.032Z",
+      "completedAt": "2026-09-06T19:19:10.492Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 29.0,
+      "runtimeMs": 2460.0,
+      "tools": 0,
+      "providerRequests": [
+        {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-sol",
+          "startedAt": "2026-09-06T19:19:08.063Z",
+          "firstByteAt": "2026-09-06T19:19:09.454Z",
+          "completedAt": "2026-09-06T19:19:10.448Z",
+          "rawEventCount": 8,
+          "bytesReceived": 1332,
+          "captureMode": "metadata_only"
+        }
+      ]
+    },
+    {
+      "piboSessionId": "ps_6b932a63-bc5d-4016-beca-d12bb78bd838",
+      "eventId": "PERF-AUDIT-20260906-F-STAGGER",
+      "queuedAt": "2026-09-06T19:19:08.117Z",
+      "startedAt": "2026-09-06T19:19:08.136Z",
+      "completedAt": "2026-09-06T19:19:09.782Z",
+      "status": "ok",
+      "queuedBehind": 0,
+      "queueDepth": 0,
+      "queueMs": 19.0,
+      "runtimeMs": 1646.0,
+      "tools": 0,
+      "providerRequests": [
+        {
+          "provider": "openai-codex",
+          "model": "gpt-5.6-sol",
+          "startedAt": "2026-09-06T19:19:08.153Z",
+          "firstByteAt": "2026-09-06T19:19:08.979Z",
+          "completedAt": "2026-09-06T19:19:09.750Z",
+          "rawEventCount": 8,
+          "bytesReceived": 1332,
+          "captureMode": "metadata_only"
+        }
+      ]
+    }
+  ],
+  "testObjects": {
+    "roomId": "room_bad7ca2b-6007-4681-983b-9a2b5b16873d",
+    "piboSessionId": "ps_6b932a63-bc5d-4016-beca-d12bb78bd838"
+  },
+  "end": {
+    "gatewayReachable": true,
+    "activeRuntimeSessions": 2,
+    "processing": false,
+    "streaming": false,
+    "queuedMessages": 0,
+    "activeYieldedRuns": 0,
+    "traceChecks": [
+      {
+        "session": "existing",
+        "checks": "ok",
+        "issues": 0,
+        "nodeErrors": 34,
+        "note": "Historical tool-error nodes outside the seven no-tool audit turns."
+      },
+      {
+        "session": "audit",
+        "checks": "ok",
+        "issues": 0,
+        "nodeErrors": 0
+      }
+    ],
+    "consoleErrorsListed": 0,
+    "consoleWarnings": "Repeated unused-preload warnings; not a clean-warning claim.",
+    "uiEnd": {
+      "utc": "2026-09-06T19:23:19.749Z",
+      "viewport": {
+        "width": 1920,
+        "height": 911
+      },
+      "composerEmpty": true,
+      "finalAnswerVisible": false,
+      "resources": {
+        "gateway": {
+          "memory": {
+            "heapUsed": 175089776,
+            "heapTotal": 294486016,
+            "rss": 459591680,
+            "external": 28176338,
+            "arrayBuffers": 2899791
+          },
+          "eventLoopDelay": {
+            "meanMs": 21.055532419244322,
+            "maxMs": 50532.974591,
+            "p95Ms": 21.069823
+          },
+          "streams": {
+            "liveListeners": 3,
+            "activeEventStreams": 1,
+            "activeTraceSessions": 7
+          },
+          "traceCache": {
+            "entries": 24,
+            "estimatedBytes": 3371048
+          },
+          "traceTimelinePageCache": {
+            "entries": 17,
+            "estimatedBytes": 1998857,
+            "maxBytes": 2097152
+          },
+          "transientReplay": {
+            "events": 188,
+            "estimatedBytes": 2040333,
+            "maxEvents": 1000,
+            "maxBytes": 2097152
+          },
+          "reliabilityPayloads": {
+            "inline": 3647,
+            "over_64kb": 6,
+            "over_1mb": 0,
+            "over_10mb": 0
+          },
+          "reliabilityPayloadExternalized": 6,
+          "recentWarnings": []
+        }
+      }
+    }
+  },
+  "health": {
+    "idle_no_message": {
+      "samples": 169,
+      "medianMs": 1.93,
+      "maxMs": 270.3,
+      "errors": 0,
+      "ioDelta": {
+        "rchar": 80079969,
+        "wchar": 27812638,
+        "syscr": 27251,
+        "syscw": 11165,
+        "read_bytes": 0,
+        "write_bytes": 25989120,
+        "cancelled_write_bytes": 25583616
+      },
+      "file": "health-single.json"
+    },
+    "ui_a": {
+      "samples": 165,
+      "medianMs": 1.81,
+      "maxMs": 1916.47,
+      "errors": 0,
+      "ioDelta": {
+        "rchar": 3799294790,
+        "wchar": 67152778,
+        "syscr": 930992,
+        "syscw": 19329,
+        "read_bytes": 1429504,
+        "write_bytes": 64471040,
+        "cancelled_write_bytes": 56381440
+      },
+      "file": "health-ui-a.json"
+    },
+    "simultaneous": {
+      "samples": 164,
+      "medianMs": 1.79,
+      "maxMs": 2154.15,
+      "errors": 0,
+      "ioDelta": {
+        "rchar": 3680022059,
+        "wchar": 37881521,
+        "syscr": 906442,
+        "syscw": 12784,
+        "read_bytes": 159744,
+        "write_bytes": 36532224,
+        "cancelled_write_bytes": 28839936
+      },
+      "file": "health-parallel.json"
+    }
+  },
+  "limitations": [
+    "Initial fill/click attempt sent no request; excluded from message timings. Its health sample is idle baseline.",
+    "One MCP bridge connection failure preceded C/D; persisted events were checked before retrying the same ids.",
+    "No stress test above two concurrent sessions, no cold OS-cache test, no injected locks/crashes, no code fix or production deployment.",
+    "C-F API sends were verified in server telemetry; full render acceptance for them is not claimed. E was not found in the virtualized visible DOM at the end.",
+    "Operator debug resources CLI reported its own short-lived PID; gateway memory comes from authenticated live debug/resources and /proc."
+  ]
+}
