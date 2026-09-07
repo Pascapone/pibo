@@ -131,6 +131,8 @@ test("async telemetry writer bounds its queue without dropping ordered work", as
 		writer.enqueue(() => order.push(1));
 		writer.enqueue(() => { throw new Error("isolated telemetry failure"); });
 		writer.enqueue(() => order.push(3));
+		assert.deepEqual(order, [], "queue pressure must never run SQLite in the producer");
+		await writer.flush();
 		assert.deepEqual(order, [1, 3]);
 		assert.equal(errors.length, 1);
 		assert.deepEqual(transactions.counts(), { begins: 1, commits: 1 });
@@ -169,7 +171,8 @@ test("async telemetry writer batches concurrent session lifecycle load globally"
 		}
 
 		await writer.flush();
-		assert.deepEqual(transactions.counts(), { begins: 1, commits: 1 });
+		assert.equal(transactions.counts().begins, Math.ceil(sessionCount * 23 / 64));
+		assert.equal(transactions.counts().commits, transactions.counts().begins);
 		for (let index = 0; index < sessionCount; index += 1) {
 			assert.equal(store.telemetry.getTurnTimeline(turnIdForEvent(`evt_load_${index}`)).turn.status, "ok");
 		}

@@ -453,6 +453,11 @@ export type RecoveredTelemetryTurn = {
 
 export class TelemetryStore {
 	constructor(private readonly db: DatabaseSync) {}
+	/** SQLite-owned path; empty for the explicitly local in-memory test adapter. */
+	get databasePath(): string | undefined {
+		const row=this.db.prepare("PRAGMA database_list").all().find(row=>row.name === "main");
+		return typeof row?.file === "string" && row.file ? row.file : undefined;
+	}
 
 	transaction<T>(action: () => T): T {
 		if (this.db.isTransaction) return action();

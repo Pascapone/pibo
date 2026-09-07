@@ -1,125 +1,101 @@
 import type { TelemetryStore } from "./telemetry.js";
-
+import { BoundedWorkerClient, boundedMessageBytes } from "./bounded-worker-client.js";
+import { isTelemetryProgress, type TelemetryCommand } from "./telemetry-command.js";
 export type AsyncTelemetryWriterOptions = {
-	/** Delay used to collect telemetry from concurrent routed sessions into one transaction. */
-	flushIntervalMs?: number;
-	/** Hard queue bound. Reaching it drains synchronously rather than dropping telemetry. */
-	maxPendingOperations?: number;
-	onError?: (error: unknown) => void;
+ measure?:boolean; flushIntervalMs?:number; maxPendingOperations?:number; maxPendingBytes?:number; maxAgeMs?:number;
+ onError?:(error:unknown)=>void;
 };
-
-type PendingTelemetryOperation = {
-	write: () => void;
-	onError?: (error: unknown) => void;
-};
-
-const DEFAULT_FLUSH_INTERVAL_MS = 25;
-const DEFAULT_MAX_PENDING_OPERATIONS = 1_024;
-
-/**
- * Gateway-scoped, ordered telemetry writer.
- *
- * Normal writes are deferred briefly so telemetry from multiple routed sessions
- * shares one SQLite transaction. The queue never drops lifecycle events: when
- * the hard bound is reached, it drains immediately in the caller instead.
- */
+type Pending={command?:TelemetryCommand;write?:()=>void;onError?: (error:unknown)=>void;bytes:number;at:number;sequence?:number};
+/** Optional diagnostic projection. Product lifecycle/final events remain owned by the durable output outbox. */
 export class AsyncTelemetryWriter {
-	private readonly flushIntervalMs: number;
-	private readonly maxPendingOperations: number;
-	private pending: PendingTelemetryOperation[] = [];
-	private flushTimer?: ReturnType<typeof setTimeout>;
-	private flushing = false;
-	private closed = false;
-
-	constructor(
-		private readonly store: TelemetryStore,
-		private readonly options: AsyncTelemetryWriterOptions = {},
-	) {
-		this.flushIntervalMs = nonNegativeFinite(options.flushIntervalMs, DEFAULT_FLUSH_INTERVAL_MS);
-		this.maxPendingOperations = positiveInteger(options.maxPendingOperations, DEFAULT_MAX_PENDING_OPERATIONS);
-	}
-
-	enqueue(write: () => void, onError?: (error: unknown) => void): boolean {
-		if (this.closed) {
-			this.reportError(new Error("Telemetry writer is closed."), onError);
-			return false;
-		}
-		this.pending.push({ write, onError });
-		if (this.pending.length >= this.maxPendingOperations) {
-			this.flushNow();
-		} else {
-			this.scheduleFlush();
-		}
-		return true;
-	}
-
-	async flush(): Promise<void> {
-		this.flushNow();
-	}
-
-	async dispose(): Promise<void> {
-		if (this.closed) return;
-		this.flushNow();
-		this.closed = true;
-	}
-
-	private scheduleFlush(): void {
-		if (this.flushTimer) return;
-		this.flushTimer = setTimeout(() => {
-			this.flushTimer = undefined;
-			this.flushNow();
-		}, this.flushIntervalMs);
-		this.flushTimer.unref();
-	}
-
-	private flushNow(): void {
-		if (this.flushing) return;
-		if (this.flushTimer) clearTimeout(this.flushTimer);
-		this.flushTimer = undefined;
-		this.flushing = true;
-		try {
-			while (this.pending.length > 0) {
-				const batch = this.pending;
-				this.pending = [];
-				try {
-					this.store.transaction(() => {
-						for (const operation of batch) {
-							try {
-								operation.write();
-							} catch (error) {
-								this.reportError(error, operation.onError);
-							}
-						}
-					});
-				} catch (error) {
-					for (const operation of batch) this.reportError(error, operation.onError);
-				}
-			}
-		} finally {
-			this.flushing = false;
-			if (!this.closed && this.pending.length > 0) this.scheduleFlush();
-		}
-	}
-
-	private reportError(error: unknown, operationHandler?: (error: unknown) => void): void {
-		try {
-			operationHandler?.(error);
-		} catch {
-			// Telemetry error reporting must not affect runtime work.
-		}
-		if (operationHandler === this.options.onError) return;
-		try {
-			this.options.onError?.(error);
-		} catch {
-			// Telemetry error reporting must not affect runtime work.
-		}
-	}
-}
-
-function nonNegativeFinite(value: number | undefined, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-function positiveInteger(value: number | undefined, fallback: number): number {
-	return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+ private readonly client?:BoundedWorkerClient;
+ private readonly pending:Pending[]=[];
+ private pendingBytes=0;
+ private inFlight=0;
+ private flushTimer?:ReturnType<typeof setTimeout>;
+ private flushing?:Promise<void>;
+ private closed=false;
+ private readonly limit:number;
+ private readonly byteLimit:number;
+ private readonly ageLimit:number;
+ private readonly interval:number;
+ private accepted=0; private completed=0; private rejected=0; private failed=0; private expired=0;
+ private batches=0; private maxBatchMs=0; private workerStats?:Record<string,unknown>;
+ constructor(private readonly store:TelemetryStore,private readonly options:AsyncTelemetryWriterOptions={}) {
+  this.limit=options.maxPendingOperations??1024;this.byteLimit=options.maxPendingBytes??4*1024*1024;
+  this.ageLimit=options.maxAgeMs??2000;this.interval=options.flushIntervalMs??25;
+  for(const n of [this.limit,this.byteLimit,this.ageLimit])if(!Number.isSafeInteger(n)||n<=0)throw Error("Telemetry budgets must be positive integers");
+  if(!Number.isFinite(this.interval)||this.interval<0)throw Error("Invalid telemetry batching interval");
+  const path=store.databasePath;
+  if(path)this.client=new BoundedWorkerClient(new URL("./telemetry-worker.js",import.meta.url),{maxPending:1,maxPendingBytes:512*1024,maxMessageBytes:512*1024,maxAgeMs:this.ageLimit,workerOptions:{workerData:{path,measure:options.measure===true}}});
+ }
+ /** Compatibility for the local in-memory adapter only; closures never execute on a file-backed producer. */
+ enqueue(write:()=>void,onError?:(error:unknown)=>void):boolean {
+  if(this.client){this.reject(Error("File telemetry requires a structured command"),onError);return false;}
+  return this.append({write,onError,bytes:64,at:performance.now()},false);
+ }
+ record(command:TelemetryCommand,fallback:()=>void,onError?:(error:unknown)=>void):boolean {
+  try {
+   const bytes=boundedMessageBytes(command,64*1024);
+   return this.append({...(this.client?{command:structuredClone(command)}:{write:fallback}),bytes,onError,at:performance.now()},isTelemetryProgress(command));
+  }catch(error){this.reject(error,onError);return false;}
+ }
+ private append(item:Pending,progress:boolean):boolean {
+  const reserve=progress?Math.min(128,Math.floor(this.limit/4)):0;
+  const reserveBytes=progress?Math.min(512*1024,Math.floor(this.byteLimit/4)):0;
+  if(this.closed||this.pending.length+this.inFlight>=this.limit-reserve||this.pendingBytes+item.bytes>this.byteLimit-reserveBytes){
+   this.reject(Error(this.closed?"Telemetry writer is closed":"Optional telemetry capacity exhausted"),item.onError);return false;
+  }
+  item.sequence=++this.accepted;this.pending.push(item);this.pendingBytes+=item.bytes;
+  // Pressure only schedules asynchronous work; it never drains SQLite in the producer.
+  this.schedule(this.pending.length>=64?0:this.interval);return true;
+ }
+ private schedule(delay:number):void {
+  if(this.flushTimer||this.flushing||this.closed)return;
+  this.flushTimer=setTimeout(()=>{this.flushTimer=undefined;void this.flush();},delay);this.flushTimer.unref?.();
+ }
+ async flush():Promise<void> {
+  const target=this.accepted;
+  if(this.flushTimer)clearTimeout(this.flushTimer);this.flushTimer=undefined;
+  for(;;){
+   if(this.flushing){await this.flushing;continue;}
+   if(!this.pending.length || this.pending[0]!.sequence!>target)return;
+   this.flushing=this.drain(target).finally(()=>{this.flushing=undefined;if(this.pending.length&&!this.closed)this.schedule(0);});
+   await this.flushing;
+  }
+ }
+ private async drain(target:number):Promise<void> {
+  while(this.pending.length && this.pending[0]!.sequence!<=target){
+   const batch:Pending[]=[];let bytes=0;
+   while(this.pending.length && this.pending[0]!.sequence!<=target && batch.length<64 && bytes+this.pending[0]!.bytes<=256*1024){const item=this.pending.shift()!;bytes+=item.bytes;batch.push(item);}
+   this.inFlight=batch.length;
+   const live=batch.filter(item=>{if(performance.now()-item.at<=this.ageLimit)return true;this.expired++;return false;});
+   let processed=live.length;
+   try {
+    if(live.length && this.client){
+     // Startup consumes the same bounded queue age, without loading a second schema owner on the gateway thread.
+     while(!this.client.status().ready&&!this.client.status().closed&&performance.now()-live[0]!.at<this.ageLimit)await new Promise(resolve=>setTimeout(resolve,5));
+     const remainingAge=this.ageLimit-(performance.now()-live[0]!.at);
+     if(remainingAge<=0)processed=0;
+     else {
+      const result=await this.client.request<{processed:number;errors:number;ms:number;stats:Record<string,unknown>}>({commands:live.map(item=>item.command)},{priority:"background",timeoutMs:remainingAge});
+      processed=result.processed;this.failed+=result.errors;this.completed+=processed-result.errors;
+      this.maxBatchMs=Math.max(this.maxBatchMs,result.ms);this.workerStats=result.stats;this.batches++;
+     }
+    }else if(live.length){
+     // Explicit in-memory test adapter uses the same bounded batches and asynchronous entry boundary.
+     await new Promise<void>(resolve=>setImmediate(resolve));
+     this.store.transaction(()=>{for(const item of live){try{item.write?.();this.completed++;}catch(error){this.failed++;this.report(error,item.onError);}}});this.batches++;
+    }
+   }catch(error){this.failed+=live.length;for(const item of live)this.report(error,item.onError);}
+   const remaining=live.slice(processed);
+   this.pending.unshift(...remaining);
+   this.pendingBytes-=bytes-remaining.reduce((sum,item)=>sum+item.bytes,0);this.inFlight=0;
+   if(remaining.length)await new Promise(resolve=>setTimeout(resolve,10));
+  }
+ }
+ status(){return {mode:this.client?"worker":"in-memory",closed:this.closed,queued:this.pending.length,inFlight:this.inFlight,pendingBytes:this.pendingBytes,oldestAgeMs:this.pending.length?performance.now()-this.pending[0]!.at:0,accepted:this.accepted,completed:this.completed,rejected:this.rejected,failed:this.failed,expired:this.expired,batches:this.batches,maxBatchMs:this.maxBatchMs,worker:this.workerStats,transport:this.client?{ready:this.client.status().ready,closed:this.client.status().closed}:undefined,limits:{count:this.limit,bytes:this.byteLimit,ageMs:this.ageLimit,batchCount:64,batchBytes:256*1024,batchTimeMs:8}};}
+ async dispose():Promise<void>{if(this.closed)return;this.closed=true;await this.flush();await this.client?.close();}
+ private reject(error:unknown,handler?: (error:unknown)=>void):void{this.rejected++;this.report(error,handler);}
+ private report(error:unknown,handler?: (error:unknown)=>void):void {try{handler?.(error);}catch{}if(handler!==this.options.onError)try{this.options.onError?.(error);}catch{}}
 }

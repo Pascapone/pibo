@@ -1512,7 +1512,7 @@ export class PiboSessionRouter {
 		}
 	}
 
-	getRuntimeCapacityStatus(): RuntimeCapacityStatus { return { ...this.capacity.snapshot(), activeRuntimes: this.sessions.size, initializingRuntimes: this.creatingRuntimes, recentInitializations: this.initializationTimings.map(item=>({...item,phases:{...item.phases}})) }; }
+	getRuntimeCapacityStatus(): RuntimeCapacityStatus { return { ...this.capacity.snapshot(), telemetry:this.telemetryWriter?.status(), activeRuntimes: this.sessions.size, initializingRuntimes: this.creatingRuntimes, recentInitializations: this.initializationTimings.map(item=>({...item,phases:{...item.phases}})) }; }
 
 	private async createRoutedSessionWithinCapacity(piboSessionId: string, signal: AbortSignal): Promise<RoutedSession> {
 		const stored = this.resolvePiboSession(piboSessionId);

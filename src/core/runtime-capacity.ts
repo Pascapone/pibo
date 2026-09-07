@@ -1,6 +1,8 @@
+import type { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
 export type RuntimeInitializationTiming = { sessionId: string; waitMs: number; totalMs: number; phases: Record<string,number>; outcome: "ready" | "failed" };
 export type RuntimeCapacityStatus = ReturnType<RuntimeCapacity["snapshot"]> & {
  activeRuntimes: number; initializingRuntimes: number; recentInitializations: RuntimeInitializationTiming[];
+ telemetry?:ReturnType<AsyncTelemetryWriter["status"]>;
 };
 export type CapacityLease = { release(): void };
 export type RuntimeCapacityOptions = {

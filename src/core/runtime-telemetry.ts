@@ -13,10 +13,11 @@ import {
 	type TelemetryTurnSource,
 	type TelemetryTurnStatus,
 } from "../data/telemetry.js";
+import type { RuntimeTelemetryCommand } from "../data/telemetry-command.js";
 import type { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
 import { isTerminalProviderStatus } from "./provider-telemetry.js";
 
-type RuntimeTelemetryContext = {
+export type RuntimeTelemetryContext = {
 	session?: PiboSession;
 	status?: PiboSessionStatus;
 	activeEventId?: string;
@@ -38,7 +39,7 @@ export type PiboRuntimeTelemetryRecorderOptions = {
 	writer?: AsyncTelemetryWriter;
 };
 
-type PiProviderEventSummary = {
+export type PiProviderEventSummary = {
 	eventType: string;
 	messageEnded: boolean;
 	assistantEventType?: string;
@@ -76,6 +77,14 @@ type PendingProviderProgress = {
 	eventTypeCounts: Record<string, number>;
 };
 
+/** Diagnostic cache only: terminal events clear their keys; the cap also contains orphaned/incomplete histories. */
+class TelemetryProgressMap<T> extends Map<string,T> {
+ override set(key:string,value:T):this {
+  if(!this.has(key)&&this.size>=1024)this.delete(this.keys().next().value!);
+  return super.set(key,value);
+ }
+}
+
 const TERMINAL_TURN_STATUSES = new Set<TelemetryTurnStatus>(["ok", "error", "aborted", "timeout"]);
 const DEFAULT_PROGRESS_FLUSH_INTERVAL_MS = 1_000;
 
@@ -84,10 +93,10 @@ export class PiboRuntimeTelemetryRecorder {
 	private readonly providerEventMode: ProviderEventTelemetryMode;
 	private readonly progressFlushIntervalMs: number;
 	private readonly writer?: AsyncTelemetryWriter;
-	private readonly pendingProviderProgress = new Map<string, PendingProviderProgress>();
-	private readonly providerRequestCache = new Map<string, StoredTelemetryProviderRequest>();
-	private readonly lastProviderFlushAtMs = new Map<string, number>();
-	private readonly lastProgressWriteAtMs = new Map<string, number>();
+	private readonly pendingProviderProgress = new TelemetryProgressMap<PendingProviderProgress>();
+	private readonly providerRequestCache = new TelemetryProgressMap<StoredTelemetryProviderRequest>();
+	private readonly lastProviderFlushAtMs = new TelemetryProgressMap<number>();
+	private readonly lastProgressWriteAtMs = new TelemetryProgressMap<number>();
 
 	constructor(
 		private readonly store?: TelemetryStore,
@@ -107,7 +116,7 @@ export class PiboRuntimeTelemetryRecorder {
 		if (!this.store) return;
 		const captured = captureTelemetryContext(context);
 		const capturedEvent = telemetryOutputEventSnapshot(event);
-		this.schedule(() => this.recordOutputUnsafe(capturedEvent, captured));
+		this.schedule({kind:"output",event:capturedEvent,context:captured}, () => this.recordOutputUnsafe(capturedEvent, captured));
 	}
 
 	recordPiEvent(piboSessionId: string, event: unknown, context: RuntimeTelemetryContext = {}): void {
@@ -115,21 +124,27 @@ export class PiboRuntimeTelemetryRecorder {
 		const summary = providerEventSummaryForPiEvent(event);
 		if (!summary) return;
 		const captured = captureTelemetryContext(context);
-		this.schedule(() => this.recordPiEventSummaryUnsafe(piboSessionId, summary, captured));
+		this.schedule({kind:"pi",piboSessionId,summary,context:captured}, () => this.recordPiEventSummaryUnsafe(piboSessionId, summary, captured));
 	}
 
 	recordMessagesInterrupted(messages: readonly PiboMessageEvent[], context: RuntimeTelemetryContext = {}, reason = "message interrupted"): void {
 		if (!this.store) return;
 		const captured = captureTelemetryContext(context);
 		const interrupted = messages.flatMap((message) => message.id ? [{ piboSessionId: message.piboSessionId, eventId: message.id }] : []);
-		this.schedule(() => {
+		this.schedule({kind:"interrupted",messages:interrupted,context:captured,reason}, () => {
 			for (const message of interrupted) {
 				this.recordTurnTerminal(message, captured, "aborted", "abort", reason, "runtime_abort");
 			}
 		});
 	}
 
-	private schedule(write: () => void): void {
+	executeTelemetryCommand(command: RuntimeTelemetryCommand): void {
+		if(command.kind === "output") this.recordOutputUnsafe(command.event,command.context);
+		else if(command.kind === "pi") this.recordPiEventSummaryUnsafe(command.piboSessionId,command.summary,command.context);
+		else for(const message of command.messages)this.recordTurnTerminal(message,command.context,"aborted","abort",command.reason,"runtime_abort");
+	}
+
+	private schedule(command: RuntimeTelemetryCommand, write: () => void): void {
 		const guarded = () => {
 			try {
 				write();
@@ -137,7 +152,7 @@ export class PiboRuntimeTelemetryRecorder {
 				this.onError?.(error);
 			}
 		};
-		if (this.writer) this.writer.enqueue(guarded, this.onError);
+		if (this.writer) this.writer.record({recorder:"runtime",command,providerEventMode:this.providerEventMode,progressFlushIntervalMs:this.progressFlushIntervalMs},guarded,this.onError);
 		else guarded();
 	}
 
@@ -1226,6 +1241,7 @@ function telemetryOutputEventSnapshot(event: PiboOutputEvent): PiboOutputEvent {
 	if (event.type === "tool_execution_updated") return { ...event, partialResult: undefined };
 	if (event.type === "tool_execution_finished") return { ...event, result: event.isError ? safeErrorMessage(event.result) : undefined };
 	if (event.type === "execution_result") return { ...event, result: undefined };
+	if (event.type === "assistant_delta" || event.type === "thinking_delta" || event.type === "assistant_message" || event.type === "message_queued" || event.type === "message_started") return { ...event, text: "" };
 	return { ...event };
 }
 
@@ -1234,8 +1250,8 @@ function captureTelemetryContext(context: RuntimeTelemetryContext): RuntimeTelem
 	const atMs = context.atMs ?? (Number.isFinite(parsedAtMs) ? parsedAtMs : Date.now());
 	return {
 		...context,
-		session: context.session ? { ...context.session, metadata: context.session.metadata ? { ...context.session.metadata } : undefined } : undefined,
-		status: context.status ? { ...context.status, activeTools: [...context.status.activeTools], enabledTools: [...context.status.enabledTools] } : undefined,
+		session: context.session ? { ...context.session, metadata: context.session.metadata ? { chatRoomId:context.session.metadata.chatRoomId, rootSessionId:context.session.metadata.rootSessionId } : undefined } : undefined,
+		status: context.status ? { ...context.status, activeTools: [], enabledTools: [] } : undefined,
 		at: context.at ?? new Date(atMs).toISOString(),
 		atMs,
 	};
