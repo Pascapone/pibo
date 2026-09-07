@@ -1219,6 +1219,15 @@ test("chat web automatically retries a once-only final persistence failure witho
 		assert.equal(rows.length, 1);
 		assert.equal(rows[0].preview_text, "persist once");
 
+		await waitForCondition(() => {
+			const reliability = new PiboReliabilityStore(reliabilityStorePath);
+			try {
+				return reliability.listJobs({ queue: "output-persistence" }).length === 0;
+			} finally {
+				reliability.close();
+			}
+		}, "automatic retry did not complete reliability delivery");
+
 		const reliability = new DatabaseSync(reliabilityStorePath, { readOnly: true });
 		try {
 			const deliveries = reliability.prepare("SELECT event_id, idempotency_key FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").all(session.id);
