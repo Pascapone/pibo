@@ -1,0 +1,35 @@
+{
+  "baselineCommit": "90ba3a562b168a9329a7f0917ad6dcf53ccd78df",
+  "platform": "Linux; separate documentation-only validation clone, no gateway operation",
+  "dependency": "yaml 2.9.0, matching package lock",
+  "checks": {
+    "docs:indexes:write": "pass; two owning indexes regenerated",
+    "docs:validate:okf": "pass",
+    "docs:validate:migration": "pass",
+    "docs:indexes:check": "pass",
+    "docs:log:check": "pass",
+    "docs:validator:test": "84 passed, 0 failed",
+    "docs:validate / docs:validate:strict": "fails with exactly the same three missing-image links as clean upstream/dev baseline",
+    "git diff --check": "pass"
+  },
+  "preExistingStrictErrors": [
+    "ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/desktop-inspection.png",
+    "ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/desktop-manual-result.png",
+    "ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/mobile-manual-dialog.png"
+  ],
+  "windowsLimitation": "MIGRATION_LEDGER_PATH_CHANGED at docs: ENOENT in repository-path-safety; validator not modified. Linux validation used instead.",
+  "productTests": "Not run: investigation and documentation only. No product code changed.",
+  "originalReportPreservedExactly": true,
+  "safety": {
+    "databasesDeleted": false,
+    "sessionsDeleted": false,
+    "gatewayRestarted": false,
+    "codeDeployed": false,
+    "newTestMessages": 7,
+    "duplicateRetries": 2,
+    "newTestRooms": 1,
+    "newTestSessions": 1,
+    "finalGateway": "reachable, two idle runtimes, zero queued messages and zero active yielded runs",
+    "browserObservers": "temporary observers and audit globals removed; composer empty"
+  }
+}

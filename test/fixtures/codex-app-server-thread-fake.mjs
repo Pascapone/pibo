@@ -817,6 +817,33 @@ if (args[0] === "--version") {
 			send({ id: message.id, result: { data, nextCursor: null } });
 			return;
 		}
+		if (message.method === "account/rateLimits/read") {
+			send({ id: message.id, result: {
+				rateLimits: {
+					limitId: "codex",
+					limitName: null,
+					planType: "pro",
+					primary: { usedPercent: 75, windowDurationMins: 10_080, resetsAt: 1_789_191_143 },
+					secondary: null,
+					credits: { hasCredits: false, unlimited: false, balance: "0" },
+				},
+				rateLimitsByLimitId: {
+					codex: { limitId: "codex" },
+					codex_bengalfox: {
+						limitId: "codex_bengalfox",
+						limitName: "GPT-5.3-Codex-Spark",
+						primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: 1_788_749_401 },
+						secondary: { usedPercent: 6, windowDurationMins: 10_080, resetsAt: 1_789_244_431 },
+					},
+					base_model_inference: {
+						limitId: "base_model_inference",
+						limitName: "gpt-reserve",
+						primary: { usedPercent: 0, windowDurationMins: 10_080, resetsAt: 1_789_336_201 },
+					},
+				},
+			} });
+			return;
+		}
 		if (message.method === "thread/start") {
 			const threadId = `thread-${state.nextThread++}`;
 			const thread = makeThread(state, threadId, params.cwd ?? process.cwd(), { path: null });

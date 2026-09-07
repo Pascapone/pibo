@@ -1,0 +1,20 @@
+Cloning into '/tmp/pibo-perf-docs-baseline-20260906'...
+done.
+HEAD is now at 90ba3a56 Merge pull request #948 from piboschott/feature/slim-tool-expand
+
+> @pasko70/pibo@1.7.2 docs:validate
+> npm run docs:validate:strict
+
+
+> @pasko70/pibo@1.7.2 docs:validate:strict
+> node scripts/validate-okf-docs.mjs --mode strict
+
+OKF strict validation: FAIL
+Markdown paths: 778 (git)
+Ledger records: 778
+States: conformant=624 reserved=107 pending=0 host-exception=47
+Errors: 3; warnings: 0
+  PIBO_LINK_MISSING: 3
+ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/desktop-inspection.png
+ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/desktop-manual-result.png
+ERROR [pibo-profile:PIBO_LINK_MISSING] docs/reports/session-native-workflow-transition-validation-2026-09-05.md: Internal link target does not exist: /reports/artifacts/session-native-workflows-2026-09-05/mobile-manual-dialog.png

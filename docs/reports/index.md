@@ -58,6 +58,7 @@
 * [Private Chat Upload Storage Validation — 2026&#45;08&#45;20](private-chat-upload-storage-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Private Pibo Home Validation — 2026&#45;08&#45;20](private-pibo-home-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Production Dependency Hardening Validation — 2026&#45;08&#45;20](production-dependency-hardening-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Produktionsaudit: Nachrichtenannahme, Parallelität und Datenbankwachstum](production-performance-audit-2026-09-06.md) - Überprüft die gemeldete Nachrichtenlatenz anhand neuer Produktionsmessungen und trennt bestätigte Engpässe von Architektur&#45;Risiken&#46;
 * [Report: Chat Web Trace V2 Spec Sync &#45; 2026&#45;07&#45;05](chat-web-trace-v2-spec-sync-2026-07-05.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Report: Gateway OOM Follow&#45;up — 2026&#45;07&#45;04](gateway-oom-followup-2026-07-04.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Report: LangGraph as Reference, XState as Orchestration Model, Pibo&#45;Native Workflow System](2026-05-10-langgraph-xstate-pibo-workflow-plan.md) - Preserves the original report body as stable research without promoting historical claims&#46;

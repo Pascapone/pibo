@@ -1,0 +1,40 @@
+{
+  "utc": "2026-09-06T19:22:36.198Z",
+  "node": "v24.15.0",
+  "sqlite": "3.51.3",
+  "readOnly": true,
+  "measurements": [
+    {
+      "name": "deployed_findByClientTxn_missing",
+      "queryMs": 1022.4112319999999,
+      "timerDelayMs": 1022.6733549999999,
+      "found": false
+    },
+    {
+      "name": "deployed_indexed_missing",
+      "queryMs": 0.17771399999992354,
+      "timerDelayMs": 1.3171729999999116,
+      "found": false
+    }
+  ],
+  "telemetryRetention": {
+    "enabled": false,
+    "days": 30,
+    "lastPrunedAt": "2026-07-04T18:30:23.476Z"
+  },
+  "deployedFiles": {
+    "dist/apps/chat/data/event-command-service.js": "598c11bc1ac8c05a6ffdd4cd803463af93b1c69a553021e0554242067762aaea",
+    "dist/apps/chat/web-app.js": "4bad13290ffbcd4fb29d9a62c47b189bc280bed63e9f152e3c513e6db362bc23",
+    "dist/data/telemetry-writer.js": "6612a265b2ce70140222e16da2e34f66cfe21f8e3f07d333ab7d365aa609c5c9",
+    "dist/data/pibo-store.js": "25e1ede662c07320ff68dc8b8eabb54202450b8f521791096f7968c391255ce7",
+    "dist/data/ingest-service.js": "1b295c50f7723b5a13435f9532fdb848592e7a95b18e43bb99104ce9c9e227f0",
+    "dist/core/output-persistence-retry.js": "d3712a5c582898d6224ef2068e4ff99b56cb9efb38be24c397f844f246194c64",
+    "dist/agent-runtime/routed-session.js": "88d70c8e769316254d88ee44574b58fda3e70fe6e8c09efc86724251fab18d46"
+  },
+  "dbFiles": {
+    "pibo.sqlite": 6685417472,
+    "pibo.sqlite-wal": 78593152,
+    "pibo-events.sqlite": 5054832640,
+    "pibo-events.sqlite-wal": 17963232
+  }
+}

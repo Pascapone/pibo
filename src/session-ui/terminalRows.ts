@@ -173,14 +173,7 @@ function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode)
 		const slimRow: CompactTerminalRow = {
 			...row,
 			lines: row.lines.slice(0, 1),
-			input: undefined,
-			output: undefined,
-			error: undefined,
-			markdown: undefined,
-			expandable: false,
 			singleLine: true,
-			previewOmission: undefined,
-			detailItems: undefined,
 		};
 		if (mode !== "intent") return [slimRow];
 		return [{
@@ -191,6 +184,13 @@ function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode)
 				prefix: "bullet",
 				tokens: [token(intent!, row.status === "error" ? "red" : row.status === "done" ? "green" : "cyan", "semibold")],
 			}],
+			input: undefined,
+			output: undefined,
+			error: undefined,
+			markdown: undefined,
+			expandable: false,
+			previewOmission: undefined,
+			detailItems: undefined,
 		}];
 	});
 }
