@@ -41,7 +41,7 @@ Die Produktionsprüfung belegt zwei getrennte Probleme:
 
 Die 18,34 Sekunden des Erstberichts wurden nicht erneut erzwungen. Der zugrunde liegende Ausfallmodus ist bestätigt; warme Cache-Zustände machen ihn nur weniger sichtbar. Alle neuen Messungen, Einschränkungen und Codebezüge stehen im [Produktionsaudit](/reports/production-performance-audit-2026-09-06.md).[^audit]
 
-**Stand:** Analyse abgeschlossen, Implementierung nicht begonnen, keine Produktionsfreigabe erteilt. Dieser Plan erlaubt keine Löschung von Datenbanken oder Sessions und keine automatische Event-Bereinigung.
+**Stand:** Paket A ist implementiert und als PR #953 offen; [Implementierung und Nachweise](/reports/performance-scalability-p0-2026-09-06.md). Paket B hat das lokale Integrationsgate und die erneute Pibo2-Abnahme bestanden; [204 Tests und exakte Kandidatenevidenz](/reports/performance-scalability-storage-final-2026-09-07.md). Pakete C–H bleiben offen. Die Gesamtabnahme ist offen; keine Produktionsfreigabe erteilt. Dieser Plan erlaubt keine Löschung von Datenbanken oder Sessions und keine automatische Event-Bereinigung.
 
 # 1. Ziel und Nichtziele
 
@@ -390,6 +390,8 @@ Nach Unit-/Lasttests im isolierten Worker und nach Deployment auf Dev:
 - Browser Use für den Nutzerfluss, DevTools/CDP für technische Evidenz; existierenden authentifizierten Browser beziehungsweise vorgesehenen Auth-Lease verwenden.
 
 # 8. Reihenfolge, Arbeitspakete und Freigaben
+
+Stand 7. September 2026: A und B sind separat zur Review vorbereitet. C hat den lokalen Build, Recovery-/Crash-Tests und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Command-Abnahmebericht](/reports/performance-scalability-commands-2026-09-07.md). D–H und die übergreifende Last-/Soak-Abnahme sind weiterhin offen.
 
 | Paket | Priorität | Abhängigkeit | Ergebnis / Gate |
 |---|---|---|---|

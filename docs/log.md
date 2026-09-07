@@ -2,9 +2,16 @@
 
 ## 2026-09-07
 
+- **Durable message admission**: Added the [versioned receipt and recovery contract](/specs/web/composer-delivery-files-and-media.md#requirement-web-composer-admission-006) and [package-C validation record](/reports/performance-scalability-commands-2026-09-07.md), separating committed acceptance, runtime state and unknown client outcomes.
+
+- **Storage integration acceptance**: Recorded [204 passing integration tests and renewed exact-candidate Pibo2 evidence](/reports/performance-scalability-storage-final-2026-09-07.md), including Composer, duplicate bursts, health and durable output after reload.
+
+- **Performance continuation**: Preserved the [A–H handoff and local integration correction](/reports/performance-scalability-handoff-2026-09-07.md), including explicit persistence barriers, 131 passing Web tests and 39 passing storage/recovery regressions; renewed Pibo2 acceptance and C–H remain outstanding.
 - **Snapshot-bound production restart approval**: Updated the [gateway restart contract](/specs/security/gateway-admission-and-restart.md#requirement-sec-gw-004-bind-production-restart-approval-to-freshly-inspected-work) for issue #914. Force now discloses and rechecks active event, queue, and run identities; rejects stale or incomplete approval; and records restart decisions before invoking the service manager. Dev restart remains ungated. No production restart or deployment.
 
 ## 2026-09-06
+
+- **Indexed admission implementation**: Recorded the [P0 implementation and isolated validation](/reports/performance-scalability-p0-2026-09-06.md), including synthetic million-event lookups, concurrency regressions and remaining acceptance gates.
 
 - **Production admission and concurrency audit**: Added the [read-only production investigation](/reports/production-performance-audit-2026-09-06.md) and [performance/scalability plan](/plans/pibo-performance-and-scalability.md). Confirmed the synchronous room scan, cross-session blocking, and a separate cold-runtime admission delay; defined staged fixes, durable admission, resource budgets, load tests, and release gates. No product-code change, database/session deletion, gateway restart, or production deployment.
 

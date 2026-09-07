@@ -133,6 +133,7 @@ for (const crashBoundary of crashBoundaries) {
 			}
 		} finally {
 			await host?.channel.stop?.();
+			await host?.app.dispose?.();
 			rmSync(directory, { recursive: true, force: true });
 		}
 	});

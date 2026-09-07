@@ -10,6 +10,7 @@
 * [Better Auth SQLite Migration Hardening Validation — 2026&#45;08&#45;20](better-auth-sqlite-migration-hardening-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Chat Web Session Switch Fast Path Implementation Report](chat-web-session-switch-fast-path-implementation-2026-07-05.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Chat Web live render&#45;order diagnosis — 2026&#45;08&#45;09](chat-web-live-render-order-diagnosis-2026-08-09.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Chat storage isolation: package B validation](performance-scalability-storage-isolation-2026-09-06.md) - Records the bounded worker storage boundary, crash regressions and isolated Pibo2 acceptance&#46;
 * [ChatGPT Subscription Transcription Validation — 2026&#45;08&#45;23](chatgpt-subscription-transcription-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Code Quality Refactoring Ralph Final Report — 2026&#45;05&#45;27](code-quality-refactor-ralph-final-2026-05-27.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Codex App Server Protocol Checkpoint — 2026&#45;08&#45;15](codex-app-server-protocol-checkpoint-2026-08-15.md) - Preserves the original report body as stable research without promoting historical claims&#46;
@@ -17,6 +18,7 @@
 * [Codex Native Process and Isolation Validation](codex-native-process-isolation-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Codex Native Thread Lifecycle Validation](codex-native-thread-lifecycle-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Debug trace session&#45;status validation — 2026&#45;08&#45;07](debug-trace-session-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Durable message admission: package C validation](performance-scalability-commands-2026-09-07.md) - Records versioned durable receipts, startup dispatch recovery, UI confirmation semantics and the candidate acceptance evidence&#46;
 * [Expert Report: Chat Web Trace Performance and Gateway Responsiveness](chat-web-trace-performance-expert-report-2026-07-04.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Failed message signal reconciliation validation — 2026&#45;08&#45;07](failed-message-signal-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Full Test Suite Hermeticity Triage — 2026&#45;08&#45;10](full-test-hermeticity-triage-2026-08-10.md) - Preserves the original report body as stable research without promoting historical claims&#46;
@@ -25,6 +27,7 @@
 * [Idle Session history latency validation — 2026&#45;09&#45;05](idle-session-history-latency-validation-2026-09-05.md) - Records runtime&#45;free history inspection, passive Terminal status, bounded fork caching, and Docker plus headful Pibo2 performance evidence&#46;
 * [Immediate top trace pagination validation — 2026&#45;08&#45;07](immediate-top-trace-pagination-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Incident 2026&#45;05&#45;16: Chat Web session stuck in partial tool call](incident-2026-05-16-stuck-toolcall-stream.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Indexed chat admission: P0 validation](performance-scalability-p0-2026-09-06.md) - Records the isolated indexed&#45;admission implementation, measurements and remaining acceptance gates&#46;
 * [Ink CLI V2 PTY Smoke Scenarios](ink-cli-v2-pty-smoke-scenarios.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Isolated Deployment Pool Validation Report](isolated-deployment-pool-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [LangGraphJS&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-langgraphjs.md) - Preserves the original report body as stable research without promoting historical claims&#46;
@@ -50,6 +53,7 @@
 * [Pi Runtime Adapter Parity Validation](pi-runtime-adapter-parity-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo 1&#46;4&#46;6](release-1-4-6-notes.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo VS Code Extension 1&#46;4&#46;1 — Release Report](vscode-webview-sidecar-fixes-release-2026-06-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Pibo performance and scalability implementation handoff](performance-scalability-handoff-2026-09-07.md) - Transfers the exact implementation, validation, branch, environment, and open&#45;test state for packages A through H&#46;
 * [Pibo2 server&#45;development completion audit — 2026&#45;08&#45;07](pibo2-server-development-completion-audit-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo2 yielded&#45;run resource hang — 2026&#45;08&#45;08](pibo2-yielded-run-resource-hang-2026-08-08.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Pluggable Transcription Validation — 2026&#45;08&#45;22](pluggable-transcription-validation-2026-08-22.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
@@ -82,6 +86,7 @@
 * [Sidebar browser tabs: upstream integration validation](sidebar-browser-tabs-upstream-integration-2026-08-31.md) - Records upstream rebasing, regression coverage, and headful browser validation for the desktop browser&#45;tab workspace&#46;
 * [Signal status reconciliation validation](signal-status-reconcile-load-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Signals Reliability Fix Validation](signals-reliability-fix-validation-2026-05-19.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Storage isolation: restored integration and renewed Pibo2 acceptance](performance-scalability-storage-final-2026-09-07.md) - Records the corrected asynchronous integration barriers and acceptance of the upstream&#45;integrated storage candidate&#46;
 * [Terminal initial visibility latency validation — September 5, 2026](terminal-initial-visibility-validation-2026-09-05.md) - Records exact&#45;candidate headful evidence for removing redundant Terminal initialization settlement and a separate viewport&#45;resize defect&#46;
 * [Terminal viewport and wheel ownership validation — September 6, 2026](terminal-viewport-and-wheel-validation-2026-09-06.md) - Records local regression and exact&#45;candidate Pibo2 evidence for viewport shrink, coarse wheel input, history restoration, streaming, and queued delivery&#46;
 * [Terminal working animation restoration validation](terminal-working-animation-restoration-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

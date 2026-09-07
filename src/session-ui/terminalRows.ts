@@ -106,6 +106,7 @@ export type CompactTerminalRow = {
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
 	pendingMessageDelivery?: "queue" | "steer";
+	messageDeliveryState?: PiboTraceNode["messageDeliveryState"];
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
@@ -532,7 +533,8 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [{ prefix: "prompt", tokens: [token(text)] }],
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
-		pendingMessageDelivery: pendingUserMessageDelivery(node),
+		pendingMessageDelivery: node.messageDeliveryState ? "queue" : pendingUserMessageDelivery(node),
+		messageDeliveryState: node.messageDeliveryState,
 		startedAt: node.startedAt,
 		output: text,
 		payloadRefs: node.payloadRefs,

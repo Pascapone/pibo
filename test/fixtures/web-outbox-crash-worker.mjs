@@ -1,5 +1,6 @@
 import { ChatSessionQueryService } from "../../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../../dist/data/ingest-service.js";
+import { AsyncChatStorage } from "../../dist/data/async-chat-storage.js";
 import { PiboReliabilityStore } from "../../dist/reliability/store.js";
 import { startWebOutboxProcessHost } from "./web-outbox-process-harness.mjs";
 
@@ -8,6 +9,7 @@ if (!directory || !crashBoundary || !piboSessionId || !targetEventId) throw new 
 
 const hardCrash = () => process.kill(process.pid, "SIGKILL");
 const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
+const originalAsyncIngest = AsyncChatStorage.prototype.ingestOutput;
 const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
 const originalRecordEvent = ChatSessionQueryService.prototype.recordEvent;
 const originalRecordReceipt = PiboReliabilityStore.prototype.recordDeliveryReceipt;
@@ -15,6 +17,12 @@ const originalRecordReceipt = PiboReliabilityStore.prototype.recordDeliveryRecei
 ChatDataIngestService.prototype.ingestOutputEvent = function(input) {
 	if (input.event.eventId === targetEventId && crashBoundary === "before-v2-write") hardCrash();
 	const result = originalIngest.call(this, input);
+	if (input.event.eventId === targetEventId && crashBoundary === "after-v2-write") hardCrash();
+	return result;
+};
+AsyncChatStorage.prototype.ingestOutput = async function(input) {
+	if (input.event.eventId === targetEventId && crashBoundary === "before-v2-write") hardCrash();
+	const result = await originalAsyncIngest.call(this, input);
 	if (input.event.eventId === targetEventId && crashBoundary === "after-v2-write") hardCrash();
 	return result;
 };

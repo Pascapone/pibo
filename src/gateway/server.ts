@@ -521,6 +521,7 @@ export class PiboGatewayServer {
 			getSessionStatusSnapshot: (piboSessionId, options) => this.requireRouter().getSessionStatusSnapshot(piboSessionId, options),
 			getSessionForkCandidates: (piboSessionId) => this.requireRouter().getSessionForkCandidates(piboSessionId),
 			listSessionRuntimeStatuses: () => this.requireRouter().listSessionRuntimeStatuses(),
+			getRuntimeCapacityStatus: () => this.requireRouter().getRuntimeCapacityStatus(),
 			listRuns: (options) => this.requireRouter().listRuns(options),
 			snapshotSignalSession: (piboSessionId) => this.requireRouter().snapshotSignalSession(piboSessionId),
 			snapshotSignalTree: (rootPiboSessionId) => this.requireRouter().snapshotSignalTree(rootPiboSessionId),

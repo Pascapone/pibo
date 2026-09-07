@@ -685,7 +685,7 @@ function TerminalRowContent({
 			<>
 				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				{row.pendingMessageDelivery ? (
-					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
+					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-[1.9rem] mt-2" />
 				) : null}
 				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>

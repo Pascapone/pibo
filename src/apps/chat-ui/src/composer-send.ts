@@ -104,3 +104,27 @@ export function appendComposerOptimisticEvent(
 		events: [...(current?.piboSessionId === piboSessionId ? current.events : []), optimisticEvent],
 	};
 }
+
+
+const pendingTransactionKey = "pibo.chat.pending-message-transaction.v2";
+type PendingTransaction = Pick<ComposerSendPlan, "piboSessionId" | "text" | "webAnnotationIds" | "fileAttachmentPaths" | "clientTxnId" | "delivery">;
+
+export function readPendingMessageTransaction(): PendingTransaction | null {
+ try {
+  const value: unknown = JSON.parse(window.sessionStorage.getItem(pendingTransactionKey) ?? "null");
+  if (!value || typeof value !== "object") return null;
+  const row = value as PendingTransaction;
+  return typeof row.piboSessionId === "string" && typeof row.text === "string" && typeof row.clientTxnId === "string" && (row.delivery === "queue" || row.delivery === "steer") && Array.isArray(row.webAnnotationIds) && row.webAnnotationIds.every(id => typeof id === "string") && Array.isArray(row.fileAttachmentPaths) && row.fileAttachmentPaths.every(path => typeof path === "string") ? row : null;
+ } catch { return null; }
+}
+
+export function rememberPendingMessageTransaction(plan: PendingTransaction | null): void {
+ try {
+  if (!plan) window.sessionStorage.removeItem(pendingTransactionKey);
+  else { const { piboSessionId, text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery } = plan; window.sessionStorage.setItem(pendingTransactionKey, JSON.stringify({piboSessionId,text,webAnnotationIds,fileAttachmentPaths,clientTxnId,delivery})); }
+ } catch { /* In-memory identity still protects retries if browser storage is unavailable. */ }
+}
+
+export function samePendingMessageIntent(prior: PendingTransaction | null, input: Pick<PendingTransaction,"piboSessionId"|"text"|"webAnnotationIds"|"fileAttachmentPaths">): boolean {
+ return prior !== null && prior.piboSessionId === input.piboSessionId && prior.text === input.text && JSON.stringify(prior.webAnnotationIds) === JSON.stringify(input.webAnnotationIds) && JSON.stringify(prior.fileAttachmentPaths) === JSON.stringify(input.fileAttachmentPaths);
+}

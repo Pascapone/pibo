@@ -33,6 +33,11 @@ export type StoredPayload = {
 	lastVerifiedAt?: string;
 };
 
+export type PreparedPayload = Omit<StoredPayload, "refCount" | "status" | "lastVerifiedAt"> & {
+	refCount: 1;
+	status: "staged";
+};
+
 export class PiboPayloadMetadataConflictError extends Error {
 	constructor(
 		readonly sha256: string,
@@ -74,24 +79,50 @@ export class PayloadStore {
 	}
 
 	writePayload(input: PayloadWriteInput): StoredPayload {
+		return this.commitPreparedPayload(this.preparePayload(input));
+	}
+
+	/** Performs hashing, compression and atomic file publication before a DB transaction begins. */
+	preparePayload(input: PayloadWriteInput): PreparedPayload {
 		const contentType = input.contentType ?? defaultContentType(input.value);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const bytes = payloadToBytes(input.value, contentType);
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		const existing = this.findByIdentity(sha256, contentType, input.retentionClass);
 		if (existing) {
-			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
-			return this.getPayload(existing.id) ?? existing;
+			return { ...existing, refCount: 1, status: "staged" };
 		}
-
 		const shouldCompress = bytes.byteLength <= MAX_SYNC_PAYLOAD_GZIP_BYTES;
 		const encoding = shouldCompress ? "gzip" : "identity";
 		const bytesToStore = shouldCompress ? gzipSync(bytes) : bytes;
-		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : null;
+		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : undefined;
 		const relativePath = buildRelativePayloadPath(sha256, contentType, input.retentionClass, encoding);
 		const absolutePath = this.rootDir === ":memory:" ? relativePath : join(this.rootDir, relativePath);
 		writePayloadFile(absolutePath, bytesToStore);
-		const id = input.id ?? `payload_${randomUUID()}`;
+		return {
+			id: input.id ?? `payload_${randomUUID()}`,
+			sha256,
+			storageKind: "file",
+			storagePath: relativePath,
+			contentType,
+			encoding,
+			byteSize: bytes.byteLength,
+			compressedByteSize,
+			previewText: previewTextFromValue(input.value),
+			retentionClass: input.retentionClass,
+			refCount: 1,
+			status: "staged",
+			createdAt,
+		};
+	}
+
+	/** Links a previously published payload file with only bounded metadata SQL. */
+	commitPreparedPayload(prepared: PreparedPayload): StoredPayload {
+		const existing = this.findByIdentity(prepared.sha256, prepared.contentType, prepared.retentionClass);
+		if (existing) {
+			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
+			return this.getPayload(existing.id) ?? existing;
+		}
 		this.db.prepare(`
 			INSERT INTO payloads (
 				id,
@@ -110,23 +141,23 @@ export class PayloadStore {
 				last_verified_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`).run(
-			id,
-			sha256,
+			prepared.id,
+			prepared.sha256,
 			"file",
-			relativePath,
-			contentType,
-			encoding,
-			bytes.byteLength,
-			compressedByteSize,
-			previewTextFromValue(input.value) ?? null,
-			input.retentionClass,
+			prepared.storagePath ?? null,
+			prepared.contentType,
+			prepared.encoding,
+			prepared.byteSize,
+			prepared.compressedByteSize ?? null,
+			prepared.previewText ?? null,
+			prepared.retentionClass,
 			1,
 			"committed",
-			createdAt,
-			createdAt,
+			prepared.createdAt,
+			prepared.createdAt,
 		);
-		const stored = this.getPayload(id);
-		if (!stored) throw new Error(`Failed to persist payload \"${id}\"`);
+		const stored = this.getPayload(prepared.id);
+		if (!stored) throw new Error(`Failed to persist payload \"${prepared.id}\"`);
 		return stored;
 	}
 

@@ -18,6 +18,51 @@
   },
   "records": [
     {
+      "path": "docs/reports/performance-scalability-storage-final-2026-09-07.md",
+      "state": "conformant",
+      "classification": "storage integration validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-handoff-2026-09-07.md",
+      "state": "conformant",
+      "classification": "implementation handoff",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 14673,
+      "file_sha256": "354842b46d6a718a67d28049e5f55b89a6551e8e017c922c74e8b1d483f1dde9",
+      "body_sha256": "18ce9d29283991191573c1a33f4e568a2d48a49c22ecaf124b5f119d6ef212e1",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-p0-2026-09-06.md",
+      "state": "conformant",
+      "classification": "performance validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 4010,
+      "file_sha256": "9225273e1b72d1dacf836af42702b9cd8614bee119ed2bd0d18c4a91fb4db29a",
+      "body_sha256": "3781dc1a3932de3439fe5bd2f5508be3511c40bc05afcd92a8997cc297c2d475",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-storage-isolation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "performance validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 6143,
+      "file_sha256": "0e92d0f980196950765daf01822fe58c821134fb29a25bccff83d852838e8e9a",
+      "body_sha256": "3fda04f9e928e3c51ce0fee50f8b4179e06527664bfa5e24379801a1e3fd2ea0",
+      "lineage": null
+    },
+    {
       "path": "docs/plans/pibo-performance-and-scalability.md",
       "state": "conformant",
       "classification": "performance implementation plan",
@@ -13722,6 +13767,18 @@
       "file_bytes": 11022,
       "file_sha256": "037de3a9cc10a968087e53dbeb39826d76ff78095dd5d178720009b96194c56e",
       "body_sha256": "f78f9ca04c8273eaca23c75ab3f827f15b5831d7f61efc605a1fd2fd91a2f700"
+    },
+    {
+      "path": "docs/reports/performance-scalability-commands-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 8085,
+      "file_sha256": "080ae9eb897e3c591b48b1219fbd5d10a856559e13627b0448d6f390ca7973f1",
+      "body_sha256": "0fcd9ca8dc9207b2ff936b5f122820779019911705399a2fd1d8711a01be3cab"
     }
   ]
 }

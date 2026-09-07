@@ -1,3 +1,4 @@
+import type { MessageReceipt } from "../../../data/message-command-store.js";
 import { requestJson } from "./api-http";
 import type { BootstrapData, ChatSessionPage, CreateSessionData, ModelProfile, NavigationData, PiboRoom, PiboSession } from "./types";
 
@@ -177,6 +178,7 @@ export async function postMessage(
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({
+			admissionVersion: 2,
 			piboSessionId,
 			text,
 			clientTxnId,
@@ -185,6 +187,16 @@ export async function postMessage(
 			...(webAnnotationIds.length ? { webAnnotationIds } : {}),
 			...(fileAttachmentPaths.length ? { fileAttachmentPaths } : {}),
 		}),
+	}).then((result) => {
+		const receipt = result && typeof result === "object" && "receipt" in result ? result.receipt : undefined;
+		if (!receipt || typeof receipt !== "object" || !("id" in receipt) || typeof receipt.id !== "string") throw new Error("Durable message receipt was missing from the response.");
+		return result;
+	}).catch((error: unknown) => {
+		const detail = error && typeof error === "object" ? error as { status?: number; data?: { acceptanceUnknown?: boolean } } : undefined;
+		if (!detail?.status || detail.data?.acceptanceUnknown) {
+			throw Object.assign(new Error("Message acceptance is unknown. Retry the unchanged message to check the same transaction; it will not create a second dispatch."), { acceptanceUnknown: true, cause: error });
+		}
+		throw error;
 	});
 }
 
@@ -256,4 +268,8 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 		},
 		integrations: payload.integrations,
 	};
+}
+
+export function getMessageReceipts(piboSessionId: string): Promise<{receipts:MessageReceipt[]}> {
+	return requestJson(`/api/chat/message-receipts?piboSessionId=${encodeURIComponent(piboSessionId)}`);
 }

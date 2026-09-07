@@ -32,6 +32,8 @@ export class PiboDataStore {
 		const insidePiboHome = ensurePrivatePiboHomeForPath(this.path);
 		if (this.path !== ":memory:") mkdirSync(dirname(this.path), { recursive: true });
 		this.db = new DatabaseSync(this.path);
+		// Connection-only configuration also protects the initial schema read.
+		this.db.exec("PRAGMA busy_timeout = 5000");
 		try {
 			assertSupportedPiboDataSchemaVersion(this.db);
 		} catch (error) {
@@ -39,7 +41,6 @@ export class PiboDataStore {
 			throw error;
 		}
 		if (insidePiboHome) protectPrivateFileSync(this.path);
-		this.db.exec("PRAGMA busy_timeout = 5000");
 		this.db.exec("PRAGMA foreign_keys = ON");
 		if (this.path !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
 		applyPiboDataSchema(this.db);
