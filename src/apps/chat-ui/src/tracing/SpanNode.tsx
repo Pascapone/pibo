@@ -486,7 +486,7 @@ const SpanContent = memo(function SpanContent({ span }: { span: Span }) {
 					{typeof content === "string" ? content : JSON.stringify(content)}
 				</div>
 				{pendingDelivery === "queue" || pendingDelivery === "steer" ? (
-					<PendingUserMessageDelivery delivery={pendingDelivery} className="mx-4 mb-4" />
+					<PendingUserMessageDelivery delivery={pendingDelivery} state={attributes["message.delivery_state"] as import("../../../../shared/trace-types.js").PiboTraceNode["messageDeliveryState"]} className="mx-4 mb-4" />
 				) : null}
 			</div>
 		);

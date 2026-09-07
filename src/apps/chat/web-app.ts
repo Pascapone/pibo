@@ -1,3 +1,4 @@
+import { MessageCommandDispatcher } from "./message-command-dispatcher.js";
 import { piboHomePath } from "../../core/pibo-home.js";
 import { AsyncChatStorage } from "../../data/async-chat-storage.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -453,6 +454,7 @@ type ChatWebAppState = {
 	loopStore: PiboLoopStore;
 	dataStore: PiboDataStore;
 	asyncStorage?: AsyncChatStorage;
+	commandDispatcher?: MessageCommandDispatcher;
 	ingestService: ChatDataIngestService;
 	traceCache: Map<string, PiboSessionTraceView>;
 	traceTimelinePageCache: Map<string, TraceTimelinePage>;
@@ -1041,7 +1043,7 @@ function createFastTraceV2Version(input: {
 }
 
 function ensureEventIndexing(state: ChatWebAppState, context: PiboWebAppContext): void {
-	if (state.subscribedContext === context && state.unsubscribe) return;
+	if (state.subscribedContext?.channelContext === context.channelContext && state.unsubscribe) return;
 	state.unsubscribe?.();
 	state.subscribedContext = context;
 	state.unsubscribe = context.channelContext.subscribe((event) => {
@@ -4507,9 +4509,13 @@ async function sendChatMessage(input: {
 	try {
 	const startedAt = performance.now();
 	const timings: string[] = [];
-	const timedResponse = (value: Parameters<typeof responseJson>[0]) => responseJson(value, {
+	const timedResponse = (value: Parameters<typeof responseJson>[0], status = 200) => responseJson(value, {
+		status,
 		headers: { "server-timing": [...timings, `chat_ack;dur=${(performance.now() - startedAt).toFixed(2)}`].join(", ") },
 	});
+	const durable = input.body.admissionVersion === 2;
+	if (input.body.admissionVersion !== undefined && !durable) throw new PiboWebHttpError("Unsupported message admission version",400);
+	if (durable && !input.state.asyncStorage) throw new PiboWebHttpError("Durable admission requires file-backed storage",503);
 	const text = normalizeMessageText(input.body.text);
 	const delivery = normalizeMessageDelivery(input.body.delivery);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
@@ -4569,9 +4575,10 @@ async function sendChatMessage(input: {
 			...(clientTxnId ? { clientTxnId } : {}),
 		},
 	};
-	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, fileAttachmentContext.messageText) : undefined;
+	const messageId = clientTxnId ?? randomUUID();
+	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, fileAttachmentContext.messageText, durable ? { eventId:messageId,delivery } : undefined) : undefined;
 	const accepted = admission?.event ?? input.state.eventCommands.appendEvent(appendInput);
-	if (admission && !admission.created) return timedResponse({ duplicate: true, event: accepted });
+	if (admission && !admission.created) return timedResponse({ duplicate: true, event: accepted, ...(admission.receipt ? {receipt:admission.receipt,admissionVersion:2,statusPath:`${CHAT_WEB_API_PREFIX}/message-receipts/${admission.receipt.id}`} : {}) }, durable ? 202 : 200);
 	timings.push(`chat_append;dur=${(performance.now() - appendStartedAt).toFixed(2)}`);
 	const ingestStartedAt = performance.now();
 	try {
@@ -4588,7 +4595,12 @@ async function sendChatMessage(input: {
 	}
 	timings.push(`chat_ingest;dur=${(performance.now() - ingestStartedAt).toFixed(2)}`);
 	for (const listener of input.state.liveListeners) listener(accepted);
-	const messageId = clientTxnId ?? randomUUID();
+	if (durable && admission?.receipt) {
+		input.state.commandDispatcher ??= new MessageCommandDispatcher(input.state.asyncStorage!,input.context.channelContext);
+		input.state.commandDispatcher.wake();
+		markWebAnnotationsAttached(webAnnotationContext);
+		return timedResponse({ admissionVersion:2,receipt:admission.receipt,event:accepted,statusPath:`${CHAT_WEB_API_PREFIX}/message-receipts/${admission.receipt.id}` },202);
+	}
 	const emitStartedAt = performance.now();
 	let output: PiboOutputEvent;
 	try {
@@ -4632,6 +4644,9 @@ async function sendChatMessage(input: {
 	return timedResponse({ output, event: accepted });
 	} catch (error) {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+		if (code === "command_conflict") return responseJson({ error:"Transaction conflicts with an existing message.",code }, { status:409 });
+		if (code === "command_too_large") return responseJson({ error:"Message exceeds the durable command limit.",code }, { status:413 });
+		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code }, { status:429,headers:{"retry-after":"1"} });
 		if (code === "room_not_found") throw new PiboWebHttpError("Room not found", 404);
 		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
 		if (code.startsWith("storage_")) return responseJson({ error: "Storage unavailable; retry with the same client transaction ID.", code, acceptanceUnknown: code === "storage_unknown" || code === "storage_operation_failed" }, { status: 503, headers: { "retry-after": "1" } });
@@ -4708,12 +4723,18 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		name: CHAT_WEB_APP_NAME,
 		mountPath: CHAT_WEB_MOUNT_PATH,
 		apiPrefix: CHAT_WEB_API_PREFIX,
+		initialize(context) {
+			ensureCustomAgentProfiles(state,context);
+			ensureEventIndexing(state,context);
+			if (state.asyncStorage) state.commandDispatcher ??= new MessageCommandDispatcher(state.asyncStorage,context.channelContext);
+		},
 		async drain() {
 			await state.outputPersistenceRetries.drain();
 		},
 		async dispose() {
 			if (disposed) return;
 			disposed = true;
+			await state.commandDispatcher?.dispose();
 			state.unsubscribe?.();
 			state.unsubscribe = undefined;
 			state.subscribedContext = undefined;
@@ -6593,6 +6614,22 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatStreamingFixtureBody>(request);
 				return startChatStreamingFixture({ state, context, webSession, defaultProfile, body });
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/message-receipts` && request.method === "GET") {
+				const webSession = await requireSession(request,context);
+				const sessionId=url.searchParams.get("piboSessionId") ?? "";
+				if (!sessionId) throw new PiboWebHttpError("Session ID required",400);
+				resolveRequestedSession(state,context,webSession,defaultProfile,sessionId);
+				return responseJson({receipts:await state.asyncStorage?.commandReceipts(sessionId) ?? []},{headers:{"cache-control":"no-store"}});
+			}
+			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/message-receipts/`) && request.method === "GET") {
+				const webSession = await requireSession(request,context);
+				const id = decodeURIComponent(url.pathname.slice(`${CHAT_WEB_API_PREFIX}/message-receipts/`.length));
+				const receipt = await state.asyncStorage?.commandReceipt(id);
+				if (!receipt) throw new PiboWebHttpError("Message receipt not found",404);
+				resolveRequestedSession(state,context,webSession,defaultProfile,receipt.sessionId,receipt.roomId);
+				return responseJson({receipt},{headers:{"cache-control":"no-store"}});
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/message` && request.method === "POST") {

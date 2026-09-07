@@ -22,6 +22,7 @@ export type PiboWebApp = {
 	apiPrefix: string;
 	/** Flush pending background persistence and retries; producers must be quiescent. */
 	drain?(): Promise<void>;
+	initialize?(context: PiboWebAppContext): Promise<void> | void;
 	dispose?(): Promise<void> | void;
 	matchesHost?(hostname: string): boolean;
 	handleNodeRequest?(

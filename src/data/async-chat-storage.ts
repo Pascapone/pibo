@@ -1,3 +1,4 @@
+import type { MessageReceipt, MessageCommandClaim, MessageCommandState } from "./message-command-store.js";
 import type { PiboRoom } from "../apps/chat/types/rooms.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatEventAppendInput, StoredChatEvent } from "../apps/chat/types/event-store.js";
@@ -16,15 +17,17 @@ export class AsyncChatStorage {
 	private readonly workerOptions: BoundedWorkerOptions;
 	constructor(path: string, payloadRootDir: string, options: BoundedWorkerOptions = {}) {
 		if (path === ":memory:") throw new Error("Worker storage requires a file-backed database.");
-		this.workerOptions = { ...options, workerOptions: { ...options.workerOptions, workerData: { path, payloadRootDir } } };
+		// Admission carries the bounded message plus its event projection; account for both in IPC.
+		this.workerOptions = { maxMessageBytes: 4 * 1024 * 1024, ...options, workerOptions: { ...options.workerOptions, workerData: { path, payloadRootDir } } };
 		this.workerUrl = new URL("./chat-storage-worker.js", import.meta.url);
 		this.writer = new BoundedWorkerClient(this.workerUrl, this.workerOptions);
 	}
 	resolveRoom(roomId?: string, required = false): Promise<PiboRoom> {
 		return this.writer.request({ type: "resolveRoom", roomId, required });
 	}
-	admit(input: ChatEventAppendInput, session: PiboSession, text: string): Promise<{ event: StoredChatEvent; created: boolean }> {
-		return this.writer.request({ type: "admit", input, session, text });
+	admit(input: ChatEventAppendInput, session: PiboSession, text: string, durableCommand?: { eventId: string; delivery: "queue" | "steer" }): Promise<{ event: StoredChatEvent; created: boolean; receipt?: MessageReceipt }> {
+		if (durableCommand && Buffer.byteLength(text) > 1024 * 1024) return Promise.reject(Object.assign(new Error("Message exceeds the durable command byte limit."), { code: "command_too_large" }));
+		return this.writer.request({ type: "admit", input, session, text, durableCommand });
 	}
 	append(input: ChatEventAppendInput): Promise<{ event: StoredChatEvent; created: boolean }> {
 		return this.writer.request({ type: "append", input });
@@ -39,6 +42,11 @@ export class AsyncChatStorage {
 	ingestOutput(input: OutputEventIngestInput): Promise<AsyncOutputIngestResult> {
 		return this.writer.request({ type: "ingestOutput", input }, { priority: "output" });
 	}
+	commandReceipts(sessionId: string): Promise<MessageReceipt[]> { return this.writer.request({ type:"commandReceipts",sessionId }); }
+	commandReceipt(id: string): Promise<MessageReceipt | undefined> { return this.writer.request({ type: "commandReceipt", id }); }
+	claimCommand(owner: string, leaseMs: number): Promise<MessageCommandClaim | undefined> { return this.writer.request({ type: "claimCommand", owner, leaseMs }, { priority: "background" }); }
+	transitionCommand(id: string, owner: string, token: number, state: MessageCommandState, error?: string): Promise<boolean> { return this.writer.request({ type: "transitionCommand", id, owner, token, state, error }); }
+	heartbeatCommand(id: string, owner: string, token: number, leaseMs: number): Promise<boolean> { return this.writer.request({ type: "heartbeatCommand", id, owner, token, leaseMs }); }
 	status() {
 		const writer = this.writer.status();
 		const reader = this.reader?.status();

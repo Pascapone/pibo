@@ -210,6 +210,7 @@ async function startWebHostChannel(options = {}) {
 		...options.chat,
 	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
+	await options.beforeStart?.({ reliabilityStorePath, dataStorePath });
 
 	await channel.start({
 		auth: options.auth,
@@ -363,6 +364,9 @@ async function startWebHostChannel(options = {}) {
 	return {
 		channel,
 		emitted,
+		async drain() {
+			await Promise.all(webApps.map((app) => app.drain?.()));
+		},
 		emitOutput(event) {
 			for (const listener of listeners) listener(event);
 		},
@@ -1392,9 +1396,8 @@ test("chat web quarantines a versionless durable envelope without writing V2 sta
 	const piboSessionId = "ps_web_versionless_envelope";
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
 	const secret = "web-versionless-secret-marker";
-	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
-	try {
-		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions, beforeStart({ reliabilityStorePath }) {
+		const reliability = new PiboReliabilityStore(reliabilityStorePath);
 		try {
 			reliability.enqueue({
 				queue: "output-persistence",
@@ -1411,6 +1414,8 @@ test("chat web quarantines a versionless durable envelope without writing V2 sta
 		} finally {
 			reliability.close();
 		}
+	} });
+	try {
 		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(trigger.status, 200);
 		await waitForCondition(() => {
@@ -1503,9 +1508,8 @@ test("chat web recovers a valid V1 message_steered envelope without quarantine",
 	const eventId = "steer-web-recovery";
 	const deliveryKey = `pibo.output:${piboSessionId}:message_steered:${eventId}:main`;
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
-	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
-	try {
-		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions, beforeStart({ reliabilityStorePath }) {
+		const reliability = new PiboReliabilityStore(reliabilityStorePath);
 		try {
 			reliability.enqueue({
 				queue: "output-persistence",
@@ -1525,6 +1529,8 @@ test("chat web recovers a valid V1 message_steered envelope without quarantine",
 		} finally {
 			reliability.close();
 		}
+	} });
+	try {
 		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(trigger.status, 200);
 		await waitForCondition(() => {
@@ -1599,9 +1605,8 @@ test("chat web recovery quarantines an unknown output variant with sanitized met
 	const piboSessionId = "ps_web_unknown_recovery";
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
 	const secret = "unknown-web-recovery-secret-marker";
-	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
-	try {
-		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions, beforeStart({ reliabilityStorePath }) {
+		const reliability = new PiboReliabilityStore(reliabilityStorePath);
 		try {
 			reliability.enqueue({
 				queue: "output-persistence",
@@ -1615,6 +1620,8 @@ test("chat web recovery quarantines an unknown output variant with sanitized met
 		} finally {
 			reliability.close();
 		}
+	} });
+	try {
 		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(trigger.status, 200);
 		await waitForCondition(() => {
@@ -2229,7 +2236,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 	});
 	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
 	let readHistoryCalls = 0;
-	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, sessions, dataStorePath, dataPayloadRootDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit() { throw new Error("message input is not used"); },
 		capabilityCatalog: {
@@ -2250,16 +2257,16 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			originId: source.id,
 			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex-native", nativeSessionId: "overflow-thread", state: "bound", protocol: "codex-app-server" },
 		});
-		for (let index = 0; index < 501; index += 1) {
-			emitOutput({
-				type: "message_started",
-				piboSessionId: branch.id,
-				eventId: index === 0 ? "stable-overflow" : "timing-overflow-noise",
-				text: index === 0 ? "overflow prompt" : `noise ${index}`,
-				source: "user",
-			});
-		}
-		await new Promise((resolve) => setImmediate(resolve));
+		// Seed timing evidence directly: this boundary test must not create 501
+		// real user turns that push native history out of the public page.
+		const evidenceStore = new PiboDataStore(dataStorePath, { payloadRootDir: dataPayloadRootDir });
+		try {
+			for (let index = 0; index < 501; index += 1) {
+				evidenceStore.eventLog.appendEvent({ sessionId: branch.id, topic: "session", type: "message_started", source: "fixture", retentionClass: "audit_event", eventId: index === 0 ? "stable-overflow" : "timing-overflow-noise", createdAt: startedAt });
+			}
+			assert.equal(Number(evidenceStore.db.prepare("SELECT count(*) n FROM event_log WHERE session_id=? AND type='message_started'").get(branch.id).n), 501);
+		} finally { evidenceStore.close(); }
+
 		for (const path of ["/api/chat/trace", "/api/chat/trace/timeline?limit=50"]) {
 			const separator = path.includes("?") ? "&" : "?";
 			const response = await fetch(`${baseURL}${path}${separator}piboSessionId=${encodeURIComponent(branch.id)}`, { headers: { "x-test-user": "user-1" } });
@@ -2270,7 +2277,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			const projectedNodes = path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes);
 			const nativeMessages = projectedNodes
 				.filter((node) => node.nativeTurnId === "runtime-overflow" && (node.type === "user.message" || node.type === "assistant.message"));
-			assert.equal(nativeMessages.length, 2);
+			assert.equal(nativeMessages.length, 2, JSON.stringify({path,source:payload.source,nodes:projectedNodes.slice(0,5).map(n=>({id:n.id,type:n.type,eventId:n.eventId,nativeTurnId:n.nativeTurnId})),readHistoryCalls}));
 			assert.ok(nativeMessages.every((node) => node.eventId === "runtime-overflow"));
 			assert.ok(nativeMessages.every((node) => node.eventId !== "stable-overflow"));
 		}
@@ -2502,7 +2509,7 @@ test("legacy Pi traces use the adapter history provider without direct Chat Web 
 test("missing legacy native history preserves surviving Pibo product history", async () => {
 	let readHistoryCalls = 0;
 	const capabilities = fakeRuntimeCapabilities();
-	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, sessions, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		capabilityCatalog: {
 			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
@@ -2555,9 +2562,9 @@ test("missing legacy native history preserves surviving Pibo product history", a
 		assert.equal(messageResponse.status, 200);
 		const messagePayload = await messageResponse.json();
 		const eventId = messagePayload.output.eventId;
-		emitOutput({ type: "message_started", piboSessionId, eventId, text: "surviving product prompt", source: "user" });
-		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "surviving product answer" });
-		emitOutput({ type: "message_finished", piboSessionId, eventId });
+		await emitOutputAndDrain({ type: "message_started", piboSessionId, eventId, text: "surviving product prompt", source: "user" });
+		await emitOutputAndDrain({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "surviving product answer" });
+		await emitOutputAndDrain({ type: "message_finished", piboSessionId, eventId });
 
 		const response = await fetch(
 			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
@@ -3843,7 +3850,7 @@ test("chat web app removes live observer accounting on disconnect", async () => 
 });
 
 test("chat web app keeps active session completions read while preserving unfocused unread", async () => {
-	const { channel, baseURL, emitOutput, sessions } = await startWebHostChannel({
+	const { channel, baseURL, emitOutputAndDrain, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -3875,13 +3882,13 @@ test("chat web app keeps active session completions read while preserving unfocu
 		const reader = eventsResponse.body.getReader();
 		await reader.read();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: parent.id,
 			eventId: "active-turn",
 			text: "visible answer",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: parent.id,
 			eventId: "active-turn",
@@ -3895,13 +3902,13 @@ test("chat web app keeps active session completions read while preserving unfocu
 		assert.equal(bootstrap.rooms[0].unreadCount, undefined);
 		assert.equal(bootstrap.sessions[0].unreadCount, undefined);
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: child.id,
 			eventId: "unfocused-turn",
 			text: "background answer",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: child.id,
 			eventId: "unfocused-turn",
@@ -9158,4 +9165,47 @@ test("manual editor runs target normal Rooms and persist canonical inspection fa
 		assert.equal(inspected.snapshot, undefined);
 		assert.ok(inspected.lifecycleEvents.some((event) => event.type === "workflow.editor_test_run.completed"));
 	} finally { await host.channel.stop?.(); }
+});
+
+
+test("versioned durable admission acknowledges before cold runtime dispatch and preserves its receipt", async () => {
+	let unblock;
+	const blocked = new Promise(resolve => { unblock=resolve; });
+	let dispatches=0;
+	const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(event) {
+		dispatches++;
+		await blocked;
+		return {type:"message_queued",piboSessionId:event.piboSessionId,eventId:event.id,queuedMessages:1,text:event.text,source:"user"};
+	}});
+	try {
+		const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers:{"x-test-user":"user-1"}})).json();
+		const input={admissionVersion:2,piboSessionId:session.id,text:"durable cold message",clientTxnId:"durable-cold-id"};
+		const send=body=>fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers:{"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"},body:JSON.stringify(body),signal:AbortSignal.timeout(2000)});
+		const accepted=await send(input);assert.equal(accepted.status,202);
+		const result=await accepted.json();assert.equal(result.receipt.state,"accepted");assert.equal(result.output,undefined);
+		const duplicate=await send(input);assert.equal(duplicate.status,202);assert.equal((await duplicate.json()).receipt.id,result.receipt.id);
+		const conflict=await send({...input,text:"different"});assert.equal(conflict.status,409);
+		await waitForCondition(()=>dispatches===1,"durable dispatcher did not start");
+		const receiptResponse=await fetch(`${host.baseURL}/api/chat/message-receipts/${result.receipt.id}`,{headers:{"x-test-user":"user-1"}});
+		assert.equal(receiptResponse.status,200);assert.equal((await receiptResponse.json()).receipt.state,"initializing");
+		unblock();
+		await host.emitOutputAndDrain({type:"message_started",piboSessionId:session.id,eventId:"durable-cold-id",source:"user",text:input.text});
+		await host.emitOutputAndDrain({type:"message_finished",piboSessionId:session.id,eventId:"durable-cold-id",source:"user"});
+		const final=await(await fetch(`${host.baseURL}/api/chat/message-receipts/${result.receipt.id}`,{headers:{"x-test-user":"user-1"}})).json();
+		assert.equal(final.receipt.state,"completed");assert.equal(dispatches,1);
+	} finally {unblock();await host.channel.stop?.();}
+});
+
+
+test("web startup dispatches a committed command without an HTTP request", async () => {
+ const storageDir=mkdtempSync(join(tmpdir(),"pibo-command-startup-"));
+ const sessions=new InMemoryPiboSessionStore();
+ const storage=new AsyncChatStorage(join(storageDir,"pibo-chat-v2.sqlite"),join(storageDir,"payloads"));
+ const room=await storage.resolveRoom();
+ const session=sessions.create({channel:"pibo.chat-web",kind:"chat",profile:"default",metadata:{chatRoomId:room.id}});
+ await storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"user-1",clientTxnId:"restart-txn",retentionClass:"chat_message",payload:{type:"user.message.accepted",text:"restart",clientTxnId:"restart-txn"}},session,"restart",{eventId:"restart-txn",delivery:"queue"});
+ await storage.close();
+ const host=await startWebHostChannel({storageDir,sessions,auth:createFakeAuthService()});
+ try {await waitForCondition(()=>host.emitted.length===1,"startup did not dispatch durable work",5000);assert.equal(host.emitted[0].id,"restart-txn");assert.equal(host.emitted[0].text,"restart");}
+ finally {await host.channel.stop();rmSync(storageDir,{recursive:true,force:true});}
 });

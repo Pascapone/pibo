@@ -1,3 +1,4 @@
+import { MessageCommandStore, type MessageCommandState } from "./message-command-store.js";
 import { parentPort, workerData } from "node:worker_threads";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../apps/chat/data/session-query-service.js";
@@ -15,7 +16,12 @@ export type ChatStorageCommand =
 	| { type: "ingestUser"; input: UserMessageAcceptedIngestInput }
 	| { type: "ingestOutput"; input: OutputEventIngestInput }
 	| { type: "resolveRoom"; roomId?: string; required?: boolean }
-	| { type: "admit"; input: ChatEventAppendInput; session: PiboSession; text: string }
+	| { type: "admit"; input: ChatEventAppendInput; session: PiboSession; text: string; durableCommand?: { eventId: string; delivery: "queue" | "steer" } }
+	| { type: "commandReceipt"; id: string }
+	| { type: "commandReceipts"; sessionId: string }
+	| { type: "claimCommand"; owner: string; leaseMs: number }
+	| { type: "transitionCommand"; id: string; owner: string; token: number; state: MessageCommandState; error?: string }
+	| { type: "heartbeatCommand"; id: string; owner: string; token: number; leaseMs: number }
 	| { type: "status" };
 
 type Configuration = { path: string; payloadRootDir: string };
@@ -30,6 +36,7 @@ const commands = new ChatEventCommandService(store);
 const ingest = new ChatDataIngestService(store);
 const rooms = new ChatRoomService(store);
 const sessions = new ChatSessionQueryService(store);
+const messageCommands = new MessageCommandStore(store);
 let active = false;
 let operations = 0;
 let busyRetries = 0;
@@ -37,6 +44,11 @@ let lastOperationMs = 0;
 
 function execute(command: ChatStorageCommand): unknown {
 	switch (command.type) {
+		case "commandReceipts": return messageCommands.list(command.sessionId);
+		case "commandReceipt": return messageCommands.get(command.id);
+		case "claimCommand": return messageCommands.claim(command.owner,command.leaseMs);
+		case "transitionCommand": return messageCommands.transition(command.id,command.owner,command.token,command.state,command.error);
+		case "heartbeatCommand": return messageCommands.heartbeat(command.id,command.owner,command.token,command.leaseMs);
 		case "resolveRoom": {
 			const room = command.roomId ? rooms.getRoom(command.roomId) : undefined;
 			if (room) return room;
@@ -48,17 +60,26 @@ function execute(command: ChatStorageCommand): unknown {
 			if (!room) throw Object.assign(new Error("Room not found"), { code: "room_not_found" });
 			if (isPiboRoomArchived(room)) throw Object.assign(new Error("Archived rooms are read-only"), { code: "room_read_only" });
 			const key = command.input.clientTxnId ? chatClientTransactionKey(room.id, command.input.actorId, command.input.clientTxnId) : undefined;
+			const commandInput = command.durableCommand ? { sessionId:command.session.id,roomId:room.id,text:command.text,delivery:command.durableCommand.delivery } : undefined;
+			const receipt = key && commandInput ? messageCommands.find(key,messageCommands.fingerprint(commandInput)) : undefined;
 			const existing = key ? store.eventLog.findByIdempotencyKey(key) : undefined;
-			if (existing) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false };
+			if (existing && commandInput && !receipt) throw Object.assign(new Error("Transaction belongs to the legacy admission contract."), { code:"command_conflict" });
+			if (existing) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false, receipt };
+			const preparedCommand = commandInput ? messageCommands.prepare(commandInput) : undefined;
 			const createdAt = command.input.createdAt ?? new Date().toISOString();
 			const preparedPayload = ingest.prepareUserMessagePayload(command.text, createdAt);
 			return store.transaction(() => {
 				const concurrent = key ? store.eventLog.findByIdempotencyKey(key) : undefined;
-				if (concurrent) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false };
+				if (concurrent) {
+					const receipt = preparedCommand ? messageCommands.find(key!,preparedCommand.fingerprint) : undefined;
+					if (preparedCommand && !receipt) throw Object.assign(new Error("Transaction belongs to the legacy admission contract."), { code:"command_conflict" });
+					return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false, receipt };
+				}
 				const event = commands.appendEvent({ ...command.input, createdAt });
 				sessions.upsertSession(command.session, "idle", command.session.updatedAt, { preserveRuntimeBinding: true });
 				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, legacyEvent: event, preparedPayload });
-				return { event, created: true };
+				const receipt = preparedCommand && command.durableCommand ? messageCommands.insert({ key:key ?? `chat:command:${command.durableCommand.eventId}`, ...preparedCommand,sessionId:command.session.id,roomId:room.id,eventId:command.durableCommand.eventId,streamId:event.streamId,delivery:command.durableCommand.delivery }) : undefined;
+				return { event, created: true, receipt };
 			});
 		}
 		case "append": return store.transaction(() => {
@@ -73,6 +94,7 @@ function execute(command: ChatStorageCommand): unknown {
 		case "ingestUser": return ingest.ingestUserMessageAccepted(command.input);
 		case "ingestOutput": {
 			const result = ingest.ingestOutputEvent(command.input);
+			messageCommands.recordOutput(command.input.session.id,"eventId" in command.input.event ? command.input.event.eventId : undefined,command.input.event.type);
 			const row = store.db.prepare("SELECT created_at, event_id FROM event_log WHERE stream_id = ?").get(result.streamId) as { created_at: string; event_id: string | null } | undefined;
 			if (!row) throw new Error(`Missing output event ${result.streamId} after ingest.`);
 			return { ...result, stored: { createdAt: row.created_at, eventId: row.event_id ?? String(result.streamId) } };
@@ -104,7 +126,7 @@ function attempt(request: Request) {
 			return;
 		}
 		const domainCode = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-		if (domainCode === "room_not_found" || domainCode === "room_read_only" || domainCode.startsWith("storage_") || domainCode === "pibo_output_identity_collision") {
+		if (domainCode === "room_not_found" || domainCode === "room_read_only" || (domainCode.startsWith("storage_") || domainCode.startsWith("command_")) || domainCode === "pibo_output_identity_collision") {
 			respond(request, { error: { code: domainCode, message } });
 			return;
 		}

@@ -750,6 +750,7 @@ function traceNodeFromEvent(
 				type: "user.message",
 				title: "User Message",
 				status: isOptimisticUserMessageEvent(event) ? "running" : "done",
+				messageDeliveryState: isOptimisticUserMessageEvent(event) ? "sending" : undefined,
 				summary: event.text,
 				output: event.text,
 			};

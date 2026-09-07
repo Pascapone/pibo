@@ -1275,10 +1275,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
 		onMutate: async ({ piboSessionId }) => {
 			await queryClient.cancelQueries({ queryKey: tracePageQueriesForSession(piboSessionId) });
-			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, status: "running", lastActivityAt: new Date().toISOString() })));
-		},
-		onError: (_error, variables) => {
-			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, variables.piboSessionId, (node) => ({ ...node, status: "error" })));
+			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, lastActivityAt: new Date().toISOString() })));
 		},
 	});
 

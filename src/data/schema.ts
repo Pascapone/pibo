@@ -1,6 +1,7 @@
+import { MESSAGE_COMMAND_SCHEMA } from "./message-command-store.js";
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 9;
+export const PIBO_DATA_SCHEMA_VERSION = 10;
 
 const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
 const retiredScopeColumn = ["owner", "scope"].join("_");
@@ -883,6 +884,7 @@ function applyPiboDataSchemaInTransaction(
 		}
 	}
 	hooks.afterStep?.("runtime-binding-metadata");
+	db.exec(MESSAGE_COMMAND_SCHEMA);
 	db.exec(`PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION}`);
 	hooks.afterStep?.("user-version");
 }
