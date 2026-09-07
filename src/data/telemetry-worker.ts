@@ -1,3 +1,5 @@
+import {dirname,join} from "node:path";
+import {TelemetryCaptureWriter} from "./telemetry-capture.js";
 import { statSync } from "node:fs";
 import { parentPort, workerData, threadId } from "node:worker_threads";
 import { DatabaseSync } from "node:sqlite";
@@ -8,6 +10,8 @@ import { PiboProviderTelemetryRecorder } from "../core/provider-telemetry.js";
 const db=new DatabaseSync((workerData as {path:string}).path);
 db.exec("PRAGMA busy_timeout=10; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON");
 const store=new TelemetryStore(db);
+const capture=new TelemetryCaptureWriter(join(dirname(workerData.path),"telemetry-captures"));
+const captureTimer=setInterval(()=>capture.append([]),1000);captureTimer.unref();
 const measured=Boolean(workerData.measure);let currentKind="startup";
 const measurements:Record<string,{operations:number;sql:Record<string,number>;executionMs:number}>={};
 if(measured){
@@ -31,7 +35,7 @@ const runtimes=new Map<string,PiboRuntimeTelemetryRecorder>();
 function runtimeFor(input:Extract<TelemetryCommand,{recorder:"runtime"}>){
  const key=`${input.providerEventMode}:${input.progressFlushIntervalMs}`;
  let runtime=runtimes.get(key);
- if(!runtime){if(runtimes.size>=4)runtimes.delete(runtimes.keys().next().value!);runtime=new PiboRuntimeTelemetryRecorder(store,()=>{errors++;},{providerEventMode:input.providerEventMode,progressFlushIntervalMs:input.progressFlushIntervalMs});runtimes.set(key,runtime);}
+ if(!runtime){if(runtimes.size>=4)runtimes.delete(runtimes.keys().next().value!);runtime=new PiboRuntimeTelemetryRecorder(store,()=>{errors++;},{providerEventMode:"aggregate",progressFlushIntervalMs:input.progressFlushIntervalMs});runtimes.set(key,runtime);}
  return runtime;
 }
 parentPort!.on("message",(request:{id:number;command:{commands:TelemetryCommand[]};deadline:number})=>{
@@ -53,7 +57,8 @@ parentPort!.on("message",(request:{id:number;command:{commands:TelemetryCommand[
     }
    });transactions++;operations+=processed;
   }catch(error){runtimes.clear();if(error instanceof Error && /busy|locked/i.test(error.message)){busy++;processed=0;}else throw error;}
-  const result={processed,errors:Math.min(processed,errors-initialErrors),ms:performance.now()-started,stats:{pid:process.pid,threadId,transactions,operations,busy,rssBytes:process.memoryUsage.rss(),heapUsedBytes:process.memoryUsage().heapUsed,synchronous:"FULL",...(measured?{measurements,walBytes:(()=>{try{return statSync(workerData.path+"-wal").size;}catch{return 0;}})()}:{})}};
+  if(processed)capture.append(request.command.commands.slice(0,processed));
+  const result={processed,errors:Math.min(processed,errors-initialErrors),ms:performance.now()-started,stats:{pid:process.pid,threadId,capture:capture.status(),transactions,operations,busy,rssBytes:process.memoryUsage.rss(),heapUsedBytes:process.memoryUsage().heapUsed,synchronous:"FULL",...(measured?{measurements,walBytes:(()=>{try{return statSync(workerData.path+"-wal").size;}catch{return 0;}})()}:{})}};
   parentPort!.postMessage({id:request.id,value:result});
  }catch {parentPort!.postMessage({id:request.id,error:{code:"telemetry_failed",message:"Optional telemetry batch failed"}});}
 });

@@ -1,3 +1,4 @@
+import {TelemetryMaintenance,TELEMETRY_MAINTENANCE_SCHEMA} from "./telemetry-maintenance.js";
 import type { DatabaseSync } from "node:sqlite";
 
 export type TelemetryRetentionClass = "live" | "diagnostic" | "provider_event" | "payload_preview" | "incident";
@@ -28,6 +29,7 @@ export type TelemetryPruneResult = {
 	rowsMatched: number;
 	bytesMatched: number;
 	rowsDeleted: number;
+ completed?:boolean;
 };
 
 const RETENTION_CLASSES: TelemetryRetentionClass[] = ["live", "diagnostic", "provider_event", "incident", "payload_preview"];
@@ -58,16 +60,18 @@ export function getTelemetryRetentionStats(db: DatabaseSync): TelemetryRetention
 }
 
 export function pruneTelemetryRetention(db: DatabaseSync, input: TelemetryPruneInput): TelemetryPruneResult {
-	const plan = telemetryPrunePlan(db, input.retentionClass, input.before);
 	if (!input.apply) {
+        const plan = telemetryPrunePlan(db, input.retentionClass, input.before);
 		return { retentionClass: input.retentionClass, before: input.before, applied: false, rowsMatched: plan.rows, bytesMatched: plan.bytes, rowsDeleted: 0 };
 	}
-	let rowsDeleted = 0;
-	for (const spec of PRUNE_TABLES) {
-		const result = db.prepare(`DELETE FROM ${spec.table} WHERE retention_class = ? AND ${spec.cutoffColumn} < ?`).run(input.retentionClass, input.before);
-		rowsDeleted += Number(result.changes ?? 0);
-	}
-	return { retentionClass: input.retentionClass, before: input.before, applied: true, rowsMatched: plan.rows, bytesMatched: plan.bytes, rowsDeleted };
+	db.exec(TELEMETRY_MAINTENANCE_SCHEMA);
+ const maintenance=new TelemetryMaintenance(db);let state=maintenance.start(input.before,input.retentionClass);
+ if(state.status==="paused")state=maintenance.control("resume")!;
+ const previous=state.deleted,started=performance.now();let scanned=0;
+ while(state.status==="running"&&scanned<128&&performance.now()-started<20){const before=state.scanned;state=maintenance.step({rows:Math.min(128-scanned,128),milliseconds:4})!;scanned+=state.scanned-before;}
+ const rowsDeleted=state.deleted-previous;
+
+	return { retentionClass: input.retentionClass, before: state.cutoff, applied: true, rowsMatched: scanned, bytesMatched: 0, rowsDeleted, completed:state.status==="completed" };
 }
 
 function statsForTable(db: DatabaseSync, table: TelemetryRetentionStatsRow["table"], sqlTable: string, byteExpression: string, retentionClass: TelemetryRetentionClass): TelemetryRetentionStatsRow {

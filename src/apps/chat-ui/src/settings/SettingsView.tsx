@@ -723,7 +723,7 @@ function TelemetryRetentionSettings() {
 			const result = await pruneTelemetryRetention({ days: pruneDays });
 			const saved = await getUserSettings();
 			queryClient.setQueryData(["user-settings"], saved);
-			setMessage(`Deleted ${result.rowsDeleted.toLocaleString()} telemetry rows older than ${pruneDays} days. Cutoff: ${result.cutoff}.`);
+			setMessage(result.completed===false ? `Cleanup paused after deleting ${result.rowsDeleted.toLocaleString()} telemetry rows. Run cleanup again to continue. Cutoff: ${result.cutoff}.` : `Deleted ${result.rowsDeleted.toLocaleString()} telemetry rows older than ${pruneDays} days. Cutoff: ${result.cutoff}.`);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		} finally {

@@ -1534,10 +1534,10 @@ test("pibo debug telemetry inspects tool calls, stale work, stats, and dry-run-f
 		const apply = await execFileAsync("node", [cliPath, "debug", "telemetry", "prune", "--retention", "provider_event", "--before", "2026-05-01T10:04:04.000Z", "--apply", "--json"], { cwd });
 		const applyParsed = JSON.parse(apply.stdout);
 		assert.equal(applyParsed.result.applied, true);
-		assert.equal(applyParsed.result.rowsDeleted, 1);
+		assert.equal(applyParsed.result.rowsDeleted, 0); // The selected event still belongs to an active turn.
 
 		const statsAfter = await execFileAsync("node", [cliPath, "debug", "telemetry", "stats", "--retention", "provider_event", "--json"], { cwd });
-		assert.equal(JSON.parse(statsAfter.stdout).stats.totalRows, 1);
+		assert.equal(JSON.parse(statsAfter.stdout).stats.totalRows, 2);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

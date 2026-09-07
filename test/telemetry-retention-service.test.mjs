@@ -88,8 +88,9 @@ test("automatic telemetry retention records persistent prune timestamp after suc
 	try {
 		seedTelemetry(store);
 		let lastPrunedAt;
+        const state={};
 		maybeRunTelemetryRetentionMaintenance({
-			state: {},
+			state,
 			dataStore: store,
 			settings: { enabled: true, days: 30 },
 			now: new Date("2026-02-15T00:00:00.000Z"),
@@ -97,7 +98,8 @@ test("automatic telemetry retention records persistent prune timestamp after suc
 			onPruned: (value) => { lastPrunedAt = value; },
 			context: { channelContext: { listSessionRuntimeStatuses: () => [] } },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		for(let i=0;i<100&&!lastPrunedAt;i++)await new Promise(resolve=>setTimeout(resolve,25));
+        await disposeTelemetryRetentionMaintenance(state);
 		assert.equal(lastPrunedAt, "2026-02-15T00:00:00.000Z");
 		assert.equal(store.telemetry.getTurnTimeline("turn_old"), undefined);
 	} finally {
@@ -106,7 +108,7 @@ test("automatic telemetry retention records persistent prune timestamp after suc
 	}
 });
 
-test("automatic telemetry retention skips while runtime work is active", async () => {
+test("automatic telemetry retention progresses while unrelated runtime work is active", async () => {
 	const { dir, store } = createStore();
 	try {
 		seedTelemetry(store);
@@ -123,8 +125,9 @@ test("automatic telemetry retention skips while runtime work is active", async (
 				},
 			},
 		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		assert.ok(store.telemetry.getTurnTimeline("turn_old"));
+		for(let i=0;i<100&&store.telemetry.getTurnTimeline("turn_old");i++)await new Promise(resolve=>setTimeout(resolve,25));
+        await disposeTelemetryRetentionMaintenance(state);
+		assert.equal(store.telemetry.getTurnTimeline("turn_old"),undefined);
 	} finally {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });
@@ -145,7 +148,7 @@ test("disposing telemetry retention cancels a scheduled database callback", asyn
 			intervalMs: 0,
 			context: { channelContext: { listSessionRuntimeStatuses: () => [] } },
 		});
-		disposeTelemetryRetentionMaintenance(state);
+		await disposeTelemetryRetentionMaintenance(state);
 		store.close();
 		closed = true;
 		await new Promise((resolve) => setTimeout(resolve, 20));

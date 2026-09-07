@@ -455,8 +455,8 @@ test("telemetry stale, stats, and prune are read-oriented by default", () => {
 
 		const applied = store.telemetry.prune({ retentionClass: "diagnostic", before: pruneBefore, apply: true });
 		assert.equal(applied.applied, true);
-		assert.equal(applied.rowsDeleted, dryRun.rowsMatched);
-		assert.equal(store.telemetry.getProviderRequest("pr_delete"), undefined);
+		assert.equal(applied.rowsDeleted, 0); // Old rows still belong to an active provider/turn.
+		assert.equal(store.telemetry.getProviderRequest("pr_delete")?.providerRequestId, "pr_delete");
 		assert.equal(store.telemetry.getProviderRequest("pr_keep")?.providerRequestId, "pr_keep");
 	} finally {
 		store.close();

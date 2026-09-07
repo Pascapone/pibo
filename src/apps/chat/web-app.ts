@@ -4741,7 +4741,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			state.unsubscribe = undefined;
 			state.subscribedContext = undefined;
 			state.eventLoopDelay.disable();
-			disposeTelemetryRetentionMaintenance(state.telemetryRetentionMaintenance);
+			await disposeTelemetryRetentionMaintenance(state.telemetryRetentionMaintenance);
 			state.outputPersistenceRetries.dispose();
 			state.workflowService.close();
 			state.agentStore.close();

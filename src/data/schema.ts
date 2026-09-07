@@ -1,7 +1,8 @@
+import { TELEMETRY_MAINTENANCE_SCHEMA } from "./telemetry-maintenance.js";
 import { MESSAGE_COMMAND_SCHEMA } from "./message-command-store.js";
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 11;
+export const PIBO_DATA_SCHEMA_VERSION = 13;
 
 const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
 const retiredScopeColumn = ["owner", "scope"].join("_");
@@ -791,6 +792,7 @@ function applyPiboDataSchemaInTransaction(
 		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_retention_updated
 			ON telemetry_tool_calls(retention_class, updated_at);
 	`);
+	db.exec(TELEMETRY_MAINTENANCE_SCHEMA);
 	hooks.afterStep?.("schema");
 	db.exec(`
 		INSERT OR IGNORE INTO session_runtime_bindings (
