@@ -533,7 +533,7 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [{ prefix: "prompt", tokens: [token(text)] }],
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
-		pendingMessageDelivery: node.messageDeliveryState ? "queue" : pendingUserMessageDelivery(node),
+		pendingMessageDelivery: pendingUserMessageDelivery(node) ?? (node.status === "running" && node.messageDeliveryState ? "queue" : undefined),
 		messageDeliveryState: node.messageDeliveryState,
 		startedAt: node.startedAt,
 		output: text,

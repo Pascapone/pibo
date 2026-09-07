@@ -39,6 +39,18 @@
       "lineage": null
     },
     {
+      "path": "docs/reports/performance-scalability-fgh-handoff-2026-09-07.md",
+      "state": "conformant",
+      "classification": "implementation handoff",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 14997,
+      "file_sha256": "4a68abf77b3f7f476f2b198e731b853e9e01ff2eaafee09f9b66fff484fc1f4a",
+      "body_sha256": "756084251c0e8d7a7515cf3ceafa16128ebe984151438dcdcb27af0344a0c975",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-p0-2026-09-06.md",
       "state": "conformant",
       "classification": "performance validation",
@@ -13815,6 +13827,18 @@
       "file_bytes": 7378,
       "file_sha256": "8310140b70c1eef07ff09b0fc29b745c2190cace8662c97f4e740c7021d4bd6e",
       "body_sha256": "290dcc443861e4cd7a9a033cc0d1edfc41a29893bfb40b6a233ac9282d2e9913"
+    },
+    {
+      "path": "docs/reports/performance-scalability-reads-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 10037,
+      "file_sha256": "68debaf262783c1375b7e7784ab3fde9b99b632a227690abb5527ae49d393efe",
+      "body_sha256": "170d66e00f9e6f0ec134ced19ce164583b1446046d1ee9435f4c6c2b4e301a7b"
     }
   ]
 }

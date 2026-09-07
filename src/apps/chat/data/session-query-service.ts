@@ -25,11 +25,12 @@ export class ChatSessionQueryService {
 		let written = 0;
 		let skipped = 0;
 		for (const session of sessions) {
-			if (this.sessionIndexMatches(session)) {
+			const status=this.getSession(session.id)?.status ?? "idle";
+			if (this.sessionIndexMatches(session,status)) {
 				skipped++;
 				continue;
 			}
-			this.upsertSession(session);
+			this.upsertSession(session,status);
 			written++;
 		}
 		return { checked: sessions.length, written, skipped };
@@ -66,20 +67,28 @@ export class ChatSessionQueryService {
 		});
 	}
 
-	listSessions(): ChatWebSessionIndexItem[] {
+	listSessions(roomId?:string): ChatWebSessionIndexItem[] {
 		const rows = this.store.db.prepare(`
-			SELECT s.*, b.runtime_instance_id, b.runtime_adapter_id, b.native_session_id, b.binding_state
+			SELECT s.id,s.pi_session_id,s.parent_id,s.channel,s.kind,s.profile,s.created_at,s.updated_at,s.last_activity_at,s.status,b.runtime_instance_id,b.runtime_adapter_id,b.native_session_id,b.binding_state
 			FROM sessions s
 			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
-			WHERE s.deleted_at IS NULL
+			WHERE s.deleted_at IS NULL ${roomId?"AND s.room_id=?":""}
 			ORDER BY s.last_activity_at DESC, s.created_at DESC
-		`).all() as SessionRow[];
+		`).all(...(roomId?[roomId]:[])) as SessionRow[];
+		return rows.map(sessionFromRow);
+	}
+
+	listSessionIndexPage(input:{roomId:string;afterId?:string;limit?:number}):ChatWebSessionIndexItem[] {
+		const limit=Math.max(1,Math.min(input.limit??500,500));
+		const rows=this.store.db.prepare(`SELECT s.id,s.pi_session_id,s.parent_id,s.channel,s.kind,s.profile,s.created_at,s.updated_at,s.last_activity_at,s.status,b.runtime_instance_id,b.runtime_adapter_id,b.native_session_id,b.binding_state
+		FROM sessions s LEFT JOIN session_runtime_bindings b ON b.pibo_session_id=s.id
+		WHERE s.deleted_at IS NULL AND s.room_id=? AND s.id>? ORDER BY s.id LIMIT ?`).all(input.roomId,input.afterId??"",limit) as SessionRow[];
 		return rows.map(sessionFromRow);
 	}
 
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined {
 		const row = this.store.db.prepare(`
-			SELECT s.*, b.runtime_instance_id, b.runtime_adapter_id, b.native_session_id, b.binding_state
+			SELECT s.id,s.pi_session_id,s.parent_id,s.channel,s.kind,s.profile,s.created_at,s.updated_at,s.last_activity_at,s.status,b.runtime_instance_id,b.runtime_adapter_id,b.native_session_id,b.binding_state
 			FROM sessions s
 			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
 			WHERE s.id = ? AND s.deleted_at IS NULL

@@ -14,7 +14,7 @@ export function webOutboxPaths(directory) {
 	};
 }
 
-export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
+export async function startWebOutboxProcessHost({ directory, piboSessionId, structureRevision }) {
 	mkdirSync(directory, { recursive: true });
 	const paths = webOutboxPaths(directory);
 	const sessions = new InMemoryPiboSessionStore();
@@ -53,6 +53,7 @@ export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
 		deleteSession(id) { return sessions.delete(id); },
 		findSessions(input) { return sessions.find(input); },
 		listSessions() { return sessions.list(); },
+		getSessionStructureRevision: structureRevision,
 		getSessionRuntimeBinding(id) { return sessions.getRuntimeBinding(id); },
 		getGatewayActions() { return []; },
 		getProfiles() { return []; },

@@ -14,7 +14,7 @@ import { flattenTraceNodes, sortTraceNodes } from "./trace-nodes.js";
 import { createRunNotificationNode, parseRunNotificationText } from "./trace-run-notifications.js";
 import { isSubagentToolName } from "./trace-subagent-links.js";
 import { assistantMessageNodeId, messageTurnNodeId, thinkingNodeId, type TraceMessageTurnTiming } from "./trace-event-projection.js";
-import type { PiboTraceNode, PiboTraceNodeStatus, PiboTraceSource, PiboWebSessionStatus } from "./trace-types.js";
+import type { TracePayloadRef, PiboTraceNode, PiboTraceNodeStatus, PiboTraceSource, PiboWebSessionStatus } from "./trace-types.js";
 import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from "./trace-limits.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 
@@ -863,6 +863,7 @@ function createUserMessageNode(
 		startedAt: entry.createdAt,
 		summary: text,
 		output: text,
+        payloadRefs: historyContentPayloadRef(entry),
 		error: entry.error,
 		source,
 		stableKey: eventIdentity ?? historyEntryStableKey(entry),
@@ -1154,12 +1155,20 @@ function createAssistantMessageNode(input: {
 		completedAt: input.completedAt,
 		summary: input.text,
 		output: input.text,
+        payloadRefs: historyContentPayloadRef(input.entry),
 		error: input.error,
 		source,
 		stableKey: eventIdentity ? `assistant:${eventIdentity}` : `${historyEntryStableKey(input.entry)}:response:${input.contentPartIndex}`,
 		orderKey: historyTraceOrder(historyIndex(input.entry, input.entryIndex), input.contentPartIndex, "assistant.message", source, input.startedAt ?? input.entry.createdAt),
 		children: input.children ?? [],
 	};
+}
+
+/** Preserve a stored full body when the bounded history page contains its preview. */
+function historyContentPayloadRef(entry:AgentRuntimeHistoryMessageEntry):PiboTraceNode["payloadRefs"] {
+ const ref=entry.source==="product"?entry.metadata?.tracePayloadRef:undefined;
+ if(!ref||typeof ref!=="object"||Array.isArray(ref)||typeof ref.ref!=="string"||typeof ref.byteLength!=="number"||typeof ref.preview!=="string")return undefined;
+ return {output:ref as unknown as TracePayloadRef};
 }
 
 function historyMessageParts(entry: AgentRuntimeHistoryMessageEntry): AgentRuntimeHistoryContentPart[] {

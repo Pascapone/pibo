@@ -59,9 +59,11 @@ export type RoomRow = {
 	updated_at: string;
 };
 
-export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): ChatWebStoredPiboEvent | undefined {
+export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader, hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES): ChatWebStoredPiboEvent | undefined {
+    if(typeof hydrationBytes!=="number"||!Number.isFinite(hydrationBytes))hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES;
 	const attributes = parseJsonObject(row.attributes_json);
-	const payload = outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore));
+    if(hydrationBytes<MAX_TRACE_EVENT_HYDRATION_BYTES&&typeof attributes.inlineText==="string"&&Buffer.byteLength(attributes.inlineText)>hydrationBytes)attributes.inlineText=row.preview_text??"";
+	const payload = outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore, hydrationBytes));
 	if (!payload) return undefined;
 	const payloadIdentity = tracePayloadIdentityForEvent(row, attributes);
 	const storedPayloadRef = row.payload_ref && row.session_id && payloadStore && payloadIdentity
@@ -76,9 +78,11 @@ export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPa
 	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, renderSequence, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
 }
 
-export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): StoredChatEvent {
+export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader, hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES): StoredChatEvent {
+    if(typeof hydrationBytes!=="number"||!Number.isFinite(hydrationBytes))hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES;
 	const attributes = parseJsonObject(row.attributes_json);
-	return { streamId: row.stream_id, roomId: row.room_id ?? undefined, piboSessionId: row.session_id ?? undefined, eventId: row.event_id ?? `evt_${row.stream_id}`, eventType: row.type, actorType: actorTypeValue(row.actor_type), actorId: row.actor_id ?? undefined, clientTxnId: typeof attributes.clientTxnId === "string" ? attributes.clientTxnId : undefined, createdAt: row.created_at, retentionClass: retentionClassValue(row.retention_class), payload: (outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore)) ?? null) as PiboJsonValue };
+    if(hydrationBytes<MAX_TRACE_EVENT_HYDRATION_BYTES&&typeof attributes.inlineText==="string"&&Buffer.byteLength(attributes.inlineText)>hydrationBytes)attributes.inlineText=row.preview_text??"";
+	return { streamId: row.stream_id, roomId: row.room_id ?? undefined, piboSessionId: row.session_id ?? undefined, eventId: row.event_id ?? `evt_${row.stream_id}`, eventType: row.type, actorType: actorTypeValue(row.actor_type), actorId: row.actor_id ?? undefined, clientTxnId: typeof attributes.clientTxnId === "string" ? attributes.clientTxnId : undefined, createdAt: row.created_at, retentionClass: retentionClassValue(row.retention_class), payload: (outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore, hydrationBytes)) ?? null) as PiboJsonValue };
 }
 
 function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, persistedPayload?: PiboJsonValue | string): PiboOutputEvent | undefined {
@@ -165,12 +169,12 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	return { ...base, type: row.type } as PiboOutputEvent;
 }
 
-function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader | undefined): PiboJsonValue | string | undefined {
+function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader | undefined, hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES): PiboJsonValue | string | undefined {
 	if (!row.payload_ref || !payloadStore) return undefined;
 	try {
 		const metadata = payloadStore.getPayload(row.payload_ref);
-		if (!metadata || metadata.byteSize > MAX_TRACE_EVENT_HYDRATION_BYTES) return undefined;
-		const text = Buffer.from(payloadStore.readPayloadBytesBounded(row.payload_ref, MAX_TRACE_EVENT_HYDRATION_BYTES)).toString("utf8");
+		if (!metadata || metadata.byteSize > hydrationBytes) return undefined;
+		const text = Buffer.from(payloadStore.readPayloadBytesBounded(row.payload_ref, hydrationBytes)).toString("utf8");
 		return metadata.contentType.includes("json") ? JSON.parse(text) as PiboJsonValue : text;
 	} catch {
 		return undefined;

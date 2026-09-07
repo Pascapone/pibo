@@ -72,10 +72,10 @@ export class PayloadStore {
 	private readonly db: DatabaseSync;
 	private readonly rootDir: string;
 
-	constructor(db: DatabaseSync, rootDir = piboHomePath("payloads")) {
+	constructor(db: DatabaseSync, rootDir = piboHomePath("payloads"), readOnly = false) {
 		this.db = db;
 		this.rootDir = rootDir === ":memory:" ? rootDir : resolve(rootDir);
-		if (this.rootDir !== ":memory:") mkdirSync(this.rootDir, { recursive: true });
+		if (!readOnly && this.rootDir !== ":memory:") mkdirSync(this.rootDir, { recursive: true });
 	}
 
 	writePayload(input: PayloadWriteInput): StoredPayload {

@@ -1,3 +1,4 @@
+import { CHAT_READ_PROJECTION_SCHEMA, CHAT_NAVIGATION_REVISION_SCHEMA } from "./chat-read-projections.js";
 import { TELEMETRY_MAINTENANCE_SCHEMA } from "./telemetry-maintenance.js";
 import { MESSAGE_COMMAND_SCHEMA } from "./message-command-store.js";
 import type { DatabaseSync } from "node:sqlite";
@@ -792,6 +793,8 @@ function applyPiboDataSchemaInTransaction(
 		CREATE INDEX IF NOT EXISTS idx_telemetry_tool_calls_retention_updated
 			ON telemetry_tool_calls(retention_class, updated_at);
 	`);
+	db.exec(CHAT_READ_PROJECTION_SCHEMA);
+	db.exec(CHAT_NAVIGATION_REVISION_SCHEMA);
 	db.exec(TELEMETRY_MAINTENANCE_SCHEMA);
 	hooks.afterStep?.("schema");
 	db.exec(`
@@ -832,6 +835,7 @@ function applyPiboDataSchemaInTransaction(
 			END;
 	`);
 	hooks.afterStep?.("render-high-water");
+	db.exec("CREATE INDEX IF NOT EXISTS idx_event_log_sequence_repair_candidates ON event_log(session_id) WHERE session_id IS NOT NULL AND (session_sequence IS NULL OR session_sequence <= 0)");
 	// Always inspect for interrupted pre-atomic v7 repairs. A previous process
 	// may have written negative temporary values before setting user_version.
 	db.exec(`
@@ -841,7 +845,7 @@ function applyPiboDataSchemaInTransaction(
 		);
 		INSERT INTO pibo_v7_sequence_repair_sessions (session_id)
 		SELECT DISTINCT session_id
-		FROM event_log
+		FROM event_log INDEXED BY idx_event_log_sequence_repair_candidates
 		WHERE session_id IS NOT NULL
 			AND (session_sequence IS NULL OR session_sequence <= 0);
 	`);

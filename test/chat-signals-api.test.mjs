@@ -32,6 +32,9 @@ async function startSignalWebHost(options = {}) {
 	const dataStorePath = join(storageDir, "pibo-chat-v2.sqlite");
 	const agentStorePath = join(storageDir, "agents.sqlite");
 	const channel = createWebHostChannel({ port: 0, announce: false });
+	const app = createChatWebApp({ dataStorePath, agentStorePath });
+	const stopChannel = channel.stop?.bind(channel);
+	channel.stop = async () => { await stopChannel?.(); await app.dispose?.(); };
 	const listeners = new Set();
 	await channel.start({
 		auth: createFakeAuthService(),
@@ -68,7 +71,7 @@ async function startSignalWebHost(options = {}) {
 			subscribeSignalStatuses: (listener) => signals.subscribeAll(listener),
 		} : {}),
 		getWebApps() {
-			return [createChatWebApp({ dataStorePath, agentStorePath })];
+			return [app];
 		},
 	});
 	const address = channel.getAddress();
@@ -477,10 +480,16 @@ test("chat navigation includes unread counts for completed messages in other ses
 		emitOutput({ type: "message_finished", piboSessionId: other.id, eventId: "m2" });
 		signals.project({ type: "session_processing_changed", piboSessionId: other.id, processing: false, queuedMessages: 0 });
 
-		const response = await fetch(`${baseURL}/api/chat/navigation?piboSessionId=${selected.id}`, { headers: { "x-test-user": "user-1" } });
-		assert.equal(response.status, 200);
-		const body = await response.json();
-		assert.equal(findSessionNode(body.sessions, other.id)?.unreadCount, 1);
+		// Durable admission is asynchronous; navigation unread follows the persisted projection.
+		let unreadCount;
+		for (let attempt = 0; attempt < 100 && unreadCount !== 1; attempt++) {
+			const response = await fetch(`${baseURL}/api/chat/navigation?piboSessionId=${selected.id}`, { headers: { "x-test-user": "user-1" } });
+			assert.equal(response.status, 200);
+			const body = await response.json();
+			unreadCount = findSessionNode(body.sessions, other.id)?.unreadCount;
+			if (unreadCount !== 1) await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+		assert.equal(unreadCount, 1);
 	} finally {
 		await channel.stop?.();
 	}

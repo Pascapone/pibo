@@ -70,6 +70,7 @@ export type FindPiboSessionsInput = {
 export type PiboSessionStore = {
 	get(id: string): PiboSession | undefined;
 	list?(): PiboSession[];
+	getStructureRevision?(): number;
 	create(input: CreatePiboSessionInput): PiboSession;
 	update(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
 	delete?(id: string): boolean;

@@ -149,6 +149,45 @@ test("schema migration from v5 installs the exact tool lifecycle index", () => {
 	db.close();
 });
 
+test("every schema open keeps the interrupted sequence repair on its bounded partial index", () => {
+	const dir = tempDir("pibo-data-sequence-repair-index-");
+	const dbPath = join(dir, "pibo.sqlite");
+	try {
+		const db = new DatabaseSync(dbPath);
+		applyPiboDataSchema(db);
+		const plan = db.prepare(`
+			EXPLAIN QUERY PLAN
+			SELECT DISTINCT session_id
+			FROM event_log INDEXED BY idx_event_log_sequence_repair_candidates
+			WHERE session_id IS NOT NULL
+				AND (session_sequence IS NULL OR session_sequence <= 0)
+		`).all().map((row) => row.detail).join(" ");
+		assert.match(plan, /idx_event_log_sequence_repair_candidates/);
+		assert.doesNotMatch(plan, /TEMP B-TREE/);
+		// Simulate a pre-atomic v7 process that crashed after writing negative temporary values.
+		db.exec(`
+			INSERT INTO event_log (session_id, session_sequence, topic, type, source, retention_class, created_at) VALUES
+				('session-a', -1, 'pibo.output', 'assistant_message', 'test', 'chat_message', '2026-09-07T00:00:00Z'),
+				('session-a', -2, 'pibo.output', 'tool_execution_finished', 'test', 'trace_event', '2026-09-07T00:00:00Z'),
+				('session-b', NULL, 'pibo.output', 'assistant_message', 'test', 'chat_message', '2026-09-07T00:00:00Z');
+		`);
+		db.close();
+		const reopened = new DatabaseSync(dbPath);
+		applyPiboDataSchema(reopened);
+		assert.deepEqual(
+			reopened.prepare("SELECT session_id, session_sequence FROM event_log ORDER BY stream_id").all().map((row) => ({ ...row })),
+			[
+				{ session_id: "session-a", session_sequence: 1 },
+				{ session_id: "session-a", session_sequence: 2 },
+				{ session_id: "session-b", session_sequence: 1 },
+			],
+		);
+		reopened.close();
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("schema v8 migrates payload identity without rewriting existing payload files", (t) => {
 	const dir = tempDir("pibo-data-v8-payload-identity-");
 	t.after(() => rmSync(dir, { recursive: true, force: true }));
