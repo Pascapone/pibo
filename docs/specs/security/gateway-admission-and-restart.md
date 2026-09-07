@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-07T05:25:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-SEC-003"
@@ -19,7 +19,7 @@ implementation:
   focused_test_execution: "performed in Docker: 1,071 affected tests passed; full suite 2,638 passed, 0 failed, 5 skipped"
   build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "97232f15e75b14c71723f3c68bb790641e94ee3b"
   requirements:
     - id: "SEC-GW-001"
       status: "implemented"
@@ -115,7 +115,7 @@ traceability:
         - path: "src/gateway/cli.ts"
           symbol: "checkActiveWork"
         - path: "src/gateway/cli.ts"
-          symbol: "RESTART_CONFIRMATION_TOKEN"
+          symbol: "restartConfirmationToken"
         - path: "src/gateway/cli.ts"
           symbol: "runGatewayCli"
       tests:
@@ -135,6 +135,12 @@ traceability:
           name: "allows restart when gateway is idle"
         - path: "test/gateway-restart-safety.test.mjs"
           name: "exports the exact force confirmation token"
+        - path: "test/gateway-restart-approval.test.mjs"
+          name: "delayed legacy force confirmation inspects and blocks newly active work"
+        - path: "test/gateway-restart-approval.test.mjs"
+          name: "unchanged explicit approval restarts and audits the disclosed sessions and runs"
+        - path: "test/gateway-restart-approval.test.mjs"
+          name: "work changing during the final recheck aborts even with explicit approval"
       public:
         - "Gateway resource guard and pressure diagnostics"
         - "pibo gateway web/dev status/start/stop/restart lifecycle"
@@ -203,7 +209,7 @@ Implemented behavior:
 - "GatewayWorkAdmissionController reserves yielded-run capacity globally and per session, checks host reserve, and releases idempotently; its only production call site is yielded-run tool admission in PiboSessionRouter."
 - "Managed pibo gateway web/dev status/start/restart uses home-scoped PID ownership, stale PID cleanup, target-mode checks, and health polling."
 - "Nested managed-lifecycle help returns before PID, process, port, or gateway state is inspected or mutated."
-- "Production web restart fails closed for unreachable/ambiguous status, processing/streaming/queued/stale-telemetry sessions, or active runs unless the exact force confirmation is supplied; dev restart is intentionally not active-work-gated."
+- "Production web restart always inspects current work and rechecks before invoking the manager. Force requires approval bound to the gateway generation and the disclosed active event, queued event, and yielded-run identities; unavailable or incomplete status cannot be overridden. Dev restart remains outside the active-work gate."
 
 Public surfaces:
 - "Gateway resource guard and pressure diagnostics"
@@ -219,7 +225,7 @@ Public surfaces:
 - "The managed web/dev CLI is the normative operator surface, but legacy generic gateway lifecycle commands still exist for compatibility; do not claim no other code path exists."
 - "Socket backpressure belongs to GW-002; its test file is non-owned dependency evidence, not SEC-GW admission proof."
 
-Persistence and lifecycle state: PID/status files and live process/resource snapshots.
+Persistence and lifecycle state: PID/status files, live process/resource snapshots, and the managed production home's `gateway-restart-audit.jsonl` decision log.
 
 # Requirements and invariants
 
@@ -293,17 +299,27 @@ Use the managed pibo gateway web/dev CLI for normative status/start/restart oper
 **Acceptance boundary:** The named source and test records are exact regular-file evidence records. Their presence does not mean the named test ran in this package execution.
 
 
-## Requirement: SEC-GW-004: Fail closed on production restart when status is unavailable/ambiguous or sessions/runs are active, require the exact explicit force confirmation to override, and keep dev restart outside the production active-work gate
+## Requirement: SEC-GW-004: Bind production restart approval to freshly inspected work
 
-Fail closed on production restart when status is unavailable/ambiguous or sessions/runs are active, require the exact explicit force confirmation to override, and keep dev restart outside the production active-work gate.
+Every managed production restart MUST inspect authoritative status at execution time and recheck immediately before invoking the gateway manager. Non-force restart MUST fail closed for active work or unavailable/ambiguous status. Dev restart remains outside this production gate.
 
-**Implementation state:** `implemented_at_baseline` at `39090b8850758293e69380a52bb7498d7c955bc2`.
+`pibo gateway web status` prints the current work and a `restart-active-agents:<sha256>` confirmation token. Operators MUST obtain user approval for that disclosed snapshot before passing it to `pibo gateway web restart --force --confirm <snapshot-token>`. The legacy bare `restart-active-agents` string does not authorize a production restart.
+
+Approval binds the managed target/home/service, gateway generation, processing/streaming state, active event IDs, ordered queued event IDs and queue depths, stale telemetry turn IDs, and active yielded-run IDs/statuses/controller Sessions. Progress timestamps and elapsed-time counters do not invalidate otherwise unchanged work. Missing work identities or unavailable status cannot receive force approval.
+
+The force path MUST disclose all blocking reasons before invoking the manager. An older idle snapshot, a new turn in the same Session, a replacement queued event at the same queue depth, a new yielded run, or changed work during the final recheck MUST abort and direct the operator to obtain fresh approval. An explicitly approved unchanged snapshot may restart intentionally.
+
+Before manager invocation, the CLI MUST append its decision, timestamp, snapshot identity, affected Session IDs, run IDs, and blocking reasons to `gateway-restart-audit.jsonl` under the managed production home. Failure to write the approval audit MUST block restart. The audit records authorization, not proof that the service manager completed its action.
+
+**Implementation state:** `implemented` at `97232f15e75b14c71723f3c68bb790641e94ee3b`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
 **Source traceability:**
 - `src/gateway/cli.ts` — `checkActiveWork`
-- `src/gateway/cli.ts` — `RESTART_CONFIRMATION_TOKEN`
+- `src/gateway/cli.ts` — `restartConfirmationToken`, `auditRestart`
+- `src/web/channel.ts` — `createGatewayStatusResponse`
+- `src/agent-runtime/routed-session.ts` and `src/agent-runtimes/pi/routed-session.ts` — `getStatus` active and queued event identities
 - `src/gateway/cli.ts` — `runGatewayCli`
 
 **Named test traceability:**
@@ -314,7 +330,8 @@ Fail closed on production restart when status is unavailable/ambiguous or sessio
 - `test/gateway-restart-safety.test.mjs` — `blocks with active yielded runs`
 - `test/gateway-restart-safety.test.mjs` — `blocks when status is unavailable`
 - `test/gateway-restart-safety.test.mjs` — `allows restart when gateway is idle`
-- `test/gateway-restart-safety.test.mjs` — `exports the exact force confirmation token`
+- `test/gateway-restart-safety.test.mjs` — `exports the exact force confirmation token` (prefix compatibility only)
+- `test/gateway-restart-approval.test.mjs` — delayed execution, idle-to-active changes, same-Session turn changes, queue replacement, new runs, final-query changes, malformed/unavailable status, unchanged approval and audit
 
 **Acceptance boundary:** The named source and test records are exact regular-file evidence records. Their presence does not mean the named test ran in this package execution.
 
@@ -361,7 +378,15 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `39090b8850758293e69380a52bb7498d7c955bc2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `39090b8850758293e69380a52bb7498d7c955bc2`.
+Requirement traceability uses exact repository-relative regular files at `97232f15e75b14c71723f3c68bb790641e94ee3b`. SEC-GW-004 includes the snapshot-approval fix for issue #914. The earlier resource/admission evidence below remains scoped to its recorded baseline `39090b8850758293e69380a52bb7498d7c955bc2`; it is not a new full-suite claim.
+
+The restart regression exercises the actual CLI in child processes against the real HTTP status channel with a recording service-manager substitute. It reproduces the legacy force bypass without stopping production. The final status read is an execution-time check, not a transactional admission lock spanning the external service-manager operation; this change does not claim such a lock.
+
+Issue #914 validation in Docker worker `pibo-dev-fix-restart-914`:
+- `npm run build` and `npm run typecheck` passed. A first build attempt hit the host memory-pressure guard; the bounded-thread retry passed with the existing chunk-size warnings.
+- The five focused files (`gateway-restart-approval`, `gateway-restart-safety`, `gateway-web-cli`, `runtime-routed-session`, and `routed-steering`) passed 49 tests.
+- Installation into an isolated npm prefix and installed `pibo gateway web restart --help` passed. No host installation or service restart was performed.
+- The 84 documentation validator/authoring tests, core validation, generated-index check, and log check passed. Strict validation retains the same three missing PNG links in the pre-existing Session-native workflow report as the unmodified documentation baseline; those unrelated artifacts were not changed.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
