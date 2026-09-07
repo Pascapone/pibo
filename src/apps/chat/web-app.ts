@@ -1180,7 +1180,7 @@ async function deliverWebOutputPersistenceState(
 			if (!delivery.reliabilityDelivered) {
 				if (delivery.reliabilityPayload === undefined) {
 					delivery.reliabilityPayload = boundedReliabilityOutputPayload(state, delivery.event);
-					checkpoint();
+					// Preparation is replayable; checkpoint together with the confirmed append below.
 				}
 				const deliveryKey = delivery.deliveryId;
 				state.reliabilityStore.appendOnce({
@@ -1197,7 +1197,7 @@ async function deliverWebOutputPersistenceState(
 
 			if (!delivery.sideEffectsDelivered && state.reliabilityStore.hasDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1")) {
 				delivery.sideEffectsDelivered = true;
-				checkpoint();
+				// The durable receipt is authoritative; the job can now finish without another payload rewrite.
 			} else if (!delivery.sideEffectsDelivered) {
 				const stored = storedChatEventForDelivery(persistenceState, delivery);
 				if (delivery.event.type === "assistant_message" || delivery.event.type === "message_finished" || delivery.event.type === "session_error") {
@@ -1216,7 +1216,7 @@ async function deliverWebOutputPersistenceState(
 				// recording before sends would trade duplicates for silent loss.
 				state.reliabilityStore.recordDeliveryReceipt(delivery.deliveryId, "chat-web-observable-v1");
 				delivery.sideEffectsDelivered = true;
-				checkpoint();
+				// The durable receipt is authoritative; the job can now finish without another payload rewrite.
 			}
 		} catch (error) {
 			if (error instanceof WebOutputPersistenceCheckpointError) throw error.checkpointCause;
