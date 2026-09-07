@@ -2,6 +2,8 @@
 
 ## 2026-09-07
 
+- **Chain review**: Added the [A–H chain review report](/reports/performance-scalability-chain-review-2026-09-07.md); records the critical review of all eight stacked performance pull requests against the plan budgets and existing contracts, the three confirmed defects corrected with deterministic regressions in packages B, F and G, the findings reported without a code change, the resulting re-acceptance requirement and the recommended merge order.
+
 - **Runtime-isolation decision**: Added the [package-H measurement decision](/reports/performance-scalability-runtime-isolation-decision-2026-09-07.md); records that the assembled B–G event-loop, fairness, memory and recovery evidence stays inside PERF-LOOP-001 and the runtime ramp gate, so a documented capacity proof suffices and Pibo-managed runtime-host isolation is deferred with explicit revisit triggers.
 
 - **Bounded maintenance**: Added the [package-G validation report](/reports/performance-scalability-maintenance-2026-09-07.md) and its artifacts; records the resumable bounded telemetry maintenance worker, SQLite online backups with external payload manifests, opt-in scoped capture storage, bounded manual prune and backup WAL quotas, and the isolated Pibo2 slot acceptance (lease released).

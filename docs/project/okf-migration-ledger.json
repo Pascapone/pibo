@@ -13863,6 +13863,18 @@
       "file_bytes": 5305,
       "file_sha256": "97e5f383757c3b1c1b6432e3282fea20fdf725ae86f99ac452b41457ca25a00d",
       "body_sha256": "4eb57880bd7a49b1866a23b61534f0daa2afdc884c83a5e8e8a8f07ff1461f1f"
+    },
+    {
+      "path": "docs/reports/performance-scalability-chain-review-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 16257,
+      "file_sha256": "b5404ab4449ca7da87f7a967553464bed3de2a796a9ed25be504ca963d988fa0",
+      "body_sha256": "dd027ccf08c84846b9990ed9101e098ef549e96fcb3a2c3301284617495a75b5"
     }
   ]
 }
