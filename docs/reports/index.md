@@ -21,6 +21,7 @@
 * [Durable message admission: package C validation](performance-scalability-commands-2026-09-07.md) - Records versioned durable receipts, startup dispatch recovery, UI confirmation semantics and the candidate acceptance evidence&#46;
 * [Expert Report: Chat Web Trace Performance and Gateway Responsiveness](chat-web-trace-performance-expert-report-2026-07-04.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Failed message signal reconciliation validation — 2026&#45;08&#45;07](failed-message-signal-status-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Fair admission and runtime capacity: package D validation](performance-scalability-capacity-2026-09-07.md) - Records capacity bounds, room fairness, runtime&#45;control checks and exact&#45;candidate acceptance evidence&#46;
 * [Full Test Suite Hermeticity Triage — 2026&#45;08&#45;10](full-test-hermeticity-triage-2026-08-10.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Gateway status scaling validation — September 6, 2026](gateway-status-scaling-validation-2026-09-06.md) - Records removal of redundant ancestor reads and exact&#45;candidate Pibo2 status, safety, streaming, and Queue acceptance&#46;
 * [Graphlib&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-graphlib.md) - Preserves the original report body as stable research without promoting historical claims&#46;

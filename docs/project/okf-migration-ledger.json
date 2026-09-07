@@ -13779,6 +13779,30 @@
       "file_bytes": 8085,
       "file_sha256": "080ae9eb897e3c591b48b1219fbd5d10a856559e13627b0448d6f390ca7973f1",
       "body_sha256": "0fcd9ca8dc9207b2ff936b5f122820779019911705399a2fd1d8711a01be3cab"
+    },
+    {
+      "path": "docs/specs/runtime/capacity-and-scheduling.md",
+      "state": "conformant",
+      "classification": "current implemented contract",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 11482,
+      "file_sha256": "576365a36477f84d16ede47fd85ff12229b0cd4de281e95f3e2ae67c5b111d56",
+      "body_sha256": "aa51fa7d01dcf3035918f6cf6721a462586c9b011206903b387bff9fe43032ed"
+    },
+    {
+      "path": "docs/reports/performance-scalability-capacity-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 8107,
+      "file_sha256": "3f6cec696dc0fd33e3c429b1dc5f0e7111315c9c6f6acc18fea87b1bec0d5bc5",
+      "body_sha256": "fb973ca5c2ce5ad2b5f6ba64d77af2d4069d8b0b71d741adff69b68d335f3c7b"
     }
   ]
 }

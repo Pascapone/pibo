@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "cf81614fef17fd32ccf48427e2a2065ba8845cf7"
+  commit: "e52bd62f86953da2fc316c22b6de55a0c70233a4"
   requirements:
     - id: "WEB-COMPOSER-ADMISSION-006"
       status: "implemented"
@@ -50,7 +50,7 @@ traceability:
           name: "message API distinguishes unknown acceptance from explicit rejection"
       failures:
         - "Expired dispatched ownership becomes interrupted and is not automatically replayed."
-        - "Schema v10 cannot be opened by binaries that reject versions newer than v9."
+        - "Schema v11 cannot be opened by binaries that reject versions newer than v10."
       confidence: "high"
     - id: "WEB-COMPOSER-DRAFTS-001"
       status: "implemented"
@@ -307,13 +307,13 @@ An explicit `admissionVersion: 2` on the message route commits a durable command
 
 The room/actor/client transaction key retains its scope. For version 2 it binds the target Session, effective message content and delivery mode. An unchanged retry returns the same receipt; conflicting reuse or a key already accepted under the legacy contract returns 409. Command payloads are bounded to 1 MiB, with reference-backed durable storage. Compact receipts have no time-based expiry and remain independent of optional trace/telemetry retention for the lifetime of this database. This does not promise identity across database replacement or restore to a state before acceptance.
 
-The startup dispatcher uses durable fenced claims, at most ten local outstanding dispatches, and 30-second renewable leases. Normal commands remain FIFO per Session; Steering keeps its separate delivery mode and bypasses an active normal turn. Runtime outputs advance receipt state through `accepted`, `waiting_slot`, `initializing`, `session_queue`, `running` and `completed`/`failed`. Expired unstarted claims can be reclaimed; expired potentially dispatched claims become `interrupted`. They require reconciliation and are never blindly replayed. A later durable terminal output can reconcile an interrupted receipt. This is not an exactly-once guarantee for provider/tool effects.
+The startup dispatcher uses durable fenced claims, at most twelve local outstanding dispatches, including the reserved Steering allowance, and 30-second renewable leases. Normal commands remain FIFO per Session; Steering keeps its separate delivery mode and bypasses an active normal turn. Runtime outputs advance receipt state through `accepted`, `waiting_slot`, `initializing`, `session_queue`, `running` and `completed`/`failed`. Expired unstarted claims can be reclaimed; expired potentially dispatched claims become `interrupted`. They require reconciliation and are never blindly replayed. A later durable terminal output can reconcile an interrupted receipt. This is not an exactly-once guarantee for provider/tool effects.
 
-Authenticated `GET /api/chat/message-receipts/:id` returns one receipt after Session/Room access resolution. The Session receipt-list endpoint returns at most 64 recent entries. The UI polls that bounded metadata, displays durable acceptance separately from runtime queue/start, and preserves unchanged node identities. Unknown acceptance is explicitly reported; unchanged retries retain their transaction ID in memory and, when available, tab session storage. Explicit rejection preserves composer text and attachments. A trace refresh failure after acceptance does not roll back the accepted send.
+Authenticated `GET /api/chat/message-receipts/:id` returns one receipt after Session/Room access resolution. The Session receipt-list endpoint returns up to 70 active/uncertain entries plus 64 recent terminal entries, alongside bounded Session queue diagnostics. The UI polls that bounded metadata, displays durable acceptance separately from runtime queue/start, and preserves unchanged node identities. Unknown acceptance is explicitly reported; unchanged retries retain their transaction ID in memory and, when available, tab session storage. Explicit rejection preserves composer text and attachments. A trace refresh failure after acceptance does not roll back the accepted send.
 
-The provisional durable queue rejects new work before commit at 1,000 active commands globally, 256 per Room, 64 per Session, or 64 MiB active command payloads. These guards do not establish the fair scheduler, provider/cold-start limits or capacity SLOs; those remain in the [performance plan](/plans/pibo-performance-and-scalability.md). Control requests continue through their existing routes.
+The [runtime capacity contract](/specs/runtime/capacity-and-scheduling.md) owns normal/Steering count, byte and oldest-wait limits, database-wide claim limits, Room rotation, cold starts, provider reservations and control capacity. These implemented guards do not alone establish the integrated capacity SLOs in the [performance plan](/plans/pibo-performance-and-scalability.md).
 
-Schema v10 adds the durable command table. Rollback must preserve accepted commands: keep a compatible dispatcher until work is terminal or explicitly reconciled. Redeploying a v9-only binary against this database is unsupported; dropping the table or lowering `user_version` is not a safe rollback.
+Schema v10 introduced durable commands; schema v11 also persists dispatch rotation. Rollback must preserve accepted commands: keep a compatible dispatcher until work is terminal or explicitly reconciled. A v10-only binary cannot open the current schema; dropping command data or lowering `user_version` is not a safe rollback.
 
 
 ### Requirement: WEB-COMPOSER-DRAFTS-001
