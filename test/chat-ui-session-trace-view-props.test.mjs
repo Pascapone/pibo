@@ -238,6 +238,14 @@ async function runSessionTraceViewPropsScenario() {
 		}), "gpt-test minimal");
 
 		assert.equal(resolveSessionTraceModelBadge({
+			bootstrap: { ...bootstrap, runtimeStatus: { piboSessionId: "ps-root", thinkingLevel: "minimal", fastMode: false } },
+			selectedPiboSessionId: "ps-child",
+			selectedSessionProfile: "worker-profile",
+			selectedSessionActiveModel: "gpt-next",
+			currentTraceView: null,
+		}), "gpt-next high fast", "a stale runtime status from the previous session must not override the selected session's effort");
+
+		assert.equal(resolveSessionTraceModelBadge({
 			bootstrap,
 			selectedPiboSessionId: "ps-child",
 			selectedSessionProfile: "worker-profile",
