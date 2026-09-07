@@ -736,6 +736,12 @@ function applyPiboDataSchemaInTransaction(
 			ON telemetry_turns(retention_class, updated_at);
 		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_turn_started
 			ON telemetry_phases(turn_id, started_at ASC);
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_open_name
+			ON telemetry_phases(turn_id, name, COALESCE(last_progress_at, started_at) DESC, created_at DESC) WHERE status='open';
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_open_turn
+			ON telemetry_phases(turn_id, started_at ASC, created_at ASC) WHERE status='open';
+		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_turn_name
+			ON telemetry_phases(turn_id, name);
 		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_session_status
 			ON telemetry_phases(pibo_session_id, status, last_progress_at);
 		CREATE INDEX IF NOT EXISTS idx_telemetry_phases_provider_request

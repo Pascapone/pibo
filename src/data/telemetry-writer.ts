@@ -8,7 +8,10 @@ export type AsyncTelemetryWriterOptions = {
 type Pending={command?:TelemetryCommand;write?:()=>void;onError?: (error:unknown)=>void;bytes:number;at:number;sequence?:number};
 /** Optional diagnostic projection. Product lifecycle/final events remain owned by the durable output outbox. */
 export class AsyncTelemetryWriter {
- private readonly client?:BoundedWorkerClient;
+ private client?:BoundedWorkerClient;
+ private readonly path?:string;
+ private restartAfter=0;
+ private restarts=0;
  private readonly pending:Pending[]=[];
  private pendingBytes=0;
  private inFlight=0;
@@ -26,8 +29,12 @@ export class AsyncTelemetryWriter {
   this.ageLimit=options.maxAgeMs??2000;this.interval=options.flushIntervalMs??25;
   for(const n of [this.limit,this.byteLimit,this.ageLimit])if(!Number.isSafeInteger(n)||n<=0)throw Error("Telemetry budgets must be positive integers");
   if(!Number.isFinite(this.interval)||this.interval<0)throw Error("Invalid telemetry batching interval");
-  const path=store.databasePath;
-  if(path)this.client=new BoundedWorkerClient(new URL("./telemetry-worker.js",import.meta.url),{maxPending:1,maxPendingBytes:512*1024,maxMessageBytes:512*1024,maxAgeMs:this.ageLimit,workerOptions:{workerData:{path,measure:options.measure===true}}});
+  this.path=store.databasePath;
+  if(this.path)this.startWorker();
+ }
+ private startWorker():void {
+  this.restartAfter=Date.now()+1000;
+  this.client=new BoundedWorkerClient(new URL("./telemetry-worker.js",import.meta.url),{maxPending:1,maxPendingBytes:512*1024,maxMessageBytes:512*1024,maxAgeMs:this.ageLimit,workerOptions:{workerData:{path:this.path,measure:this.options.measure===true}}});
  }
  /** Compatibility for the local in-memory adapter only; closures never execute on a file-backed producer. */
  enqueue(write:()=>void,onError?:(error:unknown)=>void):boolean {
@@ -73,10 +80,11 @@ export class AsyncTelemetryWriter {
    let processed=live.length;
    try {
     if(live.length && this.client){
+     if(this.client.status().closed && this.client.status().exited && Date.now()>=this.restartAfter){this.restarts++;this.startWorker();}
      // Startup consumes the same bounded queue age, without loading a second schema owner on the gateway thread.
      while(!this.client.status().ready&&!this.client.status().closed&&performance.now()-live[0]!.at<this.ageLimit)await new Promise(resolve=>setTimeout(resolve,5));
      const remainingAge=this.ageLimit-(performance.now()-live[0]!.at);
-     if(remainingAge<=0)processed=0;
+     if(remainingAge<Math.min(50,this.ageLimit/4)){this.expired+=live.length;}
      else {
       const result=await this.client.request<{processed:number;errors:number;ms:number;stats:Record<string,unknown>}>({commands:live.map(item=>item.command)},{priority:"background",timeoutMs:remainingAge});
       processed=result.processed;this.failed+=result.errors;this.completed+=processed-result.errors;
@@ -94,7 +102,7 @@ export class AsyncTelemetryWriter {
    if(remaining.length)await new Promise(resolve=>setTimeout(resolve,10));
   }
  }
- status(){return {mode:this.client?"worker":"in-memory",closed:this.closed,queued:this.pending.length,inFlight:this.inFlight,pendingBytes:this.pendingBytes,oldestAgeMs:this.pending.length?performance.now()-this.pending[0]!.at:0,accepted:this.accepted,completed:this.completed,rejected:this.rejected,failed:this.failed,expired:this.expired,batches:this.batches,maxBatchMs:this.maxBatchMs,worker:this.workerStats,transport:this.client?{ready:this.client.status().ready,closed:this.client.status().closed}:undefined,limits:{count:this.limit,bytes:this.byteLimit,ageMs:this.ageLimit,batchCount:64,batchBytes:256*1024,batchTimeMs:8}};}
+ status(){return {mode:this.client?"worker":"in-memory",closed:this.closed,queued:this.pending.length,inFlight:this.inFlight,pendingBytes:this.pendingBytes,oldestAgeMs:this.pending.length?performance.now()-this.pending[0]!.at:0,accepted:this.accepted,restarts:this.restarts,completed:this.completed,rejected:this.rejected,failed:this.failed,expired:this.expired,batches:this.batches,maxBatchMs:this.maxBatchMs,worker:this.workerStats,transport:this.client?{ready:this.client.status().ready,closed:this.client.status().closed,exited:this.client.status().exited}:undefined,limits:{count:this.limit,bytes:this.byteLimit,ageMs:this.ageLimit,batchCount:64,batchBytes:256*1024,batchTimeMs:8}};}
  async dispose():Promise<void>{if(this.closed)return;this.closed=true;await this.flush();await this.client?.close();}
  private reject(error:unknown,handler?: (error:unknown)=>void):void{this.rejected++;this.report(error,handler);}
  private report(error:unknown,handler?: (error:unknown)=>void):void {try{handler?.(error);}catch{}if(handler!==this.options.onError)try{this.options.onError?.(error);}catch{}}

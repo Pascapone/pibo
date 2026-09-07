@@ -52,7 +52,7 @@ parentPort!.on("message",(request:{id:number;command:{commands:TelemetryCommand[
      processed++;
     }
    });transactions++;operations+=processed;
-  }catch(error){if(error instanceof Error && /busy|locked/i.test(error.message)){busy++;processed=0;}else throw error;}
+  }catch(error){runtimes.clear();if(error instanceof Error && /busy|locked/i.test(error.message)){busy++;processed=0;}else throw error;}
   const result={processed,errors:Math.min(processed,errors-initialErrors),ms:performance.now()-started,stats:{pid:process.pid,threadId,transactions,operations,busy,rssBytes:process.memoryUsage.rss(),heapUsedBytes:process.memoryUsage().heapUsed,synchronous:"FULL",...(measured?{measurements,walBytes:(()=>{try{return statSync(workerData.path+"-wal").size;}catch{return 0;}})()}:{})}};
   parentPort!.postMessage({id:request.id,value:result});
  }catch {parentPort!.postMessage({id:request.id,error:{code:"telemetry_failed",message:"Optional telemetry batch failed"}});}

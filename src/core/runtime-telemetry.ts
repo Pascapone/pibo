@@ -93,6 +93,7 @@ export class PiboRuntimeTelemetryRecorder {
 	private readonly providerEventMode: ProviderEventTelemetryMode;
 	private readonly progressFlushIntervalMs: number;
 	private readonly writer?: AsyncTelemetryWriter;
+	private readonly phaseSequences = new TelemetryProgressMap<number>();
 	private readonly pendingProviderProgress = new TelemetryProgressMap<PendingProviderProgress>();
 	private readonly providerRequestCache = new TelemetryProgressMap<StoredTelemetryProviderRequest>();
 	private readonly lastProviderFlushAtMs = new TelemetryProgressMap<number>();
@@ -729,6 +730,7 @@ export class PiboRuntimeTelemetryRecorder {
 			counters: options.counters,
 			summary,
 		});
+		if(phase && !existing){const key=phaseId(turn.turnId,phaseName);this.phaseSequences.set(key,(this.phaseSequences.get(key)??0)+1);}
 		if (options.updateTurn) {
 			this.telemetry.upsertTurn({
 				turnId: turn.turnId,
@@ -752,7 +754,8 @@ export class PiboRuntimeTelemetryRecorder {
 
 	private nextPhaseId(turnId: string, phaseName: TelemetryPhaseName): string {
 		const base = phaseId(turnId, phaseName);
-		const count = this.store?.countPhasesForTurn(turnId, phaseName) ?? 0;
+		const count = this.phaseSequences.get(base) ?? this.store?.countPhasesForTurn(turnId, phaseName) ?? 0;
+		this.phaseSequences.set(base,count);
 		if (count === 0) return base;
 		return `${base}:${count + 1}`;
 	}
@@ -875,6 +878,7 @@ export class PiboRuntimeTelemetryRecorder {
 	}
 
 	private clearTurnProgress(turnId: string): void {
+		for(const key of this.phaseSequences.keys())if(key.startsWith(`${turnId}:`))this.phaseSequences.delete(key);
 		this.clearProviderProgress(turnId);
 		const prefix = `${turnId}:`;
 		for (const key of this.lastProgressWriteAtMs.keys()) {

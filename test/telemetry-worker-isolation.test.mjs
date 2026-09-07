@@ -50,3 +50,25 @@ test('expired diagnostics never reach SQLite and oversized messages do not enter
   assert.equal(f.store.telemetry.getTurn(turnIdForEvent('expired')),undefined);assert.equal(f.writer.status().expired,1);assert.equal(f.writer.status().pendingBytes,0);
  }finally{await f.close();}
 });
+
+test('optional telemetry can resume after its previous worker has actually exited',async()=>{
+ const f=fixture({flushIntervalMs:60000});
+ try{
+  output(f.runtime,'before-restart','message_started');await f.writer.flush();
+  const previous=f.writer.client;await previous.close();assert.equal(previous.status().exited,true);
+  await delay(1100);output(f.runtime,'after-restart','message_started');await f.writer.flush();
+  assert.equal(f.writer.status().restarts,1);assert.equal(f.writer.status().transport.closed,false);
+  assert.equal(f.store.telemetry.getTurn(turnIdForEvent('after-restart')).status,'running');
+ }finally{await f.close();}
+});
+test('open phase queries use partial indexes instead of scanning completed phase history',async()=>{
+ const f=fixture();
+ try{
+  const prepare=f.store.db.prepare.bind(f.store.db);const sql=[];
+  f.store.db.prepare=text=>{if(text.includes("status = 'open'"))sql.push(text);return prepare(text);};
+  f.store.telemetry.getOpenPhaseForTurn('turn','tool_execution');f.store.telemetry.listOpenPhasesForTurn('turn');
+  assert.equal(sql.length,2);
+  assert.match(prepare('EXPLAIN QUERY PLAN '+sql[0]).all('turn','tool_execution').map(r=>r.detail).join(' '),/idx_telemetry_phases_open_name/);
+  assert.match(prepare('EXPLAIN QUERY PLAN '+sql[1]).all('turn').map(r=>r.detail).join(' '),/idx_telemetry_phases_open_turn/);
+ }finally{await f.close();}
+});
