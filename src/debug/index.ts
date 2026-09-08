@@ -51,6 +51,7 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		}
 		if(args[0]==="backup"){const {runStorageBackupCli}=await import("./storage-backup.js");await runStorageBackupCli(args.slice(1));return;}
 		if(args[0]==="message-queue"){await runDebugMessageQueue(args.slice(1));return;}
+		if(args[0]==="storage"){const {runStorageMaintenanceCli}=await import("./storage-maintenance.js");await runStorageMaintenanceCli(args.slice(1));return;}
 		if (args[0] === "db") {
 			await runDebugDb(args.slice(1));
 			return;
@@ -898,7 +899,7 @@ async function runDebugJobs(args: string[]): Promise<void> {
 	const reliability = new PiboReliabilityStore(store.path);
 	try {
 		if (command === "list") {
-			const jobs = reliability.listJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
+			const jobs = reliability.inspectJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
 			if (options.json) console.log(formatJson({ jobs: jobs.map(observableJobRow) }));
 			else console.log(formatRows(jobs.map(compactJobRow)));
 			return;
@@ -915,6 +916,25 @@ async function runDebugJobs(args: string[]): Promise<void> {
 			const job = reliability.requeueDead(jobId);
 			if (options.json) console.log(formatJson({ job }));
 			else console.log(formatRows([compactJobRow(job)]));
+			return;
+		}
+		if (command === "reconcile-runs") {
+			if (options.apply === options.dryRun) {
+				throw new Error("pibo debug jobs reconcile-runs requires exactly one of --dry-run or --apply");
+			}
+			const result = reliability.reconcileOrphanRunJobs({ apply: options.apply });
+			const output = {
+				checkedAt: result.checkedAt,
+				mode: result.apply ? "apply" : "dry-run",
+				candidateCount: result.candidates.length,
+				moved: result.moved,
+				jobs: result.candidates.map(observableJobRow),
+			};
+			if (options.json) console.log(formatJson(output));
+			else {
+				console.log(formatRows([{ checkedAt: output.checkedAt, mode: output.mode, candidateCount: output.candidateCount, moved: output.moved }]));
+				if (result.candidates.length) console.log(formatRows(result.candidates.map(compactJobRow)));
+			}
 			return;
 		}
 		throw new Error(`Unknown pibo debug jobs command "${command}". Run pibo debug jobs --help.`);
@@ -1205,7 +1225,7 @@ function compactEventRow(event: { streamId: number; topic: string; key?: string;
 	};
 }
 
-function compactJobRow(job: { jobId: string; queue: string; state: string; payload: unknown; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+function compactJobRow(job: { jobId: string; queue: string; state: string; payload: unknown; runAt: string; attempts: number; maxAttempts: number; workerId?: string; claimExpiresAt?: string; claimExpired?: boolean; missingRunRecord?: boolean; effectiveLiveness?: string; lastError?: string }): Record<string, unknown> {
 	const correlation = outputPersistenceJobCorrelation(job.payload);
 	return {
 		jobId: job.jobId,
@@ -1217,6 +1237,10 @@ function compactJobRow(job: { jobId: string; queue: string; state: string; paylo
 		eventId: correlation.eventId,
 		phase: correlation.phase,
 		workerId: job.workerId,
+		claimExpiresAt: job.claimExpiresAt,
+		claimExpired: job.claimExpired,
+		missingRunRecord: job.missingRunRecord,
+		effectiveLiveness: job.effectiveLiveness,
 		lastError: job.lastError,
 	};
 }
@@ -1324,6 +1348,7 @@ function printDebugDiscovery(): void {
 Commands:
   backup   Create, verify or restore an explicit SQLite and payload snapshot
   message-queue Inspect or reconcile interrupted durable message commands
+  storage  Bounded SQLite status, verification, checkpoint, and retention
   db       Inspect and query local SQLite stores
   session  Inspect one Pibo Session by id or Chat URL
   summary  Show compact session diagnosis and drill-down commands
@@ -1346,6 +1371,7 @@ Commands:
   pty      Run and inspect interactive CLI/TUI commands under a PTY
 
 Next:
+  pibo debug storage status --json
   pibo debug db
   pibo debug summary <pibo-session-id>
   pibo debug final <pibo-session-id>
@@ -1685,9 +1711,11 @@ Usage:
   pibo debug jobs list [--queue queue] [--limit n] [--json]
   pibo debug jobs dead [--queue queue] [--limit n] [--json]
   pibo debug jobs replay <job-id> [--json]
+  pibo debug jobs reconcile-runs (--dry-run|--apply) [--json]
 
 Next:
   pibo debug jobs list --queue runs
+  pibo debug jobs reconcile-runs --dry-run
   pibo debug jobs dead --queue runs
 `);
 }

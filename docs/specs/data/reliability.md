@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-08T19:00:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "2700e24d3f9597cc1467af67e09804983a115325"
+  commit: "aacf12b17e8ba92249a901b3e1d44d57a35f9bf8"
   requirements:
     - id: "WP02-DATA-REL-001"
       status: "implemented"
@@ -151,6 +151,29 @@ traceability:
         - "Run lookup and mutation are scoped by controller Pibo Session ID."
         - "Wait is bounded; cancellation tooling waits up to 15 seconds for execution settlement before committing cancellation."
       confidence: "high"
+    - id: "WP02-DATA-REL-006"
+      status: "implemented"
+      sources:
+        - path: "src/reliability/store.ts"
+          symbol: "createRun"
+        - path: "src/reliability/store.ts"
+          symbol: "reconcileOrphanRunJobs"
+        - path: "src/reliability/store.ts"
+          symbol: "getRunJobReliabilityStatus"
+      tests:
+        - path: "test/reliability-store.test.mjs"
+          name: "createRun rolls job, claim, and run record back at every crash boundary"
+        - path: "test/reliability-store.test.mjs"
+          name: "orphan run reconciliation is lease-safe, matching-run-safe, and idempotent"
+        - path: "test/reliability-store.test.mjs"
+          name: "recoverInterruptedRuns reconciles expired orphan run jobs before run rows"
+      public:
+        - "pibo debug jobs reconcile-runs --dry-run|--apply"
+        - "/gateway/status reliability"
+      failures:
+        - "Run creation rolls back both records and its claim after any synchronous creation failure."
+        - "Reconciliation never moves unexpired owners or jobs with a matching run record and never replays side effects."
+      confidence: "high"
     - id: "WP02-DATA-REL-005"
       status: "implemented"
       sources:
@@ -194,7 +217,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 - Persistence and models: pibo_event_stream; pibo_event_consumers; pibo_jobs; pibo_dead_jobs; pibo_runs; inline payload_json/result_json; run states queued/running/completed/failed/timed_out/cancelled; tracked/detached completion policy.
 - Routes and protocols: No HTTP route or external wire protocol is owned.
-- State transitions: appendOnce deduplicates by event ID/idempotency key and stream IDs are monotonic. Consumer offsets advance by MAX and prune preserves rows needed by named consumers unless destructive behavior is explicit. Jobs move pending to generation-fenced leased running, then ack/retry/fail; per-job `maxAttempts` is enforced before another claim, exhausted work enters the dead-letter queue, and replay creates a new live job. Durable output delivery uses versioned envelopes, heartbeat renewal, idempotent projection receipts, bounded recovery batches, and sanitized quarantine for malformed payloads. Run terminal transitions are guarded; cancel wins over late complete; tracked terminal ack consumes notifications.
+- State transitions: appendOnce deduplicates by event ID/idempotency key and stream IDs are monotonic. Consumer offsets advance by MAX and prune preserves rows needed by named consumers unless destructive behavior is explicit. Jobs move pending to generation-fenced leased running, then ack/retry/fail; per-job `maxAttempts` is enforced before another claim, exhausted work enters the dead-letter queue, and replay creates a new live job. Yielded-run job enqueue, claim, and run-row insertion commit atomically. Startup reconciliation moves only expired ownerless run jobs without matching run rows to the dead-letter queue with `orphan_run_job`; it is idempotent and never replays work. Durable output delivery uses versioned envelopes, heartbeat renewal, idempotent projection receipts, bounded recovery batches, and sanitized quarantine for malformed payloads. Run terminal transitions are guarded; cancel wins over late complete; tracked terminal ack consumes notifications.
 - Failure and security: Claims require exact worker identity, generation, and unexpired lease for heartbeat/ack/retry/fail; stale owners cannot destructively settle work. Output identity collisions and permanent failures dead-letter after one attempt, while mixed retryable work remains recoverable. Run lookup and mutation are scoped by controller Pibo Session ID. Wait is bounded; cancellation tooling waits up to 15 seconds for execution settlement before committing cancellation.
 - Compatibility: Tracked runs notify until consumed; detached runs remain inspectable without notifications. Pruning removes only detached terminal or consumed tracked runs after TTL.
 
@@ -221,6 +244,10 @@ Tracked notification state SHALL preserve causal origin, remain repeatable until
 ## Requirement: WP02-DATA-REL-005
 
 Restart reconciliation and cleanup SHALL classify deadline/retry outcomes without regressing terminal state; pruning SHALL retain unconsumed tracked runs.
+
+## Requirement: WP02-DATA-REL-006: Run jobs and run records remain atomic or terminally reconciled
+
+Creating a yielded run SHALL commit its `pibo_jobs` row, claim, and `pibo_runs` row in one transaction. Startup and explicit maintenance reconciliation SHALL move an expired `runs` job with no matching run row to the dead-letter queue with reason `orphan_run_job`, without touching an unexpired owner or a job with a valid matching run. Repeated reconciliation SHALL be idempotent and SHALL NOT replay side effects. Reliability inspection SHALL distinguish effective claim liveness and expose degraded orphan/DLQ counts without treating orphans as active yielded runs.
 
 # Interfaces and ownership
 
@@ -256,6 +283,9 @@ Implemented public contracts:
 - `PiboRunRegistry.hasPendingNotification`
 - `PiboReliabilityStore.recoverInterruptedRuns`
 - `PiboReliabilityStore.pruneRuns`
+- `PiboReliabilityStore.reconcileOrphanRunJobs`
+- `PiboReliabilityStore.getRunJobReliabilityStatus`
+- `PiboReliabilityStore.inspectJobs`
 - `PiboRunRegistry.prune`
 - `sqliteTableColumns`
 
@@ -281,7 +311,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `aacf12b17e8ba92249a901b3e1d44d57a35f9bf8`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 

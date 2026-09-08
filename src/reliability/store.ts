@@ -119,6 +119,32 @@ export type StoredPiboJob = {
 	lastError?: string;
 };
 
+export type PiboJobEffectiveLiveness = "pending" | "orphan_pending" | "live_claim" | "live_orphan_claim" | "expired_claim" | "expired_orphan";
+
+export type InspectedPiboJob = StoredPiboJob & {
+	claimExpired: boolean;
+	missingRunRecord: boolean;
+	effectiveLiveness: PiboJobEffectiveLiveness;
+};
+
+export type OrphanRunJobReconciliation = {
+	checkedAt: string;
+	apply: boolean;
+	candidates: InspectedPiboJob[];
+	moved: number;
+};
+
+export type RunJobReliabilityStatus = {
+	status: "ok" | "degraded";
+	expiredOrphanRunJobs: number;
+	orphanRunDeadLetters: number;
+};
+
+export type PiboReliabilityStoreOptions = {
+	/** Test/diagnostic fault injection; production callers leave this unset. */
+	onRunCreationBoundary?: (boundary: "after_enqueue" | "after_claim" | "before_run_insert" | "after_run_insert") => void;
+};
+
 export type StoredPiboDeadJob = {
 	jobId: string;
 	queue: string;
@@ -298,7 +324,10 @@ export class PiboReliabilityStore {
 	private readonly getEventByTopicEventIdStatement: StatementSync;
 	private readonly getEventByTopicIdempotencyKeyStatement: StatementSync;
 
-	constructor(path = piboHomePath("pibo-events.sqlite")) {
+	constructor(
+		path = piboHomePath("pibo-events.sqlite"),
+		private readonly options: PiboReliabilityStoreOptions = {},
+	) {
 		const resolvedPath = path === ":memory:" ? path : resolve(path);
 		const insidePiboHome = ensurePrivatePiboHomeForPath(resolvedPath);
 		if (resolvedPath !== ":memory:") mkdirSync(dirname(resolvedPath), { recursive: true });
@@ -856,6 +885,41 @@ export class PiboReliabilityStore {
 		return jobs;
 	}
 
+	inspectJobs(input: PiboJobListInput = {}): InspectedPiboJob[] {
+		const timestamp = now();
+		return this.listJobs(input).map((job) => this.inspectJob(job, timestamp));
+	}
+
+	reconcileOrphanRunJobs(input: { apply: boolean; now?: Date }): OrphanRunJobReconciliation {
+		const checkedAt = asDate(input.now).toISOString();
+		return this.inImmediateTransaction(() => this.reconcileOrphanRunJobsInTransaction(checkedAt, input.apply));
+	}
+
+	getRunJobReliabilityStatus(): RunJobReliabilityStatus {
+		const timestamp = now();
+		const expired = this.db.prepare(`
+			SELECT COUNT(*) AS count
+			FROM pibo_jobs AS job
+			LEFT JOIN pibo_runs AS run ON run.job_id = job.job_id
+			WHERE job.queue = 'runs'
+				AND job.state = 'running'
+				AND job.claim_expires_at IS NOT NULL
+				AND job.claim_expires_at <= ?
+				AND run.run_id IS NULL
+		`).get(timestamp) as { count: number };
+		const dead = this.db.prepare(`
+			SELECT COUNT(*) AS count FROM pibo_dead_jobs
+			WHERE queue = 'runs' AND dead_reason = 'orphan_run_job'
+		`).get() as { count: number };
+		const expiredOrphanRunJobs = Number(expired.count);
+		const orphanRunDeadLetters = Number(dead.count);
+		return {
+			status: expiredOrphanRunJobs > 0 || orphanRunDeadLetters > 0 ? "degraded" : "ok",
+			expiredOrphanRunJobs,
+			orphanRunDeadLetters,
+		};
+	}
+
 	listRecoverableJobs(input: Omit<PiboJobListInput, "state"> & { includeDeferredPending?: boolean } = {}): StoredPiboJob[] {
 		const timestamp = now();
 		const clauses = [
@@ -998,44 +1062,57 @@ export class PiboReliabilityStore {
 		const runId = input.runId ?? `run_${randomUUID()}`;
 		const maxAttempts = Math.max(1, input.maxAttempts ?? 1);
 		const timeoutAt = input.timeoutMs === undefined ? undefined : new Date(Date.parse(timestamp) + input.timeoutMs).toISOString();
-		const job = this.enqueue({
-			queue: "runs",
-			payload: {
-				runId,
-				controllerPiboSessionId: input.controllerPiboSessionId,
-				toolName: input.toolName,
-				params: input.params,
-				timeoutMs: input.timeoutMs,
-			} as PiboJsonValue,
-			maxAttempts,
-		});
-		this.db
-			.prepare(`
-				INSERT INTO pibo_runs (
-					run_id, kind, controller_pibo_session_id, status, completion_policy, consumed, tool_name,
-					summary, result_json, error, notified_status, acknowledged_status, created_at, updated_at,
-					completed_at, job_id, retryable, max_attempts, timeout_ms, timeout_at, timeout_phase, service_warning, resource_json, origin_json
-				) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
-			`)
-			.run(
-				runId,
-				input.controllerPiboSessionId,
-				input.completionPolicy,
-				input.toolName,
-				`${input.toolName} run is running.`,
-				timestamp,
-				timestamp,
-				job.jobId,
-				input.retryable ? 1 : 0,
+		return this.inImmediateTransaction(() => {
+			const job = this.enqueue({
+				queue: "runs",
+				runAt: timestamp,
+				payload: {
+					runId,
+					controllerPiboSessionId: input.controllerPiboSessionId,
+					toolName: input.toolName,
+					params: input.params,
+					timeoutMs: input.timeoutMs,
+				} as PiboJsonValue,
 				maxAttempts,
-				input.timeoutMs ?? null,
-				timeoutAt ?? null,
-				input.serviceWarning ?? null,
-				input.resources ? JSON.stringify(input.resources) : null,
-				input.origin ? JSON.stringify(input.origin) : null,
+			});
+			this.options.onRunCreationBoundary?.("after_enqueue");
+			const claimed = this.claimPendingJobInTransaction(
+				job.jobId,
+				input.workerId ?? `run-registry:${process.pid}`,
+				timestamp,
+				24 * 60 * 60 * 1000,
 			);
-		this.claimJob(job.jobId, input.workerId ?? `run-registry:${process.pid}`, 24 * 60 * 60 * 1000);
-		return this.requireRun(runId);
+			if (!claimed) throw new Error(`Failed to claim newly-created run job "${job.jobId}"`);
+			this.options.onRunCreationBoundary?.("after_claim");
+			this.options.onRunCreationBoundary?.("before_run_insert");
+			this.db
+				.prepare(`
+					INSERT INTO pibo_runs (
+						run_id, kind, controller_pibo_session_id, status, completion_policy, consumed, tool_name,
+						summary, result_json, error, notified_status, acknowledged_status, created_at, updated_at,
+						completed_at, job_id, retryable, max_attempts, timeout_ms, timeout_at, timeout_phase, service_warning, resource_json, origin_json
+					) VALUES (?, 'tool', ?, 'running', ?, 0, ?, ?, NULL, NULL, NULL, NULL, ?, ?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+				`)
+				.run(
+					runId,
+					input.controllerPiboSessionId,
+					input.completionPolicy,
+					input.toolName,
+					`${input.toolName} run is running.`,
+					timestamp,
+					timestamp,
+					job.jobId,
+					input.retryable ? 1 : 0,
+					maxAttempts,
+					input.timeoutMs ?? null,
+					timeoutAt ?? null,
+					input.serviceWarning ?? null,
+					input.resources ? JSON.stringify(input.resources) : null,
+					input.origin ? JSON.stringify(input.origin) : null,
+				);
+			this.options.onRunCreationBoundary?.("after_run_insert");
+			return this.requireRun(runId);
+		});
 	}
 
 	updateRun(runId: string, patch: Partial<PiboRunStoreRecord>): PiboRunStoreRecord | undefined {
@@ -1133,9 +1210,10 @@ export class PiboReliabilityStore {
 
 	recoverInterruptedRuns(workerId = `run-registry:${process.pid}`): PiboRunStoreRecord[] {
 		return this.inImmediateTransaction(() => {
+			const timestamp = now();
+			this.reconcileOrphanRunJobsInTransaction(timestamp, true);
 			const rows = this.db.prepare("SELECT * FROM pibo_runs WHERE status = 'running'").all() as PiboRunRow[];
 			const recovered: PiboRunStoreRecord[] = [];
-			const timestamp = now();
 			for (const row of rows) {
 				if (row.job_id && this.hasUnexpiredJobClaim(row.job_id, timestamp, workerId)) continue;
 				const run = runFromRow(row);
@@ -1247,6 +1325,68 @@ export class PiboReliabilityStore {
 					AND claim_expires_at > ?
 			`)
 			.get(jobId, workerId, claimToken ?? null, claimToken ?? null, timestamp) as PiboJobRow | undefined;
+	}
+
+	private claimPendingJobInTransaction(
+		jobId: string,
+		workerId: string,
+		timestamp: string,
+		visibilityTimeoutMs: number,
+	): PiboJobRow | undefined {
+		const claimExpiresAt = new Date(Date.parse(timestamp) + visibilityTimeoutMs).toISOString();
+		return this.db.prepare(`
+			UPDATE pibo_jobs
+			SET state = 'running',
+				worker_id = ?,
+				claim_expires_at = ?,
+				claim_token = claim_token + 1,
+				attempts = attempts + 1,
+				updated_at = ?
+			WHERE job_id = ?
+				AND state = 'pending'
+				AND run_at <= ?
+				AND attempts < max_attempts
+				AND (expires_at IS NULL OR expires_at > ?)
+			RETURNING *
+		`).get(workerId, claimExpiresAt, timestamp, jobId, timestamp, timestamp) as PiboJobRow | undefined;
+	}
+
+	private inspectJob(job: StoredPiboJob, timestamp: string): InspectedPiboJob {
+		const claimExpired = job.state === "running"
+			&& (!job.claimExpiresAt || job.claimExpiresAt <= timestamp);
+		const missingRunRecord = job.queue === "runs"
+			&& this.db.prepare("SELECT 1 AS found FROM pibo_runs WHERE job_id = ? LIMIT 1").get(job.jobId) === undefined;
+		let effectiveLiveness: PiboJobEffectiveLiveness;
+		if (job.state === "pending") effectiveLiveness = missingRunRecord ? "orphan_pending" : "pending";
+		else if (claimExpired) effectiveLiveness = missingRunRecord ? "expired_orphan" : "expired_claim";
+		else effectiveLiveness = missingRunRecord ? "live_orphan_claim" : "live_claim";
+		return { ...job, claimExpired, missingRunRecord, effectiveLiveness };
+	}
+
+	private reconcileOrphanRunJobsInTransaction(timestamp: string, apply: boolean): OrphanRunJobReconciliation {
+		const rows = this.db.prepare(`
+			SELECT job.*
+			FROM pibo_jobs AS job
+			LEFT JOIN pibo_runs AS run ON run.job_id = job.job_id
+			WHERE job.queue = 'runs'
+				AND job.state = 'running'
+				AND job.claim_expires_at IS NOT NULL
+				AND job.claim_expires_at <= ?
+				AND run.run_id IS NULL
+			ORDER BY job.created_at ASC, job.job_id ASC
+		`).all(timestamp) as PiboJobRow[];
+		const candidates = rows.map((row) => this.inspectJob(jobFromRow(row), timestamp));
+		if (apply) {
+			for (const row of rows) {
+				this.moveJobToDead(
+					row,
+					"Expired runs job has no matching pibo_runs record.",
+					"orphan_run_job",
+					timestamp,
+				);
+			}
+		}
+		return { checkedAt: timestamp, apply, candidates, moved: apply ? rows.length : 0 };
 	}
 
 	private moveExpiredJobs(timestamp: string): void {
