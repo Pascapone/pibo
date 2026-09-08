@@ -718,7 +718,8 @@ test("Codex native keeps same-name Pibo skills materialized and reports one acti
 			runtimeInstanceId: instanceId,
 			adapterId: CODEX_NATIVE_ADAPTER_ID,
 			sessionGeneration: "generation-skill-collision",
-			paths: { root, home: root, skills: skillsRoot, context: root, config: root, protocol: root },
+			// Frozen Skill paths survive independently of this generation directory.
+			paths: { root, home: root, skills: join(root, "expired-generation-skills"), context: root, config: root, protocol: root },
 			skills: [
 				{ contributionId: "skill:collision-skill", name: "collision-skill", kind: "user", required: true, sourcePath: selectedSkillPath, materializedPath: selectedSkillPath },
 				{ contributionId: "skill:unrelated-skill", name: "unrelated-skill", kind: "user", required: true, sourcePath: unrelatedSkillPath, materializedPath: unrelatedSkillPath },

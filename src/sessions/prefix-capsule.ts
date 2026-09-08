@@ -6,6 +6,7 @@ import { piboHomePath } from "../core/pibo-home.js";
 import type { PiboJsonObject } from "../core/events.js";
 
 export const SESSION_PREFIX_METADATA_KEY = "piboSessionPrefix";
+export const SESSION_PREFIX_RESOURCES_KEY = "piboSessionPrefixResources";
 export const PREFIX_CAPSULE_FORMAT = 1;
 export const MAX_PREFIX_CAPSULE_BYTES = 128 * 1024 * 1024;
 
@@ -71,9 +72,16 @@ export function readSessionPrefixBinding(metadata: PiboJsonObject | undefined): 
 	};
 }
 
+export function readSessionPrefixResourceReference(metadata: PiboJsonObject | undefined): PrefixCapsuleReference | undefined {
+	if (!metadata || !Object.hasOwn(metadata, SESSION_PREFIX_RESOURCES_KEY)) return undefined;
+	const value = metadata[SESSION_PREFIX_RESOURCES_KEY];
+	validatePrefixReference(value);
+	return { format: 1, digest: value.digest, bytes: value.bytes, adapterId: value.adapterId, codec: value.codec };
+}
+
 /** A reader without a complete restore path must never fall back to rebuilding. */
 export function rejectUnsupportedPrefixRestore(metadata: PiboJsonObject | undefined): void {
-	if (readSessionPrefixBinding(metadata)) {
+	if (readSessionPrefixBinding(metadata) || readSessionPrefixResourceReference(metadata)) {
 		throw new PrefixRecoveryRequiredError("this runtime open path does not yet support the sealed prefix; use a compatible reader");
 	}
 }

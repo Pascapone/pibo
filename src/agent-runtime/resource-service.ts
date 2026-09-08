@@ -10,6 +10,8 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { PIBO_APP_CONTEXT } from "../app-context.js";
 import type { InitialSessionContext } from "../core/profiles.js";
+import type { SessionPrefixController } from "../sessions/prefix-session.js";
+import { capturePrefixResources } from "../sessions/prefix-resources.js";
 import { piboHomePath } from "../core/pibo-home.js";
 import { protectPrivatePathsSync } from "../core/private-path.js";
 import { DEFAULT_USER_TIMEZONE } from "../core/user-settings.js";
@@ -83,6 +85,8 @@ export type CreatePiboRuntimeResourceSessionInput = {
 	strict?: boolean;
 	/** Defaults to true. Set false only for an explicit non-connecting inspection. */
 	verifyMcp?: boolean;
+	/** Durable selected resources; the caller must establish new/protected session eligibility. */
+	prefixController?: SessionPrefixController;
 };
 
 export class PiboRuntimeResourceError extends Error {
@@ -410,8 +414,23 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 
 	async prepare(): Promise<void> {
 		await this.prepareMcpServers();
-		await this.prepareContext();
-		await this.prepareSkills();
+		const restored = await this.input.prefixController?.restoreResources();
+		if (restored) {
+			this.context = structuredClone(restored.context);
+			this.skills = structuredClone(restored.skills);
+		} else {
+			await this.prepareContext();
+			await this.prepareSkills();
+			if (this.input.prefixController) {
+				const failed = this.diagnostics.find(diagnostic => diagnostic.severity === "error");
+				if (failed) throw new PiboRuntimeResourceError(failed.message, this.diagnostics);
+				const captured = await this.input.prefixController.sealResources(() => capturePrefixResources(this.context, this.skills));
+				this.context = structuredClone(captured.context);
+				this.skills = structuredClone(captured.skills);
+			}
+		}
+		for (const item of this.context) if (item.required) this.requiredContributionIds.add(item.id);
+		for (const item of this.skills) if (item.required) this.requiredContributionIds.add(item.contributionId);
 		try {
 			await this.materialize();
 		} catch (error) {
@@ -727,8 +746,8 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 
 	private async materialize(): Promise<void> {
 		const privateFiles: string[] = [];
-		const materializeSkills = this.input.capabilities.skills.support === "materialized" && this.skills.length > 0;
-		const materializeContext = this.input.capabilities.context.support === "materialized" && this.context.some((item) => item.content !== undefined && !item.nativeDiscovered);
+		const materializeSkills = !this.input.prefixController && this.input.capabilities.skills.support === "materialized" && this.skills.length > 0;
+		const materializeContext = !this.input.prefixController && this.input.capabilities.context.support === "materialized" && this.context.some((item) => item.content !== undefined && !item.nativeDiscovered);
 		const materializeMcp = this.mcpServers.some((server) => server.scoped !== undefined);
 		if (!materializeSkills && !materializeContext && !materializeMcp) return;
 		this.paths = await createAgentRuntimeResourcePaths(this.options.rootDir, this.input);

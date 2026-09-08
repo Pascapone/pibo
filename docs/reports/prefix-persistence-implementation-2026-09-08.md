@@ -7,13 +7,13 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T14:24:28Z"
+  at: "2026-09-08T15:23:00Z"
 sources:
   - id: "implementation-plan"
     resource: "scope: docs/prefix-persistence-plan commit e3720d03, docs/plans/persistent-session-prefix-and-cache-diagnostics.md"
     relation: "Owner-authorized implementation scope; remains incomplete."
   - id: "local-tests"
-    resource: "scope: test/prefix-capsule.test.mjs, test/prefix-session.test.mjs, test/pi-prefix-http.test.mjs, test/cache-diagnostics.test.mjs and test/model-inference-metrics.test.mjs in this branch"
+    resource: "scope: test/prefix-capsule.test.mjs, test/prefix-session.test.mjs, test/prefix-resources.test.mjs, test/pi-prefix-http.test.mjs, test/cache-diagnostics.test.mjs and test/model-inference-metrics.test.mjs in this branch"
     relation: "Reproducible deterministic tests in the isolated Docker worker."
 ---
 
@@ -36,7 +36,7 @@ The general adapter open paths do not yet automatically seal new sessions. They 
 
 | Adapter / actual identifier | Evidence available | Missing before protected product activation |
 |---|---|---|
-| Pi / `pi`, SDK 0.85.0, Codex Responses API | Actual loopback HTTP request recording using native ModelRuntime and native JSONL resume; changed base prompt and provider hooks; native Tool call/output; large history | Durable resource capsule and shared router loader bypass; all provider APIs/optional modes; native first-dispatch skeleton durability; crash-safe compaction/history transitions; full router binding lifecycle; complete T01/T04/T08 matrix |
+| Pi / `pi`, SDK 0.85.0, Codex Responses API | Actual loopback HTTP request recording using native ModelRuntime and native JSONL resume; changed base prompt and provider hooks; native Tool call/output; large history | Shared router resource/controller activation; all provider APIs/optional modes; native first-dispatch skeleton durability; crash-safe compaction/history transitions; full router binding lifecycle; complete T01/T04/T08 matrix |
 | Codex-native / `codex-native`, installed binary 0.153.2 | Five actual-binary loopback HTTP tests now exercise unchanged resume, changed developer input, changed AGENTS.md, changed Websearch settings, and restored explicit selection. Original input/key remain stable; changed Websearch changes the global Tools envelope. Explicit replay of the original selection restores that envelope in the fixture. | Complete native version/mode/Tool/Reasoning matrix and capture/restore contract for native Tools/instructions/resources; configuration/resource freezing; native lifecycle integration. Local source HEAD is not proven to be the installed binary's exact revision. |
 | OMP / `orp`, CLI 18.1.10 / Bun 1.4.0 | Installed exact versions in Docker. Actual HTTP probe proves changed append-system-prompt changes `instructions` while native input history/key remain equal; `get_state` exposes systemPrompt and Tool schemas. | Supported restoration of full native prompt and ordered Tools, final provider seam proof, resources, all lifecycle transitions and exact version conformance |
 
@@ -64,9 +64,17 @@ The local checkout's OMP package version is 18.0.0 and is not a version-equivale
 
 # Pi early restore follow-up
 
-The experimental Pi codec is now version 2 and restores its stored system prompt and Skill catalog before the Pi resource loader runs. This bypasses current selected-context and base-prompt reads in the direct protected runtime path. The catalog stores metadata only: Skill file contents and referenced resources still require durable capture, and the shared router resource preparation is not yet bypassed. Existing version-1 experimental capsules require recovery rather than silent reinterpretation.
+The experimental Pi codec is now version 2 and restores its stored system prompt and Skill catalog before the Pi resource loader runs. This bypasses current selected-context and base-prompt reads in the direct protected runtime path. The catalog itself stores metadata only. The resource follow-up below now supplies durable selected Skill files when the resource service receives the controller; normal router activation remains open. Existing version-1 experimental capsules require recovery rather than silent reinterpretation.
 
 The actual Pi 0.85.0 API exposes the system prompt through `agent.state.systemPrompt`; an attempted setter caused the second request of the native Tool roundtrip to fail and was corrected before validation. Backend TypeScript compilation and 14 focused capsule/controller/Pi HTTP tests passed in `pibo-dev-prefix-runtime-integration`. All three HTTP fixture sizes monitor synchronous and asynchronous reads of the changed selected-context and base-prompt files during resume and observe none. They also verify the original selected context survives in the final HTTP instructions. This remains direct adapter-input evidence, not activation of protected sessions in normal routing.
+
+# Durable resource follow-up
+
+`src/sessions/prefix-resources.ts` captures selected Skill trees, including binary references and executable scripts, and ordered context contributions into one bounded resource capsule. Its private, content-addressed delivery tree has stable paths independent of runtime generation. Publication syncs files and directories before the resource reference is committed through the existing binding CAS. Resolved MCP configuration and process environment are not inputs to this archive. Capture bounds are 2,048 files and 64 MiB of file content; the enclosing capsule remains bounded by the common store.
+
+`SessionPrefixController` now restores or first-seals these resources. The resource service accepts that controller, skips current context/Skill discovery on restore, and continues preparing current MCP credentials separately. Resource disposal removes only temporary generation state. Missing delivery trees can be reproduced from the integrity-checked original capsule; corrupt existing delivered files and missing capsules fail restoration. Binding transitions reject silent resource replacement/removal and adapter mismatches. Codex Skill discovery derives roots from actual selected paths so durable resources do not depend on a generation directory.
+
+The direct resource-service integration passes after the original Skill directory and context file are deleted and the current profile points to nonexistent replacements. Pi's three actual HTTP fixtures now also prepare resources through that service, delete the original Skill directory before resume, read the original Skill from the durable path, and verify unchanged old request instructions/Tools/input. The native history remains Pi-owned. OKF strict validation, index and log checks passed without warnings. The 84 documentation tests passed after removing the Git override used for bundle validation: applying that override to fixture tests incorrectly made their isolated repositories point at the validation repository. The final backend TypeScript compilation and the combined 47-test capsule/controller/resource-service/Pi HTTP/Codex resource/OMP resource suite passed with zero failures or skips. This includes competing captures (one binding commit), missing-capsule failure, and rejection of unexpected delivered files. These tests do not activate protection in normal routing or prove complete native Codex/OMP request restoration.
 
 # Debug UI and CLI evidence
 
@@ -79,7 +87,7 @@ Artifacts are [desktop](artifacts/prefix-persistence-2026-09-08/desktop.png), [m
 # Remaining implementation and acceptance
 
 1. Finish the shared protected-open contract, first-use durable native binding and explicit transition/recovery markers. Wire protection into normal session routing only after it is safe. Model changes and compaction require durable boundaries, not merely a helper that increments an epoch.
-2. Capture and restore stable resources once; bypass live context/skill discovery on resume. Keep execution credentials and current authorization separate. Validate Tool implementation compatibility.
+2. Activate the implemented resource capsule/controller path before normal router resource preparation; complete native implicit-resource coverage and lifecycle/backup references. Keep execution credentials and current authorization separate. Validate Tool implementation compatibility.
 3. Complete all Pi provider/mode tests and native Codex/OMP contracts and request recordings. Implement required native extensions/version pinning; preserve the plan's guarantee rather than downgrading it to file equality.
 4. Integrate fork/import/export, backup/restore, reference-aware retention, explicit refresh, upgrade/downgrade rules and honest legacy inventory. The current backup path does not include prefix artifacts; no GC is enabled. Windows directory durability remains unsupported until a tested implementation exists.
 5. Produce compact inference evidence in each adapter and persist it in the existing isolated telemetry pipeline. The new optional `cacheEvidence` field has no automatic runtime producer yet. Add visible prefix/legacy/recovery status and diagnostic loss counters.

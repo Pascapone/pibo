@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -11,6 +11,8 @@ import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/agent-runtimes/pi/runtime.js";
+import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
+import { PI_AGENT_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/pi/adapter.js";
 import { savePiboCustomBasePrompt } from "../dist/core/base-prompt.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { PrefixCapsuleStore } from "../dist/sessions/prefix-capsule.js";
@@ -51,6 +53,11 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	const root = await mkdtemp(join(tmpdir(), "pibo-prefix-http-"));
 	const contextPath = join(root, "selected-context.md");
 	await writeFile(contextPath, "Original selected context");
+	const skillDir = join(root, "selected-skill");
+	await mkdir(skillDir);
+	await writeFile(join(skillDir, "SKILL.md"), "---\nname: prefix-skill\ndescription: Stable prefix skill\n---\nOriginal Skill body");
+	const resourceService = new PiboRuntimeResourceService({ rootDir: join(root, "generations") });
+	t.after(() => resourceService.dispose());
 	const sessions = new SqlitePiboSessionStore(join(root, "sessions.sqlite"));
 	const api = await fakeProvider(t);
 	let runtime;
@@ -68,10 +75,13 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	};
 	let hookText = "original provider suffix";
 	const open = async () => {
-		const profile = new InitialSessionContextBuilder("prefix-http").withBuiltinTools("disabled").withAutoContextFiles(false).addContextFile({ path: contextPath }).createSession();
+		const profile = new InitialSessionContextBuilder("prefix-http").withBuiltinTools("disabled").withAutoContextFiles(false).addContextFile({ path: contextPath }).addSkill({ name: "prefix-skill", path: join(skillDir, "SKILL.md") }).createSession();
 		profile.sessionId = session.piSessionId;
+		const prefixController = makeController();
+		const resources = await resourceService.createSession({ piboSessionId: session.id, runtimeInstanceId: "pi", adapterId: "pi",
+			sessionGeneration: `generation-${api.requests.length}`, profile, cwd: root, capabilities: PI_AGENT_RUNTIME_CAPABILITIES, prefixController });
 		const result = await createPiboRuntime({
-			cwd: root, profile, persistSession: true, modelRuntime, modelDefaults: {}, prefixController: makeController(),
+			cwd: root, profile, persistSession: true, modelRuntime, modelDefaults: {}, prefixController, resources,
 			extensionFactories: [pi => {
 				pi.registerTool({ name: "prefix_probe", label: "Prefix probe", description: "Read the deterministic fixture value", parameters: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "persistent tool result" }], details: {} }) });
 				pi.on("before_provider_request", event => ({ ...event.payload, instructions: `${event.payload.instructions}\n${hookText}`, tools: [...(event.payload.tools ?? []), { type: "web_search", search_context_size: hookText === "original provider suffix" ? "low" : "high" }] }));
@@ -94,6 +104,7 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	await savePiboCustomBasePrompt("Changed base prompt", root);
 	hookText = "changed provider suffix";
 	await writeFile(contextPath, "Changed selected context");
+	await rm(skillDir, { recursive: true });
 	const forbiddenSources = new Set([contextPath, join(root, ".pibo/base-prompt.json"), join(root, ".pibo/base-prompt.md")]);
 	const sourceReads = [];
 	const originalSyncRead = fs.readFileSync;
@@ -106,6 +117,9 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	assert.deepEqual(sourceReads, [], "protected resume must not reread current base or selected context files");
 	assert.equal(api.requests.length, 3);
 	const [, before, after] = api.requests;
+	const skills = runtime.session.resourceLoader.getSkills().skills;
+	assert.equal(skills.length, 1);
+	assert.match(await readFile(skills[0].filePath, "utf8"), /Original Skill body/);
 	assert.match(before.instructions, /Original selected context/);
 	assert.equal(after.instructions, before.instructions);
 	assert.deepEqual(after.tools, before.tools);

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PiboJsonObject, PiboJsonValue } from "../../core/events.js";
 import type { PiboRuntimeResourceSession } from "../../agent-runtime/resources.js";
@@ -376,10 +377,9 @@ export class CodexNativeResourceDelivery {
 					return path ? [{ contributionId: skill.contributionId, name: skill.name, path }] : [];
 				}).map(async (skill) => ({ ...skill, path: await realpath(skill.path) })))
 				: [];
-			const materializedSkillsRoot = input.resources?.getInspection().paths?.skills;
-			const skillRoots = selectedSkills.length > 0 && materializedSkillsRoot
-				? [await realpath(materializedSkillsRoot)]
-				: [];
+			// Selected paths may belong to a durable prefix bundle rather than the
+			// disposable generation directory. Native discovery must use that tree.
+			const skillRoots = [...new Set(selectedSkills.map(skill => dirname(dirname(skill.path))))];
 			const threadConfig: Record<string, PiboJsonValue> = {};
 			if (Object.keys(codexMcpServers).length > 0) threadConfig.mcp_servers = asJsonValue(codexMcpServers);
 			if (input.nativeSubagentsEnabled !== undefined) {

@@ -5,7 +5,12 @@ import { isAgentRuntimeBindingPersistence } from "./runtime-binding-persistence.
 import {
 	PrefixCapsuleStore, PrefixRecoveryRequiredError, readSessionPrefixBinding,
 	SESSION_PREFIX_METADATA_KEY, type SessionPrefixBinding,
+	validatePrefixReference,
 } from "./prefix-capsule.js";
+import {
+	PrefixResourceBundleStore, PREFIX_RESOURCES_CODEC, SESSION_PREFIX_RESOURCES_KEY,
+	type PrefixResources, type RestoredPrefixResources,
+} from "./prefix-resources.js";
 
 export type SessionPrefixControllerOptions = {
 	store?: PrefixCapsuleStore;
@@ -19,6 +24,8 @@ export class SessionPrefixController {
 	private readonly store: PrefixCapsuleStore;
 	private sealedPayload?: { digest: string; payload: string };
 	private preparing?: Promise<SessionPrefixBinding>;
+	private resources?: { digest: string; value: RestoredPrefixResources };
+	private preparingResources?: Promise<RestoredPrefixResources>;
 
 	constructor(private readonly options: SessionPrefixControllerOptions) {
 		if (!isAgentRuntimeBindingPersistence(options.persistence)) {
@@ -29,6 +36,39 @@ export class SessionPrefixController {
 
 	get binding(): SessionPrefixBinding | undefined {
 		return readSessionPrefixBinding(this.options.getBinding().metadata);
+	}
+
+	async restoreResources(): Promise<RestoredPrefixResources | undefined> {
+		const runtime = this.options.getBinding();
+		const reference = runtime.metadata?.[SESSION_PREFIX_RESOURCES_KEY];
+		if (reference === undefined) return undefined;
+		validatePrefixReference(reference);
+		if (reference.adapterId !== runtime.adapterId || reference.codec !== PREFIX_RESOURCES_CODEC) throw new PrefixRecoveryRequiredError("resource adapter or codec changed");
+		if (this.resources?.digest === reference.digest) return this.resources.value;
+		const value = await new PrefixResourceBundleStore(this.store).restore(reference);
+		this.resources = { digest: reference.digest, value };
+		return value;
+	}
+
+	/** Publish resource state before any native prompt can contain its stable paths. */
+	async sealResources(capture: () => Promise<PrefixResources>): Promise<RestoredPrefixResources> {
+		if (this.preparingResources) return this.preparingResources;
+		this.preparingResources = (async () => {
+			const restored = await this.restoreResources();
+			if (restored) return restored;
+			const runtime = structuredClone(this.options.getBinding());
+			if (this.binding) throw new PrefixRecoveryRequiredError("sealed prefix is missing its original resources");
+			if (runtime.revision === undefined) throw new PrefixRecoveryRequiredError("resource sealing requires a durable binding");
+			const result = await new PrefixResourceBundleStore(this.store).put(runtime.adapterId, await capture());
+			const persisted = await this.options.persistence.compareAndSet({
+				...runtime,
+				metadata: { ...runtime.metadata, [SESSION_PREFIX_RESOURCES_KEY]: result.reference as unknown as PiboJsonObject },
+			}, runtime.revision);
+			this.options.onPersisted?.(structuredClone(persisted));
+			this.resources = { digest: result.reference.digest, value: result.resources };
+			return result.resources;
+		})();
+		try { return await this.preparingResources; } finally { this.preparingResources = undefined; }
 	}
 
 	async restore(codec: string): Promise<string | undefined> {

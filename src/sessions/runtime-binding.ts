@@ -1,6 +1,6 @@
 import type { PiboJsonObject } from "../core/events.js";
 import { DEFAULT_AGENT_RUNTIME_INSTANCE_ID } from "../core/profiles.js";
-import { readSessionPrefixBinding } from "./prefix-capsule.js";
+import { readSessionPrefixBinding, readSessionPrefixResourceReference } from "./prefix-capsule.js";
 
 export type AgentRuntimeAdapterId = string;
 export type AgentRuntimeInstanceId = string;
@@ -104,6 +104,10 @@ export function createInitialRuntimeSessionBinding(
 		throw new RuntimeSessionBindingTransitionError(piboSessionId, `${input.state} state requires a native session id`);
 	}
 	const prefix = readSessionPrefixBinding(input.metadata);
+	const resources = readSessionPrefixResourceReference(input.metadata);
+	if (resources && resources.adapterId !== input.adapterId) {
+		throw new RuntimeSessionBindingTransitionError(piboSessionId, "resource and runtime binding disagree");
+	}
 	if (prefix && (prefix.capsule.adapterId !== input.adapterId || prefix.nativeSessionId !== nativeSessionId)) {
 		throw new RuntimeSessionBindingTransitionError(piboSessionId, "prefix and native runtime binding disagree");
 	}
@@ -171,6 +175,17 @@ export function assertRuntimeSessionBindingTransition(
 	const mode = options.mode ?? "normal";
 	const previousPrefix = readSessionPrefixBinding(current.metadata);
 	const nextPrefix = readSessionPrefixBinding(next.metadata);
+	const previousResources = readSessionPrefixResourceReference(current.metadata);
+	const nextResources = readSessionPrefixResourceReference(next.metadata);
+	if ((previousResources || previousPrefix) && JSON.stringify(previousResources) !== JSON.stringify(nextResources)) {
+		if (!previousPrefix || !nextPrefix || nextPrefix.epoch !== previousPrefix.epoch + 1
+			|| !["explicit-refresh", "runtime-change"].includes(nextPrefix.reason)) {
+			throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "frozen resources require an explicit prefix transition");
+		}
+	}
+	if (nextResources && nextResources.adapterId !== next.adapterId) {
+		throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "resource and runtime binding disagree");
+	}
 	if (previousPrefix) {
 		if (!nextPrefix) {
 			throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "a sealed prefix cannot be silently discarded");
