@@ -119,6 +119,101 @@ test("metrics survive persistence serialization, live frames, patches and all di
 	}
 });
 
+test("native-history refresh retains Tool and per-inference metrics", () => {
+	const providerMetrics = { inputTokens: 976, outputTokens: 29, cacheReadTokens: 1_536, cacheWriteTokens: 0, totalTokens: 2_541 };
+	const historyEntries = [
+		{
+			id: "native:user",
+			type: "message",
+			source: "native",
+			createdAt: "2026-09-08T07:35:23.086Z",
+			sequence: 1,
+			turnId: "runtime-turn",
+			nativeTurnId: "runtime-turn",
+			nativeEntryId: "native-user",
+			role: "user",
+			content: "Read a file",
+		},
+		{
+			id: "native:assistant-tool",
+			type: "message",
+			source: "native",
+			createdAt: "2026-09-08T07:35:25.724Z",
+			sequence: 2,
+			turnId: "runtime-turn",
+			nativeTurnId: "runtime-turn",
+			nativeEntryId: "native-assistant-tool",
+			role: "assistant",
+			content: [{ type: "tool_call", toolCallId: "call", toolName: "read", input: { path: "/proc/version" } }],
+			status: "complete",
+		},
+		{
+			id: "native:tool",
+			type: "message",
+			source: "native",
+			createdAt: "2026-09-08T07:35:25.780Z",
+			sequence: 3,
+			turnId: "runtime-turn",
+			nativeTurnId: "runtime-turn",
+			nativeEntryId: "native-tool",
+			role: "tool",
+			content: "Linux version",
+			toolCallId: "call",
+			toolName: "read",
+			result: "Linux version",
+			status: "complete",
+		},
+		{
+			id: "native:assistant-final",
+			type: "message",
+			source: "native",
+			createdAt: "2026-09-08T07:35:27.808Z",
+			sequence: 4,
+			turnId: "runtime-turn",
+			nativeTurnId: "runtime-turn",
+			nativeEntryId: "native-assistant-final",
+			role: "assistant",
+			content: "Done",
+			status: "complete",
+		},
+	];
+	const stored = [
+		{ createdAt: "2026-09-08T07:35:23.079Z", renderSequence: 1_788_852_923_069_000, event: { type: "message_queued", source: "user", text: "Read a file" } },
+		{ createdAt: "2026-09-08T07:35:23.086Z", renderSequence: 1_788_852_923_082_000, event: { type: "message_started", source: "user", text: "Read a file" } },
+		{ createdAt: "2026-09-08T07:35:25.676Z", renderSequence: 1_788_852_925_478_000, event: { type: "tool_call", toolCallId: "call", toolName: "read", args: { path: "/proc/version" }, argsComplete: true } },
+		{ createdAt: "2026-09-08T07:35:25.723Z", renderSequence: 1_788_852_925_718_000, event: { type: "assistant_usage", usageIndex: 0, ...providerMetrics } },
+		{ createdAt: "2026-09-08T07:35:25.731Z", renderSequence: 1_788_852_925_478_000, event: { type: "tool_execution_started", toolCallId: "call", toolName: "read", args: { path: "/proc/version" } } },
+		{ createdAt: "2026-09-08T07:35:25.779Z", renderSequence: 1_788_852_925_478_000, event: { type: "tool_execution_finished", toolCallId: "call", toolName: "read", result: "Linux version", isError: false, toolMetrics: metrics } },
+		{ createdAt: "2026-09-08T07:35:27.802Z", renderSequence: 1_788_852_927_295_000, event: { type: "assistant_message", assistantIndex: 0, text: "Done" } },
+		{ createdAt: "2026-09-08T07:35:27.807Z", renderSequence: 1_788_852_927_803_000, event: { type: "assistant_usage", usageIndex: 1, ...providerMetrics } },
+		{ createdAt: "2026-09-08T07:35:27.836Z", renderSequence: 1_788_852_923_082_000, event: { type: "message_finished", source: "user" } },
+	].map(({ createdAt, renderSequence, event }, index) => ({
+		id: `native-refresh-${index}`,
+		eventSequence: index + 1,
+		renderSequence,
+		piboSessionId: "ps_native_metrics",
+		type: event.type,
+		createdAt,
+		payload: { ...event, renderSequence, piboSessionId: "ps_native_metrics", eventId: "product-turn" },
+	}));
+	const trace = buildTraceViewFromEvents({
+		session: { id: "ps_native_metrics", piSessionId: "pi_native_metrics" },
+		events: stored,
+		historyEntries,
+		status: "idle",
+	});
+	const nodes = trace.nodes.flatMap((node) => [node, ...node.children]);
+	const tool = nodes.find((node) => node.toolCallId === "call");
+	const assistant = nodes.find((node) => node.type === "assistant.message");
+	assert.deepEqual(tool?.toolMetrics, metrics);
+	assert.deepEqual(tool?.modelInferences?.map((record) => record.id), ["product-turn:usage:0"]);
+	assert.deepEqual(assistant?.modelInferences?.map((record) => record.id), ["product-turn:usage:1"]);
+	const rows = buildCompactTerminalRows(trace, { showThinking: false, debugMode: true });
+	assert.deepEqual(rows.find((row) => row.isToolCall)?.toolMetrics, metrics);
+	assert.deepEqual(rows.find((row) => row.isToolCall)?.modelInferences, tool?.modelInferences);
+	assert.deepEqual(rows.find((row) => row.kind === "message.assistant")?.modelInferences, assistant?.modelInferences);
+});
+
 test("durable ingestion retains metrics outside large payloads through restart and timeline compaction", () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-tool-metrics-"));
 	const path = join(root, "pibo.sqlite");

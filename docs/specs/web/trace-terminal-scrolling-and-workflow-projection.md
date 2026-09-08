@@ -9,21 +9,21 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T06:00:00Z"
+  at: "2026-09-08T06:56:18Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Integrated trace and Workflow projection source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
+  baseline_commit: "14403bcb91edc685ecb2f2255475f6229008691d"
   package: "WP-06+07-WEB"
   source_evidence: "performed"
-  test_execution: "one added API test and 20 focused routed-runtime/UI/manual/header tests passed at final integration; historical root-suite counts remain at 14cbaf0f"
-  build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
-  browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
+  test_execution: "41 focused Debug, inference-usage, Tool-metric, Pi tracing, Goal-accounting, and shared Terminal tests passed"
+  build_typecheck_package_execution: "full build and all package typechecks passed in the isolated Docker worker"
+  browser_execution: "headful local Debug settings and Terminal model-usage rail passed at 800x457; CDP reload reported no console exceptions, log errors, or network failures"
 traceability:
-  commit: "0fe71c72a1d3bcb3b0d06295d323317a452b367a"
+  commit: "14403bcb91edc685ecb2f2255475f6229008691d"
   requirements:
     - id: "WEB-TRACE-PAYLOAD-010"
       status: "implemented"
@@ -100,6 +100,12 @@ traceability:
           symbol: "ToolCallMetricsCollector"
         - path: "src/shared/tool-call-token-settings.ts"
           symbol: "sanitizeToolMetricTokenCalculation"
+        - path: "src/shared/debug-features.ts"
+          symbol: "DEFAULT_DEBUG_FEATURE_SETTINGS"
+        - path: "src/shared/model-inference-metrics.ts"
+          symbol: "modelInferenceUncachedInputTokens"
+        - path: "src/shared/trace-event-projection.ts"
+          symbol: "applySingleEventToNodes"
         - path: "src/core/user-settings.ts"
           symbol: "PiboUserSettings"
         - path: "src/agent-runtime/routed-session.ts"
@@ -110,6 +116,8 @@ traceability:
           symbol: "SessionTraceHeader"
         - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalToolMetrics.tsx"
           symbol: "TerminalToolMetrics"
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalModelInferenceMetrics.tsx"
+          symbol: "TerminalModelInferenceMetrics"
         - path: "src/apps/chat-ui/src/tool-metric-settings.ts"
           symbol: "readStoredToolMetricThresholds"
         - path: "src/apps/chat-ui/src/settings/DebugSettingsView.tsx"
@@ -127,10 +135,16 @@ traceability:
           name: "character and Tiktoken calculations are selectable, lazy, bounded and honest about unavailable payloads"
         - path: "test/chat-ui-debug-settings.test.mjs"
           name: "Debug settings persist validated thresholds and expose the Debug route"
+        - path: "test/model-inference-metrics.test.mjs"
+          name: "provider usage becomes a durable per-inference trace node across replay, patches, live frames and timeline compaction"
+        - path: "test/model-inference-metrics.test.mjs"
+          name: "model and Tool diagnostics can be enabled independently under the global Debug mode"
+        - path: "test/model-inference-metrics.test.mjs"
+          name: "inference metrics distinguish total input, cache hits, fresh input and output"
         - path: "test/base-prompt-web.test.mjs"
           name: "chat user-settings API validates same-origin mutations and persists sanitized values"
-      public: ["SessionTraceHeader", "CompactTerminalSessionView", "/settings/debug", "pibo.chat.toolMetricThresholds", "PiboUserSettings.toolMetrics.tokenCalculation", "PiboToolExecutionFinishedEvent.toolMetrics"]
-      failures: ["Missing, media, cyclic, over-budget, or oversized Tiktoken payload metrics remain unavailable; calculations are never presented as provider usage or billing; Debug and threshold preferences are browser-local, calculation preferences persist in app user settings, and invalid values fall back to defaults."]
+      public: ["SessionTraceHeader", "CompactTerminalSessionView", "TerminalModelInferenceMetrics", "/settings/debug", "pibo.chat.debugFeatures", "pibo.chat.toolMetricThresholds", "PiboAssistantUsageEvent", "PiboUserSettings.toolMetrics.tokenCalculation", "PiboToolExecutionFinishedEvent.toolMetrics"]
+      failures: ["Missing provider usage remains unavailable rather than estimated; usage attaches only to the latest related Tool, reasoning, assistant-message, or turn node; malformed or duplicate records cannot create extra pagination rows; missing, media, cyclic, over-budget, or oversized Tiktoken Tool payload metrics remain unavailable; Tool calculations are never presented as provider usage or billing; Debug features and thresholds are browser-local, calculation preferences persist in app user settings, and invalid values fall back to defaults."]
       confidence: "high"
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -313,7 +327,7 @@ Bounded trace projection, opt-in payload/raw detail, deterministic historical/li
 
 ## Scope
 
-This specification describes implemented behavior at traceability commit `bfb31e40143ea149cf77917d787adaf477539f51`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
+This specification describes implemented behavior at traceability commit `14403bcb91edc685ecb2f2255475f6229008691d`. Earlier Workflow evidence remains scoped to its recorded integration baseline.
 
 ### In scope
 
@@ -365,9 +379,11 @@ The [viewport and wheel validation report](/reports/terminal-viewport-and-wheel-
 
 ### Requirement: WEB-TRACE-DEBUG-006
 
-Debug MUST default off and expose a stable accessible toggle name and pressed state beside Thinking on desktop and mobile. Chat Web persists the preference locally and ignores the former Raw Events topbar preference. Debug MUST NOT open the Raw Events inspector or initiate raw-event/payload fetches.
+Debug MUST default off and expose a stable accessible toggle name and pressed state beside Thinking on desktop and mobile. Chat Web persists the global preference locally and ignores the former Raw Events topbar preference. `Settings > Debug` MUST persist independent Tool-call and model-inference metric selections; both feature selections default enabled, remain saved while global Debug is off, and cannot render diagnostics unless global Debug is on. Debug MUST NOT open the Raw Events inspector or initiate raw-event/payload fetches.
 
-When enabled, Terminal MUST show a compact monospaced status line below each tool invocation: execution time, argument payload tokens, result payload tokens, and the calculation basis used for that invocation. Output is visually emphasized. The calculation segment displays `chars ÷ <factor>`, `tiktoken · <encoding>`, or `—`. The line is independent of expanded details and works in Default and Slim. Intent uses the same metadata when the existing capability gate permits an intent row; this change does not enable unsupported Intent mode. Hide continues to hide tool rows. Debug ungroups exploration/image tools so each invocation retains its own metrics. Disabling Debug restores normal grouping and removes the status lines.
+When global Debug and Tool-call metrics are enabled, Terminal MUST show a compact monospaced status line below each tool invocation: execution time, argument payload tokens, result payload tokens, and the calculation basis used for that invocation. Output is visually emphasized. The calculation segment displays `chars ÷ <factor>`, `tiktoken · <encoding>`, or `—`. The line is independent of expanded details and works in Default and Slim. Intent uses the same metadata when the existing capability gate permits an intent row; this change does not enable unsupported Intent mode. Hide continues to hide tool rows. Tool-call metrics ungroup exploration/image tools so each invocation retains its own metrics. Disabling Tool-call metrics or global Debug restores normal grouping and removes Tool status lines without changing the model-inference selection.
+
+When global Debug and model-inference metrics are enabled, each normalized provider-response `assistant_usage` record MUST remain durable through stored replay, live updates, patching, and compact Timeline V2 projection. Projection attaches the record to the latest related Tool, reasoning, assistant-message, delegation, or turn node instead of creating a separate trace row. Terminal renders one flat `MODEL` rail below that owner with `IN`, `CACHED`, `UNCACHED`, and `OUT`. `IN` is total provider-reported model input, including cached input when total and output are available; `CACHED` is cache-read plus cache-write input; `UNCACHED` is non-negative `IN - CACHED`; and `OUT` is provider-reported output. Missing usage stays unavailable rather than estimated. Runtime adapters own normalization, including OpenAI-compatible endpoints; the browser performs no provider call, tokenization, or billing attribution.
 
 The runtime collector measures start-to-finish elapsed time with a monotonic clock. At Tool start it captures the active calculation configuration and stores only that configuration, start time, and input count for the active call. It uses the same captured configuration for the result even if settings change while the Tool runs. It measures output once on completion, including failed calls, then releases the entry; turn cleanup clears abandoned entries. Finished-event metadata persists the method-specific basis separately from large payloads and survives live frames, stored-history replay, timeline compaction, and row projection. Legacy `chars/4` metrics remain readable as character-factor metrics.
 
@@ -377,17 +393,19 @@ Tiktoken mode supports `o200k_base`, `cl100k_base`, `p50k_base`, `r50k_base`, `p
 
 Both modes exclude result-envelope metadata when a harness supplies `content`. Neither performs an extra provider request nor attributes model-response usage, billable tokens, or Tool-internal model usage. Missing starts, metrics without basis metadata, media, cyclic, over-depth, over-budget, or oversized Tiktoken payloads use `—` for unavailable values rather than zero. The browser formats already-recorded numbers and basis metadata; it does not measure or tokenize payloads while rendering or scrolling.
 
-The status line follows the [Compact Terminal design](/project/design/compact-terminal.md): square geometry, 9px black-weight labels, 11px bold tabular values, no cards, shadows, polling, animation, or per-row timers. It wraps whole metric segments at narrow widths instead of truncating values or basis labels. Debug in the embedded VS Code Terminal is session-local.
+Debug rails follow the [Compact Terminal design](/project/design/compact-terminal.md): square geometry, 9px black-weight labels, 11px bold tabular values, no cards, shadows, polling, animation, or per-row timers. They wrap whole metric segments at narrow widths instead of truncating values or basis labels. Debug in the embedded VS Code Terminal is session-local.
 
-The Debug line is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, normal output uses acid lime, and calculation basis uses cyan metadata so the four columns remain distinguishable from ordinary Terminal prose. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Color supplements the visible number, basis, and `—` state; it is not the sole information channel.
+Tool Debug is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, normal output uses acid lime, and calculation basis uses cyan metadata so the four columns remain distinguishable from ordinary Terminal prose. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Model inference uses cyan for `MODEL` and `IN`, violet for `CACHED`, yellow for `UNCACHED`, and acid lime for `OUT`. Color supplements the visible number, basis, label, and `—` state; it is not the sole information channel.
 
-`Settings > Debug` exposes the persisted Debug toggle and three strictly increasing visual thresholds for each metric. Defaults are 1/5/15 seconds for duration, 8k/20k/50k input tokens, and 2k/10k/50k output tokens. Threshold values are validated as positive numbers, stored in browser-local storage, and applied immediately to Terminal rendering. Restoring defaults does not change collected metrics.
+`Settings > Debug` exposes the persisted global Debug toggle, independent Tool-call and model-inference metric toggles, and three strictly increasing visual thresholds for each Tool metric. Defaults are 1/5/15 seconds for duration, 8k/20k/50k input tokens, and 2k/10k/50k output tokens. Threshold values are validated as positive numbers, stored in browser-local storage, and applied immediately to Terminal rendering. Restoring defaults does not change collected metrics or either feature selection.
 
 The same panel selects future Tool-call calculation independently: character count with a configurable factor or Tiktoken with a supported encoding. The calculation is sanitized and persisted in app user settings. Character mode is the default and keeps factor `4`; Tiktoken selection is explicit because its serialization, text scan, WASM tokenizer, CPU, and memory costs are higher. The panel states that both methods are payload diagnostics rather than provider usage or billing attribution.
 
 Verification for this addition: isolated build and all typechecks passed; 192 focused runtime/trace tests and a separate 296-test UI/metrics run passed (the selections overlap). Browser Use with headful Chromium and CDP passed Default/Slim at 1440×1000 and 390×844, toggle/reload/Hide checks, legacy/media placeholders, Raw Events workspace-tab access, keyboard Space activation, and absence of horizontal overflow or JavaScript exceptions. Enabling Debug caused no raw-event or payload fetch. The browser used deterministic persisted tool-event fixtures; a provider-backed Worker turn failed at authentication, so provider end-to-end and production deployment are not claimed.
 
 Verification for the selectable-calculation refinement: the full build and all package typechecks passed. The focused calculation/API/UI suite passed 11 tests, and the wider Chat UI, metrics, API, and routed-runtime selection passed 327 tests with 322 passed, 0 failed, and 5 skipped. Headful desktop checks saved and reloaded Tiktoken with `p50k_edit`; runtime collection then persisted `tiktoken/p50k_edit`. Headful/CDP checks at desktop and 390×844 rendered character factors, Tiktoken encodings, and legacy `—` bases without rail or document overflow or JavaScript exceptions. These deterministic fixtures and local runtime checks do not claim provider billing parity or production deployment.
+
+Verification for model-inference diagnostics on September 8, 2026: the isolated Docker worker completed the full build, all package typechecks, and 41 focused Debug, inference-usage, Tool-metric, Pi tracing, Goal-accounting, and shared Terminal tests. A headful authenticated Chat Web target at 800×457 persisted global on, Tool metrics off, and model metrics on; reload preserved those selections. The deterministic persisted provider-usage fixture rendered `IN 94,173`, `CACHED 91,776`, `UNCACHED 2,397`, and `OUT 300` below its assistant response. Turning off model metrics hid that rail while global Debug stayed on; turning off global Debug hid it while the model selection stayed enabled. CDP reload observed the final rail with zero console errors, exceptions, log errors, or network failures. The fixture validates projection and rendering, not a live provider request, billing parity, production deployment, or wider desktop/mobile acceptance.
 
 ### Requirement: WEB-TRACE-PROJECTION-001
 

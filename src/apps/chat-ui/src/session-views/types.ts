@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { DebugFeatureSettings } from "../../../../shared/debug-features.js";
 import type { AgentProfile, PiboLoopJob, PiboSessionSignalSnapshot, PiboSessionTraceView, PiboSignalSnapshot, PiboWebSessionNode, PiboWebSessionStatus, RuntimeSessionBinding, ThinkingLevel, Trace } from "../types";
 import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } from "../tracing/TraceTimeline";
 import type { ToolMetricThresholds } from "../tool-metric-settings";
@@ -29,6 +30,7 @@ export type ChatSessionViewProps = {
 	terminalFullscreen?: boolean;
 	showThinking: boolean;
 	debugMode?: boolean;
+	debugFeatures?: DebugFeatureSettings;
 	toolMetricThresholds?: ToolMetricThresholds;
 	expandThinking: boolean;
 	toolDisplayMode: ToolDisplayMode;

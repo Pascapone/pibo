@@ -16,6 +16,7 @@ import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
 import { TerminalToolMetrics } from "./TerminalToolMetrics";
+import { TerminalModelInferenceMetrics } from "./TerminalModelInferenceMetrics";
 import { TerminalDetails } from "./TerminalDetails";
 import { TerminalLine } from "./TerminalLine";
 import { TerminalLoginCard } from "./TerminalLoginCard";
@@ -45,6 +46,7 @@ export function CompactTerminalSessionView({
 	terminalFullscreen,
 	showThinking,
 	debugMode = false,
+	debugFeatures,
 	toolMetricThresholds,
 	expandThinking,
 	toolDisplayMode,
@@ -71,9 +73,11 @@ export function CompactTerminalSessionView({
 }: ChatSessionViewProps) {
 	const effectiveToolDisplayMode = targetToolCallNodeId ? "default" : toolDisplayMode;
 	const rows = useMemo(
-		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode: effectiveToolDisplayMode, debugMode }),
-		[showThinking, effectiveToolDisplayMode, debugMode, traceView],
+		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode: effectiveToolDisplayMode, debugMode, debugFeatures }),
+		[showThinking, effectiveToolDisplayMode, debugMode, debugFeatures, traceView],
 	);
+	const showToolDebugMetrics = debugMode && (debugFeatures?.toolMetrics ?? true);
+	const showModelInferenceMetrics = debugMode && (debugFeatures?.modelInferenceMetrics ?? true);
 	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
 	const piboSessionId = traceView?.piboSessionId ?? "";
 	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
@@ -306,7 +310,8 @@ export function CompactTerminalSessionView({
 		<div className="px-4 @max-[420px]:px-2">
 			<TerminalRow
 				row={row}
-				debugMode={debugMode}
+				showToolDebugMetrics={showToolDebugMetrics}
+				showModelInferenceMetrics={showModelInferenceMetrics}
 				toolMetricThresholds={toolMetricThresholds}
 				expanded={expandedRows.has(row.id)}
 				focused={focusedNavigationRowId === row.id}
@@ -321,7 +326,7 @@ export function CompactTerminalSessionView({
 				signals={signals}
 			/>
 		</div>
-	), [debugMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, targetToolCallNodeId, toolMetricThresholds, traceView?.piboSessionId]);
+	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, showModelInferenceMetrics, showToolDebugMetrics, signals, targetToolCallNodeId, toolMetricThresholds, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -516,7 +521,8 @@ function SessionLinkButton({ children, onClick }: { children: ReactNode; onClick
 
 function TerminalRow({
 	row,
-	debugMode,
+	showToolDebugMetrics,
+	showModelInferenceMetrics,
 	toolMetricThresholds,
 	expanded,
 	focused,
@@ -531,7 +537,8 @@ function TerminalRow({
 	signals,
 }: {
 	row: CompactTerminalRow;
-	debugMode: boolean;
+	showToolDebugMetrics: boolean;
+	showModelInferenceMetrics: boolean;
 	toolMetricThresholds: ChatSessionViewProps["toolMetricThresholds"];
 	expanded: boolean;
 	focused: boolean;
@@ -592,7 +599,8 @@ function TerminalRow({
 					signals={signals}
 					onOpenSession={onOpenSession}
 				/>
-				{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+				{showToolDebugMetrics && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+				{showModelInferenceMetrics ? <ModelInferenceMetricsList records={row.modelInferences} /> : null}
 			</div>
 		);
 	}
@@ -646,9 +654,15 @@ function TerminalRow({
 					onOpenSession={onOpenSession}
 				/>
 			) : null}
-			{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+			{showToolDebugMetrics && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+			{showModelInferenceMetrics ? <ModelInferenceMetricsList records={row.modelInferences} /> : null}
 		</div>
 	);
+}
+
+function ModelInferenceMetricsList({ records }: { records: CompactTerminalRow["modelInferences"] }) {
+	if (!records?.length) return null;
+	return <>{records.map((record) => <TerminalModelInferenceMetrics key={record.id} metrics={record.metrics} />)}</>;
 }
 
 function TerminalRowContent({

@@ -66,6 +66,7 @@ function traceNodeFromTimelineNode(row: TraceTimelineNode): PiboTraceNode {
 		completedAt: row.completedAt,
 		durationMs: row.durationMs,
 		toolMetrics: row.toolMetrics,
+		modelInferences: row.modelInferences,
 		summary: preview,
 		input: row.inlinePayloads?.input ?? inputPreview,
 		output: inlineOutput ?? outputPreview,

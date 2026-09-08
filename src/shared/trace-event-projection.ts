@@ -31,6 +31,10 @@ export function applySingleEventToNodes(
 	sessionStatus: PiboWebSessionStatus,
 ): void {
 	const payload = storedEvent.payload as PiboOutputEvent;
+	if (payload.type === "assistant_usage") {
+		attachModelInferenceToLatestOutput(nodes, byId, payload, storedEvent);
+		return;
+	}
 	if (payload.type === "message_started" && payload.source === "user" && payload.eventId) {
 		const persistedUser = flattenTraceNodes([...nodes]).find((node) =>
 			node.type === "user.message"
@@ -242,7 +246,11 @@ function applyRenderSequenceToHistoryNode(
 			&& (!eventId || !node.eventId || node.eventId === eventId)
 		)
 	);
-	if (target) applyRenderSequence(target, storedEvent, event);
+	if (!target) return;
+	applyRenderSequence(target, storedEvent, event);
+	if (event.type === "tool_execution_finished" && event.toolMetrics) {
+		target.toolMetrics = event.toolMetrics;
+	}
 }
 
 function applyRenderSequence(
@@ -700,6 +708,54 @@ export function latestTraceStreamId(
 		latest = latest === undefined ? event.streamId : Math.max(latest, event.streamId);
 	}
 	return latest;
+}
+
+function attachModelInferenceToLatestOutput(
+	nodes: PiboTraceNode[],
+	byId: Map<string, PiboTraceNode>,
+	event: Extract<PiboOutputEvent, { type: "assistant_usage" }>,
+	storedEvent: ChatWebStoredEvent,
+): void {
+	const eventId = event.eventId;
+	const candidates = flattenTraceNodes(nodes)
+		.filter((node) => node.eventId === eventId && traceNodeStartedBeforeInference(node, storedEvent) && (
+			node.type === "assistant.message"
+			|| node.type === "model.reasoning"
+			|| node.type === "tool.call"
+			|| node.type === "agent.delegation"
+		))
+		.sort(compareTraceNodes);
+	const target = candidates.at(-1) ?? (eventId ? byId.get(messageTurnNodeId(eventId)) : undefined);
+	if (!target) return;
+	const id = eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
+	const record = {
+		id,
+		completedAt: storedEvent.createdAt,
+		metrics: {
+			...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
+			...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
+			...(event.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.cacheReadTokens }),
+			...(event.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: event.cacheWriteTokens }),
+			...(event.reasoningTokens === undefined ? {} : { reasoningTokens: event.reasoningTokens }),
+			totalTokens: event.totalTokens,
+			...(event.costUsd === undefined ? {} : { costUsd: event.costUsd }),
+		},
+	};
+	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record];
+}
+
+function traceNodeStartedBeforeInference(node: PiboTraceNode, storedEvent: ChatWebStoredEvent): boolean {
+	const inferenceRenderSequence = storedEvent.renderSequence;
+	const nodeRenderSequence = node.orderKey?.renderSequence;
+	if (inferenceRenderSequence !== undefined && nodeRenderSequence !== undefined) {
+		return nodeRenderSequence <= inferenceRenderSequence;
+	}
+	const inferenceSequence = storedEvent.eventSequence ?? storedEvent.streamId;
+	const nodeSequence = node.orderKey?.eventSequence ?? node.orderKey?.streamId;
+	if (inferenceSequence !== undefined && nodeSequence !== undefined) return nodeSequence <= inferenceSequence;
+	const inferenceTime = Date.parse(storedEvent.createdAt);
+	const nodeTime = Date.parse(node.startedAt ?? node.completedAt ?? "");
+	return !Number.isFinite(inferenceTime) || !Number.isFinite(nodeTime) || nodeTime <= inferenceTime;
 }
 
 // ── event → node helpers ─────────────────────────────────────────
