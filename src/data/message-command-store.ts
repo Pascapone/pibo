@@ -164,7 +164,7 @@ export class MessageCommandStore {
 	}
 	private terminalizeBlockedSuccessors(now: number, limit=100): number {
 		const bounded=Math.max(1,Math.min(1000,Math.trunc(limit)||1));
-		return Number(this.store.db.prepare(`UPDATE message_commands SET state='failed',error='Not dispatched: an earlier interrupted message requires reconciliation.',owner=NULL,lease_until=0,updated_at=?
+		return Number(this.store.db.prepare(`UPDATE message_commands SET state='failed',error='Not dispatched: an earlier interrupted message requires reconciliation.',owner = NULL,lease_until=0,updated_at=?
 		 WHERE id IN (SELECT c.id FROM message_commands c WHERE c.state IN (${unstarted}) AND c.delivery='queue' AND c.owner IS NULL AND EXISTS(
 		 SELECT 1 FROM message_commands p WHERE p.session_id=c.session_id AND p.state='interrupted' AND p.stream_id<c.stream_id
 		 ) ORDER BY c.created_at,c.id LIMIT ?)`).run(now,bounded).changes);
@@ -177,7 +177,7 @@ export class MessageCommandStore {
 		catch{return {examined:0,reconciled:0,blockedSuccessorsFailed:0,ambiguous:0,errors:1};}
 		let reconciled=0,errors=0;
 		for(const row of rows){
-			try{reconciled+=this.store.transaction(()=>Number(this.store.db.prepare(`UPDATE message_commands SET state=${terminalEvidenceSql},error=NULL,owner=NULL,lease_until=0,updated_at=? WHERE id=? AND state='interrupted' AND ${terminalEvidenceSql} IN ('completed','failed')`).run(Date.now(),row.id).changes));}
+			try{reconciled+=this.store.transaction(()=>Number(this.store.db.prepare(`UPDATE message_commands SET state=${terminalEvidenceSql},error=NULL,owner = NULL,lease_until=0,updated_at=? WHERE id=? AND state='interrupted' AND ${terminalEvidenceSql} IN ('completed','failed')`).run(Date.now(),row.id).changes));}
 			catch{errors++;}
 		}
 		let blockedSuccessorsFailed=0;try{blockedSuccessorsFailed=this.store.transaction(()=>this.terminalizeBlockedSuccessors(Date.now(),bounded));}catch{errors++;}
@@ -192,7 +192,7 @@ export class MessageCommandStore {
 			changed+=Number(this.store.db.prepare(`UPDATE message_commands SET
 			 state=CASE WHEN ${terminalEvidenceSql} IN ('completed','failed') THEN ${terminalEvidenceSql} WHEN state='waiting_slot' THEN 'accepted' ELSE 'interrupted' END,
 			 error=CASE WHEN ${terminalEvidenceSql} IN ('completed','failed') OR state='waiting_slot' THEN NULL ELSE 'Runtime ownership expired; execution requires reconciliation.' END,
-			 owner=NULL,lease_until=0,updated_at=? WHERE id=? AND owner IS NOT NULL AND lease_until<=? AND state IN (${active})`).run(now,row.id,now).changes);
+			 owner = NULL,lease_until=0,updated_at=? WHERE id=? AND owner IS NOT NULL AND lease_until<=? AND state IN (${active})`).run(now,row.id,now).changes);
 		}
 		this.terminalizeBlockedSuccessors(now);
 		return changed;
