@@ -37,10 +37,12 @@ type Pending = {
 export function boundedMessageBytes(value: unknown, maximum: number): number {
 	let bytes = 0;
 	let nodes = 0;
-	const stack: unknown[] = [value];
+	const stack: Array<{ value: unknown; leave?: boolean }> = [{ value }];
 	const seen = new Set<object>();
 	while (stack.length) {
-		const item = stack.pop();
+		const frame = stack.pop()!;
+		const item = frame.value;
+		if (frame.leave) { seen.delete(item as object); continue; }
 		if (++nodes > 100_000) throw new StorageUnavailableError("storage_payload_limit", "Storage message has too many fields.");
 		if (typeof item === "string") bytes += Buffer.byteLength(item, "utf8") + 8;
 		else if (item === null || item === undefined || typeof item === "boolean" || typeof item === "number") bytes += 8;
@@ -49,12 +51,13 @@ export function boundedMessageBytes(value: unknown, maximum: number): number {
 		else if (typeof item === "object") {
 			if (seen.has(item)) throw new StorageUnavailableError("storage_payload_limit", "Storage messages must be acyclic.");
 			seen.add(item);
+			stack.push({ value: item, leave: true });
 			bytes += 16;
 			for (const key in item) {
 				if (!Object.hasOwn(item, key)) continue;
 				const child = (item as Record<string, unknown>)[key];
 				bytes += Buffer.byteLength(key, "utf8") + 8;
-				stack.push(child);
+				stack.push({ value: child });
 				if (stack.length > 100_000 || bytes > maximum) throw new StorageUnavailableError("storage_payload_limit", "Storage message exceeds its budget.");
 			}
 		} else throw new StorageUnavailableError("storage_payload_limit", "Unsupported storage message value.");
@@ -76,6 +79,7 @@ export class BoundedWorkerClient {
 	private ready = false;
 	private closed = false;
 	private exited = false;
+	private termination?: Promise<number>;
 	private readonly startupTimer: ReturnType<typeof setTimeout>;
 	private completed = 0;
 	private rejected = 0;
@@ -166,9 +170,8 @@ export class BoundedWorkerClient {
 		return { ready: this.ready, closed: this.closed, exited:this.exited, queued: this.queue.length, inFlight: Boolean(this.inFlight), pendingBytes: this.pendingBytes, oldestAgeMs: Math.max(0, ...this.queue.map(entry => performance.now() - entry.queuedAt), this.inFlight ? performance.now() - this.inFlight.queuedAt : 0), lastResponseAgeMs: this.lastResponseAt === undefined ? undefined : performance.now() - this.lastResponseAt, completed: this.completed, rejected: this.rejected, worker: this.workerIdentity, limits: { ...this.maximum } };
 	}
 	async close(): Promise<void> {
-		if (this.closed) return;
 		this.fail(new StorageUnavailableError("storage_closed", "Storage worker closed; reconcile any in-flight transaction."), false);
-		await this.worker.terminate();
+		await (this.termination ??= this.worker.terminate());
 	}
 	private fail(error: Error, terminateWorker = true): void {
 		if (this.closed) return;
@@ -184,7 +187,7 @@ export class BoundedWorkerClient {
 		this.lastServed.clear();
 		this.inFlight = undefined;
 		this.pendingBytes = 0;
-		if (terminateWorker) void this.worker.terminate();
+		if (terminateWorker) this.termination ??= this.worker.terminate();
 	}
 	private schedulePump(control: boolean): void {
 		if(control || !this.maximum.admissionWindowMs){this.pump();return;}

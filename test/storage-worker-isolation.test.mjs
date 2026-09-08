@@ -12,6 +12,25 @@ import { ChatDataIngestService } from '../dist/data/ingest-service.js';
 import { ChatSessionQueryService } from '../dist/apps/chat/data/session-query-service.js';
 const controlled = new URL('./fixtures/storage-worker/controlled-worker.mjs', import.meta.url);
 
+test('closing storage forbids creating a lazy reader and waits for failed worker exit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pibo-storage-close-'));
+  const path = join(root, 'data.sqlite'), payloads = join(root, 'payloads');
+  new PiboDataStore(path, { payloadRootDir: payloads }).close();
+  const storage = new AsyncChatStorage(path, payloads);
+  try {
+    await ready(storage);
+    await storage.close();
+    await assert.rejects(storage.find('room', 'actor', 'txn'), { code: 'storage_closed' });
+    assert.equal(storage.reader, undefined, 'no worker is created after disposal');
+  } finally { await storage.close(); rmSync(root, { recursive: true, force: true }); }
+  const client = new BoundedWorkerClient(controlled, { maxAgeMs: 1000 });
+  await ready(client);
+  const closing = client.close();
+  await client.close();
+  assert.equal(client.status().exited, true, 'every close call awaits the same worker termination');
+  await closing;
+});
+
 async function ready(client) {
   for (let i = 0; i < 300 && !client.status().ready; i++) await delay(10);
   assert.equal(client.status().ready, true);
@@ -204,3 +223,13 @@ test('an exited storage worker is replaced instead of disabling durable admissio
     } finally { persisted.close(); }
   } finally { await storage.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+ test('payload accounting permits shared acyclic metadata and counts every serialized occurrence', () => {
+  const model={provider:'test',id:'model'};
+  const shared={model,options:{model}};
+  const copied={model:{...model},options:{model:{...model}}};
+  assert.equal(boundedMessageBytes(shared,4096),boundedMessageBytes(copied,4096));
+  assert.throws(()=>boundedMessageBytes(shared,boundedMessageBytes({model},4096)),{code:'storage_payload_limit'});
+  const cycle={model};cycle.self=cycle;
+  assert.throws(()=>boundedMessageBytes(cycle,4096),{code:'storage_payload_limit'});
+ });
