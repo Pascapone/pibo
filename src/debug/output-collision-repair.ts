@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import type { PiboJsonObject, PiboOutputEvent } from "../core/events.js";
-import { outputPersistenceDeliveryKey } from "../data/ingest-service.js";
+import { legacyOutputIdempotencyKey, outputPersistenceDeliveryKey } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 
@@ -39,9 +39,9 @@ export function repairOutputCollision(input: {
 		dead = reliability.prepare("SELECT job_id AS jobId, payload_json AS payloadJson, last_error AS lastError, dead_at AS deadAt FROM pibo_dead_jobs WHERE job_id = ? AND queue IN ('output-persistence', 'output-persistence-cli')").get(input.jobId) as DeadRow | undefined;
 	} finally { reliability.close(); }
 	if (!dead) throw new Error(`Output-persistence dead letter "${input.jobId}" was not found`);
-	const incoming = findCollisionEvent(dead.payloadJson, dead.lastError);
-	if (!incoming) throw new Error(`Dead letter "${input.jobId}" does not contain a bounded, valid collision delivery`);
-	const key = outputPersistenceDeliveryKey(incoming);
+	const collision = findCollisionEvent(dead.payloadJson, dead.lastError);
+	if (!collision) throw new Error(`Dead letter "${input.jobId}" does not contain a bounded, valid collision delivery`);
+	const { event: incoming, key } = collision;
 	const data = new PiboDataStore(input.dataStore.path, { readOnly: !input.apply });
 	try {
 		const existing = data.db.prepare("SELECT stream_id AS streamId, session_id AS sessionId, event_id AS eventId, type, attributes_json AS attributesJson FROM event_log WHERE idempotency_key = ?").get(key) as ExistingRow | undefined;
@@ -108,7 +108,7 @@ function collisionFingerprint(db: DatabaseSync, sessionId: string, key: string):
 	return row?.value ?? undefined;
 }
 
-function findCollisionEvent(payloadJson: string, lastError: string | null): PiboOutputEvent | undefined {
+function findCollisionEvent(payloadJson: string, lastError: string | null): { event: PiboOutputEvent; key: string } | undefined {
 	let value: unknown;
 	try { value = JSON.parse(payloadJson); } catch { return undefined; }
 	const key = lastError?.match(/Pibo output identity collision for "([^"]+)"/)?.[1];
@@ -120,9 +120,11 @@ function findCollisionEvent(payloadJson: string, lastError: string | null): Pibo
 		else for (const field of ["state", "deliveries", "event", "payload"]) visit((item as Record<string, unknown>)[field], depth + 1);
 	};
 	visit(value, 0);
-	return candidates.find((item) => {
-		try { return outputPersistenceDeliveryKey(item as PiboOutputEvent) === key; } catch { return false; }
+	if (!key) return undefined;
+	const event = candidates.find((item) => {
+		try { return outputPersistenceDeliveryKey(item as PiboOutputEvent) === key || legacyOutputIdempotencyKey(item as PiboOutputEvent) === key; } catch { return false; }
 	}) as PiboOutputEvent | undefined;
+	return event ? { event, key } : undefined;
 }
 
 function parseObject(value: string): Record<string, unknown> {

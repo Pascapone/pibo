@@ -118,3 +118,20 @@ test("collision diagnostics are redacted and dead-letter reconciliation is expli
 		assert.equal(repeated.idempotent, true); assert.equal(repeated.auditStreamId, applied.auditStreamId);
 	} finally { f.close(); }
 });
+
+test("keep-existing repair accepts the exact legacy compact collision key", () => {
+ const f = fixture();
+ try {
+  const incoming = { type: "execution_result", piboSessionId: f.session.id, eventId: "old-compact", action: "compact", result: { compacted: true } };
+  const key = legacyOutputIdempotencyKey(incoming);
+  f.data.eventLog.appendEvent({ sessionId: f.session.id, sessionSequence: 1, topic: "pibo.output", type: incoming.type, source: "test", eventId: incoming.eventId, idempotencyKey: key, retentionClass: "trace_event", attributes: { inlinePayload: { queued: true }, action: "compact" } });
+  f.reliability.db.prepare("INSERT INTO pibo_dead_jobs (job_id, queue, payload_json, attempts, max_attempts, created_at, updated_at, last_error, dead_at, dead_reason) VALUES (?, 'output-persistence', ?, 1, 1, ?, ?, ?, ?, 'permanent')").run("dead_legacy_compact", JSON.stringify({ state: { deliveries: [{ event: incoming }] } }), "2026-09-08T00:00:00Z", "2026-09-08T00:00:00Z", `Pibo output identity collision for "${key}"`, "2026-09-08T00:00:00Z");
+  const stores = { dataStore: { path: f.dataPath, exists: true }, reliabilityStore: { path: f.reliabilityPath, exists: true } };
+  const dry = repairOutputCollision({ ...stores, jobId: "dead_legacy_compact" });
+  assert.equal(dry.collisionKey, key);
+  const applied = repairOutputCollision({ ...stores, jobId: "dead_legacy_compact", apply: true, keepExisting: true });
+  assert.equal(applied.applied, true);
+  assert.equal(f.data.eventLog.findByIdempotencyKey(key).attributes.inlinePayload.queued, true);
+  assert.equal(f.reliability.db.prepare("SELECT count(*) n FROM pibo_dead_jobs WHERE job_id='dead_legacy_compact'").get().n, 1);
+ } finally { f.close(); }
+});
