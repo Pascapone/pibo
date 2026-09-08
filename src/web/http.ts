@@ -93,66 +93,113 @@ export async function sendWebResponse(
 	webResponse: Response,
 	options: SendWebResponseOptions = {},
 ): Promise<void> {
+	assertResponseCanStart(response);
 	const headers = responseHeaders(webResponse);
 	const compressEncoding = preferredResponseEncoding(response.req?.headers["accept-encoding"], webResponse);
-
-	if (compressEncoding && webResponse.body) {
-		const body = await readResponseBody(webResponse);
-		if (body.length >= MIN_COMPRESS_RESPONSE_BYTES && body.length <= MAX_SYNC_GZIP_RESPONSE_BYTES) {
-			const compressionStartedAt = performance.now();
-			const compressed = gzipSync(body, { level: 1 });
-			appendServerTimingHeader(headers, `response_compress;dur=${(performance.now() - compressionStartedAt).toFixed(1)}`);
-			headers["content-encoding"] = compressEncoding;
-			headers["content-length"] = String(compressed.length);
-			headers.vary = appendVary(headers.vary, "accept-encoding");
-			response.writeHead(webResponse.status, headers);
-			response.end(compressed);
-			return;
-		}
-		if (body.length > MAX_SYNC_GZIP_RESPONSE_BYTES) {
-			headers["x-pibo-compression-skipped"] = "sync-gzip-size-limit";
-		}
-		response.writeHead(webResponse.status, headers);
-		response.end(body);
-		return;
-	}
-
-	response.writeHead(webResponse.status, headers);
-	if (!webResponse.body) {
-		response.end();
-		return;
-	}
-
-	const reader = webResponse.body.getReader();
-	const cancel = () => {
-		void reader.cancel().catch(() => undefined);
+	let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+	let wroteHeaders = false;
+	let clientClosed = false;
+	const cancelReader = () => {
+		if (reader) void reader.cancel().catch(() => undefined);
+	};
+	const close = () => {
+		clientClosed = true;
+		cancelReader();
 	};
 	const abort = () => {
-		const socket = response.socket;
-		void reader.cancel().catch(() => undefined);
-		if (!response.writableEnded) response.end();
-		socket?.end();
+		cancelReader();
+		try {
+			if (!response.destroyed && !response.writableEnded) response.end();
+		} catch {
+			tryDestroyResponse(response);
+		}
+		try {
+			response.socket?.end();
+		} catch {
+			tryDestroyResponse(response);
+		}
 	};
-	response.once("close", cancel);
-	options.signal?.addEventListener("abort", abort, { once: true });
-	if (options.signal?.aborted) abort();
+
 	try {
+		if (compressEncoding && webResponse.body) {
+			const body = await readResponseBody(webResponse);
+			if (body.length >= MIN_COMPRESS_RESPONSE_BYTES && body.length <= MAX_SYNC_GZIP_RESPONSE_BYTES) {
+				const compressionStartedAt = performance.now();
+				const compressed = gzipSync(body, { level: 1 });
+				appendServerTimingHeader(headers, `response_compress;dur=${(performance.now() - compressionStartedAt).toFixed(1)}`);
+				headers["content-encoding"] = compressEncoding;
+				headers["content-length"] = String(compressed.length);
+				headers.vary = appendVary(headers.vary, "accept-encoding");
+				response.writeHead(webResponse.status, headers);
+				wroteHeaders = true;
+				response.end(compressed);
+				return;
+			}
+			if (body.length > MAX_SYNC_GZIP_RESPONSE_BYTES) {
+				headers["x-pibo-compression-skipped"] = "sync-gzip-size-limit";
+			}
+			response.writeHead(webResponse.status, headers);
+			wroteHeaders = true;
+			response.end(body);
+			return;
+		}
+
+		response.writeHead(webResponse.status, headers);
+		wroteHeaders = true;
+		if (!webResponse.body) {
+			response.end();
+			return;
+		}
+
+		reader = webResponse.body.getReader();
+		response.once("close", close);
+		options.signal?.addEventListener("abort", abort, { once: true });
+		if (options.signal?.aborted) abort();
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			const bytes=Buffer.from(value.buffer,value.byteOffset,value.byteLength);
-            for(let offset=0;offset<bytes.length;offset+=64*1024){
-                if(response.destroyed||response.writableEnded)return;
-                if(!response.write(bytes.subarray(offset,offset+64*1024))){
-                    const drained=await waitForResponseDrain(response,(webResponse.headers.get("content-type")??"").startsWith("text/event-stream")?5000:undefined,options.signal);
-                    if(!drained){void reader.cancel().catch(()=>undefined);if(!response.destroyed)response.destroy();return;}
-                }
-            }
+			const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+			for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
+				if (response.destroyed || response.writableEnded || response.writableFinished) return;
+				if (!response.write(bytes.subarray(offset, offset + 64 * 1024))) {
+					const drained = await waitForResponseDrain(
+						response,
+						(webResponse.headers.get("content-type") ?? "").startsWith("text/event-stream") ? 5000 : undefined,
+						options.signal,
+					);
+					if (!drained) {
+						cancelReader();
+						tryDestroyResponse(response);
+						return;
+					}
+				}
+			}
 		}
-		if (!response.writableEnded) response.end();
+		if (!response.destroyed && !response.writableEnded && !response.writableFinished) response.end();
+	} catch (error) {
+		cancelReader();
+		if (clientClosed || response.destroyed || response.writableEnded || response.writableFinished) return;
+		if (wroteHeaders || response.headersSent) tryDestroyResponse(response, error);
+		throw error;
 	} finally {
-		response.off("close", cancel);
+		response.off("close", close);
 		options.signal?.removeEventListener("abort", abort);
+	}
+}
+
+function assertResponseCanStart(response: ServerResponse): void {
+	if (response.destroyed) throw new Error("HTTP response is destroyed");
+	if (response.writableEnded) throw new Error("HTTP response has ended");
+	if (response.writableFinished) throw new Error("HTTP response has finished");
+	if (response.headersSent) throw new Error("HTTP response headers were already sent");
+}
+
+function tryDestroyResponse(response: ServerResponse, error?: unknown): void {
+	if (response.destroyed) return;
+	try {
+		response.destroy(error instanceof Error ? error : undefined);
+	} catch {
+		// The request boundary is best-effort once the response implementation itself fails.
 	}
 }
 
@@ -211,12 +258,17 @@ function responseCanBeCompressed(webResponse: Response): boolean {
 async function readResponseBody(webResponse: Response): Promise<Buffer> {
 	const chunks: Buffer[] = [];
 	const reader = webResponse.body!.getReader();
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		chunks.push(Buffer.from(value));
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			chunks.push(Buffer.from(value));
+		}
+		return Buffer.concat(chunks);
+	} catch (error) {
+		void reader.cancel().catch(() => undefined);
+		throw error;
 	}
-	return Buffer.concat(chunks);
 }
 
 function appendVary(existing: string | string[] | undefined, value: string): string {
