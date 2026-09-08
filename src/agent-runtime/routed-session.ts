@@ -848,6 +848,7 @@ export class RuntimeRoutedSession {
 					result: event.result,
 					aborted: event.aborted,
 					errorMessage: event.errorMessage,
+					compactionStats: event.compactionStats,
 				}));
 				return;
 			case "approval_requested":

@@ -353,6 +353,7 @@ export function semanticEventFromPibo(event: PiboOutputEvent): AgentRuntimeSeman
 				result: event.result,
 				aborted: event.aborted,
 				errorMessage: event.errorMessage,
+				compactionStats: event.compactionStats,
 			};
 		case "session_error":
 			return { type: "error", message: event.error, details: event.errorDetails };

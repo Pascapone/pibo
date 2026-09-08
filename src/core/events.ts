@@ -457,6 +457,13 @@ export type PiboCompactionStartEvent = {
 	provenance?: PiboMessageProvenance;
 };
 
+export type PiboCompactionStats = {
+	toolCallCount: number;
+	maxToolOutputTokens?: number;
+	maxToolOutputTokenBasis?: import("../shared/tool-call-token-settings.js").ToolMetricTokenBasis;
+	compactionTokens?: number;
+};
+
 export type PiboCompactionEndEvent = {
 	type: "compaction_end";
 	piboSessionId: string;
@@ -466,6 +473,7 @@ export type PiboCompactionEndEvent = {
 	result?: unknown;
 	aborted: boolean;
 	errorMessage?: string;
+	compactionStats?: PiboCompactionStats;
 	provenance?: PiboMessageProvenance;
 };
 

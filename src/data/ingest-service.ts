@@ -200,6 +200,9 @@ export class ChatDataIngestService {
 		const payload = payloadForOutputEvent(event);
 		const preparedPayload = payload ? this.preparePayloadIfLarge(payload.value, payload.contentType, now, retentionClassForOutputEvent(event)) : undefined;
 		return this.store.transaction(() => {
+			if (event.type === "compaction_end" && !event.aborted && !event.errorMessage && !event.compactionStats) {
+				event.compactionStats = this.compactionStats(input.session.id, event.result);
+			}
 			if (input.roomId) {
 				this.store.sessions.upsertSession({ session: input.session, roomId: input.roomId, lastActivityAt: now, status: outputSessionStatus(event), preserveRuntimeBinding: true });
 			}
@@ -295,6 +298,35 @@ export class ChatDataIngestService {
 		});
 	}
 
+	private compactionStats(sessionId: string, result: unknown): NonNullable<Extract<PiboOutputEvent, { type: "compaction_end" }>["compactionStats"]> {
+		const boundary = this.store.db.prepare(`
+			SELECT COALESCE(MAX(session_sequence), 0) AS sequence
+			FROM event_log
+			WHERE session_id = ?
+				AND type = 'compaction_end'
+				AND COALESCE(json_extract(attributes_json, '$.aborted'), 0) = 0
+				AND json_extract(attributes_json, '$.errorMessage') IS NULL
+		`).get(sessionId) as { sequence: number };
+		const segmentWhere = `session_id = ? AND type = 'tool_execution_finished' AND session_sequence > ?`;
+		const count = this.store.db.prepare(`SELECT COUNT(*) AS count FROM event_log WHERE ${segmentWhere}`)
+			.get(sessionId, boundary.sequence) as { count: number };
+		const maxRow = this.store.db.prepare(`
+			SELECT attributes_json
+			FROM event_log
+			WHERE ${segmentWhere}
+				AND json_type(attributes_json, '$.toolMetrics.outputTokens') IN ('integer', 'real')
+			ORDER BY json_extract(attributes_json, '$.toolMetrics.outputTokens') DESC
+			LIMIT 1
+		`).get(sessionId, boundary.sequence) as { attributes_json: string } | undefined;
+		const maxToolOutput = maxRow ? toolMetricsFromAttributes(maxRow.attributes_json) : undefined;
+		return compactObject({
+			toolCallCount: count.count,
+			maxToolOutputTokens: maxToolOutput?.outputTokens,
+			maxToolOutputTokenBasis: maxToolOutput?.tokenBasis,
+			compactionTokens: compactionTokenCount(result),
+		}) as NonNullable<Extract<PiboOutputEvent, { type: "compaction_end" }>["compactionStats"]>;
+	}
+
 	private nextEventSequence(sessionId: string): number {
 		const row = this.store.db.prepare("SELECT COALESCE(MAX(session_sequence), 0) + 1 AS next_sequence FROM event_log WHERE session_id = ?").get(sessionId) as { next_sequence: number };
 		return row.next_sequence;
@@ -338,6 +370,33 @@ export class ChatDataIngestService {
 			updatedAt: now,
 		});
 	}
+}
+
+function toolMetricsFromAttributes(attributesJson: string): { outputTokens?: number; tokenBasis?: import("../shared/tool-call-token-settings.js").ToolMetricTokenBasis } | undefined {
+	try {
+		const attributes = JSON.parse(attributesJson) as unknown;
+		if (!isRecord(attributes) || !isRecord(attributes.toolMetrics)) return undefined;
+		const outputTokens = nonNegativeFiniteNumber(attributes.toolMetrics.outputTokens);
+		const tokenBasis = typeof attributes.toolMetrics.tokenBasis === "string"
+			? attributes.toolMetrics.tokenBasis as import("../shared/tool-call-token-settings.js").ToolMetricTokenBasis
+			: undefined;
+		return { outputTokens, tokenBasis };
+	} catch {
+		return undefined;
+	}
+}
+
+function compactionTokenCount(result: unknown): number | undefined {
+	if (!isRecord(result)) return undefined;
+	return nonNegativeFiniteNumber(result.tokensBefore);
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function deterministicId(prefix: string, value: string): string {
@@ -474,7 +533,7 @@ function specificAttributesForOutputEvent(event: PiboOutputEvent): Record<string
 	if (event.type === "subagent_session") return { toolCallId: event.toolCallId, toolName: event.toolName, subagentName: event.subagentName, childPiboSessionId: event.childPiboSessionId, threadKey: event.threadKey };
 	if (event.type === "execution_result") return { action: event.action };
 	if (event.type === "session_error") return { error: event.error, ...(event.errorDetails ? { errorDetails: event.errorDetails } : {}) };
-	if (event.type === "compaction_start" || event.type === "compaction_end") return { compactionIndex: event.compactionIndex, reason: event.reason, aborted: "aborted" in event ? event.aborted : undefined, errorMessage: "errorMessage" in event ? event.errorMessage : undefined };
+	if (event.type === "compaction_start" || event.type === "compaction_end") return { compactionIndex: event.compactionIndex, reason: event.reason, aborted: "aborted" in event ? event.aborted : undefined, errorMessage: "errorMessage" in event ? event.errorMessage : undefined, compactionStats: "compactionStats" in event ? event.compactionStats : undefined };
 	return {};
 }
 

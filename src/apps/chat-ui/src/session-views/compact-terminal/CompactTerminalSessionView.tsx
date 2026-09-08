@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, CircleX, Hammer, Images, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, CircleX, Hammer, Images, MessageSquare, Minimize2 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { chatImagePreviewUrls } from "../../api-chat-files";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
@@ -17,6 +17,7 @@ import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tra
 import type { ChatSessionViewProps } from "../types";
 import { TerminalToolMetrics } from "./TerminalToolMetrics";
 import { TerminalModelInferenceMetrics } from "./TerminalModelInferenceMetrics";
+import { TerminalCompactionCard } from "./TerminalCompactionCard";
 import { TerminalDetails } from "./TerminalDetails";
 import { TerminalLine } from "./TerminalLine";
 import { TerminalLoginCard } from "./TerminalLoginCard";
@@ -33,7 +34,7 @@ const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
-type TerminalNavigationKind = "system" | "tool" | "user";
+type TerminalNavigationKind = "compaction" | "system" | "tool" | "user";
 type TerminalImageDialogState = {
 	images: readonly CompactTerminalImagePreview[];
 	index: number;
@@ -96,6 +97,7 @@ export function CompactTerminalSessionView({
 	const scrollbarDragDeferredLoadRef = useRef(false);
 	const prepareOlderTracePrependRef = useRef<() => void>(() => undefined);
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
+	const compactionCount = rows.filter((row) => isNavigableTerminalRow(row, "compaction")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
 	const errorCount = rows.filter((row) => isNavigableTerminalRow(row, "system")).length;
 	const traceTurnStartedAt = useMemo(() => findActiveTurnStartedAt(traceView), [traceView]);
@@ -275,7 +277,7 @@ export function CompactTerminalSessionView({
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));
 		setFocusedNavigationRowId((current) => (current && rowIds.has(current) ? current : null));
-		for (const kind of ["system", "tool", "user"] as const) {
+		for (const kind of ["compaction", "system", "tool", "user"] as const) {
 			const current = navigationCursorRef.current[kind];
 			if (current && !rowIds.has(current)) delete navigationCursorRef.current[kind];
 		}
@@ -346,6 +348,7 @@ export function CompactTerminalSessionView({
 		>
 			{terminalFullscreen ? null : (
 				<TerminalHeader
+					compactionCount={compactionCount}
 					errorCount={errorCount}
 					toolErrorCount={toolErrorCount}
 					userMessageCount={userMessageCount}
@@ -432,6 +435,7 @@ export function CompactTerminalSessionView({
 }
 
 function TerminalHeader({
+	compactionCount,
 	errorCount,
 	toolErrorCount,
 	userMessageCount,
@@ -444,6 +448,7 @@ function TerminalHeader({
 	derivedSessions,
 	onOpenSession,
 }: {
+	compactionCount: number;
 	errorCount: number;
 	toolErrorCount: number;
 	userMessageCount: number;
@@ -472,6 +477,11 @@ function TerminalHeader({
 				{userMessageCount > 0 ? (
 					<TerminalBadge tone="cyan" label={`${userMessageCount} user messages · jump to previous user message`} onClick={() => onNavigate("user")}>
 						{userMessageCount}<MessageSquare size={12} />
+					</TerminalBadge>
+				) : null}
+				{compactionCount > 0 ? (
+					<TerminalBadge tone="cyan" label={`${compactionCount} compactions · jump to previous compaction`} onClick={() => onNavigate("compaction")}>
+						{compactionCount}<Minimize2 size={12} />
 					</TerminalBadge>
 				) : null}
 				{errorCount > 0 ? (
@@ -714,7 +724,10 @@ function TerminalRowContent({
 	if (row.kind === "tool.thinking") return <TerminalThinkingCard row={row} onLevelSelect={onThinkingLevelChange} />;
 	if (row.kind === "tool.login") return <TerminalLoginCard row={row} piboSessionId={piboSessionId} />;
 	if (row.kind === "tool.model") return <TerminalModelCard row={row} piboSessionId={piboSessionId} onModelChanged={onModelChanged} />;
-	if (row.kind === "execution.compaction" && row.status === "running") return <TerminalCompactionLine />;
+	if (row.kind === "execution.compaction") {
+		if (row.status === "running") return <TerminalCompactionLine />;
+		if (row.status === "done") return <TerminalCompactionCard row={row} />;
+	}
 	if (row.kind === "reasoning" && row.markdown) {
 		return (
 			<>
@@ -927,6 +940,7 @@ function retainExistingExpandedRows(
 
 function isNavigableTerminalRow(row: CompactTerminalRow, kind: TerminalNavigationKind): boolean {
 	if (kind === "user") return row.kind === "message.user";
+	if (kind === "compaction") return row.kind === "execution.compaction";
 	if (row.status !== "error") return false;
 	return kind === "tool" ? row.errorKind === "tool" : row.errorKind !== "tool";
 }
