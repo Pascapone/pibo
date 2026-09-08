@@ -69,6 +69,7 @@ export class BoundedWorkerClient {
 	private ready = false;
 	private closed = false;
 	private exited = false;
+	private termination?: Promise<number>;
 	private readonly startupTimer: ReturnType<typeof setTimeout>;
 	private completed = 0;
 	private rejected = 0;
@@ -155,9 +156,8 @@ export class BoundedWorkerClient {
 		return { ready: this.ready, closed: this.closed, exited:this.exited, queued: this.queue.length, inFlight: Boolean(this.inFlight), pendingBytes: this.pendingBytes, oldestAgeMs: Math.max(0, ...this.queue.map(entry => performance.now() - entry.queuedAt), this.inFlight ? performance.now() - this.inFlight.queuedAt : 0), lastResponseAgeMs: this.lastResponseAt === undefined ? undefined : performance.now() - this.lastResponseAt, completed: this.completed, rejected: this.rejected, worker: this.workerIdentity, limits: { ...this.maximum } };
 	}
 	async close(): Promise<void> {
-		if (this.closed) return;
 		this.fail(new StorageUnavailableError("storage_closed", "Storage worker closed; reconcile any in-flight transaction."), false);
-		await this.worker.terminate();
+		await (this.termination ??= this.worker.terminate());
 	}
 	private fail(error: Error, terminateWorker = true): void {
 		if (this.closed) return;
@@ -170,7 +170,7 @@ export class BoundedWorkerClient {
 		this.queue.length = 0;
 		this.inFlight = undefined;
 		this.pendingBytes = 0;
-		if (terminateWorker) void this.worker.terminate();
+		if (terminateWorker) this.termination ??= this.worker.terminate();
 	}
 	private pump(): void {
 		if (!this.ready || this.closed || this.inFlight || !this.queue.length) return;

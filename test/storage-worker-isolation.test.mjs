@@ -12,6 +12,25 @@ import { ChatDataIngestService } from '../dist/data/ingest-service.js';
 import { ChatSessionQueryService } from '../dist/apps/chat/data/session-query-service.js';
 const controlled = new URL('./fixtures/storage-worker/controlled-worker.mjs', import.meta.url);
 
+test('closing storage forbids creating a lazy reader and waits for failed worker exit', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pibo-storage-close-'));
+  const path = join(root, 'data.sqlite'), payloads = join(root, 'payloads');
+  new PiboDataStore(path, { payloadRootDir: payloads }).close();
+  const storage = new AsyncChatStorage(path, payloads);
+  try {
+    await ready(storage);
+    await storage.close();
+    await assert.rejects(storage.find('room', 'actor', 'txn'), { code: 'storage_closed' });
+    assert.equal(storage.reader, undefined, 'no worker is created after disposal');
+  } finally { await storage.close(); rmSync(root, { recursive: true, force: true }); }
+  const client = new BoundedWorkerClient(controlled, { maxAgeMs: 1000 });
+  await ready(client);
+  const closing = client.close();
+  await client.close();
+  assert.equal(client.status().exited, true, 'every close call awaits the same worker termination');
+  await closing;
+});
+
 async function ready(client) {
   for (let i = 0; i < 300 && !client.status().ready; i++) await delay(10);
   assert.equal(client.status().ready, true);

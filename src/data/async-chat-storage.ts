@@ -2,7 +2,7 @@ import type { PiboRoom } from "../apps/chat/types/rooms.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatEventAppendInput, StoredChatEvent } from "../apps/chat/types/event-store.js";
 import type { UserMessageAcceptedIngestInput, UserMessageAcceptedIngestResult, OutputEventIngestInput, OutputEventIngestResult } from "./ingest-service.js";
-import { BoundedWorkerClient, type BoundedWorkerOptions } from "./bounded-worker-client.js";
+import { BoundedWorkerClient, StorageUnavailableError, type BoundedWorkerOptions } from "./bounded-worker-client.js";
 
 export type AsyncOutputIngestResult = OutputEventIngestResult & {
 	stored: { createdAt: string; eventId: string };
@@ -66,6 +66,7 @@ export class AsyncChatStorage {
 		return this.writer.request({ type: "append", input });
 	}
 	find(roomId: string, actorId: string, clientTxnId: string): Promise<StoredChatEvent | undefined> {
+		if (this.closed) return Promise.reject(new StorageUnavailableError("storage_closed", "Storage worker is closed."));
 		return this.readerClient.request({ type: "find", roomId, actorId, clientTxnId }, { priority: "admission" });
 	}
 	ingestUser(input: UserMessageAcceptedIngestInput): Promise<UserMessageAcceptedIngestResult> {
