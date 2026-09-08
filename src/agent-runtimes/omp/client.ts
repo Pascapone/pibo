@@ -127,6 +127,8 @@ function parseReadyFrame(value: unknown): OmpRpcReadyFrame {
 
 export class OmpRpcClient {
 	private child?: ChildProcessWithoutNullStreams;
+	private childClosed?: Promise<void>;
+	private shutdownTimer?: NodeJS.Timeout;
 	private stdoutBuffer = Buffer.alloc(0);
 	private state: OmpRpcClientState = "starting";
 	private protocolVersion = 1;
@@ -202,6 +204,7 @@ export class OmpRpcClient {
 	 */
 	async connect(command: readonly string[], options: { cwd: string; env: NodeJS.ProcessEnv }): Promise<void> {
 		if (this.state === "ready") return;
+		if (this.child) await this.close();
 		const ready = deferred<OmpRpcReadyFrame>();
 
 		let child: ChildProcessWithoutNullStreams;
@@ -216,6 +219,11 @@ export class OmpRpcClient {
 			throw new OmpRpcClientError("spawn_failed", `Failed to spawn OMP child: ${String(error)}`, { cause: error });
 		}
 		this.child = child;
+		this.childClosed = new Promise(resolve => child.once("close", () => {
+			clearTimeout(this.shutdownTimer);
+			this.shutdownTimer = undefined;
+			resolve();
+		}));
 
 		let startupTimer: NodeJS.Timeout | undefined;
 		child.stderr.on("data", (chunk: Buffer) => {
@@ -510,10 +518,18 @@ export class OmpRpcClient {
 			this.state = "closing";
 		}
 		this.closeProcess();
+		if (this.childClosed) {
+			let deadline: NodeJS.Timeout | undefined;
+			try {
+				await Promise.race([this.childClosed, new Promise<never>((_, reject) => {
+					deadline = setTimeout(() => reject(new OmpRpcClientError("timeout", "OMP child did not terminate after shutdown escalation.")), this.shutdownTimeoutMs + 5000);
+				})]);
+			} finally { clearTimeout(deadline); }
+		}
 	}
 
 	private closeProcess(): void {
-		if (this.child && !this.child.killed) {
+		if (this.child?.pid && this.child.exitCode === null && this.child.signalCode === null && !this.shutdownTimer) {
 			try {
 				this.child.kill("SIGTERM");
 			} catch {
@@ -522,8 +538,9 @@ export class OmpRpcClient {
 			const child = this.child;
 			// Ensure the child is reaped even on platforms where SIGTERM is
 			// ignored (freeing any cwd lock for temp cleanup).
-			const timer = setTimeout(() => {
-				if (child && !child.killed) {
+			this.shutdownTimer = setTimeout(() => {
+				// `killed` only means a signal was sent, not that it terminated.
+				if (child.exitCode === null && child.signalCode === null) {
 					try {
 						child.kill("SIGKILL");
 					} catch {
@@ -531,7 +548,7 @@ export class OmpRpcClient {
 					}
 				}
 			}, this.shutdownTimeoutMs);
-			timer.unref();
+			this.shutdownTimer.unref();
 		}
 		this.state = "closed";
 		this.rejectAll(new OmpRpcClientError("aborted", "OMP client closed."));

@@ -450,7 +450,7 @@ export class OmpSession implements AgentRuntimeSession {
 		this.turn.dispose();
 		await this.hostTools.cancelAll();
 		this.hostTools.dispose();
-		this.client.dispose();
+		await this.client.close();
 		await disposeOmpSessionPaths(this.paths);
 		// Notify the owning adapter so adapter-level reads stop routing to us.
 		this.adapter?.detachLiveSession(this);
@@ -575,7 +575,7 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		try {
 			await client.connect(command, { cwd: input.workspace, env: environment });
 		} catch (error) {
-			await client.dispose();
+			await client.close();
 			await disposeOmpSessionPaths(paths);
 			if (error instanceof OmpRpcResponseError) throw error;
 			throw new AgentRuntimeUnavailableError(this.instanceId, `Failed to start OMP: ${error instanceof Error ? error.message : String(error)}`);
@@ -647,7 +647,7 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				nativeSessionFile = threads.current.sessionFile;
 			}
 		} catch (error) {
-			await client.dispose();
+			await client.close();
 			await disposeOmpSessionPaths(paths);
 			throw error;
 		}

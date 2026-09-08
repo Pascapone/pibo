@@ -14,6 +14,7 @@ import { OmpRpcClient } from "../dist/agent-runtimes/omp/client.js";
 import { createOmpPrefixBootstrapSource } from "../dist/agent-runtimes/omp/prefix-bootstrap.js";
 import { createOmpPrefixGuardSource, OMP_PREFIX_CODEC } from "../dist/agent-runtimes/omp/prefix-guard.js";
 import { NativePrefixBridge } from "../dist/sessions/native-prefix-bridge.js";
+import { NativePrefixStartupGate } from "../dist/sessions/native-prefix-startup.js";
 import { SessionPrefixController } from "../dist/sessions/prefix-session.js";
 import { PrefixCapsuleStore } from "../dist/sessions/prefix-capsule.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
@@ -27,7 +28,7 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 	const home = join(root, "agent"); await mkdir(home);
 	let client;
 	const connectionTokens = [];
-	let bridge, sessions, binding, connection, guardPath, piboSession;
+	let bridge, sessions, binding, connection, guardPath, piboSession, startup;
 	const guarded = scenario.startsWith("durable-guard-");
 	const compaction = scenario.startsWith("durable-guard-compaction");
 	const compactionRecovery = scenario === "durable-guard-compaction-recovery";
@@ -85,7 +86,8 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 			};
 		}
 		if (failCompletion) controller.finishCompaction = async () => { failCompletion = false; throw new Error("injected completion persistence failure"); };
-		bridge = new NativePrefixBridge(controller, OMP_PREFIX_CODEC);
+		startup = new NativePrefixStartupGate();
+		bridge = new NativePrefixBridge(controller, OMP_PREFIX_CODEC, startup);
 		connection = await bridge.start();
 		connectionTokens.push(connection.token);
 	};
@@ -108,20 +110,28 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 		if (guarded) {
 			nativeEntry = join(root, `bootstrap-${nonce}.mjs`);
 			await writeFile(nativeEntry, createOmpPrefixBootstrapSource({ entryModuleUrl: pathToFileURL(entry).href,
+				waitForActivation: true,
 				nativeSessionId: nativePath ? binding.nativeSessionId : undefined,
 				prefixRoot: join(root, "ownership-root"), identities: [JSON.stringify(["pibo", piboSession.id]),
 					...(nativePath ? [JSON.stringify(["native", "orp", binding.nativeSessionId])] : [])] }));
 		}
 		try {
-			await current.connect([bun, nativeEntry, "--mode", "rpc", "--model", "fixture/prefix-fixture", ...(toolRoundtrip ? ["--tools=read"] : ["--no-tools"]), "--no-lsp", "--no-skills", "--no-rules", "--no-extensions", "--no-title", "--thinking", "off",
+			const nativeArgs = ["--mode", "rpc", "--model", "fixture/prefix-fixture", ...(toolRoundtrip ? ["--tools=read"] : ["--no-tools"]), "--no-lsp", "--no-skills", "--no-rules", "--no-extensions", "--no-title", "--thinking", "off",
 				"--append-system-prompt", nativePath && ["changed-context", "system-override-is-incomplete", "restored-provider-envelope", "durable-guard-date-restore", "durable-guard-tool-roundtrip"].includes(scenario) ? "Changed appended context" : "Original appended context",
 				...(nativePath ? ["--resume", nativePath] : []),
 				...(frozenInstructions === undefined ? [] : ["--system-prompt", frozenInstructions]),
 				...(extensionPath ? ["--extension", extensionPath] : []),
 				...(guardPath ? ["--extension", guardPath] : []),
-			], { cwd: root, env: { PATH: process.env.PATH, PI_CODING_AGENT_DIR: home, PI_NO_PTY: "1",
+			];
+			const connecting = current.connect([bun, nativeEntry, ...(guarded ? [] : nativeArgs)], { cwd: root, env: { PATH: process.env.PATH, PI_CODING_AGENT_DIR: home, PI_NO_PTY: "1",
 				...(connection ? { PIBO_PREFIX_ENDPOINT: connection.endpoint, PIBO_PREFIX_TOKEN: connection.token,
 					PIBO_PREFIX_READY_FILE: readyFile, PIBO_PREFIX_READY_NONCE: nonce } : {}) } });
+			void connecting.catch(() => {});
+			if (guarded) {
+				await Promise.race([startup.waitForOwnership(), connecting.then(() => { throw new Error("Native entry started before ownership acknowledgement"); })]);
+				startup.activate(nativeArgs);
+			}
+			await connecting;
 			if (guarded) assert.deepEqual(JSON.parse(await readFile(readyFile, "utf8")), { nonce, codec: OMP_PREFIX_CODEC });
 			return current;
 		} catch (error) { await current.close(); throw error; }

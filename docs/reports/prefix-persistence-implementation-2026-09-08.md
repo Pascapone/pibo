@@ -7,7 +7,7 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T19:07:34Z"
+  at: "2026-09-08T20:11:48Z"
 sources:
   - id: "implementation-plan"
     resource: "scope: docs/prefix-persistence-plan commit e3720d03, docs/plans/persistent-session-prefix-and-cache-diagnostics.md"
@@ -121,6 +121,12 @@ The actual OMP fixtures pass native manual compaction/restart, a rejected parent
 The experimental OMP path now imports the existing ownership implementation inside Bun before importing the native CLI. The child retains its Pibo-identity and known native-identity SQLite locks for its own lifetime. The initial native identity is claimed at native session start, before its first input. A private one-use bootstrap callback connects that claim to the guard; a missing bootstrap blocks guard initialization. Resume claims the known native identity before loading history. This reuses the same lock-file protocol as Node/Pi, with no heartbeat or per-turn lock writes.
 
 A process fixture kills the Node parent with SIGKILL while its Bun child stays alive. Both a Node claimant and a competing Bun bootstrap remain excluded; the competing bootstrap exits before entering the simulated native history loader. Killing the original child releases the lock and permits immediate recovery. The actual OMP date-restore and three compaction/recovery scenarios also passed with this bootstrap: five focused tests, zero failures or skips. The final combined actual-native HTTP, bridge and child-ownership suite passed 20 tests with zero failures or skips. Backend TypeScript and strict OKF validation passed. The complete normal-adapter startup/resource ordering and other native entry distributions remain unproven; these fixtures do not establish production rollout or Codex ownership.
+
+# Startup ordering and native shutdown
+
+A one-use authenticated startup gate lets the Bun bootstrap acquire ownership before the parent prepares resources, then supplies bounded native arguments without shell interpolation. Native module import waits for activation. Rejection, disconnection and a bounded startup deadline prevent import and release child ownership on exit. Four tests cover authentication, duplicate activation, argument bounds, absent-child timeout, actual Bun ownership before resource preparation, and parent cancellation. The guarded actual OMP HTTP fixtures now use this rendezvous on both initial startup and restart. Normal protected-adapter startup ordering remains to be integrated.
+
+Inspection also identified a normal OMP shutdown defect: `ChildProcess.killed` means a signal was sent, not that the child exited. Its use in the escalation timer prevented SIGKILL after an ignored SIGTERM. The new regression test failed against the previous compiled client and passes with the corrected exit/signal-state check. `close()` now awaits process closure with a bounded deadline; normal adapter cleanup awaits it before deleting generation resources. Concurrent and repeated close calls are covered. The first expanded native suite had one compaction-restart startup failure; after the shutdown change and activation integration, all 55 native HTTP/IPC/ownership/runtime/resource tests passed with zero skips. The startup failure's precise cause was not independently established, so this result does not classify it as a proven ownership collision.
 
 # OMP bound-resume recovery follow-up
 

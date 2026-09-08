@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,8 +11,11 @@ import { SessionPrefixController } from "../dist/sessions/prefix-session.js";
 import { PrefixCapsuleStore } from "../dist/sessions/prefix-capsule.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-binding-persistence.js";
+import { NativePrefixStartupGate } from "../dist/sessions/native-prefix-startup.js";
+import { PrefixSessionOwnership } from "../dist/sessions/prefix-ownership.js";
+import { createOmpPrefixBootstrapSource } from "../dist/agent-runtimes/omp/prefix-bootstrap.js";
 
-async function fixture(t, brokenStore = false) {
+async function fixture(t, brokenStore = false, startup) {
 	const root = await mkdtemp(join(tmpdir(), "native-prefix-bridge-"));
 	const sessions = new SqlitePiboSessionStore(join(root, "sessions.sqlite"));
 	const session = sessions.create({ channel: "test", kind: "chat", profile: "base" });
@@ -18,12 +24,79 @@ async function fixture(t, brokenStore = false) {
 	if (brokenStore) await writeFile(path, "unavailable directory");
 	const controller = new SessionPrefixController({ store: new PrefixCapsuleStore(path), getBinding: () => binding,
 		persistence: createAgentRuntimeBindingPersistence(sessions, { piboSessionId: session.id, onPersisted: next => { binding = next; } }) });
-	const bridge = new NativePrefixBridge(controller, "native-fixture/v1");
+	const bridge = new NativePrefixBridge(controller, "native-fixture/v1", startup);
 	const connection = await bridge.start();
 	t.after(async () => { await bridge.dispose(); sessions.close(); await rm(root, { recursive: true, force: true }); });
 	const headers = { authorization: `Bearer ${connection.token}`, "x-native-session-id": session.piSessionId, "x-native-has-history": "false" };
-	return { sessions, session, connection, headers, controller, bridge };
+	return { root, sessions, session, connection, headers, controller, bridge };
 }
+
+test("native startup gate authenticates, bounds activation and releases a cancelled preparation", { timeout: 10000 }, async t => {
+	const gate = new NativePrefixStartupGate(5000);
+	const f = await fixture(t, false, gate);
+	assert.throws(() => gate.activate([]), /not awaiting/);
+	assert.equal((await fetch(f.connection.endpoint + "/activate")).status, 403);
+	const pending = fetch(f.connection.endpoint + "/activate", { headers: f.headers });
+	await gate.waitForOwnership();
+	assert.equal((await fetch(f.connection.endpoint + "/activate", { headers: f.headers })).status, 409);
+	assert.throws(() => gate.activate(["x".repeat(65536)]), /Invalid/);
+	assert.throws(() => gate.activate(["bad\0argument"]), /Invalid/);
+	gate.dispose();
+	assert.equal((await pending).status, 409);
+	assert.throws(() => gate.activate([]), /not awaiting/);
+	await assert.rejects(gate.waitForOwnership(), /failed/);
+});
+
+test("native startup preparation has a bounded deadline even without a child", async () => {
+	const gate = new NativePrefixStartupGate(10);
+	await assert.rejects(gate.waitForOwnership(), /failed/);
+	gate.dispose();
+});
+
+const bun = process.env.PIBO_OMP_PREFIX_BUN;
+for (const activate of [true, false]) test(`native child holds ownership before parent resource preparation; activation=${activate}`, { skip: !bun, timeout: 15000 }, async t => {
+	const gate = new NativePrefixStartupGate(10000);
+	const f = await fixture(t, false, gate);
+	const marker = join(f.root, "native-imported");
+	const prepared = join(f.root, "resources-prepared");
+	const entry = join(f.root, "entry.mjs");
+	const bootstrap = join(f.root, "bootstrap.mjs");
+	await writeFile(entry, `import { readFile, writeFile } from "node:fs/promises";
+await readFile(${JSON.stringify(prepared)});
+await writeFile(${JSON.stringify(marker)}, "imported");
+export async function runCli(args) { process.stdout.write(JSON.stringify(args)); }
+`);
+	const identities = [JSON.stringify(["pibo", f.session.id])];
+	await writeFile(bootstrap, createOmpPrefixBootstrapSource({ entryModuleUrl: pathToFileURL(entry).href,
+		prefixRoot: f.root, identities, waitForActivation: true }));
+	const child = spawn(bun, [bootstrap, "must-not-be-used"], { env: { ...process.env,
+		PIBO_PREFIX_ENDPOINT: f.connection.endpoint, PIBO_PREFIX_TOKEN: f.connection.token }, stdio: ["ignore", "pipe", "pipe"] });
+	t.after(() => child.kill("SIGKILL"));
+	let stdout = "", stderr = "";
+	child.stdout.on("data", data => { stdout += data; });
+	child.stderr.on("data", data => { stderr += data; });
+	const exited = once(child, "exit");
+	await gate.waitForOwnership();
+	await assert.rejects(readFile(marker), { code: "ENOENT" });
+	await assert.rejects(PrefixSessionOwnership.acquire(f.root, identities), /already held/);
+	if (activate) {
+		await writeFile(prepared, "ready");
+		gate.activate(["--mode", "rpc", "literal $() `text`"]);
+		assert.throws(() => gate.activate([]), /not awaiting/);
+		assert.equal((await exited)[0], 0);
+		assert.deepEqual(JSON.parse(stdout), ["--mode", "rpc", "literal $() `text`"]);
+		assert.equal(await readFile(marker, "utf8"), "imported");
+	} else {
+		await f.bridge.dispose();
+		assert.equal((await exited)[0], 78);
+		await assert.rejects(readFile(marker), { code: "ENOENT" });
+		assert.equal(stderr.trim(), "Pibo native prefix recovery required: native-entry");
+	}
+	const owner = await PrefixSessionOwnership.acquire(f.root, identities);
+	owner.release();
+	assert.equal(stdout.includes(f.connection.token), false);
+	assert.equal(stderr.includes(f.connection.token), false);
+});
 
 test("native capture IPC acknowledges only a durably bound original snapshot", async t => {
 	const f = await fixture(t);

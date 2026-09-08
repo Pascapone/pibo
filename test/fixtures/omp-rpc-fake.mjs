@@ -21,6 +21,7 @@ if (args.includes("--version")) {
 }
 
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
+if (process.env.OMP_FAKE_IGNORE_SIGTERM === "1") process.on("SIGTERM", () => {});
 
 // Test hook: emit a credential-looking line on stderr so the client's
 // diagnostic redaction can be observed end-to-end.

@@ -4,6 +4,8 @@ export function createOmpPrefixBootstrapSource(input: {
 	prefixRoot: string;
 	identities: readonly string[];
 	nativeSessionId?: string;
+	/** Wait for parent resource preparation after claiming native ownership. */
+	waitForActivation?: boolean;
 }): string {
 	if (new URL(input.entryModuleUrl).protocol !== "file:" || !input.identities.length) {
 		throw new Error("OMP protected bootstrap requires a local native entry and ownership identities");
@@ -34,9 +36,19 @@ globalThis[Symbol.for("pibo.omp.prefix.claimNative")] = async nativeSessionId =>
 };
 process.once("exit", () => { for (const owner of nativeOwners.reverse()) owner.release(); ownership.release(); });
 try {
+  let args = process.argv.slice(2);
+  ${input.waitForActivation ? `const endpoint = process.env.PIBO_PREFIX_ENDPOINT;
+  const token = process.env.PIBO_PREFIX_TOKEN;
+  if (!endpoint || new URL(endpoint).hostname !== "127.0.0.1" || !token) throw new Error("Missing native activation capability");
+  const response = await fetch(endpoint + "/activate", { headers: { authorization: "Bearer " + token }, signal: AbortSignal.timeout(15000) });
+  if (response.status !== 200) throw new Error("Native activation rejected");
+  const body = await response.text();
+  if (Buffer.byteLength(body) > 65536) throw new Error("Native activation too large");
+  args = JSON.parse(body);
+  if (!Array.isArray(args) || args.length > 256 || args.some(arg => typeof arg !== "string" || arg.includes("\\0"))) throw new Error("Invalid native activation");` : ""}
   const { runCli } = await import(${JSON.stringify(input.entryModuleUrl)});
   if (typeof runCli !== "function") throw new Error("Unsupported native entry");
-  await runCli(process.argv.slice(2));
+  await runCli(args);
 } catch {
   process.stderr.write("Pibo native prefix recovery required: native-entry\\n");
   process.exit(78);

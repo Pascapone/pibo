@@ -23,6 +23,17 @@ import { createPiboSession } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/omp-rpc-fake.mjs", import.meta.url));
 
+test("OMP close waits for native exit and escalates an ignored SIGTERM", { timeout: 10000 }, async t => {
+	const client = new OmpRpcClient({ shutdownTimeoutMs: 50 });
+	t.after(() => client.process?.kill("SIGKILL"));
+	await client.connect([process.execPath, fixturePath], { cwd: tmpdir(), env: { ...process.env, OMP_FAKE_IGNORE_SIGTERM: "1" } });
+	const child = client.process;
+	await Promise.all([client.close(), client.close()]);
+	assert.equal(child.signalCode, "SIGKILL");
+	assert.throws(() => process.kill(child.pid, 0), { code: "ESRCH" });
+	await client.close();
+});
+
 async function testRoot(t, label) {
 	return await mkdtemp(join(tmpdir(), `pibo-omp-${label}-`));
 }

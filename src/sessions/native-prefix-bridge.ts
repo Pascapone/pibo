@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { MAX_PREFIX_CAPSULE_BYTES } from "./prefix-capsule.js";
 import type { SessionPrefixController } from "./prefix-session.js";
+import type { NativePrefixStartupGate } from "./native-prefix-startup.js";
 
 /** Private startup/first-dispatch IPC. It never observes ordinary conversation input. */
 export class NativePrefixBridge {
@@ -10,7 +11,8 @@ export class NativePrefixBridge {
 	private endpoint?: string;
 	private active = false;
 
-	constructor(private readonly controller: SessionPrefixController, private readonly codec: string) {}
+	constructor(private readonly controller: SessionPrefixController, private readonly codec: string,
+		private readonly startup?: NativePrefixStartupGate) {}
 
 	async start(): Promise<{ endpoint: string; token: string }> {
 		if (this.server) throw new Error("Native prefix bridge is already started");
@@ -40,6 +42,10 @@ export class NativePrefixBridge {
 		if (typeof supplied !== "string" || Buffer.byteLength(supplied) !== Buffer.byteLength(expected)
 			|| !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
 			response.writeHead(403).end(); request.resume(); return;
+		}
+		if (request.method === "GET" && request.url === "/activate" && this.startup) {
+			await this.startup.accept(request, response);
+			return;
 		}
 		if (this.active) { response.writeHead(409).end(); request.resume(); return; }
 		this.active = true;
@@ -106,6 +112,7 @@ export class NativePrefixBridge {
 	}
 
 	async dispose(): Promise<void> {
+		this.startup?.dispose();
 		const server = this.server;
 		this.server = undefined;
 		this.endpoint = undefined;
