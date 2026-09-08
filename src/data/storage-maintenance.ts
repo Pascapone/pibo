@@ -73,6 +73,7 @@ export function inspectStorageStatus(input: { path: string; databaseWarnBytes?: 
 			...(sizes.database >= thresholds.databaseBytes ? ["database_size_threshold"] : []),
 			...(sizes.wal >= thresholds.walBytes ? ["wal_size_threshold"] : []),
 			...(sizes.payloadStoreSampleComplete && sizes.payloadStoreMetadataSample >= thresholds.payloadBytes ? ["payload_size_threshold"] : []),
+			...(!sizes.payloadStoreSampleComplete ? ["payload_size_threshold_indeterminate"] : []),
 			...(walPressure ? ["wal_checkpoint_pressure"] : []),
 			...(payload.metadataOrphans ? ["payload_metadata_orphans_sample"] : []),
 			...(payload.brokenReferences ? ["broken_payload_references_sample"] : []),
@@ -242,39 +243,43 @@ function inspectPayloadReferencesBounded(db: DatabaseSync): BoundedPayloadInspec
 	const payloadRows = db.prepare("SELECT id, COALESCE(compressed_byte_size, byte_size) AS bytes FROM payloads ORDER BY id LIMIT 1001").all() as Array<{ id: string; bytes: number }>;
 	const sample = payloadRows.slice(0, 1000);
 	const references = discoverPayloadReferenceColumns(db);
-	let referencedRows = 0;
-	for (const payload of sample) if (payloadHasReference(db, payload.id, references)) referencedRows += 1;
+	const sampledReferenceIds = new Set<string>();
 	let brokenReferences = 0;
 	let referenceSamplesComplete = true;
 	for (const reference of references) {
 		const table = quoteIdentifier(reference.table), column = quoteIdentifier(reference.column);
-		const rows = db.prepare(`SELECT ${column} AS id FROM ${table} WHERE ${column} IS NOT NULL LIMIT 101`).all() as Array<{ id: string }>;
-		if (rows.length > 100) referenceSamplesComplete = false;
-		for (const row of rows.slice(0, 100)) if (!db.prepare("SELECT 1 FROM payloads WHERE id = ?").get(row.id)) brokenReferences += 1;
+		// Do not filter here: LIMIT bounds rows examined even when references are sparse.
+		const rows = db.prepare(`SELECT ${column} AS id FROM ${table} LIMIT 1001`).all() as Array<{ id: string | null }>;
+		if (rows.length > 1000) referenceSamplesComplete = false;
+		for (const row of rows.slice(0, 1000)) {
+			if (!row.id) continue;
+			sampledReferenceIds.add(row.id);
+			if (!db.prepare("SELECT 1 FROM payloads WHERE id = ?").get(row.id)) brokenReferences += 1;
+		}
 	}
+	const referencedRows = sample.filter((payload) => sampledReferenceIds.has(payload.id)).length;
+	const integrityComplete = rowCount.complete && payloadRows.length <= 1000 && referenceSamplesComplete;
 	return {
 		rows: rowCount.count,
 		rowsComplete: rowCount.complete,
 		sampledRows: sample.length,
 		metadataBytes: sample.reduce((total, row) => total + Number(row.bytes ?? 0), 0),
 		referencedRows,
-		metadataOrphans: sample.length - referencedRows,
+		metadataOrphans: integrityComplete ? sample.length - referencedRows : 0,
 		brokenReferences,
-		integrityComplete: rowCount.complete && payloadRows.length <= 1000 && referenceSamplesComplete,
+		integrityComplete,
 	};
 }
 
-function inspectReleasedPayloadsBounded(db: DatabaseSync, candidateIds: string[]): Record<string, unknown> {
-	const references = discoverPayloadReferenceColumns(db);
+function inspectReleasedPayloadsBounded(_db: DatabaseSync, candidateIds: string[]): Record<string, unknown> {
 	const bounded = [...new Set(candidateIds)].slice(0, 1000);
-	const unreferenced = bounded.filter((id) => !payloadHasReference(db, id, references));
 	return {
-		candidates: candidateIds.length,
-		candidatesInspected: bounded.length,
+		releasedReferenceCandidates: candidateIds.length,
+		candidatesReported: bounded.length,
 		candidatesTruncated: candidateIds.length > bounded.length,
-		unreferencedCandidates: unreferenced.length,
-		retainedMetadata: unreferenced.length,
-		retainedFiles: unreferenced.length,
+		referenceState: "not_scanned_online",
+		retainedMetadata: bounded.length,
+		retainedFiles: bounded.length,
 		action: "report_only",
 	};
 }
@@ -289,14 +294,6 @@ function discoverPayloadReferenceColumns(db: DatabaseSync): PayloadReferenceColu
 		}
 	}
 	return references.slice(0, 64);
-}
-
-function payloadHasReference(db: DatabaseSync, id: string, references: PayloadReferenceColumn[]): boolean {
-	for (const reference of references) {
-		const table = quoteIdentifier(reference.table), column = quoteIdentifier(reference.column);
-		if (db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(id)) return true;
-	}
-	return false;
 }
 
 function quoteIdentifier(value: string): string { return `"${value.replaceAll('"', '""')}"`; }

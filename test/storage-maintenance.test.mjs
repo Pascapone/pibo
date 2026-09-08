@@ -47,7 +47,8 @@ test("checkpoint and retention are dry-run by default; apply is bounded, audited
 		const checkpointPlan = checkpointStorage({ path: f.path }); assert.equal(checkpointPlan.mutation, false);
 		const applied = await maintainStorageRetention({ path: f.path, before: "2026-01-01T00:00:00Z", limit: 1, apply: true, payloadRoot: f.payloadRoot });
 		assert.equal(applied.deleted, 1); assert.equal(applied.payloads.action, "report_only");
-		assert.equal(applied.payloads.unreferencedCandidates, 1); assert.equal(f.store.payloads.readPayloadText(payload.id), "live payload ".repeat(2000));
+		assert.equal(applied.payloads.referenceState, "not_scanned_online"); assert.equal(applied.payloads.retainedMetadata, 1);
+		assert.equal(f.store.payloads.readPayloadText(payload.id), "live payload ".repeat(2000));
 		assert.ok(f.store.eventLog.findByIdempotencyKey("keep-idempotency"));
 		assert.ok(f.store.eventLog.findByIdempotencyKey("keep-live-delta-evidence"));
 		const audit = f.store.db.prepare("SELECT status, details_json FROM storage_maintenance_audit WHERE id = ?").get(applied.auditId);
