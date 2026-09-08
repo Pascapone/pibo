@@ -23,6 +23,7 @@ export class TelemetryMaintenance {
   if(!Number.isFinite(Date.parse(cutoff)))throw Error("Invalid telemetry cutoff");
   const existing=this.status();if(existing&&(existing.status==="running"||existing.status==="paused")){
    if(existing.retention_scope===(retentionScope??null))return existing;
+   if(existing.status==="paused")throw Error("Telemetry maintenance is paused; resume or cancel it explicitly before changing scope");
    // A different scope only conflicts while its owner still steps the job. A persisted job whose
    // owner stopped updating it is reclaimable, so one narrow manual prune that outlived its process
    // cannot disable automatic retention permanently.
