@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
-import { outputIdentityFieldDigests, outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
+import { legacyOutputIdentityFingerprint, OUTPUT_IDENTITY_FINGERPRINT_VERSION, outputIdentityFieldDigests, outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { PiboDataStore } from "./pibo-store.js";
 import type { PreparedPayload } from "./payload-store.js";
@@ -174,13 +174,17 @@ export class ChatDataIngestService {
 			const legacyExisting = !directExisting && event.type === "execution_result"
 				? this.store.eventLog.findByIdempotencyKey(legacyOutputIdempotencyKey(event)!)
 				: undefined;
-			const legacyFingerprint = typeof legacyExisting?.attributes.identityFingerprint === "string" ? legacyExisting.attributes.identityFingerprint : undefined;
-			const existing = directExisting ?? (legacyFingerprint === identityFingerprint ? legacyExisting : undefined);
+			const legacyPhaseMatches = legacyExisting && event.type === "execution_result"
+				? legacyExecutionResultPhase(legacyExisting.attributes) === executionResultPhase(event)
+				: false;
+			const existing = directExisting ?? (legacyExisting && (
+				storedFingerprintMatches(legacyExisting.attributes, event, identityFingerprint) || legacyPhaseMatches
+			) ? legacyExisting : undefined);
 			if (existing) {
 				const existingFingerprint = typeof existing.attributes.identityFingerprint === "string"
 					? existing.attributes.identityFingerprint
 					: undefined;
-				if (existingFingerprint && existingFingerprint !== identityFingerprint) {
+				if (existingFingerprint && !storedFingerprintMatches(existing.attributes, event, identityFingerprint)) {
 					const now = input.createdAt ?? new Date().toISOString();
 					const existingFieldDigests = stringMap(existing.attributes.identityFieldDigests);
 					const fieldDifferences = diffFieldDigests(existingFieldDigests, identityFieldDigests);
@@ -251,6 +255,7 @@ export class ChatDataIngestService {
 				previewText: previewTextForOutputEvent(event),
 				attributes: compactObject({
 					identityFingerprint,
+					identityFingerprintVersion: OUTPUT_IDENTITY_FINGERPRINT_VERSION,
 					identityFieldDigests,
 					persistenceProvenance: incomingProvenance,
 					outputPartFingerprint: partFingerprint,
@@ -450,6 +455,19 @@ function redactedPersistenceProvenance(value: unknown): PiboJsonObject {
 
 function executionResultPhase(event: Extract<PiboOutputEvent, { type: "execution_result" }>): "queued" | "complete" {
 	return isRecord(event.result) && event.result.queued === true ? "queued" : "complete";
+}
+
+function legacyExecutionResultPhase(attributes: PiboJsonObject): "queued" | "complete" {
+	return isRecord(attributes.inlinePayload) && attributes.inlinePayload.queued === true ? "queued" : "complete";
+}
+
+function storedFingerprintMatches(attributes: PiboJsonObject, event: PiboOutputEvent, currentFingerprint: string): boolean {
+	const fingerprint = attributes.identityFingerprint;
+	if (typeof fingerprint !== "string") return true;
+	if (attributes.identityFingerprintVersion === OUTPUT_IDENTITY_FINGERPRINT_VERSION) return fingerprint === currentFingerprint;
+	// Versionless fingerprints were produced by v1. Compare with the exact old
+	// algorithm instead of comparing incompatible hash formats.
+	return fingerprint === legacyOutputIdentityFingerprint(event);
 }
 
 function deterministicId(prefix: string, value: string): string {

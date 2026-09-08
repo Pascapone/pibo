@@ -32,6 +32,10 @@ test("different assistant finals in one turn receive distinct durable identities
 		const second = sequencer.position({ ...base, text: "second" });
 		assert.equal(first.assistantIndex, 0);
 		assert.equal(replay.assistantIndex, 0);
+		const withoutHighWater = new OutputRenderSequencer(() => 1);
+		withoutHighWater.position({ ...base, type: "assistant_delta", text: "first" });
+		const localFinal = withoutHighWater.position({ ...base, text: "first" });
+		assert.equal(withoutHighWater.position({ ...base, text: "first" }).assistantIndex, localFinal.assistantIndex);
 		assert.equal(second.assistantIndex, 1);
 		const ingest = new ChatDataIngestService(f.data);
 		assert.equal(ingest.ingestOutputEvent({ session: f.session, event: first }).duplicate, false);
@@ -59,9 +63,14 @@ test("equivalent assistant aliases fingerprint identically and compact queued/co
 		ingest.ingestOutputEvent({ session: f.session, event: queued });
 		ingest.ingestOutputEvent({ session: f.session, event: completed });
 		assert.equal(f.data.eventLog.listEvents({ sessionId: f.session.id }).filter((row) => row.type === "execution_result").length, 2);
+		const legacyAssistant = { type: "assistant_message", piboSessionId: f.session.id, eventId: "legacy-turn", assistantIndex: 0, text: "legacy answer" };
+		f.data.eventLog.appendEvent({ sessionId: f.session.id, sessionSequence: 3, topic: "pibo.output", type: "assistant_message", source: "actor", eventId: legacyAssistant.eventId, idempotencyKey: outputPersistenceDeliveryKey(legacyAssistant), retentionClass: "chat_message", attributes: { identityFingerprint: "ecc97ef0b52978e49d94a8a43284af4437dd0ca95422da089810227c9b2f204f", inlinePayload: legacyAssistant.text, assistantIndex: 0 }, createdAt: "2026-09-08T00:00:00Z" });
+		assert.equal(ingest.ingestOutputEvent({ session: f.session, event: legacyAssistant }).duplicate, true);
+		assert.throws(() => ingest.ingestOutputEvent({ session: f.session, event: { ...legacyAssistant, text: "changed" } }), { code: "pibo_output_identity_collision" });
 		const legacyEquivalent = { ...completed, eventId: "legacy-compact" };
-		f.data.eventLog.appendEvent({ sessionId: f.session.id, sessionSequence: 3, topic: "pibo.output", type: "execution_result", source: "actor", eventId: legacyEquivalent.eventId, idempotencyKey: legacyOutputIdempotencyKey(legacyEquivalent), retentionClass: "trace_event", attributes: { identityFingerprint: outputIdentityFingerprint(legacyEquivalent), inlinePayload: legacyEquivalent.result, action: "compact" }, createdAt: "2026-09-08T00:00:00Z" });
+		f.data.eventLog.appendEvent({ sessionId: f.session.id, sessionSequence: 4, topic: "pibo.output", type: "execution_result", source: "actor", eventId: legacyEquivalent.eventId, idempotencyKey: legacyOutputIdempotencyKey(legacyEquivalent), retentionClass: "trace_event", attributes: { identityFingerprint: "e4c9969cb6a881b186cc55fbc2ddb5ca6ed7a17e172dc64d69dd06ee34c81ec3", inlinePayload: legacyEquivalent.result, action: "compact" }, createdAt: "2026-09-08T00:00:00Z" });
 		assert.equal(ingest.ingestOutputEvent({ session: f.session, event: legacyEquivalent }).duplicate, true);
+		assert.throws(() => ingest.ingestOutputEvent({ session: f.session, event: { ...legacyEquivalent, result: { compacted: false } } }), { code: "pibo_output_identity_collision" });
 	} finally { f.close(); }
 });
 

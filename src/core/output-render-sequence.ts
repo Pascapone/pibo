@@ -208,7 +208,10 @@ export class OutputRenderSequencer {
 			part = { index, closed: false, identityFingerprint };
 			parts.push(part);
 		}
-		if (terminal) part.closed = true;
+		if (terminal) {
+			part.closed = true;
+			part.identityFingerprint = identityFingerprint;
+		}
 	}
 
 	private trimOutputParts(state: SessionSequenceState): void {
@@ -452,8 +455,18 @@ function validOutputPartIndex(value: unknown): value is number {
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+export const OUTPUT_IDENTITY_FINGERPRINT_VERSION = 2;
+
 export function outputIdentityFingerprint(event: PiboOutputEvent): string {
 	return createHash("sha256").update(stableJson(outputIdentityPayload(event))).digest("hex");
+}
+
+/** Exact v1 algorithm retained only for comparing pre-v2 persisted fingerprints. */
+export function legacyOutputIdentityFingerprint(event: PiboOutputEvent): string {
+	const payload = { ...event } as Record<string, unknown>;
+	delete payload.renderSequence;
+	delete payload.compactionStats;
+	return createHash("sha256").update(stableJson(payload)).digest("hex");
 }
 
 /** Redacted, bounded evidence for diagnosing a fingerprint mismatch without retaining values. */
