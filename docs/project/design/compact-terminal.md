@@ -14,8 +14,8 @@ migration_lineage:
   source_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
   source_body_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-09-06T11:45:00Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-08T06:32:09Z"
 ---
 # Design System: Pibo Compact Terminal
 **Project ID:** local-reference-pibo-compact-terminal
@@ -220,9 +220,11 @@ Each token within a line carries a tone and optional weight:
 | `blue` | `#60a5fa` | Numbers, booleans |
 | `amber` | `#f59e0b` | Reasoning/thinking labels |
 
-### Debug Metric Signal Rail
+### Debug Metric Signal Rails
 
-When Debug is enabled, each tool invocation may expose one flat signal rail immediately below its transcript content. This is the deliberate high-visibility exception to quiet metadata styling: the rail must remain recognizable during rapid scrolling without becoming a card.
+Global Debug gates every diagnostic rail. `Settings > Debug` keeps Tool-call and model-inference metrics independently selectable, including while the global gate is off. The rails are the deliberate high-visibility exception to quiet metadata styling: they must remain recognizable during rapid scrolling without becoming cards.
+
+When Tool-call metrics are enabled, each tool invocation may expose one flat signal rail immediately below its transcript content.
 
 - Use four square, adjacent segments: `TIME`, `IN`, `OUT`, and `CALC`.
 - Labels use 9px black-weight uppercase monospaced text with positive tracking. Values use 11px bold tabular monospaced text.
@@ -234,9 +236,17 @@ When Debug is enabled, each tool invocation may expose one flat signal rail imme
 - Segments wrap as complete units on narrow screens. Never truncate the metric value or calculation basis.
 - Color is supplementary. The visible duration/count, calculation basis, and unavailable marker `—` remain authoritative.
 
-Default display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. `Settings > Debug` lets users replace each increasing three-value band or restore these defaults. Thresholds persist only in the current browser.
+When model-inference metrics are enabled, the related Tool, reasoning, assistant-message, delegation, or turn row may expose a separate flat provider-usage rail:
 
-The same panel selects payload calculation independently. Character mode keeps the bounded structural count and divides it by a factor, default `4`. Tiktoken mode offers `o200k_base`, `cl100k_base`, `p50k_base`, `r50k_base`, `p50k_edit`, and `gpt2`; it loads the WASM tokenizer only when selected and accepts higher CPU and memory cost. The selected calculation persists in app user settings and applies only to future Tool calls. Threshold and calculation controls must distinguish diagnostics from provider usage and billing.
+- Use five square, adjacent segments: `MODEL`, `IN`, `CACHED`, `UNCACHED`, and `OUT`.
+- Reuse the Tool rail's typography, geometry, wrapping, near-black background, and prohibition on radius, shadows, glow, animation, or icons.
+- `MODEL` and `IN` use electric cyan, `CACHED` uses neon violet, `UNCACHED` uses neon yellow, and `OUT` uses acid lime.
+- `IN` is total provider-reported input; `CACHED` combines cache reads and cache writes; `UNCACHED` is the remaining non-negative input; and `OUT` is provider-reported output. Missing provider usage displays `—` and is never estimated in the browser.
+- One rail appears beneath the row that owns each provider response. It must not create an empty transcript row or card.
+
+Default Tool display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. `Settings > Debug` lets users replace each increasing three-value band or restore these defaults. Thresholds and diagnostic feature selections persist only in the current browser.
+
+The same panel selects Tool payload calculation independently. Character mode keeps the bounded structural count and divides it by a factor, default `4`. Tiktoken mode offers `o200k_base`, `cl100k_base`, `p50k_base`, `r50k_base`, `p50k_edit`, and `gpt2`; it loads the WASM tokenizer only when selected and accepts higher CPU and memory cost. The selected calculation persists in app user settings and applies only to future Tool calls. Threshold and calculation controls must distinguish Tool diagnostics from provider usage and billing.
 
 ### Row Action Buttons
 
