@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-06T03:00:00Z"
+  at: "2026-09-08T17:55:23Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "7e68cb0fdc69d0f91e469ea86123d273dbf0613c"
+  commit: "800bb6ec5dd0b13b64c6333719ac1a88239d1462"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -169,6 +169,27 @@ traceability:
         - "Depth optimization does not omit active telemetry, queue state, or runtime activity and does not change restart-safety decisions."
         - "Missing-parent and cycle traversal retains the existing bounded depth behavior."
       confidence: "high"
+    - id: "WP02-GW-STATUS-007"
+      status: "implemented"
+      sources:
+        - path: "src/web/channel.ts"
+          symbol: "createGatewayStatusResponse"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "gatewayStatus"
+        - path: "src/gateway/cli.ts"
+          symbol: "parseGatewaySafetyPayload"
+      tests:
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "exits nonzero for a durable FIFO inconsistency while runtime health is good"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "reports app storage status failures as ambiguous instead of healthy"
+        - path: "test/web-channel.test.mjs"
+          name: "Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts"
+      public: ["/gateway/status", "pibo gateway web status", "pibo gateway web doctor"]
+      failures:
+        - "Doctor fails for a durable admission barrier or unavailable durable storage even when HTTP and runtime status are healthy."
+        - "Status reads are metadata-only and do not enqueue or mutate commands."
+      confidence: "high"
 ---
 
 # Scope
@@ -217,6 +238,14 @@ When known-session signal projection has listed the stored Sessions, it SHALL de
 - Missing parents and cycles retain the existing depth behavior. Runtime-status enumeration still performs per-runtime projection; this requirement does not promise constant-time scaling or a universal latency deadline.
 
 Exact-code Docker regression and Pibo2 status/load/safety/streaming evidence are in the [status scaling report](/reports/gateway-status-scaling-validation-2026-09-06.md). No timeout extension or restart attempt was used to satisfy acceptance.
+
+## Requirement: WP02-GW-STATUS-007: Runtime and durable message queues have separate health
+
+`/gateway/status` labels the in-memory runtime Session queue as `runtimeQueue` and retains `runtimeStatuses` for compatibility. The separate `durableMessageQueue` contribution reports state/delivery totals, interrupted predecessors, FIFO-blocked successors, dispatchable and blocked wait ages, expired owned leases, admission degradation by global/Room/Session scope, storage availability, affected identifiers, limits, and explicit bounds. It contains no message text.
+
+`pibo gateway web|dev status` renders both layers and points to `pibo debug message-queue`; `--json` includes next discovery commands. `doctor` exits nonzero when durable storage is unavailable/ambiguous or a durable admission inconsistency is degraded, even if HTTP reachability, mode, and runtime status are otherwise healthy. A healthy dispatchable durable backlog remains visible without being mislabeled as an interrupted barrier.
+
+Status is read-only and bounded. Restart-safety output discloses durable work and inconsistencies, while the existing active runtime/yielded-run policy remains the independent source of restart blocking decisions; durable `accepted`, terminal, and `interrupted` rows are not silently reclassified as live runtime execution.
 
 # Interfaces and ownership
 

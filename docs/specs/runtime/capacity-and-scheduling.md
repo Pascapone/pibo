@@ -5,11 +5,11 @@ description: "Defines bounded durable admission, room fairness, cold-start and p
 tags: ["runtime", "capacity", "performance", "admission"]
 status: "stable"
 authority: "normative"
-generated: { by: "openai/codex", at: "2026-09-07T09:30:00Z" }
+generated: { by: "openai/codex", at: "2026-09-08T17:55:23Z" }
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "e52bd62f86953da2fc316c22b6de55a0c70233a4"
+  commit: "800bb6ec5dd0b13b64c6333719ac1a88239d1462"
   requirements:
     - id: "RUN-CAP-001"
       status: "implemented"
@@ -75,6 +75,25 @@ traceability:
       failures:
         - "Receipt queries remain Session-authorized and bounded; adapter-owned timing components are labeled as combined measurements."
       confidence: "high"
+    - id: "RUN-CAP-005"
+      status: "implemented"
+      sources:
+        - path: "src/data/message-command-store.ts"
+          symbol: "MessageCommandStore.health"
+        - path: "src/data/chat-storage-worker.ts"
+          symbol: "startupReconciliation"
+      tests:
+        - path: "test/message-command-store.test.mjs"
+          name: "bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors"
+        - path: "test/message-command-store.test.mjs"
+          name: "byte and wait-age limits reject new work while preserving duplicate receipts and steering"
+        - path: "test/message-command-store.test.mjs"
+          name: "health summaries remain operationally bounded across large terminal history"
+      public: ["durableMessageQueue", "command_reconciliation_required"]
+      failures:
+        - "Blocked successors do not contribute wait age, but still consume count and byte capacity until bounded startup policy terminalizes them."
+        - "Health storage failure is ambiguous/degraded rather than healthy."
+      confidence: "high"
 ---
 
 # Scope
@@ -124,6 +143,14 @@ Adapters without this Pi request hook use a conservative routed-prompt reservati
 The gateway status response includes active and initializing runtime counts, capacity limits, waiting counts/ages, provider reservations, and at most 32 recent initialization timing records. Timing phases separate binding/profile resolution, portable-history preparation, resources/tools, and adapter open/binding work. Adapter-owned auth and native-history work remain included in the adapter phase where no finer hook exists.
 
 The authenticated Session receipt page includes queue count, bytes, oldest unstarted wait and Session limits. It preserves up to 70 active/uncertain receipts alongside 64 recent terminal receipts, so terminal Steering traffic cannot hide an older running Turn. Receipt contents stay compact and do not include message payloads.
+
+## Requirement: RUN-CAP-005: FIFO barriers are explicit and isolated from wait-age overload
+
+An interrupted normal predecessor is an explicit Session-scoped reconciliation barrier. New normal admission checks that barrier before committing and fails non-retryably. Existing unstarted normal successors are terminalized as failed/not-dispatched by bounded startup recovery while live owned claims are left untouched. Neither action weakens per-Session FIFO or executes an ambiguous command.
+
+Global and Room oldest-wait calculations count only dispatchable accepted or waiting-slot commands. A successor blocked by an interrupted predecessor therefore cannot age into Room-wide or database-wide overload for unrelated Sessions. Genuine count, byte, and dispatchable wait-age exhaustion remains `command_overloaded` and retryable. Blocked rows continue to consume count and bytes until the explicit terminalization policy runs; this avoids hiding retained durable storage.
+
+Durable queue health uses trigger-maintained state/delivery totals and bounded indexed operational reads. It separately reports interrupted predecessors, FIFO-blocked successors, dispatchable and blocked wait age, expired owned leases, global/Room/Session admission reasons, storage availability, affected command/Session/Room identities, and truncation metadata. It never reads message payload bodies or scans event history. Healthy dispatchable backlog remains distinct from a barrier. Storage timeout or unavailability is ambiguous/degraded.
 
 # Configuration and compatibility
 
