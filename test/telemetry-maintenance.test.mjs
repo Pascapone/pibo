@@ -10,6 +10,19 @@ const cutoff='2026-02-01T00:00:00Z';
 function fixture(){const root=mkdtempSync(join(tmpdir(),'pibo-maintenance-'));return {root,path:join(root,'data.sqlite'),payloadRootDir:join(root,'payloads')};}
 function seed(store,count=100){store.transaction(()=>{for(let i=0;i<count;i++)store.telemetry.upsertTurn({turnId:`turn${i}`,piboSessionId:`session${i}`,status:'ok',queuedAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',retentionClass:'diagnostic'});});store.telemetry.upsertTurn({turnId:'active',piboSessionId:'active',status:'running',queuedAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z',retentionClass:'diagnostic'});}
 function finish(maintenance){for(let i=0;i<1000&&maintenance.status().status==='running';i++)maintenance.step({rows:7,milliseconds:4});assert.equal(maintenance.status().status,'completed');}
+test('an explicit maintenance pause survives owner lease expiry and automatic scope changes',()=>{
+ const f=fixture(),store=new PiboDataStore(f.path,{payloadRootDir:f.payloadRootDir});
+ try {
+  seed(store,10);const maintenance=new TelemetryMaintenance(store.db);
+  maintenance.start(cutoff,'diagnostic');maintenance.control('pause');
+  store.db.prepare('UPDATE telemetry_maintenance_job SET updated_at=? WHERE id=1').run(new Date(Date.now()-TELEMETRY_MAINTENANCE_OWNER_LEASE_MS-1000).toISOString());
+  const paused=maintenance.status();
+  assert.throws(()=>maintenance.start(cutoff),/paused|Another retention scope/i);
+  assert.deepEqual(maintenance.step(),paused);
+  assert.equal(maintenance.start(cutoff,'diagnostic').status,'paused');
+  maintenance.control('resume');finish(maintenance);assert.equal(maintenance.status().deleted,10);
+ } finally {store.close();rmSync(f.root,{recursive:true,force:true});}
+});
 test('bounded retention resumes a durable keyset, protects active work and keeps product data',()=>{
  const f=fixture();let store=new PiboDataStore(f.path,{payloadRootDir:f.payloadRootDir});
  try{

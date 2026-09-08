@@ -22,6 +22,7 @@ export async function createStorageBackup(input:{source:string;payloadRoot:strin
  const root=resolve(input.destination),source=resolve(input.source),payloadRoot=resolve(input.payloadRoot),deadline=Date.now()+(input.maxMilliseconds??60000);
  const check=()=>{input.signal?.throwIfAborted();if(Date.now()>deadline)throw Error("Backup time budget exhausted; resume explicitly");};
  let manifest:Manifest;
+ let snapshotVerified=false;
  if(input.resume){manifest=await readStorageBackupManifest(root);if(manifest.source!==source||manifest.payloadRoot!==payloadRoot)throw Error("Backup resume source does not match manifest");}
  else {const maxBytes=input.maxBytes??1024*1024*1024,maxPayloads=input.maxPayloads??100000;if(!Number.isSafeInteger(maxBytes)||maxBytes<4096||!Number.isSafeInteger(maxPayloads)||maxPayloads<1||maxPayloads>1000000)throw Error("Invalid backup quota");await mkdir(root,{mode:0o700});manifest={format:"pibo-storage-backup-v1",status:"snapshot",source,payloadRoot,createdAt:new Date().toISOString(),payloadCount:0,payloadBytes:0,cursor:"",maxBytes,maxPayloads};await publishManifest(root,manifest);}
  if(manifest.status==="complete"){await verifyStorageBackup(root,input.signal);return manifest;}
@@ -30,9 +31,9 @@ export async function createStorageBackup(input:{source:string;payloadRoot:strin
   try{db.exec("PRAGMA busy_timeout=10; BEGIN");const pages=db.prepare("PRAGMA page_count").get()!.page_count as number,pageSize=db.prepare("PRAGMA page_size").get()!.page_size as number;if(pages*pageSize>manifest.maxBytes)throw Error("Database exceeds backup byte quota");
    await backup(db,temporary,{rate:128,progress:({totalPages,remainingPages})=>{check();if(walBytes()-initialWalBytes>maxWalGrowth)throw Error("Backup WAL growth quota exceeded; source snapshot released");if(totalPages*pageSize>manifest.maxBytes)throw Error("Database exceeds backup byte quota");input.onProgress?.({stage:"snapshot",copied:(totalPages-remainingPages)*pageSize});}});
   }finally{if(db.isTransaction)db.exec("ROLLBACK");db.close();}
-  await syncFile(temporary);await rename(temporary,join(root,DATABASE));const hash=await digest(join(root,DATABASE),manifest.maxBytes,undefined,input.signal);manifest.databaseSha256=hash.sha256;manifest.databaseBytes=hash.bytes;manifest.status="payloads";await publishManifest(root,manifest);
+  await syncFile(temporary);await rename(temporary,join(root,DATABASE));const hash=await digest(join(root,DATABASE),manifest.maxBytes,undefined,input.signal);snapshotVerified=true;manifest.databaseSha256=hash.sha256;manifest.databaseBytes=hash.bytes;manifest.status="payloads";await publishManifest(root,manifest);
  }
- const database=join(root,DATABASE);if((await digest(database,manifest.maxBytes,undefined,input.signal)).sha256!==manifest.databaseSha256)throw Error("Backup snapshot hash changed");
+ const database=join(root,DATABASE);if(!snapshotVerified&&(await digest(database,manifest.maxBytes,undefined,input.signal)).sha256!==manifest.databaseSha256)throw Error("Backup snapshot hash changed");
  const db=new DatabaseSync(database,{readOnly:true});
  try{
   if(db.prepare("PRAGMA quick_check").get()!.quick_check!=="ok")throw Error("Backup SQLite integrity check failed");
