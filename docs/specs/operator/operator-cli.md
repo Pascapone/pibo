@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-08T18:25:04Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -22,7 +22,7 @@ implementation:
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "e6a0957d288ac37b0f9c5077ae742a8001bb6a74"
   requirements:
     - id: "OP-CLI-001"
       status: "implemented"
@@ -135,6 +135,35 @@ traceability:
         - "pibo config show"
       failures:
         - "Risky operations are read-only or dry-run by default; mutation requires explicit flags, private home initialization, and secret redaction."
+      confidence: high
+    - id: "OP-CLI-006"
+      status: "implemented"
+      sources:
+        - path: "src/debug/index.ts"
+          symbol: "runDebugMessageQueue"
+        - path: "src/debug/message-queue.ts"
+          symbol: "reconcileMessageCommand"
+      tests:
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "real CLI performs temporary-store inspection, dry-run and apply"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "apply is fenced, audited, idempotent, cancels selected successors, and never replays"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "recovery refuses live leases, changed snapshots and ambiguous completion"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "authoritative completion needs no override and partial failure rolls back"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "selected successors with fresh ownership refuse dry-run and atomically refuse apply"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "historical receipt recovery does not overwrite newer completed or live Session projection"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "inspection prioritizes active barriers over deep terminal history and exposes bounded pages"
+      public:
+        - "pibo debug message-queue inspect"
+        - "pibo debug message-queue reconcile"
+      failures:
+        - "Mutation is dry-run by default, exact-command, transactionally fenced, and refuses live leases."
+        - "Replay is unsupported and never executes a durable command."
       confidence: high
 ---
 # Operator CLI Discovery, Dispatch, Errors, and Domain Commands
@@ -264,6 +293,16 @@ The upstream/dev refresh implementation and named tests provide the current sour
 - Tests: `test/data-cli.test.mjs` — “pibo data inventory is read-only and reports missing stores”; `test/resources-cli.test.mjs` — “resource reap dry-run aggregates browser, stale-file, and compute plans while preserving worktrees”
 - Failure/security boundary: Risky operations are read-only or dry-run by default; mutation requires explicit flags, private home initialization, and secret redaction.
 - Confidence: **high**
+
+### Requirement: OP-CLI-006: Interrupted durable messages have an audited recovery workflow
+
+`pibo debug message-queue` progressively exposes `inspect` and `reconcile`. Inspection is read-only and bounded. It always selects active/uncertain commands independently from up to 20 recent terminal context rows, so deep completed history cannot hide a blocker. It shows canonical stream order, exact previous/next command IDs, state, event identity, owner and lease freshness, blockers/successors, and matching terminal event references without message bodies. Active and terminal-context pagination expose independent cursors and truncation; JSON and human output point to the next page or recovery command.
+
+Reconciliation requires one exact `cmd_...` identity and defaults to dry-run. Dry-run and apply both refuse cancellation when any selected successor has a fresh owner lease. `--apply` rereads and compares predecessor and successor state/token/update identity inside the same immediate transaction, refuses a fresh predecessor lease, preserves command and payload rows, and appends a body-free audit event with actor/source/time, prior/result state, decision, evidence stream references, affected successor IDs, and `replay: false`. A repeated successful apply is idempotent and does not duplicate the audit event. Any command or selected-successor race, or audit failure, rolls back all state changes.
+
+`--mark-failed` settles the interrupted predecessor without replay. `--cancel-successors` cancels every bounded unstarted successor selected by the dry-run; repeated `--cancel-successor <cmd_...>` selects exact successors. `--confirm-completed` requires unambiguous matching completed evidence, unless the operator supplies the high-friction exact `--confirm-without-evidence <same-command-id>` acknowledgement. Replay is explicitly unsupported because provider/tool side effects cannot generally be proven idempotent. Reconciling a historical receipt does not rewrite Session or navigation status; newer completed turns and live Steering remain authoritative for those projections. `/clear` is distinct: it cancels unstarted queue/runtime work and does not reconcile an interrupted predecessor.
+
+The production procedure is in [Agent Runtime Operations](/project/agent-runtime-operations.md#recover-an-interrupted-durable-message-queue).
 
 ## Interfaces and ownership
 

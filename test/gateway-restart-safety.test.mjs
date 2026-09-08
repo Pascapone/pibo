@@ -188,6 +188,11 @@ describe('gateway status endpoint', () => {
       await channel.stop();
     }
   });
+  it('reports app storage status failures as ambiguous instead of healthy',async()=>{
+    const port=await freePort();const channel=createWebHostChannel({port,gatewayMode:'prod',announce:false});
+    await channel.start({listSessionRuntimeStatuses:()=>[],listRuns:()=>[],getGatewayActions:()=>[],getWebApps:()=>[{name:'fixture',mountPath:'/fixture',apiPrefix:'/api/fixture',handleRequest(){},gatewayStatus(){return {durableMessageQueue:{status:'ambiguous',storage:{available:false,error:'storage timeout'},degradedReasons:['durable queue storage read failed']}};}}]});
+    try{const body=await(await fetch(`http://127.0.0.1:${port}/gateway/status`)).json();assert.equal(body.status,'degraded');assert.equal(body.durableMessageQueue.storage.available,false);assert.match(body.durableMessageQueue.storage.error,/storage timeout/);}finally{await channel.stop();}
+  });
 });
 
 
@@ -202,6 +207,7 @@ test('gateway doctor reports degraded run-job reliability without presenting it 
       runtimeStatuses: [],
       activeRuns: [],
       reliability: { status: 'degraded', expiredOrphanRunJobs: 0, orphanRunDeadLetters: 2 },
+      durableMessageQueue: { status: 'healthy', storage: { available: true } },
     }));
   });
   await new Promise((resolve, reject) => {
@@ -232,6 +238,15 @@ test('gateway doctor reports degraded run-job reliability without presenting it 
   }
 });
 
+
+
+describe('gateway durable queue doctor',()=>{
+ it('exits nonzero for a durable FIFO inconsistency while runtime health is good',async()=>{
+  const port=await freePort(),dir=mkdtempSync(join(tmpdir(),'pibo-gateway-durable-doctor-')),script=join(dir,'server.mjs');
+  writeFileSync(script,`import {createServer} from 'node:http';createServer((req,res)=>{res.setHeader('content-type','application/json');res.end(JSON.stringify({status:'degraded',mode:'prod',generation:'test',runtimeStatuses:[],activeRuns:[],durableMessageQueue:{status:'degraded',storage:{available:true},counts:[{state:'accepted',delivery:'queue',count:1,bytes:1}],interruptedPredecessors:1,blockedSuccessors:1,expiredOwnedLeases:0,oldestDispatchableWaitMs:0,oldestBlockedWaitMs:1000,affectedScopes:[{sessionId:'ps_scope',roomId:'room_scope',blockingCommandId:'cmd_block',blockedSince:1,blockedSuccessors:1}],degradedReasons:['interrupted predecessor']}}));}).listen(${port},'127.0.0.1');`);
+  const server=spawn(process.execPath,[script],{stdio:'ignore'});try{await waitUntilReachable(port);const result=spawnSync(process.execPath,['dist/bin/pibo.js','gateway','web','doctor','--json'],{encoding:'utf8',env:{...process.env,PIBO_GATEWAY_WEB_PORT:String(port)}});assert.notEqual(result.status,0);const body=JSON.parse(result.stdout);assert.equal(body.runtimeStatuses.length,0);assert.equal(body.durableMessageQueue.status,'degraded');assert.deepEqual(body.nextCommands,['pibo gateway web doctor','pibo debug message-queue']);}finally{server.kill('SIGTERM');rmSync(dir,{recursive:true,force:true});}
+ });
+});
 
 describe('gateway start command', () => {
   it('uses the custom web service identity persisted by user-host setup', async () => {

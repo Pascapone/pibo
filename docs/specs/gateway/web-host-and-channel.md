@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T19:00:00Z"
+  at: "2026-09-08T17:55:23Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "d2b4a2106c8632b0cc43b24b558d291d2b245359"
+  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -214,6 +214,27 @@ traceability:
         - "Depth optimization does not omit active telemetry, queue state, or runtime activity and does not change restart-safety decisions."
         - "Missing-parent and cycle traversal retains the existing bounded depth behavior."
       confidence: "high"
+    - id: "WP02-GW-STATUS-007"
+      status: "implemented"
+      sources:
+        - path: "src/web/channel.ts"
+          symbol: "createGatewayStatusResponse"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "gatewayStatus"
+        - path: "src/gateway/cli.ts"
+          symbol: "parseGatewaySafetyPayload"
+      tests:
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "exits nonzero for a durable FIFO inconsistency while runtime health is good"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "reports app storage status failures as ambiguous instead of healthy"
+        - path: "test/web-channel.test.mjs"
+          name: "Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts"
+      public: ["/gateway/status", "pibo gateway web status", "pibo gateway web doctor"]
+      failures:
+        - "Doctor fails for a durable admission barrier or unavailable durable storage even when HTTP and runtime status are healthy."
+        - "Status reads are metadata-only and do not enqueue or mutate commands."
+      confidence: "high"
 ---
 
 # Scope
@@ -271,6 +292,14 @@ When known-session signal projection has listed the stored Sessions, it SHALL de
 
 Exact-code Docker regression and Pibo2 status/load/safety/streaming evidence are in the [status scaling report](/reports/gateway-status-scaling-validation-2026-09-06.md). No timeout extension or restart attempt was used to satisfy acceptance.
 
+## Requirement: WP02-GW-STATUS-007: Runtime and durable message queues have separate health
+
+`/gateway/status` labels the in-memory runtime Session queue as `runtimeQueue` and retains `runtimeStatuses` for compatibility. The separate `durableMessageQueue` contribution reports state/delivery totals, interrupted predecessors, FIFO-blocked successors, dispatchable and blocked wait ages, expired owned leases, admission degradation by global/Room/Session scope, storage availability, affected identifiers, limits, and explicit bounds. It contains no message text.
+
+`pibo gateway web|dev status` renders both layers and points to `pibo debug message-queue`; `--json` includes next discovery commands. `doctor` exits nonzero when durable storage is unavailable/ambiguous or a durable admission inconsistency is degraded, even if HTTP reachability, mode, and runtime status are otherwise healthy. A healthy dispatchable durable backlog remains visible without being mislabeled as an interrupted barrier.
+
+Status is read-only and bounded. Restart-safety output discloses durable work and inconsistencies, while the existing active runtime/yielded-run policy remains the independent source of restart blocking decisions; durable `accepted`, terminal, and `interrupted` rows are not silently reclassified as live runtime execution.
+
 # Interfaces and ownership
 
 Capability IDs: `pibo.gateway.web-host`.
@@ -322,7 +351,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `806e1d2f0cb369c1d378b0c2e667e5ee5a229470`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
+Source symbols and named tests are bound to commit `2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
 
 Package verification commands:
 
