@@ -7,7 +7,7 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T21:12:00Z"
+  at: "2026-09-08T21:50:00Z"
 sources:
   - id: "implementation-plan"
     resource: "scope: docs/prefix-persistence-plan commit e3720d03, docs/plans/persistent-session-prefix-and-cache-diagnostics.md"
@@ -246,3 +246,46 @@ The public HTTPS path successfully exchanged Machine Auth and loaded authenticat
 Artifacts: [desktop screenshot](artifacts/pr993-review-2026-09-08/desktop.png), [desktop measurements](artifacts/pr993-review-2026-09-08/desktop.json), [mobile screenshot](artifacts/pr993-review-2026-09-08/mobile.png), [mobile measurements](artifacts/pr993-review-2026-09-08/mobile.json), [browser capture](artifacts/pr993-review-2026-09-08/browser-monitor.json), and [trace check](artifacts/pr993-review-2026-09-08/trace.log).
 
 **Verdict:** the three review corrections pass their regression checks, including exact-package Pibo2 checks and persisted diagnostic UI acceptance. Full feature end acceptance and merge approval remain withheld for the implementation gaps and real-provider environment blockers above. No production rollout or controller-gateway mutation was performed.
+
+
+## Real-provider follow-up and final code candidate — 2026-09-08
+
+The owner completed Device Code authentication for the standalone Codex CLI and separately for Pibo's isolated Codex and Pi runtime credential stores. This follow-up supersedes the earlier missing-provider-auth and missing-Codex-binary blockers. It does not close the outstanding all-runtime/lifecycle implementation work.
+
+### Additional reproduced defect and correction
+
+The first real protected Pi request using `openai-codex/gpt-5.6-sol` failed before dispatch with `Session prefix recovery required: unsupported reasoning mapping`. The real model catalog contains `thinkingLevelMap: {xhigh: "xhigh", max: "max", minimal: "low"}`; the validator's finite key allowlist omitted `max`. Both local Responses HTTP regression cases reproduced the same error with zero requests instead of two. Commit **`c9231d30`** accepts the supported `max` key while continuing to reject changed mappings before dispatch. Regression coverage exercises the real mapping shape through restart and rejects changing its `max` mapping.
+
+Local worker `pibo-worker-pr993-live-fix` passed the full build, package prepack build, and **39 focused tests**, no failures/skips, in 11.66 seconds. The existing worktree attach failed because the directory already existed; a separately managed worker received an exact Git archive plus the reviewed changes. No controller gateway was changed.
+
+### Exact final installation
+
+- Candidate: **`c9231d30`**, `@pasko70/pibo@1.7.2`.
+- Package archive SHA-256: **`ba7960b87a86dea633bc06bfaa09b07d6ec3ac0db836831af598b6ac22514c14`**.
+- Installed runtime: `/opt/pibo-candidates/review-pr993/c9231d30/runtime`.
+- Lease: `lease_930311280d4ae852a8`, `slot-02`, acquired `2026-09-08T21:43:42.345Z`; [lease identity](artifacts/pr993-live-2026-09-08/lease.json).
+- Public URL: `https://slot-02.pool.pibo2.neuralnexus.me/`.
+- Full official **`@openai/codex@0.153.2`** installation, including companion executables, was added to the isolated slot. Copying only the main binary initially left `codex-code-mode-host` unavailable; the complete package resolved that installation issue. The original binary checksum was `f8786262ebc0fa1337448a2977332beadec66c8d0cda0ce973c7849766d7943c`.
+- Only the owner-authorized test OpenAI credentials were transferred from the preceding owned slot into the matching Pi/native runtime scopes, with file mode `0600`. Credentials and Device Codes are excluded from artifacts.
+- The exact installed package passed the same **39 focused tests**, no failures/skips, in **12.60 seconds**; [results](artifacts/pr993-live-2026-09-08/installed-tests.log).
+
+### Actual model and protected restoration evidence
+
+The standalone Codex CLI called **`gpt-5.6-sol`** and returned exactly `PR993_DIRECT_MODEL_OK`; the clean repeat recorded 13,760 input tokens, 10,624 cached input tokens, and 9 output tokens. This provider-reported cache hit proves that invocation only, not the PR's protected prefix contract. See [CLI result](artifacts/pr993-live-2026-09-08/direct-codex.jsonl).
+
+The final installed package's programmatic protected Pi router completed two real model calls in **4.46 seconds**, finishing `2026-09-08T21:44:37.995Z`, session `ps_a50d2c87-0eb9-43b5-93da-7975149b9619`. The first reply was `READY_COMET-993`. After `disposeAll()`, deleting the original context file, changing the host base prompt and reopening with protection rollout disabled, the second reply was exactly `COMET-993 ORBIT-993`. Assertions verified unchanged capsule digest, preserved native-history prefix, changed runtime generation and durable protected restore despite rollout-off. This is disposal/recreation of the native runtime, not a host reboot or a process-kill fault test. See [asserted live result](artifacts/pr993-live-2026-09-08/protected-live.json) and [fixture source](artifacts/pr993-live-2026-09-08/protected-live.mjs). The fixture runs in a disposable directory with `dist` and `node_modules` symlinked to the exact installed package; it uses the already authenticated Pi credential store without logging credentials.
+
+### Public Chat path and qualified Codex result
+
+Machine Auth and authenticated provider status succeeded on the final public slot. The fresh Pi session `ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8` executed the requested shell calculation and returned `PR993_PI_TOOL_OK_437`; its follow-up returned `ORBIT-993`. These ordinary Web sessions remain legacy/unverified because Web rollout wiring is still absent.
+
+The fresh Codex session `ps_c6777c55-6126-4eb5-b85a-4bdae26decd7` reached the real model and native shell tool. Its initial sandbox attempt failed because the pool container cannot create the required user namespace. The exact arithmetic action was then approved once through the headful Chat UI and completed successfully. The namespace failure remains visible as one failed Tool node; the trace consistency check itself has zero issues. No host security setting was weakened.
+
+That final-candidate Codex session replied `437` instead of the requested formatted marker and again replied `437` to the subsequent marker-recall question. This semantic acceptance check **failed**. A bounded inspection of the native rollout confirms both correct user texts arrived and both `437` responses originated in the native assistant output; it is not an observed product-history replay substitution. A fresh no-Tool control, `ps_1d20a966-b3e6-4dc1-9b5f-a718f8a35fcb`, returned `READY` and then exactly `PLANET-993` at `2026-09-08T21:48:48.463Z`. The earlier candidate's tool-and-recall scenario also passed. The evidence does not establish a deterministic Pibo defect, and no speculative response-rewriting fix was applied.
+
+Artifacts: [public final replies](artifacts/pr993-live-2026-09-08/public-finals.log), [public trace checks](artifacts/pr993-live-2026-09-08/public-traces.log), [bounded native message inspection](artifacts/pr993-live-2026-09-08/codex-native-message-check.jsonl), and [fresh Codex recall control](artifacts/pr993-live-2026-09-08/codex-control-final.log).
+
+**Updated verdict:** actual installation, provider authentication, direct model invocation, protected Pi runtime restoration and ordinary Pi Tool/follow-up behavior are accepted for the tested candidate and scenarios. Codex model/Tool transport and a fresh follow-up control work, but its combined Tool/marker scenario did not pass consistently. Full all-runtime end acceptance and merge approval remain withheld for that qualified result and the previously documented product/lifecycle gaps. No merge, release publication or production rollout occurred.
+
+
+The [headful final-candidate screenshot](artifacts/pr993-live-2026-09-08/codex-control.png) shows the fresh Codex control after navigation/reload with both persisted replies. Strict OKF validation passed with zero warnings; all **84 documentation validator tests** passed. The test-created OpenAI credential entries were removed from both owned slots before release. The preceding lease was released at `2026-09-08T21:51:27.294Z`, and the final lease at `2026-09-08T21:51:27.936Z`; see [cleanup evidence](artifacts/pr993-live-2026-09-08/release.log). The remote browser was stopped.

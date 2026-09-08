@@ -1,0 +1,75 @@
+{
+  "at": "2026-09-08T21:44:37.995Z",
+  "ms": 4456,
+  "piboSessionId": "ps_a50d2c87-0eb9-43b5-93da-7975149b9619",
+  "first": {
+    "type": "assistant_message",
+    "piboSessionId": "ps_a50d2c87-0eb9-43b5-93da-7975149b9619",
+    "text": "READY_COMET-993",
+    "contentIndex": 0,
+    "eventId": "live-first",
+    "assistantIndex": 0,
+    "renderSequence": 1788903875466000
+  },
+  "second": {
+    "type": "assistant_message",
+    "piboSessionId": "ps_a50d2c87-0eb9-43b5-93da-7975149b9619",
+    "text": "COMET-993 ORBIT-993",
+    "contentIndex": 0,
+    "eventId": "live-second",
+    "assistantIndex": 0,
+    "renderSequence": 1788903877627000
+  },
+  "outputs": [
+    "READY_COMET-993",
+    "COMET-993 ORBIT-993"
+  ],
+  "usage": [
+    {
+      "cacheEvidence": {
+        "id": "3cf5ef0e-ba87-454f-b901-49d6d9cf45e1:1",
+        "atMs": 1788903873738,
+        "prefixDigest": "4d8dac24f0efe4e5964a309563cde4095700112289e69293b0d1629c4103bf79",
+        "configurationDigest": "cc1bda9e03957d8cecfb52b792ef8710dcd77098425a2843752eb579c6c3462f",
+        "cacheKeyDigest": "b2ef775cf883a64eccd0933ff2bcdfdcfd09b3da8007e3b49c2f9cdb0d0024d7",
+        "epoch": "1",
+        "runtimeGeneration": "3cf5ef0e-ba87-454f-b901-49d6d9cf45e1",
+        "historyContinuity": "unknown"
+      }
+    },
+    {
+      "cacheEvidence": {
+        "id": "1e892240-5577-4c56-968f-43cfdb0b6390:1",
+        "atMs": 1788903875783,
+        "prefixDigest": "4d8dac24f0efe4e5964a309563cde4095700112289e69293b0d1629c4103bf79",
+        "configurationDigest": "cc1bda9e03957d8cecfb52b792ef8710dcd77098425a2843752eb579c6c3462f",
+        "cacheKeyDigest": "b2ef775cf883a64eccd0933ff2bcdfdcfd09b3da8007e3b49c2f9cdb0d0024d7",
+        "epoch": "1",
+        "runtimeGeneration": "1e892240-5577-4c56-968f-43cfdb0b6390",
+        "historyContinuity": "unknown"
+      }
+    }
+  ],
+  "capsule": {
+    "format": 1,
+    "epoch": 1,
+    "status": "sealed",
+    "capsule": {
+      "format": 1,
+      "digest": "4d8dac24f0efe4e5964a309563cde4095700112289e69293b0d1629c4103bf79",
+      "bytes": 4140,
+      "adapterId": "pi",
+      "codec": "pi-0.85.0/openai-codex-responses/v3"
+    },
+    "reason": "initial",
+    "nativeSessionId": "76b0bec6-b5b6-437a-a3c8-d43d4a599188",
+    "evidence": "adapter-inputs"
+  },
+  "checks": {
+    "capsuleStable": true,
+    "nativeHistoryPrefixPreserved": true,
+    "runtimeGenerationChanged": true,
+    "restoreWithRolloutOff": true,
+    "originalContextRemoved": true
+  }
+}

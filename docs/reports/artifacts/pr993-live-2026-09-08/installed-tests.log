@@ -1,0 +1,47 @@
+✔ chat data ingest writes user messages idempotently (12.994531ms)
+✔ chat data ingest records repeated user messages without client transaction id (67.22991ms)
+✔ chat data ingest externalizes large user message payloads (11.616621ms)
+✔ chat data ingest shadows assistant messages and observations idempotently (20.201221ms)
+✔ chat data ingest round-trips immutable render sequence metadata (8.991295ms)
+✔ chat data ingest preserves post-compaction output and repeated lifecycle events (19.719254ms)
+✔ chat data ingest snapshots tool metrics for each successful compaction segment (36.913643ms)
+✔ chat data ingest records output identity collisions instead of silently dropping them (9.364567ms)
+✔ non-lifecycle output after message_finished does not reopen the persisted session (9.939377ms)
+✔ v2 event mapper preserves assistant and reasoning part identities (2.398659ms)
+✔ chat data ingest keeps progressive tool call argument snapshots (8.515048ms)
+✔ chat data ingest shadows tool output into observations (7.333898ms)
+✔ persisted subagent session fields survive V2 ingest and trace reload (8.968583ms)
+✔ product history reconstructs full routed messages without native transcript data (27.032304ms)
+✔ cache evidence survives durable usage replay without arbitrary diagnostic fields (25.352404ms)
+✔ Pi openai-codex-responses HTTP prefix and native tool history survive restart with 4250 input characters (602.225539ms)
+✔ Pi openai-codex-responses HTTP prefix and native tool history survive restart with 425000 input characters (257.84707ms)
+✔ Pi openai-codex-responses HTTP prefix and native tool history survive restart with 850000 input characters (528.57113ms)
+✔ Pi openai-responses HTTP prefix and native tool history survive restart with 4250 input characters (328.094011ms)
+✔ Pi openai-responses HTTP prefix and native tool history survive restart with 425000 input characters (239.609411ms)
+✔ Pi openai-responses HTTP prefix and native tool history survive restart with 850000 input characters (634.468098ms)
+✔ normal Pi router preserves protected resources and binding when rollout is disabled on restart (233.669253ms)
+✔ opaque capsule preserves exact bytes, ordering and large payload across store restart (37.159564ms)
+✔ concurrent publication never overwrites an artifact and cleans preparing files (37.538726ms)
+✔ missing, corrupt, incompatible, and symlinked capsules fail closed (11.950958ms)
+✔ invalid protected metadata never becomes legacy absence (0.529816ms)
+✔ runtime CAS rejects silent removal, same-epoch mutation and skipped epoch (5.39851ms)
+✔ publication supports newly created nested directories and bounds metadata (14.858185ms)
+✔ all production adapter open paths reject sealed state until complete restore is available (2408.104543ms)
+✔ opaque resources preserve bytes and stable paths after source deletion and delivery reconstruction (206.228872ms)
+✔ resource publication is concurrent and corruption fails closed (39.106394ms)
+✔ resource symlink escapes, cycles, unsupported entries and traversal are rejected (32.359249ms)
+✔ resource service resumes the durable selection without current source discovery and preserves it on disposal (59.627917ms)
+✔ competing resource captures commit only one binding and restart never invokes capture (52.003092ms)
+✔ SqlitePiboSessionStore: durable sealing, restart, epoch reuse and concurrent CAS (69.526547ms)
+✔ PiboDataSessionStore: durable sealing, restart, epoch reuse and concurrent CAS (63.506488ms)
+✔ Pi explicitly cancels compaction when the durable transition cannot be recorded (1.548431ms)
+✔ structural persistence cannot authorize a protected dispatch (0.214132ms)
+✔ old history is never retrospectively sealed as an original prompt (15.973201ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12601.349919

@@ -1,0 +1,48 @@
+piboSessionId: ps_c6777c55-6126-4eb5-b85a-4bdae26decd7
+runtimeInstanceId: codex-native
+runtimeAdapterId: codex-native
+runtimeBindingState: bound
+selector: assistant:last
+role: assistant
+stream_id: 988018
+event_id: pr993-codex-live-2
+created_at: 2026-09-08T21:46:49.730Z
+contentBytes: 3
+
+Content:
+437
+
+Source:
+  store: chat
+  table: chat_messages
+  stream_id: 988018
+  path: attributes_json.inlineText
+
+Next:
+  pibo debug final ps_c6777c55-6126-4eb5-b85a-4bdae26decd7 --no-truncate
+  pibo debug events ps_c6777c55-6126-4eb5-b85a-4bdae26decd7 show 988018 --field attributes_json.inlineText
+  pibo debug messages ps_c6777c55-6126-4eb5-b85a-4bdae26decd7 list
+piboSessionId: ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+runtimeBindingState: bound
+selector: assistant:last
+role: assistant
+stream_id: 988014
+event_id: pr993-pi-live-2
+created_at: 2026-09-08T21:46:46.724Z
+contentBytes: 9
+
+Content:
+ORBIT-993
+
+Source:
+  store: chat
+  table: chat_messages
+  stream_id: 988014
+  path: attributes_json.inlineText
+
+Next:
+  pibo debug final ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8 --no-truncate
+  pibo debug events ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8 show 988014 --field attributes_json.inlineText
+  pibo debug messages ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8 list

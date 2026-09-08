@@ -1,0 +1,60 @@
+piboSessionId: ps_c6777c55-6126-4eb5-b85a-4bdae26decd7
+piSessionId: 
+runtimeInstanceId: codex-native
+runtimeAdapterId: codex-native
+nativeSessionId: 01a082fb-a3a7-7b83-937a-1e9139954e56
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 1
+
+status	type	title	id	runId	linkedPiboSessionId
+done	user.message	User Message	event:message_queued:pr993-codex-live-1		
+done	agent.turn	Agent Turn	event:message:pr993-codex-live-1		
+done	assistant.message	  Agent Message	event:assistant:pr993-codex-live-1:assistant:0		
+error	tool.call	  codex_command	tool-invocation:%5B%22exec-2a7173db-9c87-4dc5-881d-f12c90cceac2%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22pr993-codex-live-1%5C%22%2C0%5D%22%5D		
+done	tool.call	  codex_command	tool-invocation:%5B%22exec-e77bd8ad-2f8c-4f66-9c5d-b2fe9bc7cbaf%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22pr993-codex-live-1%5C%22%2C0%5D%22%5D		
+done	execution.command	  runtime.approval.respond	event:execution_result:3b8d1dfe-3707-4b43-8abd-e0180605d73b		
+done	assistant.message	  Agent Message	event:assistant:pr993-codex-live-1:assistant:1		
+done	user.message	User Message	event:message_queued:pr993-codex-live-2		
+done	agent.turn	Agent Turn	event:message:pr993-codex-live-2		
+done	assistant.message	  Agent Message	event:assistant:pr993-codex-live-2:assistant:0		
+nodes: 10
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_c6777c55-6126-4eb5-b85a-4bdae26decd7 show tool-invocation:%5B%22exec-2a7173db-9c87-4dc5-881d-f12c90cceac2%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22pr993-codex-live-1%5C%22%2C0%5D%22%5D
+  pibo debug failures ps_c6777c55-6126-4eb5-b85a-4bdae26decd7
+  pibo debug messages ps_c6777c55-6126-4eb5-b85a-4bdae26decd7 list
+piboSessionId: ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8
+piSessionId: c91bc496-1ed3-474b-ae5a-2bf4c2325dfc
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: c91bc496-1ed3-474b-ae5a-2bf4c2325dfc
+runtimeBindingState: bound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	user.message	User Message	event:message_queued:pr993-pi-live-1		
+done	agent.turn	Agent Turn	event:message:pr993-pi-live-1		
+done	tool.call	  bash	tool-invocation:%5B%22call_ruJBmdKJoCm37fCLCBsEedoE%7Cfc_0201007e0103a7d5016aa081f7daa487d29f52c34fc99e887c%22%2C%22%5B%5C%22event-tool%5C%22%2C%5C%22pr993-pi-live-1%5C%22%2C0%5D%22%5D		
+done	assistant.message	  Agent Message	event:assistant:pr993-pi-live-1:assistant:0		
+done	user.message	User Message	event:message_queued:pr993-pi-live-2		
+done	agent.turn	Agent Turn	event:message:pr993-pi-live-2		
+done	assistant.message	  Agent Message	event:assistant:pr993-pi-live-2:assistant:0		
+nodes: 7
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8 show event:message_queued:pr993-pi-live-1
+  pibo debug messages ps_284293d6-5d15-468b-9cd4-e0bcb1e477e8 list

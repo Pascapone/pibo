@@ -1,0 +1,13 @@
+{"at": "2026-09-08T21:45:27.054Z", "role": "developer", "chars": 8847, "containsMarker": false}
+{"at": "2026-09-08T21:45:27.054Z", "role": "developer", "chars": 2264, "containsMarker": false}
+{"at": "2026-09-08T21:45:27.054Z", "role": "developer", "chars": 271, "text": "<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.</multi_agent_mode>"}
+{"at": "2026-09-08T21:45:27.054Z", "role": "user", "chars": 4054, "containsMarker": false}
+{"at": "2026-09-08T21:45:27.080Z", "role": "user", "chars": 175, "text": "Acceptance test: use a shell tool to calculate 19 * 23. After checking the tool result, reply exactly PR993_CODEX_TOOL_OK_437. Remember the marker ORBIT-993 for the next turn."}
+{"at": "2026-09-08T21:45:29.731Z", "role": "assistant", "chars": 57, "text": "I\u2019ll run the requested calculation and verify its output."}
+{"at": "2026-09-08T21:45:31.020Z", "role": "developer", "chars": 1014, "containsMarker": false}
+{"at": "2026-09-08T21:46:14.346Z", "role": "assistant", "chars": 3, "text": "437"}
+{"at": "2026-09-08T21:46:45.068Z", "role": "developer", "chars": 3373, "containsMarker": false}
+{"at": "2026-09-08T21:46:45.161Z", "role": "user", "chars": 94, "text": "What conversation marker did I ask you to remember? Return only that marker. Do not use tools."}
+{"at": "2026-09-08T21:46:49.726Z", "role": "assistant", "chars": 3, "text": "437"}
+{"developerInstruction": "Message Type: MESSAGE | FINAL_ANSWER"}
+{"developerInstruction": "Full-history forks (`fork_turns` omitted or `\"all\"`) inherit the parent model and reasoning effort and do not accept overrides. Only set `model` or `reasoning_effort` when explicitly requested by the user, applicable `AGENTS.md` instructions, or skill instructions; when doing so, set `fork_turns` to `\"none\"` or a positive integer string."}

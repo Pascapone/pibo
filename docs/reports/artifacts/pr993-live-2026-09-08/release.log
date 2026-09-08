@@ -1,0 +1,33 @@
+Removed the test-created OpenAI credential entries from both owned slots.
+{
+  "id": "lease_a3d938faba298f06a3",
+  "slotId": "slot-01",
+  "holder": "ps_3f0abb12-8e2f-48ed-bfc5-556ecb72abe1",
+  "seedMode": "medium",
+  "artifactSha256": "325475644a3cc0ca301ca441579c31dc0b07d6437d4ba1d1f811dfa36cd481fc",
+  "artifactRuntimePath": "/opt/pibo-candidates/review-pr993/9d0e7f4c/runtime",
+  "packageVersion": "1.7.2",
+  "commit": "9d0e7f4c",
+  "containerName": "pibo-pool-slot-01",
+  "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+  "status": "released",
+  "createdAt": "2026-09-08T21:16:12.324Z",
+  "expiresAt": "2026-09-08T22:16:12.324Z",
+  "releasedAt": "2026-09-08T21:51:27.294Z"
+}
+{
+  "id": "lease_930311280d4ae852a8",
+  "slotId": "slot-02",
+  "holder": "ps_3f0abb12-8e2f-48ed-bfc5-556ecb72abe1",
+  "seedMode": "medium",
+  "artifactSha256": "08a276c4ba95dbc5322a0397bfe9ff54e3a7fcd6786dd014f1f921a706a4e01d",
+  "artifactRuntimePath": "/opt/pibo-candidates/review-pr993/c9231d30/runtime",
+  "packageVersion": "1.7.2",
+  "commit": "c9231d30",
+  "containerName": "pibo-pool-slot-02",
+  "publicUrl": "https://slot-02.pool.pibo2.neuralnexus.me/",
+  "status": "released",
+  "createdAt": "2026-09-08T21:43:42.345Z",
+  "expiresAt": "2026-09-08T22:28:42.345Z",
+  "releasedAt": "2026-09-08T21:51:27.936Z"
+}

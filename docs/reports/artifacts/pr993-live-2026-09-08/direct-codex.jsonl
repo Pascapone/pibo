@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a082ed-1f77-76e3-900c-5913956156d1"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"PR993_DIRECT_MODEL_OK"}}
+{"type":"turn.completed","usage":{"input_tokens":13760,"cached_input_tokens":10624,"cache_write_input_tokens":0,"output_tokens":9,"reasoning_output_tokens":0}}
