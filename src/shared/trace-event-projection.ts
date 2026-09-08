@@ -246,7 +246,11 @@ function applyRenderSequenceToHistoryNode(
 			&& (!eventId || !node.eventId || node.eventId === eventId)
 		)
 	);
-	if (target) applyRenderSequence(target, storedEvent, event);
+	if (!target) return;
+	applyRenderSequence(target, storedEvent, event);
+	if (event.type === "tool_execution_finished" && event.toolMetrics) {
+		target.toolMetrics = event.toolMetrics;
+	}
 }
 
 function applyRenderSequence(
@@ -741,9 +745,6 @@ function attachModelInferenceToLatestOutput(
 }
 
 function traceNodeStartedBeforeInference(node: PiboTraceNode, storedEvent: ChatWebStoredEvent): boolean {
-	const inferenceTime = Date.parse(storedEvent.createdAt);
-	const nodeTime = Date.parse(node.startedAt ?? node.completedAt ?? "");
-	if (Number.isFinite(inferenceTime) && Number.isFinite(nodeTime)) return nodeTime <= inferenceTime;
 	const inferenceRenderSequence = storedEvent.renderSequence;
 	const nodeRenderSequence = node.orderKey?.renderSequence;
 	if (inferenceRenderSequence !== undefined && nodeRenderSequence !== undefined) {
@@ -751,7 +752,10 @@ function traceNodeStartedBeforeInference(node: PiboTraceNode, storedEvent: ChatW
 	}
 	const inferenceSequence = storedEvent.eventSequence ?? storedEvent.streamId;
 	const nodeSequence = node.orderKey?.eventSequence ?? node.orderKey?.streamId;
-	return inferenceSequence === undefined || nodeSequence === undefined || nodeSequence <= inferenceSequence;
+	if (inferenceSequence !== undefined && nodeSequence !== undefined) return nodeSequence <= inferenceSequence;
+	const inferenceTime = Date.parse(storedEvent.createdAt);
+	const nodeTime = Date.parse(node.startedAt ?? node.completedAt ?? "");
+	return !Number.isFinite(inferenceTime) || !Number.isFinite(nodeTime) || nodeTime <= inferenceTime;
 }
 
 // ── event → node helpers ─────────────────────────────────────────
