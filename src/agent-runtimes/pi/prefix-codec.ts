@@ -53,7 +53,7 @@ function modelInputConfiguration(model: Model<Api>): Record<string, unknown> {
 		"supportsAdditionalTools", "supportsToolSearch", "supportsExplicitPromptCacheMode", "supportsMaxOutputTokens"];
 	if (compat && (Object.keys(compat).some(key => !flags.includes(key) && key !== "sessionAffinityFormat")
 		|| flags.some(key => compat[key] !== undefined && typeof compat[key] !== "boolean"))) throw new PrefixRecoveryRequiredError("unsupported model compatibility metadata");
-	const reasoningLevels = ["off", "minimal", "low", "medium", "high", "xhigh"];
+	const reasoningLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 	if (model.thinkingLevelMap && (Object.keys(model.thinkingLevelMap).some(key => !reasoningLevels.includes(key))
 		|| Object.values(model.thinkingLevelMap).some(value => value !== null && value !== undefined && (typeof value !== "string" || value.length > 64)))) throw new PrefixRecoveryRequiredError("unsupported reasoning mapping");
 	const effective: Record<string, unknown> = {

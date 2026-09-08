@@ -126,7 +126,7 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi ${providerApi} HTTP pref
 		result.session.agent.transport = "sse";
 		result.session.settingsManager.setTransport("sse");
 		result.session.settingsManager.setCompactionEnabled(false);
-		result.session.state.model = { api: providerApi, provider: providerApi === "openai-responses" ? "openai" : "openai-codex", id: "gpt-5.5", name: "test", baseUrl: api.baseUrl, reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 500000, maxTokens: 1024 };
+		result.session.state.model = { api: providerApi, provider: providerApi === "openai-responses" ? "openai" : "openai-codex", id: "gpt-5.5", name: "test", baseUrl: api.baseUrl, reasoning: true, thinkingLevelMap: { xhigh: "xhigh", max: "max", minimal: "low" }, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 500000, maxTokens: 1024 };
 		result.session.setThinkingLevel("high");
 		return result;
 	};
@@ -186,6 +186,11 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi ${providerApi} HTTP pref
 		await runtime.session.prompt("equivalent explicit compatibility defaults");
 		assert.equal(api.requests.length, 4);
 		const baselineCount = api.requests.length;
+		runtime.session.state.model = { ...originalModel, thinkingLevelMap: { ...originalModel.thinkingLevelMap, max: "high" } };
+		await runtime.session.prompt("changed max reasoning mapping");
+		assert.equal(api.requests.length, baselineCount);
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /model input configuration changed/);
+		runtime.session.state.model = originalModel;
 		const currentTools = runtime.session.agent.state.tools;
 		runtime.session.agent.state.tools = currentTools.filter(tool => tool.name !== "prefix_probe");
 		await runtime.session.prompt("local tool removed during the active session");
