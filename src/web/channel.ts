@@ -225,6 +225,7 @@ function createGatewayStatusResponse(channelContext: PiboChannelContext, options
 		generation,
 		health: { status: "ok", mode },
 		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
+		...(channelContext.getRuntimeCapacityStatus ? { runtimeCapacity: channelContext.getRuntimeCapacityStatus() } : {}),
 		activeRuns: collectActiveRuns(channelContext),
 	});
 }
@@ -444,6 +445,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			if (server) return;
 			shuttingDown = false;
 			context = channelContext;
+			for (const app of channelContext.getWebApps()) await app.initialize?.(createAppContext(channelContext));
 			server = createServer((request, response) => {
 				void handleRequest(request, response);
 			});

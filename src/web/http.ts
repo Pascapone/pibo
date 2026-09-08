@@ -125,11 +125,11 @@ export async function sendWebResponse(
 
 	const reader = webResponse.body.getReader();
 	const cancel = () => {
-		void reader.cancel();
+		void reader.cancel().catch(() => undefined);
 	};
 	const abort = () => {
 		const socket = response.socket;
-		void reader.cancel();
+		void reader.cancel().catch(() => undefined);
 		if (!response.writableEnded) response.end();
 		socket?.end();
 	};
@@ -140,7 +140,14 @@ export async function sendWebResponse(
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			response.write(Buffer.from(value));
+			const bytes=Buffer.from(value.buffer,value.byteOffset,value.byteLength);
+            for(let offset=0;offset<bytes.length;offset+=64*1024){
+                if(response.destroyed||response.writableEnded)return;
+                if(!response.write(bytes.subarray(offset,offset+64*1024))){
+                    const drained=await waitForResponseDrain(response,(webResponse.headers.get("content-type")??"").startsWith("text/event-stream")?5000:undefined,options.signal);
+                    if(!drained){void reader.cancel().catch(()=>undefined);if(!response.destroyed)response.destroy();return;}
+                }
+            }
 		}
 		if (!response.writableEnded) response.end();
 	} finally {
@@ -221,4 +228,16 @@ function appendVary(existing: string | string[] | undefined, value: string): str
 
 function appendServerTiming(existing: string | null, value: string): string {
 	return existing ? `${existing}, ${value}` : value;
+}
+
+/** Honor socket pressure before pulling another application frame. */
+function waitForResponseDrain(response:ServerResponse,maximumAgeMs?:number,signal?:AbortSignal):Promise<boolean>{
+ if(response.destroyed||response.writableEnded||signal?.aborted)return Promise.resolve(false);
+ return new Promise(resolve=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const finish=(ready:boolean)=>{if(timer)clearTimeout(timer);response.off("drain",drain);response.off("close",close);response.off("error",close);signal?.removeEventListener("abort",close);resolve(ready);};
+  const drain=()=>finish(true);const close=()=>finish(false);
+  response.once("drain",drain);response.once("close",close);response.once("error",close);signal?.addEventListener("abort",close,{once:true});
+  if(maximumAgeMs!==undefined){timer=setTimeout(close,maximumAgeMs);timer.unref();}
+ });
 }

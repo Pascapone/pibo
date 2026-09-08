@@ -124,6 +124,7 @@ export function traceStreamCursorAfterStream(streamId: number): string {
 }
 
 export function eventTraceRefreshDelay(event: ChatStreamEvent): number | undefined {
+	if(event.type === "RUN_STARTED") return 100;
 	if (
 		event.type === "RUN_FINISHED" ||
 		event.type === "TEXT_MESSAGE_END"

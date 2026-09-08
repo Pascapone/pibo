@@ -1,10 +1,37 @@
 # Pibo documentation update log
 
+## 2026-09-08
+
+- **Final performance acceptance**: Added the [integrated acceptance report](/reports/performance-scalability-final-acceptance-2026-09-08.md), recording real Luna/low concurrency, deterministic mixed writes, complete large-message references and bounded reading/downloads. Updated the [Terminal contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md), [deployment seed contract](/specs/compute/deployment-pool.md) and [plan](/plans/pibo-performance-and-scalability.md). The user deferred the two-hour soak; sustained statistical capacity remains unproven. Reconciled package A's original acceptance history into the final integration and restored its original Pibo2 screenshot without changing the tested program code.
+
+- **Performance review corrections**: Added the [renewed A–H review](/reports/performance-scalability-review-2026-09-08.md), recording reproduced lifecycle, navigation, paging and maintenance defects, forward-propagated fixes and renewed validation. The report qualifies the earlier capacity-proof conclusion: integrated load, soak and successful real-provider acceptance remain open.
+
 ## 2026-09-07
 
+- **Chain review**: Added the [A–H chain review report](/reports/performance-scalability-chain-review-2026-09-07.md); records the critical review of all eight stacked performance pull requests against the plan budgets and existing contracts, the three confirmed defects corrected with deterministic regressions in packages B, F and G, the findings reported without a code change, the resulting re-acceptance requirement and the recommended merge order.
+
+- **Runtime-isolation decision**: Added the [package-H measurement decision](/reports/performance-scalability-runtime-isolation-decision-2026-09-07.md); records that the assembled B–G event-loop, fairness, memory and recovery evidence stays inside PERF-LOOP-001 and the runtime ramp gate, so a documented capacity proof suffices and Pibo-managed runtime-host isolation is deferred with explicit revisit triggers.
+
+- **Bounded maintenance**: Added the [package-G validation report](/reports/performance-scalability-maintenance-2026-09-07.md) and its artifacts; records the resumable bounded telemetry maintenance worker, SQLite online backups with external payload manifests, opt-in scoped capture storage, bounded manual prune and backup WAL quotas, and the isolated Pibo2 slot acceptance (lease released).
+
+- **Isolated read models**: Added the [package-F validation report](/reports/performance-scalability-reads-2026-09-07.md) and its artifacts; records the isolated read worker, resumable history and unread projections, bounded SSE/HTTP streaming, the startup sequence-repair index fix, ten-million-event load evidence, and the isolated Pibo2 slot acceptance (lease released).
+
+- **F–H handoff**: Added the [F–H continuation handoff](/reports/performance-scalability-fgh-handoff-2026-09-07.md) after the rework session hit the provider quota and a run-reminder loop (#967); records accepted packages A–E with open stacked PRs, the exact F and G work-in-progress, branch topology, and remaining gates.
+
+- **Isolated telemetry**: Updated the [diagnostic worker contract](/specs/data/telemetry.md), [durable output checkpoint contract](/specs/data/reliability.md) and [package-E validation report](/reports/performance-scalability-telemetry-2026-09-07.md), preserving failed load evidence and the remaining integrated acceptance boundary.
+
+- **Runtime capacity**: Added the [bounded admission, Room scheduling and provider-capacity contract](/specs/runtime/capacity-and-scheduling.md) and [package-D validation record](/reports/performance-scalability-capacity-2026-09-07.md), including control reservations, cold-start cancellation and the remaining integrated measurement boundary.
+
+- **Durable message admission**: Added the [versioned receipt and recovery contract](/specs/web/composer-delivery-files-and-media.md#requirement-web-composer-admission-006) and [package-C validation record](/reports/performance-scalability-commands-2026-09-07.md), separating committed acceptance, runtime state and unknown client outcomes.
+
+- **Storage integration acceptance**: Recorded [204 passing integration tests and renewed exact-candidate Pibo2 evidence](/reports/performance-scalability-storage-final-2026-09-07.md), including Composer, duplicate bursts, health and durable output after reload.
+
+- **Performance continuation**: Preserved the [A–H handoff and local integration correction](/reports/performance-scalability-handoff-2026-09-07.md), including explicit persistence barriers, 131 passing Web tests and 39 passing storage/recovery regressions; renewed Pibo2 acceptance and C–H remain outstanding.
 - **Snapshot-bound production restart approval**: Updated the [gateway restart contract](/specs/security/gateway-admission-and-restart.md#requirement-sec-gw-004-bind-production-restart-approval-to-freshly-inspected-work) for issue #914. Force now discloses and rechecks active event, queue, and run identities; rejects stale or incomplete approval; and records restart decisions before invoking the service manager. Dev restart remains ungated. No production restart or deployment.
 
 ## 2026-09-06
+
+- **Indexed admission implementation**: Recorded the [P0 implementation and isolated validation](/reports/performance-scalability-p0-2026-09-06.md), including synthetic million-event lookups, concurrency regressions and remaining acceptance gates.
 
 - **Production admission and concurrency audit**: Added the [read-only production investigation](/reports/production-performance-audit-2026-09-06.md) and [performance/scalability plan](/plans/pibo-performance-and-scalability.md). Confirmed the synchronous room scan, cross-session blocking, and a separate cold-runtime admission delay; defined staged fixes, durable admission, resource budgets, load tests, and release gates. No product-code change, database/session deletion, gateway restart, or production deployment.
 

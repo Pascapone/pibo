@@ -106,6 +106,7 @@ export type CompactTerminalRow = {
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
 	pendingMessageDelivery?: "queue" | "steer";
+	messageDeliveryState?: PiboTraceNode["messageDeliveryState"];
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
@@ -313,7 +314,7 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			intent: node.intent,
 			isToolCall,
 			toolCallReference: reference,
-			expandable: reference ? true : candidate.row.expandable,
+			expandable: reference || Object.values(node.payloadRefs ?? {}).some(Boolean) ? true : candidate.row.expandable,
 			toolMetrics: node.toolMetrics,
 			...debugFields(node),
 		},
@@ -532,7 +533,8 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [{ prefix: "prompt", tokens: [token(text)] }],
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
-		pendingMessageDelivery: pendingUserMessageDelivery(node),
+		pendingMessageDelivery: pendingUserMessageDelivery(node) ?? (node.status === "running" && node.messageDeliveryState ? "queue" : undefined),
+		messageDeliveryState: node.messageDeliveryState,
 		startedAt: node.startedAt,
 		output: text,
 		payloadRefs: node.payloadRefs,

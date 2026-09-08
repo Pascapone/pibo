@@ -1,0 +1,19 @@
+✔ online WAL backup restores product history and both compressed and large external payloads (198.051119ms)
+✔ cancelled payload copying resumes only from the same verified snapshot and repairs a partial catalog tail (88.512607ms)
+✔ snapshot byte quota rejects without declaring an incomplete backup complete (18.4325ms)
+✔ wal growth quota releases the source snapshot while writers keep appending (101.964935ms)
+✔ an explicit maintenance pause survives owner lease expiry and automatic scope changes (33.822281ms)
+✔ bounded retention resumes a durable keyset, protects active work and keeps product data (78.145619ms)
+✔ disk-full rolls back telemetry deletion and its cursor together (38.106753ms)
+✔ automatic maintenance runs outside the caller and continues while another turn is active (1101.441376ms)
+✔ manual pruning observes the same row bound and retains its selected class on resume (182.792255ms)
+✔ a preview does not restart a persisted maintenance job (157.869274ms)
+✔ a scoped job whose owner stopped stepping is reclaimable instead of blocking retention forever (45.513326ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2221.642788

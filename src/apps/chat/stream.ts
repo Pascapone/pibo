@@ -11,7 +11,7 @@ export type ChatStreamReplayStatus = {
 	maxEvents: number;
 };
 
-export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string; renderSequence?: number; toolInvocationOrdinal?: number } & (
+export type ChatStreamEvent = { storedPayloadRef?: import("../../shared/trace-types.js").TracePayloadRef; piboSessionId?: string; createdAt?: string; renderSequence?: number; toolInvocationOrdinal?: number } & (
 	| { type: "ready"; piboSessionId: string; liveReplay?: ChatStreamReplayStatus }
 	| { type: "RUN_STARTED"; runId: string; input?: { text?: string; source?: string } }
 	| { type: "RUN_FINISHED"; runId: string }
@@ -41,11 +41,24 @@ export type ChatStreamState = {
 	transientFrameIndex: number;
 };
 
+class BoundedStreamIdentitySet extends Set<string> {
+ private bytes=0;
+ override add(key:string):this {
+  if(this.has(key))return this;
+  const bytes=key.length*2;if(bytes>256*1024)return this;
+  super.add(key);this.bytes+=bytes;
+  while(this.size>2048||this.bytes>256*1024)this.delete(this.values().next().value!);
+  return this;
+ }
+ override delete(key:string):boolean {if(!super.delete(key))return false;this.bytes-=key.length*2;return true;}
+ override clear():void {super.clear();this.bytes=0;}
+}
+
 export function createChatStreamState(): ChatStreamState {
 	return {
-		textMessageIds: new Set(),
-		reasoningMessageIds: new Set(),
-		toolCallIds: new Set(),
+		textMessageIds: new BoundedStreamIdentitySet(),
+		reasoningMessageIds: new BoundedStreamIdentitySet(),
+		toolCallIds: new BoundedStreamIdentitySet(),
 		transientFrameIndex: 0,
 	};
 }

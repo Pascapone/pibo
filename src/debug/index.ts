@@ -49,6 +49,7 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			printDebugDiscovery();
 			return;
 		}
+		if(args[0]==="backup"){const {runStorageBackupCli}=await import("./storage-backup.js");await runStorageBackupCli(args.slice(1));return;}
 		if (args[0] === "db") {
 			await runDebugDb(args.slice(1));
 			return;
@@ -541,11 +542,34 @@ async function runDebugSignals(args: string[]): Promise<void> {
 	}
 }
 
+async function runDebugTelemetryMaintenance(args:string[]):Promise<void>{
+ if(!args.length||args.includes("--help")||args.includes("-h")){console.log(`pibo debug telemetry maintenance - bounded optional diagnostic cleanup
+Commands:
+  status                         Read the durable job and progress
+  start --before <iso> --apply    Start a job; no deletion until step or gateway worker
+  step --apply                   Execute at most 128 rows / 4 ms cooperatively
+  pause --apply                  Pause between batches
+  resume --apply                 Mark the paused job ready
+  cancel --apply                 Cancel without undoing committed batches
+Use --json for structured output. Product history, receipts and payload files are excluded.`);return;}
+ const action=args[0];if(!["status","start","step","pause","resume","cancel"].includes(action!))throw Error("Unknown maintenance action; use maintenance --help");
+ const options=parseOptions(args.slice(1));if(action!=="status"&&!options.apply)throw Error("Maintenance mutations require --apply; inspect status first");
+ const store=resolveDebugStore("pibo-data");if(!store.exists)throw Error("Pibo data store is missing");
+ const {DatabaseSync}=await import("node:sqlite");const {TelemetryMaintenance}=await import("../data/telemetry-maintenance.js");
+ const db=new DatabaseSync(store.path,{readOnly:action==="status"});db.exec("PRAGMA busy_timeout=10; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON");
+ try{const maintenance=new TelemetryMaintenance(db);
+  const result=action==="status"?maintenance.status():action==="start"?maintenance.start(options.before??""):action==="step"?maintenance.step():maintenance.control(action as "pause"|"resume"|"cancel");
+  console.log(JSON.stringify(result??{status:"not_started"},null,options.json?2:undefined));
+ }finally{db.close();}
+}
+
 async function runDebugTelemetry(args: string[]): Promise<void> {
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
 		printDebugTelemetryDiscovery();
 		return;
 	}
+	if(args[0]==="maintenance"){await runDebugTelemetryMaintenance(args.slice(1));return;}
+ if(args[0]==="capture"){const {runTelemetryCaptureCli}=await import("./telemetry-capture.js");await runTelemetryCaptureCli(args.slice(1));return;}
 	const command = args[0];
 	const options = parseOptions(args.slice(1));
 	const { formatJson } = await import("./sql.js");
@@ -1252,6 +1276,7 @@ function printDebugDiscovery(): void {
 	console.log(`pibo debug - inspect local Pibo data
 
 Commands:
+  backup   Create, verify or restore an explicit SQLite and payload snapshot
   db       Inspect and query local SQLite stores
   session  Inspect one Pibo Session by id or Chat URL
   summary  Show compact session diagnosis and drill-down commands
@@ -1440,6 +1465,8 @@ Commands:
   stale     List read-only stale active work
   stats     Show telemetry retention counts and byte estimates
   prune     Dry-run telemetry retention cleanup unless --apply is explicit
+  maintenance  Inspect or control bounded cleanup; use maintenance --help
+  capture   Scope provider detail and inspect inert archives; use capture --help
 
 Next:
   pibo debug telemetry sessions --active

@@ -1,0 +1,141 @@
+{
+  "at": "2026-09-07T10:58:55.582Z",
+  "scope": "Synthetic storage-worker/telemetry contention. Diagnostic SQL statement executions classify UPSERT by its leading INSERT verb; these are not physical row-insert counts. WAL size is observed file length, not fsync count or cumulative WAL writes. No provider, browser, output retry orchestration or full integrated capacity claim.",
+  "requestedSeconds": 60,
+  "elapsedMs": 60117.649068,
+  "payloadBytes": 1024,
+  "sessions": 10,
+  "generated": {
+    "deltas": 29988,
+    "outputs": 5997,
+    "admissions": 299
+  },
+  "completedCommands": 299,
+  "simulatedImmediateCommandCompletion": true,
+  "semanticTelemetryIncluded": true,
+  "admissionMs": {
+    "count": 299,
+    "p95": 27.658502000000226,
+    "p99": 31.49081699999806,
+    "max": 34.02141800000027
+  },
+  "outputMs": {
+    "count": 5997,
+    "p95": 30.47051300000021,
+    "p99": 38.87291399999958,
+    "max": 95.00437500000044
+  },
+  "failures": {},
+  "producerRefused": 0,
+  "peakPending": 10,
+  "peakTelemetryBytes": 115411,
+  "telemetry": {
+    "mode": "worker",
+    "closed": false,
+    "queued": 0,
+    "inFlight": 0,
+    "pendingBytes": 0,
+    "oldestAgeMs": 0,
+    "accepted": 36035,
+    "restarts": 0,
+    "completed": 36035,
+    "rejected": 0,
+    "failed": 0,
+    "expired": 0,
+    "batches": 2651,
+    "maxBatchMs": 20.637715999997454,
+    "worker": {
+      "pid": 2359,
+      "threadId": 1,
+      "transactions": 2632,
+      "operations": 36035,
+      "busy": 19,
+      "rssBytes": 252743680,
+      "heapUsedBytes": 18846936,
+      "synchronous": "FULL",
+      "measurements": {
+        "message_started": {
+          "operations": 10,
+          "sql": {
+            "select": 60,
+            "insert": 20
+          },
+          "executionMs": 9.442465000000084
+        },
+        "provider.start": {
+          "operations": 10,
+          "sql": {
+            "select": 160,
+            "insert": 30
+          },
+          "executionMs": 21.53003899999993
+        },
+        "provider.response": {
+          "operations": 10,
+          "sql": {
+            "select": 140,
+            "insert": 40
+          },
+          "executionMs": 18.648755000000023
+        },
+        "assistant_delta": {
+          "operations": 29988,
+          "sql": {
+            "select": 7850,
+            "update": 600,
+            "insert": 1810
+          },
+          "executionMs": 966.4915299995423
+        },
+        "tool_execution_finished": {
+          "operations": 5997,
+          "sql": {
+            "select": 89965,
+            "insert": 23988
+          },
+          "executionMs": 9580.80222799995
+        },
+        "provider.end": {
+          "operations": 10,
+          "sql": {
+            "select": 120,
+            "insert": 20
+          },
+          "executionMs": 35.42858699999488
+        },
+        "message_finished": {
+          "operations": 10,
+          "sql": {
+            "select": 120,
+            "update": 10,
+            "insert": 30
+          },
+          "executionMs": 14.76125999999931
+        }
+      },
+      "walBytes": 5529072
+    },
+    "transport": {
+      "ready": true,
+      "closed": false,
+      "exited": false
+    },
+    "limits": {
+      "count": 1024,
+      "bytes": 4194304,
+      "ageMs": 2000,
+      "batchCount": 64,
+      "batchBytes": 262144,
+      "batchTimeMs": 8
+    }
+  },
+  "loopMs": {
+    "p99": 12.058623,
+    "max": 13.598719
+  },
+  "rssBytes": {
+    "first": 100139008,
+    "last": 252743680,
+    "max": 254001152
+  }
+}

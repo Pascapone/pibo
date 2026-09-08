@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { JsonRenderer } from "../../tracing/JsonRenderer";
 import type { CompactTerminalRow, CompactTerminalToolCallReference } from "../../../../../session-ui/terminalRows.js";
@@ -133,20 +133,31 @@ function PayloadRefs({ refs }: { refs?: CompactTerminalRow["payloadRefs"] }) {
 	);
 }
 
+// Keep text shaping bounded even for long, unbroken multibyte output.
+const PAYLOAD_READER_SECTION_BYTES = 4 * 1024;
+
 function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePayloadRef }) {
+	const generation = useRef(0);
+	const pending = useRef(false);
+	const [loadingMore, setLoadingMore] = useState(false);
+	const [loadError, setLoadError] = useState<string>();
 	const [state, setState] = useState<
 		| { status: "loading" }
-		| { status: "loaded"; data: string; hasMore: boolean; nextOffset?: number }
+		| { status: "loaded"; data: string; offset: number; previous: number[]; hasMore: boolean; nextOffset?: number }
 		| { status: "error"; message: string }
 	>({ status: "loading" });
 
 	useEffect(() => {
 		let cancelled = false;
+		generation.current++;
+		pending.current = false;
+		setLoadingMore(false);
+		setLoadError(undefined);
 		setState({ status: "loading" });
-		getTracePayload(refInfo.ref, { offset: 0, limit: 65536 })
+		getTracePayload(refInfo.ref, { offset: 0, limit: PAYLOAD_READER_SECTION_BYTES })
 			.then((chunk) => {
 				if (cancelled) return;
-				setState({ status: "loaded", data: chunk.data, hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
+				setState({ status: "loaded", data: chunk.data, offset: 0, previous: [], hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
 			})
 			.catch((error: unknown) => {
 				if (cancelled) return;
@@ -154,25 +165,51 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 			});
 		return () => {
 			cancelled = true;
+			generation.current++;
 		};
 	}, [refInfo.ref]);
+
+	async function loadSection(back = false) {
+		if (pending.current || state.status !== "loaded") return;
+		const offset = back ? state.previous.at(-1) : state.nextOffset;
+		if (offset === undefined) return;
+		pending.current = true; setLoadingMore(true); setLoadError(undefined);
+		const current = generation.current;
+		try {
+			const chunk = await getTracePayload(refInfo.ref, { offset, limit: PAYLOAD_READER_SECTION_BYTES });
+			if (current !== generation.current) return;
+			setState({ status: "loaded", data: chunk.data, offset, previous: back ? state.previous.slice(0, -1) : [...state.previous, state.offset], hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
+		} catch (error) {
+			if (current === generation.current) setLoadError(error instanceof Error ? error.message : String(error));
+		} finally {
+			if (current === generation.current) { pending.current = false; setLoadingMore(false); }
+		}
+	}
 
 	return (
 		<div className="space-y-1" data-shared-terminal-payload-ref={kind}>
 			<div className="text-[11px] font-semibold text-[#737373]">
-				{kind} payload ({Math.ceil(refInfo.byteLength / 1024)} KB)
+				Full content ({Math.ceil(refInfo.byteLength / 1024)} KB)
 			</div>
 			{state.status === "loading" ? (
-				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#737373]">Loading payload preview...</div>
+				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#737373]">Loading content...</div>
 			) : state.status === "error" ? (
 				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#ef4444]">{state.message}</div>
 			) : (
 				<div className="space-y-1">
-					<pre className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
+					<pre key={state.offset} className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
 						{state.data}
 					</pre>
+					{loadError ? <div role="alert" className="text-[12px] text-[#ef4444]">{loadError}</div> : null}
+					<div className="flex items-center gap-2 text-[12px]">
+						<span>Section {state.previous.length + 1}</span>
+						<button type="button" disabled={loadingMore || !state.previous.length} onClick={() => void loadSection(true)} className="border border-[#2a2a2a] px-2 py-1 text-[#38bdf8] disabled:opacity-50">Previous section</button>
+						<a href={`/api/chat/trace/payload/${encodeURIComponent(refInfo.ref)}?download=1`} download className="text-[#38bdf8] underline">Download full content</a>
+					</div>
 					{state.hasMore ? (
-						<div className="text-[11px] text-[#737373]">Showing first chunk. More payload data is available on demand.</div>
+						<button type="button" disabled={loadingMore} onClick={() => void loadSection()} className="border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8] disabled:opacity-50">
+							{loadingMore ? "Loading…" : "Next section"}
+						</button>
 					) : null}
 				</div>
 			)}

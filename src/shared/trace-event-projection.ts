@@ -101,6 +101,7 @@ export function applySingleEventToNodes(
 			storedEvent.traceSource,
 			storedEvent.id,
 		);
+		applyStoredPayloadRef(node, payload, storedEvent.storedPayloadRef);
 		const existing = byId.get(node.id) ?? findMatchingContentNode(byId, node);
 		if (existing) {
 			mergeAssistantMessageEvent(existing, node);
@@ -266,6 +267,9 @@ function applyStoredPayloadRef(
 	storedPayloadRef: TracePayloadRef | undefined,
 ): void {
 	if (!storedPayloadRef) return;
+	if (event.type === "assistant_message" || event.type === "thinking_finished") {
+		node.payloadRefs = { ...node.payloadRefs, [storedPayloadRef.payloadKind ?? "output"]: storedPayloadRef };
+	}
 	if (event.type === "tool_call" || event.type === "tool_execution_started") {
 		node.payloadRefs = { ...node.payloadRefs, input: storedPayloadRef };
 	}
@@ -750,6 +754,7 @@ function traceNodeFromEvent(
 				type: "user.message",
 				title: "User Message",
 				status: isOptimisticUserMessageEvent(event) ? "running" : "done",
+				messageDeliveryState: isOptimisticUserMessageEvent(event) ? "sending" : undefined,
 				summary: event.text,
 				output: event.text,
 			};
@@ -978,6 +983,7 @@ function findMatchingContentNode(
 }
 
 function mergeAssistantMessageEvent(target: PiboTraceNode, update: PiboTraceNode): void {
+	target.payloadRefs = { ...target.payloadRefs, ...update.payloadRefs };
 	target.status = update.status;
 	target.summary = update.summary ?? target.summary;
 	target.output = update.output ?? target.output;

@@ -199,20 +199,23 @@ export function looksLikeImagePayloadPreview(value: string): boolean {
 		|| /"mime(?:Type|_type)"\s*:\s*"image\//i.test(value);
 }
 
-export function readTracePayloadChunk(input: {
+export async function readTracePayloadChunk(input: {
 	payloadStore: PayloadStore;
 	ref: string;
 	offset: number;
 	limit: number;
-}): TracePayloadChunk | undefined {
+}): Promise<TracePayloadChunk | undefined> {
 	const parsed = parseTracePayloadRef(input.ref);
 	if (!parsed) return undefined;
 	const payload = input.payloadStore.getPayload(parsed.payloadId);
 	if (!payload) return undefined;
-	const bytes = Buffer.from(input.payloadStore.readPayloadBytes(parsed.payloadId));
-	const offset = Math.max(0, Math.min(input.offset, bytes.byteLength));
+	const offset = Math.max(0, Math.min(input.offset, payload.byteSize));
 	const limit = Math.max(1, Math.min(input.limit, TRACE_V2_PAYLOAD_MAX_LIMIT_BYTES));
-	const chunk = bytes.subarray(offset, Math.min(bytes.byteLength, offset + limit));
+	const bytes = await input.payloadStore.readPayloadRange(parsed.payloadId, offset, limit + 3);
+	let length = Math.min(limit, bytes.length);
+	// Include a complete UTF-8 code point at the boundary; cursors remain byte offsets.
+	while (length < bytes.length && (bytes[length]! & 0xc0) === 0x80) length++;
+	const chunk = bytes.subarray(0, length);
 	const preview = payload.previewText ?? "";
 	const traceRef: TracePayloadRef = {
 		ref: input.ref,
@@ -222,7 +225,7 @@ export function readTracePayloadChunk(input: {
 		truncatedPreview: Buffer.byteLength(preview, "utf8") < payload.byteSize,
 		hash: payload.sha256,
 	};
-	const nextOffset = offset + chunk.byteLength < bytes.byteLength ? offset + chunk.byteLength : undefined;
+	const nextOffset = offset + chunk.byteLength < payload.byteSize ? offset + chunk.byteLength : undefined;
 	return {
 		ref: traceRef,
 		offset,
@@ -339,7 +342,7 @@ function compactTraceNode(node: PiboTraceNode, payloadStore: PayloadStore, piboS
 }
 
 function inlinePayloadForNodeValue(node: PiboTraceNode, kind: TracePayloadKind, value: unknown): PiboJsonValue | string | undefined {
-	return inlinePayloadForValue(value, inlinePayloadByteLimit(node, kind));
+	return node.payloadRefs?.[kind] ? undefined : inlinePayloadForValue(value, inlinePayloadByteLimit(node, kind));
 }
 
 function inlinePayloadByteLimit(node: PiboTraceNode, kind: TracePayloadKind): number {

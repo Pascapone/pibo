@@ -643,3 +643,9 @@ test("compact terminal identity does not collapse repeated compactions or unreso
 	assert.deepEqual(rows.map((row) => row.id), ["compaction-1", "compaction-2", "subagent-1", "subagent-2"]);
 	assert.equal(new Set(rows.map((row) => row.id)).size, rows.length);
 });
+
+test('referenced assistant messages expose expandable full content',()=>{
+ const ref={ref:'trace_fixture',byteLength:2000000,preview:'preview',contentType:'text/plain',truncatedPreview:true,payloadKind:'output'};
+ const rows=buildCompactTerminalRows(traceView([traceNode('assistant.message','large',{output:'preview',payloadRefs:{output:ref}})]),{showThinking:false});
+ assert.equal(rows[0].expandable,true);assert.equal(rows[0].payloadRefs.output,ref);
+});

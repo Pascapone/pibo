@@ -633,6 +633,11 @@ function TerminalRow({
 				</div>
 				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
+			{Object.values(row.payloadRefs ?? {}).some(Boolean) ? (
+				<button type="button" aria-expanded={expanded} onClick={onToggle} className="mt-2 border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8]">
+					{expanded ? "Hide full content" : "Show full content"}
+				</button>
+			) : null}
 			{expanded ? (
 				<TerminalDetails
 					row={row}
@@ -685,7 +690,7 @@ function TerminalRowContent({
 			<>
 				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				{row.pendingMessageDelivery ? (
-					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
+					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-[1.9rem] mt-2" />
 				) : null}
 				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>

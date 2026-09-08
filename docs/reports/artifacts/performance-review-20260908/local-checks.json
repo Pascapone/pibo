@@ -1,0 +1,55 @@
+{
+  "broadAndFinalRuns": [
+    {
+      "log": "performance-review-full-suite.log",
+      "sha256": "622a1b2408a1aba288c7fccb67ec5b95d5de862f65fca87f654781975adbf19c",
+      "tests": 2900,
+      "pass": 2888,
+      "fail": 2,
+      "skipped": 10
+    },
+    {
+      "log": "performance-review-full-suite-final.log",
+      "sha256": "70b271cb864f7d1dc685e5877361496a2f35277c13cf2128a2a71b7b49eaa532",
+      "tests": 2900,
+      "pass": 2889,
+      "fail": 1,
+      "skipped": 10
+    },
+    {
+      "log": "performance-review-full-suite-clean.log",
+      "sha256": "169f03c854ab3ea09cb3c8c087c84442c3ceb5e2e8bfa7fbe78667c9c5e532ab",
+      "tests": 2900,
+      "pass": 2889,
+      "fail": 1,
+      "skipped": 10
+    },
+    {
+      "log": "performance-review-final-tree.log",
+      "sha256": "aa357289b6b5dba7c124a33347af4bc0f610107a4ac35e069f58096bb6d7c8e0",
+      "tests": 59,
+      "pass": 59,
+      "fail": 0,
+      "skipped": 0
+    }
+  ],
+  "finalRuntimeCommit": "37129bfa",
+  "finalFocusedFiles": [
+    "chat-signals-api",
+    "chat-web-app-sessions",
+    "chat-read-worker",
+    "storage-worker-isolation",
+    "telemetry-maintenance",
+    "storage-backup"
+  ],
+  "isolatedTypecheck": "passed",
+  "bFocusedTests": 151,
+  "fFocusedTests": 19,
+  "docsValidatorTests": 84,
+  "timingTestRepetitions": {
+    "rounds": 10,
+    "testsPerRound": 2,
+    "failures": 0
+  },
+  "limitation": "No single full-suite command passed after the final test-only correction. Final focused checks passed; all broad-run nonzero exits remain recorded."
+}

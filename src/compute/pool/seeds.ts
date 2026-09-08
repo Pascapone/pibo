@@ -86,7 +86,7 @@ export async function prepareDeploymentSeed(input: {
 		await copySeedNonDatabaseFiles(input.config.seedSourceHome, homePath, input.mode, input.config.root);
 		const copiedDatabases = await backupSeedDatabases(input.config.seedSourceHome, homePath, input.mode);
 		if (input.config.seedSourcePiHome && existsSync(input.config.seedSourcePiHome)) {
-			await copyPiRuntimeAuth(input.config.seedSourcePiHome, piHomePath);
+			await copyPiRuntimeSeed(input.config.seedSourcePiHome, piHomePath);
 		}
 		if (input.mode === "full" && input.config.seedSourceWorkspace && existsSync(input.config.seedSourceWorkspace)) {
 			await cp(input.config.seedSourceWorkspace, workspacePath, { recursive: true, force: true, preserveTimestamps: true });
@@ -166,11 +166,27 @@ async function backupSeedDatabases(sourceHome: string, destinationHome: string, 
 	return copied.sort();
 }
 
-async function copyPiRuntimeAuth(sourcePiHome: string, destinationPiHome: string): Promise<void> {
+async function copyPiRuntimeSeed(sourcePiHome: string, destinationPiHome: string): Promise<void> {
 	const sourceAgent = resolve(sourcePiHome, "agent");
 	const destinationAgent = resolve(destinationPiHome, "agent");
 	await mkdir(destinationAgent, { recursive: true, mode: 0o700 });
-	for (const name of ["auth.json", "models-store.json"]) {
+	// OAuth refresh tokens belong to one credential store. Cloning them into isolated
+	// slots makes token rotation race with the source login and other slots.
+	const authPath = resolve(sourceAgent, "auth.json");
+	if (existsSync(authPath)) {
+		let parsed: unknown;
+		try { parsed = JSON.parse(await readFile(authPath, "utf8")); }
+		catch { throw new Error("Cannot read the Pi credential seed."); }
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid Pi credential seed.");
+		const apiKeys = Object.fromEntries(Object.entries(parsed).flatMap(([provider, value]) => {
+			if (!value || typeof value !== "object" || value.type !== "api_key" || typeof value.key !== "string") return [];
+			return [[provider, { type: "api_key", key: value.key }]];
+		}));
+		if (Object.keys(apiKeys).length) {
+			await writeFile(resolve(destinationAgent, "auth.json"), `${JSON.stringify(apiKeys)}\n`, { mode: 0o600 });
+		}
+	}
+	for (const name of ["models-store.json"]) {
 		const source = resolve(sourceAgent, name);
 		if (!existsSync(source)) continue;
 		await cp(source, resolve(destinationAgent, name), { force: true, preserveTimestamps: true });

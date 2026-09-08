@@ -1,3 +1,5 @@
+import { previouslyClearedMessages } from "../core/events.js";
+import type { CapacityLease } from "../core/runtime-capacity.js";
 import type { ModelProfile } from "../core/profiles.js";
 import {
 	PiboSteeringUnavailableError,
@@ -75,12 +77,14 @@ function serializedToolArgs(value: unknown): string {
 }
 
 type RuntimeRoutedQueueItem =
-	| { kind: "message"; event: PiboMessageEvent }
+	| { kind: "message"; event: PiboMessageEvent; acceptedAt: number }
 	| { kind: "compact"; event: PiboExecutionEvent };
 
 type RuntimeInFlightMessage = {
 	event: PiboMessageEvent;
 	cancelled: boolean;
+	capacityAbort: AbortController;
+	started?: boolean;
 	settled: Promise<void>;
 	resolveSettled: () => void;
 	cancellation?: Promise<void>;
@@ -113,6 +117,7 @@ export type RuntimeRoutedSessionOptions = {
 	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean; sessionIdentityOperationInFlight: boolean }) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
+	acquireProviderCapacity?: (provider: string, signal: AbortSignal) => Promise<CapacityLease>;
 	modelFallbacks?: readonly ModelProfile[];
 	getRuntimeAuthStatus?: () => Promise<readonly AgentRuntimeAuthStatus[]>;
 	startRuntimeAuth?: (input: StartAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
@@ -280,8 +285,14 @@ export class RuntimeRoutedSession {
 		if (this.sessionIdentityOperationInFlight && !this.forkCandidatesRequest) {
 			throw new Error("Pibo session cannot accept messages while a session identity operation is in progress.");
 		}
+		const messages = this.queue.filter(item=>item.kind === "message");
+		const bytes = Buffer.byteLength(event.text);
+		if (bytes>1024*1024 || messages.length>=64 || messages.reduce((total,item)=>total+Buffer.byteLength(item.event.text),bytes)>4*1024*1024
+			|| messages.some(item=>Date.now()-item.acceptedAt>=10*60*1000)) {
+			throw Object.assign(new Error("Session runtime queue count, byte or wait-age capacity reached."),{code:"runtime_capacity_unavailable"});
+		}
 		onAccepted();
-		this.queue.push({ kind: "message", event });
+		this.queue.push({ kind: "message", event, acceptedAt:Date.now() });
 		const output: PiboOutputEvent = {
 			type: "message_queued",
 			piboSessionId: this.piboSessionId,
@@ -721,6 +732,7 @@ export class RuntimeRoutedSession {
 		if (inFlight?.event.id === eventId) {
 			if (!inFlight.cancellation) {
 				inFlight.cancelled = true;
+				inFlight.capacityAbort.abort(new Error("Message cancelled while waiting for capacity."));
 				this.notifyMessagesInterrupted([inFlight.event], "message cancelled");
 				const active = this.activeMessage?.id === eventId;
 				inFlight.cancellation = (async () => {
@@ -940,6 +952,21 @@ export class RuntimeRoutedSession {
 		}
 	}
 
+	private async promptWithinCapacity(event: PiboMessageEvent, inFlight: RuntimeInFlightMessage,
+		input: Parameters<AgentRuntimeSession["prompt"]>[0]): Promise<void> {
+		const provider = this.runtimeSession.getStatus().activeModel?.provider ?? this.runtimeSession.runtimeInstanceId;
+		const lease = await this.options.acquireProviderCapacity?.(provider,inFlight.capacityAbort.signal);
+		try {
+			if (this.disposed || inFlight.cancelled) return;
+			if (!inFlight.started) {
+				inFlight.started = true;
+				this.emit({ type:"message_started", piboSessionId:this.piboSessionId, eventId:event.id, text:event.text, source:event.source, provenance:event.provenance });
+			}
+			if (this.disposed || inFlight.cancelled) return;
+			await this.runtimeSession.prompt(input);
+		} finally { lease?.release(); }
+	}
+
 	private async promptWithModelFallbacks(
 		event: PiboMessageEvent,
 		inFlight: RuntimeInFlightMessage,
@@ -947,7 +974,7 @@ export class RuntimeRoutedSession {
 		const canSetModel = Boolean(this.runtimeSession.controls?.setModel);
 		const fallbackModels = this.modelFallbacks.filter((model) => !sameModel(model, this.primaryModel));
 		if (!canSetModel || fallbackModels.length === 0) {
-			await this.runtimeSession.prompt({
+			await this.promptWithinCapacity(event,inFlight,{
 				text: event.text,
 				source: promptSource(event.source),
 				capabilityScope: event.capabilityScope,
@@ -973,7 +1000,7 @@ export class RuntimeRoutedSession {
 				this.pendingProviderFailure = undefined;
 				let promptError: unknown;
 				try {
-					await this.runtimeSession.prompt({
+					await this.promptWithinCapacity(event,inFlight,{
 						text: attempt === 0 ? event.text : PIBO_PROVIDER_RECOVERY_PROMPT,
 						source: attempt === 0 ? promptSource(event.source) : "rpc",
 						capabilityScope: event.capabilityScope,
@@ -1031,14 +1058,6 @@ export class RuntimeRoutedSession {
 			this.activeMessageFailed = false;
 			this.beginRunReminderTurnGuard(event);
 			this.resetContentIndices();
-			this.emit({
-				type: "message_started",
-				piboSessionId: this.piboSessionId,
-				eventId: event.id,
-				text: event.text,
-				source: event.source,
-				provenance: event.provenance,
-			});
 			if (inFlight.cancelled) return;
 			await this.promptWithModelFallbacks(event, inFlight);
 			if (this.disposed || inFlight.cancelled) return;
@@ -1082,6 +1101,7 @@ export class RuntimeRoutedSession {
 		const inFlight: RuntimeInFlightMessage = {
 			event,
 			cancelled: false,
+			capacityAbort: new AbortController(),
 			settled: new Promise<void>((resolve) => { resolveSettled = resolve; }),
 			resolveSettled: () => { resolveSettled?.(); },
 		};
@@ -1249,8 +1269,9 @@ export class RuntimeRoutedSession {
 					? await this.options.logoutRuntimeAuth(input)
 					: await this.pluginRegistry.logoutAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				getProviderUsage: () => this.getActionProviderUsage(),
-				clearQueue: () => this.clearQueue(),
+				clearQueue: () => this.clearQueue()+previouslyClearedMessages(event),
 				abort: async () => {
+					if (this.inFlightMessage && !this.inFlightMessage.started) { await this.cancelMessage(this.inFlightMessage.event.id!); return; }
 					if (this.activeMessage) this.notifyMessagesInterrupted([this.activeMessage], "abort requested");
 					await this.runtimeSession.abort();
 				},
@@ -1309,6 +1330,7 @@ export class RuntimeRoutedSession {
 	private transitionToDisposed(reason: string): boolean {
 		if (this.disposed) return false;
 		const activeMessage = this.activeMessage;
+		this.inFlightMessage?.capacityAbort.abort(new Error(reason));
 		this.notifyMessagesInterrupted(this.activeAndQueuedMessages(), reason);
 		if (activeMessage) {
 			const error = `Session disposed while a message was active: ${reason}`;

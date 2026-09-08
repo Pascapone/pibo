@@ -9,6 +9,7 @@ import { createChatWebApp } from "../dist/apps/chat/web-app.js";
 import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { AsyncChatStorage } from "../dist/data/async-chat-storage.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
@@ -209,6 +210,7 @@ async function startWebHostChannel(options = {}) {
 		...options.chat,
 	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
+	await options.beforeStart?.({ reliabilityStorePath, dataStorePath });
 
 	await channel.start({
 		auth: options.auth,
@@ -354,11 +356,23 @@ async function startWebHostChannel(options = {}) {
 
 	const address = channel.getAddress();
 	assert.ok(address);
+	const stopChannel = channel.stop.bind(channel);
+	channel.stop = async () => {
+		await stopChannel();
+		await Promise.all(webApps.map((app) => app.dispose?.()));
+	};
 	return {
 		channel,
 		emitted,
+		async drain() {
+			await Promise.all(webApps.map((app) => app.drain?.()));
+		},
 		emitOutput(event) {
 			for (const listener of listeners) listener(event);
+		},
+		async emitOutputAndDrain(event) {
+			for (const listener of listeners) listener(event);
+			await Promise.all(webApps.map((app) => app.drain?.()));
 		},
 		setProfiles(nextProfiles) {
 			profiles = [...nextProfiles];
@@ -722,7 +736,7 @@ test("chat web app image paths stay authenticated, bounded, sniffed, and non-cac
 });
 
 test("chat web app serves node-bound exact images concurrently and never falls back to changed path bytes", async () => {
-	const { channel, baseURL, emitOutput, dataStorePath, dataPayloadRootDir } = await startWebHostChannel({ auth: createFakeAuthService() });
+	const { channel, baseURL, emitOutput, emitOutputAndDrain, dataStorePath, dataPayloadRootDir } = await startWebHostChannel({ auth: createFakeAuthService() });
 	const workspace = mkdtempSync(join(tmpdir(), "pibo-chat-exact-image-"));
 	const exactBytes = Buffer.concat([
 		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
@@ -749,7 +763,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 		});
 		const sessionPayload = await sessionResponse.json();
 		const piboSessionId = sessionPayload.session.id;
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "tool_execution_finished",
 			piboSessionId,
 			eventId: "image-turn",
@@ -808,7 +822,7 @@ test("chat web app serves node-bound exact images concurrently and never falls b
 			Buffer.alloc(7 * 1024 - 8, 5),
 		]);
 		for (const [toolCallId, bytes] of [["inline-image-a", inlineBytesA], ["inline-image-b", inlineBytesB], ["inline-image-c", inlineBytesA]]) {
-			emitOutput({
+			await emitOutputAndDrain({
 				type: "tool_execution_finished",
 				piboSessionId,
 				eventId: `turn-${toolCallId}`,
@@ -1171,9 +1185,9 @@ test("chat web dead-letters output identity collisions after one attempt", async
 });
 
 test("chat web automatically retries a once-only final persistence failure without producer replay", async () => {
-	const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
+	const originalIngest = AsyncChatStorage.prototype.ingestOutput;
 	let injected = false;
-	ChatDataIngestService.prototype.ingestOutputEvent = function(input) {
+	AsyncChatStorage.prototype.ingestOutput = async function(input) {
 		if (!injected && input.event.type === "assistant_message") {
 			injected = true;
 			throw new Error("injected once-only web final failure");
@@ -1209,6 +1223,15 @@ test("chat web automatically retries a once-only final persistence failure witho
 		assert.equal(rows.length, 1);
 		assert.equal(rows[0].preview_text, "persist once");
 
+		await waitForCondition(() => {
+			const reliability = new PiboReliabilityStore(reliabilityStorePath);
+			try {
+				return reliability.listJobs({ queue: "output-persistence" }).length === 0;
+			} finally {
+				reliability.close();
+			}
+		}, "automatic retry did not complete reliability delivery");
+
 		const reliability = new DatabaseSync(reliabilityStorePath, { readOnly: true });
 		try {
 			const deliveries = reliability.prepare("SELECT event_id, idempotency_key FROM pibo_event_stream WHERE topic = 'pibo.output' AND key = ?").all(session.id);
@@ -1218,7 +1241,7 @@ test("chat web automatically retries a once-only final persistence failure witho
 			reliability.close();
 		}
 	} finally {
-		ChatDataIngestService.prototype.ingestOutputEvent = originalIngest;
+		AsyncChatStorage.prototype.ingestOutput = originalIngest;
 		await channel.stop?.();
 	}
 });
@@ -1373,9 +1396,8 @@ test("chat web quarantines a versionless durable envelope without writing V2 sta
 	const piboSessionId = "ps_web_versionless_envelope";
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
 	const secret = "web-versionless-secret-marker";
-	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
-	try {
-		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions, beforeStart({ reliabilityStorePath }) {
+		const reliability = new PiboReliabilityStore(reliabilityStorePath);
 		try {
 			reliability.enqueue({
 				queue: "output-persistence",
@@ -1392,6 +1414,8 @@ test("chat web quarantines a versionless durable envelope without writing V2 sta
 		} finally {
 			reliability.close();
 		}
+	} });
+	try {
 		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(trigger.status, 200);
 		await waitForCondition(() => {
@@ -1484,9 +1508,8 @@ test("chat web recovers a valid V1 message_steered envelope without quarantine",
 	const eventId = "steer-web-recovery";
 	const deliveryKey = `pibo.output:${piboSessionId}:message_steered:${eventId}:main`;
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
-	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
-	try {
-		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions, beforeStart({ reliabilityStorePath }) {
+		const reliability = new PiboReliabilityStore(reliabilityStorePath);
 		try {
 			reliability.enqueue({
 				queue: "output-persistence",
@@ -1506,6 +1529,8 @@ test("chat web recovers a valid V1 message_steered envelope without quarantine",
 		} finally {
 			reliability.close();
 		}
+	} });
+	try {
 		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(trigger.status, 200);
 		await waitForCondition(() => {
@@ -1580,9 +1605,8 @@ test("chat web recovery quarantines an unknown output variant with sanitized met
 	const piboSessionId = "ps_web_unknown_recovery";
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
 	const secret = "unknown-web-recovery-secret-marker";
-	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions });
-	try {
-		const reliability = new PiboReliabilityStore(host.reliabilityStorePath);
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), sessions, beforeStart({ reliabilityStorePath }) {
+		const reliability = new PiboReliabilityStore(reliabilityStorePath);
 		try {
 			reliability.enqueue({
 				queue: "output-persistence",
@@ -1596,6 +1620,8 @@ test("chat web recovery quarantines an unknown output variant with sanitized met
 		} finally {
 			reliability.close();
 		}
+	} });
+	try {
 		const trigger = await fetch(`${host.baseURL}/api/chat/sessions`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(trigger.status, 200);
 		await waitForCondition(() => {
@@ -1635,7 +1661,7 @@ for (const crashBoundary of [
 	"after-receipt-before-checkpoint",
 ]) {
 	test(`chat web outbox retries an in-process fault at ${crashBoundary} with one visible render identity`, async () => {
-		const originalIngest = ChatDataIngestService.prototype.ingestOutputEvent;
+		const originalIngest = AsyncChatStorage.prototype.ingestOutput;
 		const originalAppendOnce = PiboReliabilityStore.prototype.appendOnce;
 		const originalRecordEvent = ChatSessionQueryService.prototype.recordEvent;
 		const originalMarkSessionRead = ChatReadStateService.prototype.markSessionRead;
@@ -1656,9 +1682,9 @@ for (const crashBoundary of [
 			crashObserved = true;
 			throw new Error(crashMessage);
 		};
-		ChatDataIngestService.prototype.ingestOutputEvent = function(input) {
+		AsyncChatStorage.prototype.ingestOutput = async function(input) {
 			if (crashEnabled && input.event.eventId === targetEventId && crashBoundary === "before-v2-write") crash();
-			const result = originalIngest.call(this, input);
+			const result = await originalIngest.call(this, input);
 			if (crashEnabled && input.event.eventId === targetEventId && crashBoundary === "after-v2-write") crash();
 			return result;
 		};
@@ -1807,7 +1833,7 @@ for (const crashBoundary of [
 		} finally {
 			crashEnabled = false;
 			firstStreamController?.abort();
-			ChatDataIngestService.prototype.ingestOutputEvent = originalIngest;
+			AsyncChatStorage.prototype.ingestOutput = originalIngest;
 			PiboReliabilityStore.prototype.appendOnce = originalAppendOnce;
 			ChatSessionQueryService.prototype.recordEvent = originalRecordEvent;
 			ChatReadStateService.prototype.markSessionRead = originalMarkSessionRead;
@@ -1828,7 +1854,7 @@ function findAssistantOutput(nodes) {
 }
 
 test("chat web trace supports cursor pages", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -1839,7 +1865,7 @@ test("chat web trace supports cursor pages", async () => {
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 		for (let index = 1; index <= 5; index += 1) {
-			emitOutput({
+			await emitOutputAndDrain({
 				type: "assistant_message",
 				piboSessionId: sessionPayload.session.id,
 				eventId: `answer-${index}`,
@@ -1876,7 +1902,7 @@ test("chat web trace supports cursor pages", async () => {
 });
 
 test("deprecated chat web trace caps oversized compatibility page requests", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -1887,7 +1913,7 @@ test("deprecated chat web trace caps oversized compatibility page requests", asy
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 		for (let index = 1; index <= 200; index += 1) {
-			emitOutput({
+			await emitOutputAndDrain({
 				type: "assistant_message",
 				piboSessionId: sessionPayload.session.id,
 				eventId: `compat-answer-${index}`,
@@ -2007,7 +2033,7 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 	let inspectHistoryCalls = 0;
 	let readHistoryCalls = 0;
 	const capabilities = fakeRuntimeCapabilities();
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutputAndDrain: emitOutput } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		capabilityCatalog: {
 			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
@@ -2036,9 +2062,9 @@ test("new Chat Web traces use Pibo product history without reading native runtim
 		assert.equal(messageResponse.status, 200);
 		const messagePayload = await messageResponse.json();
 		const eventId = messagePayload.output.eventId;
-		emitOutput({ type: "message_started", piboSessionId, eventId, text: "product-owned prompt", source: "user" });
-		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "product-owned answer" });
-		emitOutput({ type: "message_finished", piboSessionId, eventId });
+		await emitOutput({ type: "message_started", piboSessionId, eventId, text: "product-owned prompt", source: "user" });
+		await emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "product-owned answer" });
+		await emitOutput({ type: "message_finished", piboSessionId, eventId });
 
 		const summaryResponse = await fetch(
 			`${baseURL}/api/chat/trace/summary?piboSessionId=${encodeURIComponent(piboSessionId)}`,
@@ -2091,7 +2117,7 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		},
 	});
 	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
-	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
+	const { channel, baseURL, sessions, emitOutputAndDrain, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit(event) {
 			return {
@@ -2138,10 +2164,9 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		});
 		assert.equal(messageResponse.status, 200);
 		assert.equal((await messageResponse.json()).output.eventId, "stable-Y");
-		emitOutput({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
-		emitOutput({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
-		emitOutput({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
-		await new Promise((resolve) => setImmediate(resolve));
+		await emitOutputAndDrain({ type: "message_started", piboSessionId: branch.id, eventId: "stable-Y", text: "branch prompt", source: "user" });
+		await emitOutputAndDrain({ type: "assistant_message", piboSessionId: branch.id, eventId: "stable-Y", assistantIndex: 0, contentIndex: 0, text: "branch answer" });
+		await emitOutputAndDrain({ type: "message_finished", piboSessionId: branch.id, eventId: "stable-Y", source: "user" });
 		const db = new DatabaseSync(dataStorePath);
 		try {
 			assert.ok(db.prepare("UPDATE event_log SET created_at = ? WHERE session_id = ? AND event_id = ?")
@@ -2210,7 +2235,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 	});
 	assert.equal((await history.read({ limit: 20 })).entries.length, 2);
 	let readHistoryCalls = 0;
-	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, sessions, dataStorePath, dataPayloadRootDir } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit() { throw new Error("message input is not used"); },
 		capabilityCatalog: {
@@ -2231,16 +2256,16 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			originId: source.id,
 			runtimeBinding: { runtimeInstanceId: "codex-native", adapterId: "codex-native", nativeSessionId: "overflow-thread", state: "bound", protocol: "codex-app-server" },
 		});
-		for (let index = 0; index < 501; index += 1) {
-			emitOutput({
-				type: "message_started",
-				piboSessionId: branch.id,
-				eventId: index === 0 ? "stable-overflow" : "timing-overflow-noise",
-				text: index === 0 ? "overflow prompt" : `noise ${index}`,
-				source: "user",
-			});
-		}
-		await new Promise((resolve) => setImmediate(resolve));
+		// Seed timing evidence directly: this boundary test must not create 501
+		// real user turns that push native history out of the public page.
+		const evidenceStore = new PiboDataStore(dataStorePath, { payloadRootDir: dataPayloadRootDir });
+		try {
+			for (let index = 0; index < 501; index += 1) {
+				evidenceStore.eventLog.appendEvent({ sessionId: branch.id, topic: "session", type: "message_started", source: "fixture", retentionClass: "audit_event", eventId: index === 0 ? "stable-overflow" : "timing-overflow-noise", createdAt: startedAt });
+			}
+			assert.equal(Number(evidenceStore.db.prepare("SELECT count(*) n FROM event_log WHERE session_id=? AND type='message_started'").get(branch.id).n), 501);
+		} finally { evidenceStore.close(); }
+
 		for (const path of ["/api/chat/trace", "/api/chat/trace/timeline?limit=50"]) {
 			const separator = path.includes("?") ? "&" : "?";
 			const response = await fetch(`${baseURL}${path}${separator}piboSessionId=${encodeURIComponent(branch.id)}`, { headers: { "x-test-user": "user-1" } });
@@ -2251,7 +2276,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 			const projectedNodes = path.includes("timeline") ? payload.nodes : flattenTraceResponseNodes(payload.nodes);
 			const nativeMessages = projectedNodes
 				.filter((node) => node.nativeTurnId === "runtime-overflow" && (node.type === "user.message" || node.type === "assistant.message"));
-			assert.equal(nativeMessages.length, 2);
+			assert.equal(nativeMessages.length, 2, JSON.stringify({path,source:payload.source,nodes:projectedNodes.slice(0,5).map(n=>({id:n.id,type:n.type,eventId:n.eventId,nativeTurnId:n.nativeTurnId})),readHistoryCalls}));
 			assert.ok(nativeMessages.every((node) => node.eventId === "runtime-overflow"));
 			assert.ok(nativeMessages.every((node) => node.eventId !== "stable-overflow"));
 		}
@@ -2289,7 +2314,7 @@ test("origin branch older native-history pages reconcile repeated prompts by sta
 			})),
 		},
 	});
-	const { channel, baseURL, sessions, emitOutput, dataStorePath } = await startWebHostChannel({
+	const { channel, baseURL, sessions, emitOutput, emitOutputAndDrain, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		async emit(event) {
 			const eventId = stableEventIds[emittedMessageCount++];
@@ -2328,7 +2353,7 @@ test("origin branch older native-history pages reconcile repeated prompts by sta
 			});
 			assert.equal(messageResponse.status, 200);
 			assert.equal((await messageResponse.json()).output.eventId, eventId);
-			emitOutput({ type: "message_started", piboSessionId: branch.id, eventId, source: "user", text: "identical prompt" });
+			await emitOutputAndDrain({ type: "message_started", piboSessionId: branch.id, eventId, source: "user", text: "identical prompt" });
 		}
 		await new Promise((resolve) => setImmediate(resolve));
 		const db = new DatabaseSync(dataStorePath);
@@ -2483,7 +2508,7 @@ test("legacy Pi traces use the adapter history provider without direct Chat Web 
 test("missing legacy native history preserves surviving Pibo product history", async () => {
 	let readHistoryCalls = 0;
 	const capabilities = fakeRuntimeCapabilities();
-	const { channel, baseURL, sessions, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, sessions, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		capabilityCatalog: {
 			agentRuntimes: [fakeRuntimeInspection("pi", { adapterId: "pi", capabilities })],
@@ -2536,9 +2561,9 @@ test("missing legacy native history preserves surviving Pibo product history", a
 		assert.equal(messageResponse.status, 200);
 		const messagePayload = await messageResponse.json();
 		const eventId = messagePayload.output.eventId;
-		emitOutput({ type: "message_started", piboSessionId, eventId, text: "surviving product prompt", source: "user" });
-		emitOutput({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "surviving product answer" });
-		emitOutput({ type: "message_finished", piboSessionId, eventId });
+		await emitOutputAndDrain({ type: "message_started", piboSessionId, eventId, text: "surviving product prompt", source: "user" });
+		await emitOutputAndDrain({ type: "assistant_message", piboSessionId, eventId, assistantIndex: 0, contentIndex: 0, text: "surviving product answer" });
+		await emitOutputAndDrain({ type: "message_finished", piboSessionId, eventId });
 
 		const response = await fetch(
 			`${baseURL}/api/chat/trace/timeline?piboSessionId=${encodeURIComponent(piboSessionId)}&limit=50`,
@@ -2556,7 +2581,7 @@ test("missing legacy native history preserves surviving Pibo product history", a
 });
 
 test("chat web trace returns fresh payload when a known trace version changes", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -2567,7 +2592,7 @@ test("chat web trace returns fresh payload when a known trace version changes", 
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "answer-1",
@@ -2584,7 +2609,7 @@ test("chat web trace returns fresh payload when a known trace version changes", 
 		assert.ok(firstEtag);
 		assert.ok(firstVersion);
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "answer-2",
@@ -3218,7 +3243,7 @@ test("chat web app archives and deletes rooms with contained session subtrees", 
 });
 
 test("chat web app exposes unread room and session counts", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -3229,13 +3254,13 @@ test("chat web app exposes unread room and session counts", async () => {
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "turn-1",
 			text: "new answer",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "turn-1",
@@ -3265,7 +3290,7 @@ test("chat web app exposes unread room and session counts", async () => {
 });
 
 test("chat web app marks the selected session subtree read during bootstrap", async () => {
-	const { channel, baseURL, emitOutput, sessions } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -3285,24 +3310,24 @@ test("chat web app marks the selected session subtree read during bootstrap", as
 			metadata: { chatRoomId: room.id },
 		});
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: child.id,
 			eventId: "child-turn-1",
 			text: "child answer one",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: child.id,
 			eventId: "child-turn-1",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: child.id,
 			eventId: "child-turn-2",
 			text: "child answer two",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: child.id,
 			eventId: "child-turn-2",
@@ -3335,7 +3360,7 @@ test("chat web app marks the selected session subtree read during bootstrap", as
 });
 
 test("chat web app room event streams do not mark assistant messages read", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -3360,13 +3385,13 @@ test("chat web app room event streams do not mark assistant messages read", asyn
 		const reader = eventsResponse.body.getReader();
 		await reader.read();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: session.id,
 			eventId: "room-stream-turn",
 			text: "background answer",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: session.id,
 			eventId: "room-stream-turn",
@@ -3824,7 +3849,7 @@ test("chat web app removes live observer accounting on disconnect", async () => 
 });
 
 test("chat web app keeps active session completions read while preserving unfocused unread", async () => {
-	const { channel, baseURL, emitOutput, sessions } = await startWebHostChannel({
+	const { channel, baseURL, emitOutputAndDrain, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -3856,13 +3881,13 @@ test("chat web app keeps active session completions read while preserving unfocu
 		const reader = eventsResponse.body.getReader();
 		await reader.read();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: parent.id,
 			eventId: "active-turn",
 			text: "visible answer",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: parent.id,
 			eventId: "active-turn",
@@ -3876,13 +3901,13 @@ test("chat web app keeps active session completions read while preserving unfocu
 		assert.equal(bootstrap.rooms[0].unreadCount, undefined);
 		assert.equal(bootstrap.sessions[0].unreadCount, undefined);
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: child.id,
 			eventId: "unfocused-turn",
 			text: "background answer",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: child.id,
 			eventId: "unfocused-turn",
@@ -4035,7 +4060,7 @@ test("chat web app writes user messages into the V2 data store", async () => {
 });
 
 test("chat web app writes assistant and tool output into the V2 data store", async () => {
-	const { channel, baseURL, emitOutput, dataStorePath } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain, dataStorePath } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -4054,9 +4079,9 @@ test("chat web app writes assistant and tool output into the V2 data store", asy
 			renderSequence: 42,
 			text: "assistant v2 persist",
 		};
-		emitOutput(assistantOutput);
-		emitOutput(assistantOutput);
-		emitOutput({
+		await emitOutputAndDrain(assistantOutput);
+		await emitOutputAndDrain(assistantOutput);
+		await emitOutputAndDrain({
 			type: "tool_execution_finished",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "persist-run-1",
@@ -4087,7 +4112,7 @@ test("chat web app writes assistant and tool output into the V2 data store", asy
 });
 
 test("chat web app marks a selected session read through the read endpoint", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -4098,13 +4123,13 @@ test("chat web app marks a selected session read through the read endpoint", asy
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "read-run-1",
 			text: "read me",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "read-run-1",
@@ -4141,7 +4166,7 @@ test("chat web app marks a selected session read through the read endpoint", asy
 });
 
 test("chat web app marks all room sessions read through the room read endpoint", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -4166,13 +4191,13 @@ test("chat web app marks all room sessions read through the room read endpoint",
 		const secondPayload = await secondResponse.json();
 
 		for (const [session, eventId] of [[firstPayload.session, "room-read-all-1"], [secondPayload.session, "room-read-all-2"]]) {
-			emitOutput({
+			await emitOutputAndDrain({
 				type: "assistant_message",
 				piboSessionId: session.id,
 				eventId,
 				text: `answer for ${session.id}`,
 			});
-			emitOutput({
+			await emitOutputAndDrain({
 				type: "message_finished",
 				piboSessionId: session.id,
 				eventId,
@@ -4217,7 +4242,7 @@ test("chat web app marks all room sessions read through the room read endpoint",
 });
 
 test("chat web app replays durable SSE frames with stream cursors", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -4227,7 +4252,7 @@ test("chat web app replays durable SSE frames with stream cursors", async () => 
 		});
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "run-1",
@@ -4267,7 +4292,7 @@ test("chat web app replays durable SSE frames with stream cursors", async () => 
 });
 
 test("chat web app trace exposes an SSE cursor that skips replayed history", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -4277,7 +4302,7 @@ test("chat web app trace exposes an SSE cursor that skips replayed history", asy
 		});
 		assert.equal(sessionResponse.status, 200);
 		const sessionPayload = await sessionResponse.json();
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "run-1",
@@ -4306,7 +4331,7 @@ test("chat web app trace exposes an SSE cursor that skips replayed history", asy
 		let text = "";
 		text += decoder.decode((await reader.read()).value, { stream: true });
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "run-2",
@@ -4383,7 +4408,7 @@ test("chat web app room SSE frames include unfocused session ids", async () => {
 });
 
 test("chat web app scopes room-authenticated session SSE to the selected session", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -4406,7 +4431,7 @@ test("chat web app scopes room-authenticated session SSE to the selected session
 		assert.equal(secondResponse.status, 201);
 		const secondPayload = await secondResponse.json();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: sessionPayload.session.id,
 			eventId: "focused-before-cursor",
@@ -4420,7 +4445,7 @@ test("chat web app scopes room-authenticated session SSE to the selected session
 		const trace = await traceResponse.json();
 		assert.equal(typeof trace.latestStreamId, "number");
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: secondPayload.session.id,
 			eventId: "unfocused-after-cursor",
@@ -8141,7 +8166,7 @@ test("chat web app canonicalizes legacy custom agent session profile aliases", a
 });
 
 test("chat web app archives sessions as read and excludes them from room unread counts", async () => {
-	const { channel, baseURL, emitOutput } = await startWebHostChannel({
+	const { channel, baseURL, emitOutput, emitOutputAndDrain } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
 
@@ -8152,13 +8177,13 @@ test("chat web app archives sessions as read and excludes them from room unread 
 		assert.equal(sessionResponse.status, 200);
 		const payload = await sessionResponse.json();
 
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "assistant_message",
 			piboSessionId: payload.session.id,
 			eventId: "archive-unread-turn",
 			text: "archive me",
 		});
-		emitOutput({
+		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: payload.session.id,
 			eventId: "archive-unread-turn",
@@ -9139,4 +9164,72 @@ test("manual editor runs target normal Rooms and persist canonical inspection fa
 		assert.equal(inspected.snapshot, undefined);
 		assert.ok(inspected.lifecycleEvents.some((event) => event.type === "workflow.editor_test_run.completed"));
 	} finally { await host.channel.stop?.(); }
+});
+
+
+test("versioned durable admission acknowledges before cold runtime dispatch and preserves its receipt", async () => {
+	let unblock;
+	const blocked = new Promise(resolve => { unblock=resolve; });
+	let dispatches=0;
+	const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(event) {
+		dispatches++;
+		await blocked;
+		return {type:"message_queued",piboSessionId:event.piboSessionId,eventId:event.id,queuedMessages:1,text:event.text,source:"user"};
+	}});
+	try {
+		const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers:{"x-test-user":"user-1"}})).json();
+		const input={admissionVersion:2,piboSessionId:session.id,text:"durable cold message",clientTxnId:"durable-cold-id"};
+		const send=body=>fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers:{"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"},body:JSON.stringify(body),signal:AbortSignal.timeout(2000)});
+		const accepted=await send(input);assert.equal(accepted.status,202);
+		const result=await accepted.json();assert.equal(result.receipt.state,"accepted");assert.equal(result.output,undefined);
+		const duplicate=await send(input);assert.equal(duplicate.status,202);assert.equal((await duplicate.json()).receipt.id,result.receipt.id);
+		const conflict=await send({...input,text:"different"});assert.equal(conflict.status,409);
+		await waitForCondition(()=>dispatches===1,"durable dispatcher did not start");
+		const receiptResponse=await fetch(`${host.baseURL}/api/chat/message-receipts/${result.receipt.id}`,{headers:{"x-test-user":"user-1"}});
+		assert.equal(receiptResponse.status,200);assert.equal((await receiptResponse.json()).receipt.state,"initializing");
+		const pendingTrace=await(await fetch(`${host.baseURL}/api/chat/trace?piboSessionId=${session.id}`,{headers:{"x-test-user":"user-1"}})).json();
+		const pendingUser=flattenTraceResponseNodes(pendingTrace.nodes).find(node=>node.type==="user.message");
+		assert.ok(pendingUser,"accepted message must survive a trace reload before runtime output");
+		assert.equal(pendingUser.eventId,result.receipt.eventId,JSON.stringify({id:pendingUser.id,eventId:pendingUser.eventId,source:pendingUser.source}));
+		unblock();
+		await host.emitOutputAndDrain({type:"message_started",piboSessionId:session.id,eventId:"durable-cold-id",source:"user",text:input.text});
+		await host.emitOutputAndDrain({type:"message_finished",piboSessionId:session.id,eventId:"durable-cold-id",source:"user"});
+		const final=await(await fetch(`${host.baseURL}/api/chat/message-receipts/${result.receipt.id}`,{headers:{"x-test-user":"user-1"}})).json();
+		assert.equal(final.receipt.state,"completed");assert.equal(dispatches,1);
+	} finally {unblock();await host.channel.stop?.();}
+});
+
+
+test("web startup dispatches a committed command without an HTTP request", async () => {
+ const storageDir=mkdtempSync(join(tmpdir(),"pibo-command-startup-"));
+ const sessions=new InMemoryPiboSessionStore();
+ const storage=new AsyncChatStorage(join(storageDir,"pibo-chat-v2.sqlite"),join(storageDir,"payloads"));
+ const room=await storage.resolveRoom();
+ const session=sessions.create({channel:"pibo.chat-web",kind:"chat",profile:"default",metadata:{chatRoomId:room.id}});
+ await storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"user-1",clientTxnId:"restart-txn",retentionClass:"chat_message",payload:{type:"user.message.accepted",text:"restart",clientTxnId:"restart-txn"}},session,"restart",{eventId:"restart-txn",delivery:"queue"});
+ await storage.close();
+ const host=await startWebHostChannel({storageDir,sessions,auth:createFakeAuthService()});
+ try {await waitForCondition(()=>host.emitted.length===1,"startup did not dispatch durable work",5000);assert.equal(host.emitted[0].id,"restart-txn");assert.equal(host.emitted[0].text,"restart");}
+ finally {await host.channel.stop();rmSync(storageDir,{recursive:true,force:true});}
+});
+
+
+test("clear_queue cancels undispatched durable receipts without cancelling an initializing message",async()=>{
+ let unblock;const blocked=new Promise(resolve=>{unblock=resolve;});let dispatches=0;
+ const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(event){
+  if(event.type==="execution")return {type:"execution_result",piboSessionId:event.piboSessionId,action:event.action,result:{cleared:event.clearedBeforeRuntime??0}};
+  dispatches++;await blocked;return {type:"message_queued",piboSessionId:event.piboSessionId,eventId:event.id,queuedMessages:1,text:event.text};
+ }});
+ const headers={"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"};
+ try {
+  const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers})).json();
+  const send=async id=>{const response=await fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers,body:JSON.stringify({admissionVersion:2,piboSessionId:session.id,text:id,clientTxnId:id})});assert.equal(response.status,202);return await response.json();};
+  const first=await send("clear-first");await waitForCondition(()=>dispatches===1,"first dispatch did not initialize");const second=await send("clear-second");
+  const cleared=await fetch(`${host.baseURL}/api/chat/action`,{method:"POST",headers,body:JSON.stringify({piboSessionId:session.id,action:"clear_queue"})});
+  assert.equal(cleared.status,200);assert.equal((await cleared.json()).result.cleared,1);
+  const page=await(await fetch(`${host.baseURL}/api/chat/message-receipts?piboSessionId=${session.id}`,{headers})).json();
+  assert.equal(page.receipts.find(r=>r.id===second.receipt.id).state,"failed");
+  assert.equal(page.receipts.find(r=>r.id===first.receipt.id).state,"initializing");
+  assert.equal(page.queue.queue.count,1);assert.equal(page.queue.queue.limits.count,64);assert.equal(dispatches,1);
+ } finally {unblock();await host.channel.stop?.();}
 });

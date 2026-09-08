@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { boundedMessageBytes } from "../../../data/bounded-worker-client.js";
 import type { ChatEventListInput, StoredChatEvent } from "../types/event-store.js";
 import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
@@ -8,7 +9,7 @@ import { TRACE_RECONCILIATION_ENTRY_CAP, TRACE_RECONCILIATION_TIMING_CAP } from 
 import { parseTraceToolNodeIdentity } from "../../../shared/trace-tool-identity.js";
 
 export class ChatTimelineQueryService {
-	constructor(private readonly store: PiboDataStore) {}
+	constructor(private readonly store: PiboDataStore, private readonly hydrationBytes=1024*1024) {}
 
 	listEvents(input: ChatEventListInput = {}): StoredChatEvent[] {
 		const clauses: string[] = [];
@@ -18,8 +19,17 @@ export class ChatTimelineQueryService {
 		if (input.afterStreamId !== undefined) { clauses.push("stream_id > ?"); values.push(input.afterStreamId); }
 		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		const limit = Math.max(1, Math.min(input.limit ?? 1000, 5000));
-		const rows = this.store.db.prepare(`SELECT * FROM event_log ${where} ORDER BY stream_id ASC LIMIT ?`).all(...values, limit) as EventLogRow[];
-		return rows.map((row) => storedChatEventFromV2Row(row, this.store.payloads));
+		const rows = this.store.db.prepare(`SELECT * FROM event_log ${where} ORDER BY stream_id ASC LIMIT ?`).iterate(...values, limit);
+		const events: StoredChatEvent[] = [];
+		let remainingBytes = 4 * 1024 * 1024 - 16;
+		for (const row of rows) {
+			const event = storedChatEventFromV2Row(row as EventLogRow, this.store.payloads, this.hydrationBytes);
+			// Stop hydration as soon as the page exceeds IPC capacity. Callers can retry a
+			// smaller page without first allocating every large body in the requested range.
+			remainingBytes -= boundedMessageBytes(event, remainingBytes - 32) + 32;
+			events.push(event);
+		}
+		return events;
 	}
 
 	listSessionEvents(piboSessionId: string, limit = 1000): ChatWebStoredPiboEvent[] {
@@ -36,14 +46,14 @@ export class ChatTimelineQueryService {
 
 	scanMessageTurnTimings(piboSessionId: string): { timings: TraceMessageTurnTiming[]; overflow: boolean } {
 		const rows = this.store.db.prepare(`
-			SELECT * FROM event_log
+			SELECT * FROM event_log INDEXED BY idx_event_log_timing_sequence
 			WHERE session_id = ?
 				AND type IN ('message_queued', 'message_steered', 'message_started', 'message_finished', 'session_error', 'thinking_finished', 'assistant_message')
 			ORDER BY session_sequence ASC, stream_id ASC
 			LIMIT ?
 		`).all(piboSessionId, TRACE_RECONCILIATION_TIMING_CAP + 1) as EventLogRow[];
 		if (rows.length > TRACE_RECONCILIATION_TIMING_CAP) return { timings: [], overflow: true };
-		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		const events = rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads, this.hydrationBytes)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 		return { timings: messageTurnTimingsFromEvents(events), overflow: false };
 	}
 
@@ -65,14 +75,14 @@ export class ChatTimelineQueryService {
 		}
 		const rows = this.store.db.prepare(`
 			SELECT * FROM (
-				SELECT * FROM event_log
+				SELECT * FROM event_log ${includeLive ? "" : "INDEXED BY idx_event_log_semantic_sequence"}
 				WHERE ${clauses.join(" AND ")}
 				ORDER BY session_sequence DESC, stream_id DESC
 				LIMIT ?
 			)
 			ORDER BY session_sequence ASC, stream_id ASC
 		`).all(...values, limit) as EventLogRow[];
-		return rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
+		return rows.map((row) => storedPiboEventFromV2Row(row, this.store.payloads, this.hydrationBytes)).filter((event): event is ChatWebStoredPiboEvent => event !== undefined);
 	}
 
 	isPayloadAttachedToTraceNode(input: {

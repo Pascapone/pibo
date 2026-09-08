@@ -1,0 +1,71 @@
+{
+  "at": "2026-09-08T04:01:54.513Z",
+  "node": "v24.15.0",
+  "sqlite": "3.51.3",
+  "host": {
+    "cpus": 6,
+    "totalmem": 16720715776
+  },
+  "fixture": {
+    "events": 1000001,
+    "attributesBytes": 995,
+    "databaseBytes": 1673740288
+  },
+  "cache": "Synthetic dataset populated immediately before measurement; repeated reads without OS cache eviction; physical cache residency unverified. This is a lookup benchmark, not an HTTP capacity or cold-cache claim.",
+  "pragmas": {
+    "synchronous": {
+      "synchronous": 2
+    },
+    "journalMode": {
+      "journal_mode": "wal"
+    }
+  },
+  "indexedPlan": [
+    {
+      "id": 4,
+      "parent": 0,
+      "notused": 45,
+      "detail": "SEARCH event_log USING INDEX idx_event_log_idempotency (idempotency_key=?)"
+    }
+  ],
+  "oldPlan": [
+    {
+      "id": 5,
+      "parent": 0,
+      "notused": 61,
+      "detail": "SEARCH event_log USING INDEX idx_event_log_room_stream (room_id=?)"
+    }
+  ],
+  "oldHitMs": {
+    "samples": 3,
+    "p50": 956.6357560000033,
+    "p95": 963.5172069999971,
+    "p99": 963.5172069999971,
+    "p999": 963.5172069999971,
+    "max": 963.5172069999971
+  },
+  "oldMissMs": {
+    "samples": 3,
+    "p50": 932.0067310000013,
+    "p95": 947.5440189999936,
+    "p99": 947.5440189999936,
+    "p999": 947.5440189999936,
+    "max": 947.5440189999936
+  },
+  "indexedHitMs": {
+    "samples": 10000,
+    "p50": 0.03930400000535883,
+    "p95": 0.09065099997678772,
+    "p99": 0.12272099999245256,
+    "p999": 2.831257000012556,
+    "max": 4.195718000002671
+  },
+  "indexedMissMs": {
+    "samples": 10000,
+    "p50": 0.028042999998433515,
+    "p95": 0.06691699998918921,
+    "p99": 0.08740499999839813,
+    "p999": 0.2668520000006538,
+    "max": 37.066878000012366
+  }
+}

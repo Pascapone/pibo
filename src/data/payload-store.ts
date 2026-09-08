@@ -1,6 +1,7 @@
+import { Readable, pipeline } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
-import { gunzipSync, gzipSync } from "node:zlib";
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createGunzip, gunzipSync, gzipSync } from "node:zlib";
+import { createReadStream, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
@@ -31,6 +32,11 @@ export type StoredPayload = {
 	status: string;
 	createdAt: string;
 	lastVerifiedAt?: string;
+};
+
+export type PreparedPayload = Omit<StoredPayload, "refCount" | "status" | "lastVerifiedAt"> & {
+	refCount: 1;
+	status: "staged";
 };
 
 export class PiboPayloadMetadataConflictError extends Error {
@@ -67,31 +73,57 @@ export class PayloadStore {
 	private readonly db: DatabaseSync;
 	private readonly rootDir: string;
 
-	constructor(db: DatabaseSync, rootDir = piboHomePath("payloads")) {
+	constructor(db: DatabaseSync, rootDir = piboHomePath("payloads"), readOnly = false) {
 		this.db = db;
 		this.rootDir = rootDir === ":memory:" ? rootDir : resolve(rootDir);
-		if (this.rootDir !== ":memory:") mkdirSync(this.rootDir, { recursive: true });
+		if (!readOnly && this.rootDir !== ":memory:") mkdirSync(this.rootDir, { recursive: true });
 	}
 
 	writePayload(input: PayloadWriteInput): StoredPayload {
+		return this.commitPreparedPayload(this.preparePayload(input));
+	}
+
+	/** Performs hashing, compression and atomic file publication before a DB transaction begins. */
+	preparePayload(input: PayloadWriteInput): PreparedPayload {
 		const contentType = input.contentType ?? defaultContentType(input.value);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const bytes = payloadToBytes(input.value, contentType);
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		const existing = this.findByIdentity(sha256, contentType, input.retentionClass);
 		if (existing) {
-			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
-			return this.getPayload(existing.id) ?? existing;
+			return { ...existing, refCount: 1, status: "staged" };
 		}
-
 		const shouldCompress = bytes.byteLength <= MAX_SYNC_PAYLOAD_GZIP_BYTES;
 		const encoding = shouldCompress ? "gzip" : "identity";
 		const bytesToStore = shouldCompress ? gzipSync(bytes) : bytes;
-		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : null;
+		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : undefined;
 		const relativePath = buildRelativePayloadPath(sha256, contentType, input.retentionClass, encoding);
 		const absolutePath = this.rootDir === ":memory:" ? relativePath : join(this.rootDir, relativePath);
 		writePayloadFile(absolutePath, bytesToStore);
-		const id = input.id ?? `payload_${randomUUID()}`;
+		return {
+			id: input.id ?? `payload_${randomUUID()}`,
+			sha256,
+			storageKind: "file",
+			storagePath: relativePath,
+			contentType,
+			encoding,
+			byteSize: bytes.byteLength,
+			compressedByteSize,
+			previewText: previewTextFromValue(input.value),
+			retentionClass: input.retentionClass,
+			refCount: 1,
+			status: "staged",
+			createdAt,
+		};
+	}
+
+	/** Links a previously published payload file with only bounded metadata SQL. */
+	commitPreparedPayload(prepared: PreparedPayload): StoredPayload {
+		const existing = this.findByIdentity(prepared.sha256, prepared.contentType, prepared.retentionClass);
+		if (existing) {
+			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
+			return this.getPayload(existing.id) ?? existing;
+		}
 		this.db.prepare(`
 			INSERT INTO payloads (
 				id,
@@ -110,23 +142,23 @@ export class PayloadStore {
 				last_verified_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`).run(
-			id,
-			sha256,
+			prepared.id,
+			prepared.sha256,
 			"file",
-			relativePath,
-			contentType,
-			encoding,
-			bytes.byteLength,
-			compressedByteSize,
-			previewTextFromValue(input.value) ?? null,
-			input.retentionClass,
+			prepared.storagePath ?? null,
+			prepared.contentType,
+			prepared.encoding,
+			prepared.byteSize,
+			prepared.compressedByteSize ?? null,
+			prepared.previewText ?? null,
+			prepared.retentionClass,
 			1,
 			"committed",
-			createdAt,
-			createdAt,
+			prepared.createdAt,
+			prepared.createdAt,
 		);
-		const stored = this.getPayload(id);
-		if (!stored) throw new Error(`Failed to persist payload \"${id}\"`);
+		const stored = this.getPayload(prepared.id);
+		if (!stored) throw new Error(`Failed to persist payload \"${prepared.id}\"`);
 		return stored;
 	}
 
@@ -144,6 +176,46 @@ export class PayloadStore {
 		if (payload.encoding === "gzip") return gunzipSync(bytes);
 		if (payload.encoding === "identity") return bytes;
 		throw new Error(`Unsupported payload encoding \"${payload.encoding}\"`);
+	}
+
+	openPayloadStream(id: string): Readable {
+		const payload = this.getPayload(id);
+		if (!payload?.storagePath) throw new Error("Payload not found");
+		if (payload.encoding !== "identity" && payload.encoding !== "gzip") throw new Error("Unsupported payload encoding");
+		const source = createReadStream(this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath));
+		if (payload.encoding === "identity") return source;
+		const decoded = createGunzip();
+		pipeline(source, decoded, () => {}); // Pipeline closes both ends on cancellation or read failure.
+		return decoded;
+	}
+
+	/** Read a bounded uncompressed range without materializing the entire payload. */
+	async readPayloadRange(id: string, offset: number, limit: number): Promise<Buffer> {
+		if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1) throw new RangeError("Invalid payload range");
+		const payload = this.getPayload(id);
+		if (!payload?.storagePath) throw new Error("Payload not found");
+		if (offset >= payload.byteSize) return Buffer.alloc(0);
+		const path = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
+		const end = Math.min(payload.byteSize, offset + limit);
+		const source = createReadStream(path, payload.encoding === "identity" ? { start: offset, end: end - 1 } : {});
+		if (payload.encoding !== "identity" && payload.encoding !== "gzip") { source.destroy(); throw new Error("Unsupported payload encoding"); }
+		const stream = payload.encoding === "gzip" ? source.pipe(createGunzip()) : source;
+		const forwardError = (error: Error) => stream.destroy(error);
+		if (stream !== source) source.on("error", forwardError);
+		let position = payload.encoding === "identity" ? offset : 0;
+		const parts: Buffer[] = [];
+		try {
+			for await (const value of stream) {
+				const bytes = Buffer.from(value);
+				const from = Math.max(0, offset - position), to = Math.min(bytes.length, end - position);
+				if (to > from) parts.push(Buffer.from(bytes.subarray(from, to)));
+				position += bytes.length;
+				if (position >= end) break;
+			}
+		} finally { stream.destroy(); source.destroy(); }
+		const result = Buffer.concat(parts);
+		if (result.length !== end - offset) throw new Error("Incomplete payload range");
+		return result;
 	}
 
 	readPayloadText(id: string): string {

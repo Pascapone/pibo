@@ -21,6 +21,7 @@ export type PiboTraceSource = TraceSource;
 export type PiboTraceOrderKey = TraceOrderKey;
 
 export type PiboTraceNode = {
+	messageDeliveryState?: "sending" | import("../data/message-command-store.js").MessageCommandState;
 	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	id: string;
 	parentId?: string;

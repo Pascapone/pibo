@@ -23,7 +23,7 @@ import {
 	type ChatTelemetryRetentionPruneBody,
 	type ChatUserSettingsBody,
 } from "./chat-request-normalizers.js";
-import { pruneTelemetryOlderThan } from "./telemetry-retention-service.js";
+import { pruneTelemetryOlderThanAsync } from "./telemetry-retention-service.js";
 
 export type ChatSettingsRoute =
 	| { kind: "model-defaults" }
@@ -92,8 +92,8 @@ export async function handleChatSettingsRoute(input: {
 		const body = await readJsonBody<ChatTelemetryRetentionPruneBody>(request);
 		const days = sanitizeTelemetryRetentionDays(body.days);
 		if (!days) throw new PiboWebHttpError("Invalid telemetry retention days", 400);
-		const result = pruneTelemetryOlderThan({ dataStore: input.dataStore, days, apply: body.dryRun !== true });
-		if (result.applied) updateTelemetryRetentionLastPrunedAt(new Date().toISOString());
+		const result = await pruneTelemetryOlderThanAsync({ dataStore: input.dataStore, days, apply: body.dryRun !== true, signal:request.signal });
+		if (result.applied && result.completed!==false) updateTelemetryRetentionLastPrunedAt(new Date().toISOString());
 		return responseJson({ telemetryRetention: result });
 	}
 

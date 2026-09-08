@@ -1,6 +1,7 @@
 import type { ChatWebStoredEvent } from "./trace-types.js";
 
 type ChatStreamEvent = {
+	storedPayloadRef?: import("./trace-types.js").TracePayloadRef;
 	type: string;
 	piboSessionId?: string;
 	streamFrameId?: string;
@@ -202,6 +203,7 @@ function makeStored(
 		streamId: typeof streamEvent.streamId === "number" ? streamEvent.streamId : undefined,
 		streamFrameIndex,
 		traceSource: "live",
+		storedPayloadRef: streamEvent.storedPayloadRef,
 		eventId: typeof positionedPayload.eventId === "string" ? positionedPayload.eventId : undefined,
 		type,
 		createdAt: streamEventCreatedAt(streamEvent) ?? now(),
