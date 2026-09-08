@@ -82,7 +82,7 @@ export class NativePrefixBridge {
 				if (!operation || typeof operation !== "object" || Array.isArray(operation)) throw new Error("Invalid transition");
 				if (request.url === "/compaction/begin") {
 					if (Object.keys(operation).some(key => key !== "sourceHead") || operation.sourceHead !== null &&
-						(typeof operation.sourceHead !== "string" || !operation.sourceHead || operation.sourceHead.length > 1024 || /[\x00-\x1f\x7f]/.test(operation.sourceHead))) throw new Error("Invalid native head");
+						(typeof operation.sourceHead !== "string" || !operation.sourceHead || operation.sourceHead.length > 256 || /[\x00-\x1f\x7f]/.test(operation.sourceHead))) throw new Error("Invalid native head");
 					await this.controller.beginCompaction(operation.sourceHead as string | null);
 				} else {
 					if (Object.keys(operation).some(key => key !== "id" && key !== "changed") || typeof operation.id !== "string"

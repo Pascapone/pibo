@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import type { ResolvedPiboDebugStore } from "./stores.js";
 import { normalizeLimit, openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
+import { inspectSessionPrefix } from "../sessions/prefix-inspection.js";
 
 export type ParsedDebugSessionInput = {
 	raw: string;
@@ -295,6 +296,7 @@ function readRuntimeBinding(db: DatabaseSync, session: SessionRow): Record<strin
 			runtime_adapter_id: "pi",
 			native_session_id: session.pi_session_id,
 			binding_state: session.pi_session_id ? "bound" : "unbound",
+			prefix: inspectSessionPrefix({ state: session.pi_session_id ? "bound" : "unbound" }),
 			source: "legacy-synthesized",
 		};
 	}
@@ -308,10 +310,15 @@ function readRuntimeBinding(db: DatabaseSync, session: SessionRow): Record<strin
 	`).get(session.id) as (Record<string, unknown> & { locator_json?: string | null; metadata_json?: string | null }) | undefined;
 	if (row) {
 		const { locator_json, metadata_json, ...safe } = row;
+		let prefixMetadata: unknown;
+		try { prefixMetadata = metadata_json == null ? undefined : JSON.parse(metadata_json); }
+		catch { prefixMetadata = null; }
 		return {
 			...safe,
 			locator: sanitizeBindingLocator(parseObject(locator_json ?? null)),
 			metadata_keys: Object.keys(parseObject(metadata_json ?? null)).sort(),
+			prefix: inspectSessionPrefix({ metadata: prefixMetadata,
+				adapterId: stringValue(row.runtime_adapter_id), nativeSessionId: stringValue(row.native_session_id), state: stringValue(row.binding_state) }),
 		};
 	}
 	return {
@@ -320,6 +327,7 @@ function readRuntimeBinding(db: DatabaseSync, session: SessionRow): Record<strin
 		runtime_adapter_id: "pi",
 		native_session_id: session.pi_session_id,
 		binding_state: session.pi_session_id ? "bound" : "unbound",
+		prefix: inspectSessionPrefix({ state: session.pi_session_id ? "bound" : "unbound" }),
 		source: "legacy-synthesized",
 	};
 }

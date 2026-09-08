@@ -1647,6 +1647,7 @@ test("pibo debug session inspects a Chat URL without event payload dumps", async
 		assert.equal(parsed.runtimeBinding.runtime_adapter_id, "pi");
 		assert.equal(parsed.runtimeBinding.native_session_id, "11111111-1111-4111-8111-111111111111");
 		assert.equal(parsed.runtimeBinding.binding_state, "unbound");
+		assert.deepEqual(parsed.runtimeBinding.prefix, { status: "uninitialized", verification: "metadata-only" });
 		assert.deepEqual(parsed.runtimeBinding.metadata_keys, ["apiKey", "safeLabel"]);
 		assert.doesNotMatch(result.stdout, /debug-secret-must-not-leak|"safeLabel":"fixture"/);
 		assert.equal(parsed.room.matches, true);
@@ -1667,6 +1668,7 @@ test("pibo debug session runtime shows binding-aware product history without sec
 		assert.equal(parsed.resultType, "debug.session.runtime");
 		assert.equal(parsed.binding.runtime_instance_id, "pi");
 		assert.equal(parsed.binding.runtime_adapter_id, "pi");
+		assert.equal(parsed.binding.prefix.verification, "metadata-only");
 		assert.equal(typeof parsed.productHistory.events, "number");
 		assert.equal(typeof parsed.productHistory.messages, "number");
 		assert.ok(parsed.nextCommands.includes("pibo debug trace ps_parent --native-history --check"));
@@ -1676,6 +1678,29 @@ test("pibo debug session runtime shows binding-aware product history without sec
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
+});
+
+test("pibo debug session reports stored prefix evidence and corrupt metadata without reading prompt artifacts", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const db = new DatabaseSync(join(cwd, ".pibo", "pibo.sqlite"));
+		try {
+			const metadata = { apiKey: "private-prefix-secret", piboSessionPrefix: {
+				format: 1, status: "sealed", epoch: 1, reason: "initial", evidence: "adapter-inputs",
+				nativeSessionId: "11111111-1111-4111-8111-111111111111",
+				capsule: { format: 1, adapterId: "pi", codec: "pi-fixture/v1", bytes: 123, digest: "a".repeat(64) },
+			} };
+			for (const [stored, expected] of [[JSON.stringify(metadata), "sealed"], ['{"piboSessionPrefix": "private-prefix-secret",', "recovery-required"]]) {
+				db.prepare("UPDATE session_runtime_bindings SET metadata_json = ? WHERE pibo_session_id = ?").run(stored, "ps_parent");
+				const result = await execFileAsync("node", [cliPath, "debug", "session", "ps_parent", "runtime", "--json"], { cwd });
+				const prefix = JSON.parse(result.stdout).binding.prefix;
+				assert.equal(prefix.status, expected);
+				assert.equal(prefix.verification, "metadata-only");
+				assert.doesNotMatch(result.stdout, /private-prefix-secret/);
+				assert.equal(db.prepare("SELECT metadata_json FROM session_runtime_bindings WHERE pibo_session_id = ?").get("ps_parent").metadata_json, stored);
+			}
+		} finally { db.close(); }
+	} finally { await rm(cwd, { recursive: true, force: true }); }
 });
 
 test("pibo debug session warns when a Chat URL room does not match session metadata", async () => {
