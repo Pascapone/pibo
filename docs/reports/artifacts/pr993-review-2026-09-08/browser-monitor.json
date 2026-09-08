@@ -1,0 +1,11 @@
+{
+  "at": "2026-09-08T21:07:20.079Z",
+  "exceptions": 0,
+  "consoleErrors": 0,
+  "httpErrors": [
+    {
+      "path": "/api/previews/events",
+      "status": 503
+    }
+  ]
+}

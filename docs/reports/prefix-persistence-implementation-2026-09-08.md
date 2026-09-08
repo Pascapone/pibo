@@ -7,7 +7,7 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T20:11:48Z"
+  at: "2026-09-08T21:12:00Z"
 sources:
   - id: "implementation-plan"
     resource: "scope: docs/prefix-persistence-plan commit e3720d03, docs/plans/persistent-session-prefix-and-cache-diagnostics.md"
@@ -19,7 +19,7 @@ sources:
 
 # Status
 
-This is a partial implementation checkpoint, not completion of the plan or a release acceptance report. Work started from upstream/dev `d631e8f0e88b9e25024e706d79dec62d864f7456` in branch `persist-session-prefix`. Checkpoint commits are `df90b200` and `6da17095`; continuation uses branch/worktree `prefix-runtime-integration` based on those commits. No production rollout, controller gateway restart, Pibo2 acceptance, or code PR has occurred.
+This is a partial implementation checkpoint, not completion of the plan or a release acceptance report. Work started from upstream/dev `d631e8f0e88b9e25024e706d79dec62d864f7456` in branch `persist-session-prefix`. Checkpoint commits are `df90b200` and `6da17095`; continuation uses branch/worktree `prefix-runtime-integration` based on those commits. At that checkpoint no production rollout, controller gateway restart, Pibo2 acceptance, or code PR had occurred. The independent PR993 review and exact Pibo2 candidate checks below supersede that historical statement.
 
 The normal router now supports opt-in protection for provably fresh Pi sessions through `sessionPrefixProtection`, defaulting off for new sessions. Existing protected Pi bindings restore even when that rollout switch is off. Other adapters still reject protected bindings before native initialization. This staging boundary must not be represented as all-runtime protection.
 
@@ -178,3 +178,71 @@ Artifacts are [desktop](artifacts/prefix-persistence-2026-09-08/desktop.png), [m
 6. Complete crash/fault-injection, model/Reasoning/Tool variants, T13 integrated before/after measurements and T14 telemetry failure/secret tests. Complete remaining relevant full test gates, then build and commit the exact integrated package and accept it on Pibo2 before a code PR.
 
 The plan remains open. None of these items is waived by passing the tests above.
+
+
+# PR993 independent review and Pibo2 acceptance — 2026-09-08
+
+This follow-up supersedes the earlier statement that no exact package was installed on Pibo2. The original PR head was `cb3a13ed43a759caa63accca3ad92e7406421a8c`; the first reviewed candidate was `2452662b2c13dfd5ab824dbb40b11bb831ee9ce6`; the final code candidate adds durable evidence persistence in `9d0e7f4c`. It remains a partial implementation and does not satisfy the full all-runtime plan.
+
+## Reproduced defects and corrections
+
+- **Live Pi Tool compatibility (high):** after sealing, removing a Tool or replacing its schema within the same runtime still dispatched the frozen definition. Compatibility was checked only on restore. Both actual Pi Responses HTTP fixtures reproduced the removed-Tool case (`5` requests instead of the expected `4`). The codec now verifies both the current executable set and the incoming request Tool set before restoring frozen definitions. Missing or incompatible Tools stop before HTTP dispatch. Structural schema comparison also avoids treating property order as a compatibility change.
+- **Frozen Skill executable mode (medium):** removing execute permission from a captured script left resource restore successful because verification only compared bytes. A regression reproduced the missing rejection. The bounded file-descriptor read now also verifies the captured executable flag; restore reports recovery required on a mismatch.
+
+## Local Docker validation
+
+Worker: `pibo-dev-review-pr993`, worktree `.worktrees/review-pr993`.
+
+- Full build and `npm pack` prepack build passed; all backend, workflow, Web UI and VS Code typechecks passed.
+- Prefix/controller/resource/native IPC/Pi HTTP/cache/projection/router/OMP/Codex-resource/debug checks: **184 passed, 0 failed, 2 skipped** in the serial run. The two skips require Bun for native ownership/startup fixtures. The initial parallel run had one Codex maintenance timeout; the serial rerun passed it.
+- Additional OMP/turn/metrics group: **45 passed**, no failures or skips.
+- Runtime binding CAS, resource delivery, durable ingest and native-turn boundary group: **55 passed**, no failures or skips. Groups overlap; these counts are not a unique full-suite total.
+- Strict OKF validation passed with zero warnings after giving the Docker validator an isolated bare copy of the repository history. The initial worker-only invocation could not resolve traceability commits through the host worktree Git pointer.
+- Documentation validator tests: **84 passed**, no failures or skips. They run without the Git environment override because each test owns an isolated fixture repository; the first invocation inherited that override and failed against the wrong repository. Index generation, strict validation and log checks passed.
+- The complete repository test suite and the complete real-provider/native-binary matrix were not run in this review.
+
+## First exact Pibo2 candidate
+
+- Package: `@pasko70/pibo@1.7.2`, built from committed code `2452662b2c13dfd5ab824dbb40b11bb831ee9ce6`.
+- Archive SHA-256: `c903e241c57009c4d804f4b1b75ee4ca64c75febd0c4a6f1463c60f7627f03ed`.
+- Installed runtime: `/opt/pibo-candidates/review-pr993/2452662b/runtime` on the configured Pibo2 SSH target. The installation helper verified the archive hash before installation.
+- Isolated lease: `lease_d3e3951ec3bdb0b880`, `slot-01`, holder `ps_3f0abb12-8e2f-48ed-bfc5-556ecb72abe1`, acquired `2026-09-08T20:48:03.590Z`, medium seed.
+- Public path: `https://slot-01.pool.pibo2.neuralnexus.me/`. Pool `doctor` confirmed the matching candidate and running container without reconciliation errors. The pool's installed-runtime identity `f0670710aa6d76cb1a0de94d9187fa5fc489ecda28a3a2e099d46478597afd82` is distinct from the archive checksum above.
+- Installed-package Pi HTTP/resource checks: **12 passed, 0 failures/skips**, 9.57 seconds. These execute the actual installed Pi runtime against deterministic loopback HTTP, including 4,250/425,000/850,000-character histories, native Tool/Reasoning preservation, compaction, cold restore, ownership contention, rollout-off restore and both review corrections. They are not public real-provider cache-hit measurements.
+
+## Public-path observations and remaining blockers
+
+Machine Auth exchange and authenticated bootstrap succeeded through public HTTPS. The remote browser runs headful Chrome under Xvfb, with loopback CDP tunneled to the controller. No controller gateway was changed.
+
+A newly created normal Web Pi session (`ps_3e0c4789-59be-465d-b270-e0d6f7c4411f`) accepted the exact composer text at `2026-09-08T20:50:26.693Z`, but its durable receipt became `interrupted` before native binding. A separate direct API control (`ps_4b3d1261-4222-4312-a30a-67e31d0a6a1a`) returned HTTP 500 in 82 ms with `Profile "base" requires configured auth for openai-codex/gpt-5.6-sol.` The slot seed lacks that provider authentication. A separate Codex control (`ps_2c646bc2-ad37-4fdb-bda4-0244ff4f6d53`) returned HTTP 500 in 73 ms because Codex App Server could not start; no Codex executable is available on the slot PATH. These failed controls are preserved as environment limitations, not successful model acceptance. The first receipt's generic interrupted status also did not expose the auth failure in the visible trace; existing durable-command recovery issues include #981.
+
+Browser Use's text-input operation duplicated the beginning of the composer value. Read-back detected this before Send; an atomic native textarea setter corrected it and verified the full value before sending. An earlier Browser Use call omitted the explicit CDP URL and unsuccessfully attempted local Chrome startup; all subsequent calls explicitly targeted the remote browser. Neither automation error is counted as a Pibo candidate regression.
+
+The normal `PiboGatewayServer` does not forward `sessionPrefixProtection` to the router, and the standard CLI callers do not enable it. Fresh Web sessions therefore remain unprotected; the opt-in is presently a programmatic router capability. Normal protected Codex/OMP open, explicit transitions/refresh, fork/import/export, backup artifact coverage, recovery/GC and full T13/T14 validation remain outstanding. **Full end acceptance and merge approval are withheld.** Passing installed-package fixtures cannot waive these gaps.
+
+
+## Final review correction: durable cache evidence
+
+A further integration defect was confirmed while preparing the persistent browser fixture: `ChatDataIngestService` omitted `assistant_usage.cacheEvidence`, and the V2 row mapper did not restore it. Reload/replay therefore lost runtime generation, epoch, configuration and prefix evidence even though live events carried them. The new roundtrip regression failed with stored evidence `undefined`. Commit `9d0e7f4c` preserves the existing bounded allowlist on write and replay; arbitrary extra fields and malformed digests are discarded. The focused ingest/cache/projection/debug group passed **113 tests, no failures/skips**.
+
+The exact native test programs were then provisioned inside the review Docker worker, without changing another worker's sources. All **33 Codex 0.153.2 / OMP 18.1.10 / Bun ownership / native IPC tests passed**, no skips, in 97.67 seconds. These are actual native processes with deterministic HTTP fixtures, not real provider cache-hit measurements. This supersedes the earlier native-binary skip limitation for these fixtures; the complete provider/mode matrix and repository-wide suite remain unproven.
+
+
+## Final exact Pibo2 candidate and browser acceptance
+
+The final code candidate is `9d0e7f4c`, packaged as `@pasko70/pibo@1.7.2`. Its archive SHA-256 is `8ceeb50625b601e8e9b30b4d0847425905f4797c939dc4e9c2b41d11495bfa90`. The same committed package built and tested locally was installed at `/opt/pibo-candidates/review-pr993/9d0e7f4c/runtime`. Only test fixtures were transferred separately; installed source was not edited.
+
+Pibo2 lease `lease_7b729272b70235e926` used `slot-01`, medium seed, holder `ps_3f0abb12-8e2f-48ed-bfc5-556ecb72abe1`, from `2026-09-08T21:06:12.217Z` through release at `2026-09-08T21:11:29.819Z`. Installed-runtime identity was `325475644a3cc0ca301ca441579c31dc0b07d6437d4ba1d1f811dfa36cd481fc`. The first candidate lease was released at `2026-09-08T21:04:30.667Z`.
+
+The exact installed package passed **27 Pi HTTP, resource and durable-ingest tests**, no failures or skips, in 9.61 seconds. See [installed-package results](artifacts/pr993-review-2026-09-08/runtime-tests.log).
+
+The public HTTPS path successfully exchanged Machine Auth and loaded authenticated bootstrap. A fresh disposable session `ps_5ff0cf7e-ef4b-4163-a737-c204b4240f0a` received deterministic warm/cold/recovery usage through the installed durable ingest and query services. The headful browser reloaded persisted rows, opened Debug and expanded the warning through pointer input. This verifies durable evidence replay and rendering, not actual provider caching or a protected native session.
+
+- Desktop **1365×900** and mobile **390×844** each displayed three inference metric groups, exactly one cache-collapse warning and no horizontal document overflow.
+- The warning retained epoch `1`, previous cache `97.4%`, current cache `2.4%`, and `150,543 / 154,255` uncached input. The runtime-generation change was correctly described as observed correlation only, with insufficient evidence and unknown provider eviction cause. The recovery row showed `1,953` uncached input.
+- The installed debug trace check reported **zero issues**, with the same cache-collapse values and insufficient-evidence classification.
+- A bounded browser capture recorded **zero JavaScript exceptions and zero console errors**. The preview-event SSE path returned HTTP **503**, as in the earlier fixture; network acceptance is therefore not entirely clean. Native details expansion was reopened after viewport remount.
+
+Artifacts: [desktop screenshot](artifacts/pr993-review-2026-09-08/desktop.png), [desktop measurements](artifacts/pr993-review-2026-09-08/desktop.json), [mobile screenshot](artifacts/pr993-review-2026-09-08/mobile.png), [mobile measurements](artifacts/pr993-review-2026-09-08/mobile.json), [browser capture](artifacts/pr993-review-2026-09-08/browser-monitor.json), and [trace check](artifacts/pr993-review-2026-09-08/trace.log).
+
+**Verdict:** the three review corrections pass their regression checks, including exact-package Pibo2 checks and persisted diagnostic UI acceptance. Full feature end acceptance and merge approval remain withheld for the implementation gaps and real-provider environment blockers above. No production rollout or controller-gateway mutation was performed.

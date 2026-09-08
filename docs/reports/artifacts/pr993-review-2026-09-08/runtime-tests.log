@@ -1,0 +1,35 @@
+✔ chat data ingest writes user messages idempotently (13.482817ms)
+✔ chat data ingest records repeated user messages without client transaction id (10.723078ms)
+✔ chat data ingest externalizes large user message payloads (63.807373ms)
+✔ chat data ingest shadows assistant messages and observations idempotently (21.06515ms)
+✔ chat data ingest round-trips immutable render sequence metadata (11.651384ms)
+✔ chat data ingest preserves post-compaction output and repeated lifecycle events (78.600873ms)
+✔ chat data ingest snapshots tool metrics for each successful compaction segment (13.038811ms)
+✔ chat data ingest records output identity collisions instead of silently dropping them (9.811986ms)
+✔ non-lifecycle output after message_finished does not reopen the persisted session (9.487305ms)
+✔ v2 event mapper preserves assistant and reasoning part identities (2.528564ms)
+✔ chat data ingest keeps progressive tool call argument snapshots (9.148179ms)
+✔ chat data ingest shadows tool output into observations (7.965915ms)
+✔ persisted subagent session fields survive V2 ingest and trace reload (9.892998ms)
+✔ product history reconstructs full routed messages without native transcript data (43.196416ms)
+✔ cache evidence survives durable usage replay without arbitrary diagnostic fields (8.747004ms)
+✔ Pi openai-codex-responses HTTP prefix and native tool history survive restart with 4250 input characters (693.458657ms)
+✔ Pi openai-codex-responses HTTP prefix and native tool history survive restart with 425000 input characters (295.361988ms)
+✔ Pi openai-codex-responses HTTP prefix and native tool history survive restart with 850000 input characters (546.271789ms)
+✔ Pi openai-responses HTTP prefix and native tool history survive restart with 4250 input characters (306.611025ms)
+✔ Pi openai-responses HTTP prefix and native tool history survive restart with 425000 input characters (273.504106ms)
+✔ Pi openai-responses HTTP prefix and native tool history survive restart with 850000 input characters (581.890668ms)
+✔ normal Pi router preserves protected resources and binding when rollout is disabled on restart (289.459411ms)
+✔ opaque resources preserve bytes and stable paths after source deletion and delivery reconstruction (122.508066ms)
+✔ resource publication is concurrent and corruption fails closed (34.882907ms)
+✔ resource symlink escapes, cycles, unsupported entries and traversal are rejected (9.911183ms)
+✔ resource service resumes the durable selection without current source discovery and preserves it on disposal (68.169362ms)
+✔ competing resource captures commit only one binding and restart never invokes capture (41.030153ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9612.659265

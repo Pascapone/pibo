@@ -1,0 +1,11 @@
+{
+  "at": "2026-09-08T21:08:07.333Z",
+  "url": "https://slot-01.pool.pibo2.neuralnexus.me/apps/chat/rooms/room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d/sessions/ps_5ff0cf7e-ef4b-4163-a737-c204b4240f0a?view=terminal",
+  "width": 1365,
+  "height": 900,
+  "scrollWidth": 1365,
+  "warningCount": 1,
+  "metricsCount": 3,
+  "warning": "Possible cache collapse: 150,543 / 154,255 input tokens not read from cache\nPrevious cache: 97.4% · Current: 2.4%\nPrevious inference: pr993-fixture-0:usage:0\nElapsed: 4.0s · Epoch: 1\nRuntime restart: observed (correlation only)\nEvidence: insufficient-evidence. Provider eviction cause remains unknown.",
+  "open": true
+}

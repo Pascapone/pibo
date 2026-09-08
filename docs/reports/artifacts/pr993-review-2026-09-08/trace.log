@@ -1,0 +1,28 @@
+piboSessionId: ps_5ff0cf7e-ef4b-4163-a737-c204b4240f0a
+piSessionId: d08e567e-d839-418d-92e6-8b1658796ffa
+runtimeInstanceId: pi
+runtimeAdapterId: pi
+nativeSessionId: d08e567e-d839-418d-92e6-8b1658796ffa
+runtimeBindingState: unbound
+historySource: product
+title: Untitled Session
+status: done
+statusSource: event-log
+nodeErrors: 0
+
+status	type	title	id	runId	linkedPiboSessionId
+done	agent.turn	Agent Turn	event:message:pr993-fixture-0		
+done	assistant.message	  Agent Message	event:assistant:pr993-fixture-0:assistant:0		
+done	agent.turn	Agent Turn	event:message:pr993-fixture-1		
+done	assistant.message	  Agent Message	event:assistant:pr993-fixture-1:assistant:0		
+cache-warning	pr993-fixture-1:usage:0	Possible cache collapse: 150543 / 154255 input tokens not read from cache. Cause: insufficient-evidence.
+done	agent.turn	Agent Turn	event:message:pr993-fixture-2		
+done	assistant.message	  Agent Message	event:assistant:pr993-fixture-2:assistant:0		
+nodes: 6
+
+checks: ok
+issues: 0
+
+Next:
+  pibo debug trace ps_5ff0cf7e-ef4b-4163-a737-c204b4240f0a show event:message:pr993-fixture-0
+  pibo debug messages ps_5ff0cf7e-ef4b-4163-a737-c204b4240f0a list

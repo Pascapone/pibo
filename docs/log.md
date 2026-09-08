@@ -2,6 +2,8 @@
 
 ## 2026-09-08
 
+- **PR993 review and Pibo2 validation**: Recorded three reproduced and corrected Tool/resource compatibility and durable cache-evidence defects, exact candidate installation and installed-package tests in the [prefix report](/reports/prefix-persistence-implementation-2026-09-08.md). Full acceptance remains withheld for incomplete runtime/lifecycle support and the documented public model-path environment blockers.
+
 - **Native hook-order evidence**: Added the [OMP request-hook ordering check and negative control](/reports/prefix-persistence-implementation-2026-09-08.md). Nine guarded native HTTP scenarios passed; extension reload and native subagent propagation remain explicit activation gaps.
 
 - **OMP ownership and shutdown**: Recorded authenticated startup ordering and the reproduced ignored-SIGTERM shutdown defect in the [prefix report](/reports/prefix-persistence-implementation-2026-09-08.md). Normal cleanup now awaits native exit; 55 focused tests passed. Full protected adapter activation remains open.
