@@ -34,6 +34,7 @@ function createRouterSessionFake(overrides = {}) {
 		removed: 0,
 		releasedScopes: 0,
 		forcedDisposals: [],
+		reminderWarnings: [],
 		disposed: false,
 		enqueueMessage(event) {
 			this.enqueued.push(event);
@@ -47,6 +48,9 @@ function createRouterSessionFake(overrides = {}) {
 		},
 		releaseRunReminderCapabilityScope() {
 			this.releasedScopes += 1;
+		},
+		setRunReminderDeferredWarning(message) {
+			this.reminderWarnings.push(message);
 		},
 		async executeAction(event) {
 			return { type: "execution_result", piboSessionId: event.piboSessionId, eventId: event.id, action: event.action, result: { aborted: true } };
@@ -149,20 +153,40 @@ test("interrupted run-reminder delivery releases the reserved state for a fresh 
 	}
 });
 
-test("enqueue failure releases the run notification for later delivery", async () => {
+test("enqueue failure remains nonfatal, reports once, and retains the notification for later delivery", async () => {
 	const router = createStoredRouter();
+	const outputs = [];
+	const warnings = [];
+	const originalWarn = console.warn;
+	console.warn = (...args) => warnings.push(args);
 	const failedSession = createRouterSessionFake({
-		enqueueMessage() { throw new Error("queue unavailable"); },
+		enqueueMessage() {
+			throw Object.assign(new Error("safe queue diagnostic"), {
+				code: "runtime_capacity_unavailable",
+				dimension: "queue_count",
+				current: { messageBytes: 1024, queueCount: 64, queueBytes: 65536, oldestWaitMs: 12_000 },
+				limit: 64,
+			});
+		},
 	});
 	router.sessions.set("ps_quiescence", failedSession);
+	router.subscribe((event) => outputs.push(event));
 	try {
 		const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_quiescence", toolName: "bash" });
 		router.runRegistry.complete(run.runId, { text: "done" });
 		router.scheduleRunReminder("ps_quiescence", false);
 		await nextTurn();
 		await nextTurn();
+		router.scheduleRunReminder("ps_quiescence", false);
+		await nextTurn();
+		await nextTurn();
 
 		assert.equal(router.runRegistry.hasPendingNotification("ps_quiescence"), true);
+		assert.equal(outputs.some((event) => event.type === "session_error"), false);
+		assert.equal(warnings.length, 1, "repeated failures in one deferral episode emit one operator warning");
+		assert.equal(warnings[0][1].dimension, "queue_count");
+		assert.deepEqual(warnings[0][1].current, { messageBytes: 1024, queueCount: 64, queueBytes: 65536, oldestWaitMs: 12_000 });
+		assert.match(failedSession.reminderWarnings.at(-1), /Run reminder deferred.*queue_count/);
 		const recoveredSession = createRouterSessionFake();
 		router.sessions.set("ps_quiescence", recoveredSession);
 		router.scheduleRunReminder("ps_quiescence", false);
@@ -171,7 +195,9 @@ test("enqueue failure releases the run notification for later delivery", async (
 
 		assert.equal(recoveredSession.enqueued.length, 1);
 		assert.match(recoveredSession.enqueued[0].text, new RegExp(run.runId));
+		assert.equal(recoveredSession.reminderWarnings.at(-1), undefined, "successful delivery clears the live warning");
 	} finally {
+		console.warn = originalWarn;
 		await router.disposeAll();
 	}
 });

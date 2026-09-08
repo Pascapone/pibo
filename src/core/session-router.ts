@@ -16,6 +16,7 @@ import {
 	RUN_REMINDER_MAX_DURATION_MS,
 	RuntimeRoutedSession as RoutedSession,
 	type PiboMessagePreflight,
+	type RuntimeQueueCapacityDimension,
 } from "../agent-runtime/routed-session.js";
 import { runtimeSessionErrorDetails } from "./session-errors.js";
 import type {
@@ -169,6 +170,8 @@ export type PiboSessionRouterOptions = Omit<
 	/** Portable product-history source used for cross-runtime rebind handoff. */
 	portableHistoryProvider?: AgentRuntimePortableHistoryProvider;
 	runtimeCapacity?: RuntimeCapacityOptions;
+	/** Injected only for deterministic in-memory runtime-queue admission tests. */
+	runtimeQueueNow?: () => number;
 };
 
 const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
@@ -330,6 +333,53 @@ function formatRunReminderMessage(notification: PiboRunNotification): string {
 
 function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
 	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
+}
+
+const RUNTIME_QUEUE_CAPACITY_DIMENSIONS = new Set<RuntimeQueueCapacityDimension>([
+	"message_bytes",
+	"queue_count",
+	"queue_bytes",
+	"oldest_wait_age",
+]);
+
+function runReminderAdmissionDiagnostic(error: unknown): {
+	code: string;
+	warning: string;
+	dimension?: RuntimeQueueCapacityDimension;
+	current?: { messageBytes: number; queueCount: number; queueBytes: number; oldestWaitMs: number };
+	limit?: number;
+} {
+	if (!error || typeof error !== "object" || !("code" in error) || error.code !== "runtime_capacity_unavailable") {
+		return {
+			code: "run_reminder_delivery_unavailable",
+			warning: "Run reminder deferred: internal delivery is temporarily unavailable; pending run state is retained.",
+		};
+	}
+	const candidate = error as {
+		dimension?: unknown;
+		current?: Record<string, unknown>;
+		limit?: unknown;
+	};
+	const dimension = typeof candidate.dimension === "string"
+		&& RUNTIME_QUEUE_CAPACITY_DIMENSIONS.has(candidate.dimension as RuntimeQueueCapacityDimension)
+		? candidate.dimension as RuntimeQueueCapacityDimension
+		: undefined;
+	const current = candidate.current
+		&& ["messageBytes", "queueCount", "queueBytes", "oldestWaitMs"].every((key) => (
+			typeof candidate.current?.[key] === "number" && Number.isFinite(candidate.current[key]) && candidate.current[key] >= 0
+		))
+		? candidate.current as { messageBytes: number; queueCount: number; queueBytes: number; oldestWaitMs: number }
+		: undefined;
+	const limit = typeof candidate.limit === "number" && Number.isFinite(candidate.limit) && candidate.limit >= 0
+		? candidate.limit
+		: undefined;
+	return {
+		code: "runtime_capacity_unavailable",
+		warning: `Run reminder deferred: runtime queue${dimension ? ` ${dimension}` : ""} capacity is unavailable; pending run state is retained.`,
+		...(dimension ? { dimension } : {}),
+		...(current ? { current } : {}),
+		...(limit !== undefined ? { limit } : {}),
+	};
 }
 
 function isRunReminderContextPressureError(event: Extract<PiboOutputEvent, { type: "session_error" }>): boolean {
@@ -577,6 +627,7 @@ export class PiboSessionRouter {
 	private readonly deferredRunReminders = new Map<string, number>();
 	private readonly runReminderRecoveries = new Map<string, RunReminderRecoveryState>();
 	private readonly runReminderGenerations = new Map<string, number>();
+	private readonly runReminderAdmissionWarnings = new Map<string, number>();
 	private readonly runCancellationHandlers = new Map<string, () => Promise<void>>();
 	private readonly activeRunExecutions = new Set<string>();
 	private readonly quiescingSessions = new Set<string>();
@@ -1855,6 +1906,7 @@ export class PiboSessionRouter {
 				},
 				statusResources,
 				getToolMetricTokenCalculation: () => loadPiboUserSettings().toolMetrics.tokenCalculation,
+				now: this.options.runtimeQueueNow,
 			},
 		);
 		this.sessions.set(piboSession.id, session);
@@ -2942,6 +2994,7 @@ export class PiboSessionRouter {
 		for (const run of released) this.runRegistry.suppressNotification(delivery.piboSessionId, run.runId);
 		this.clearRunReminderRecovery(delivery);
 		this.deferredRunReminders.delete(delivery.piboSessionId);
+		this.clearRunReminderAdmissionWarning(delivery.piboSessionId, delivery.generation);
 		this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
 		this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
 	}
@@ -3033,6 +3086,7 @@ export class PiboSessionRouter {
 			this.scheduledRunReminders.delete(piboSessionId);
 			this.deferredRunReminders.delete(piboSessionId);
 			this.runReminderRecoveries.delete(piboSessionId);
+			this.clearRunReminderAdmissionWarning(piboSessionId);
 			for (const [eventId, delivery] of this.runReminderDeliveries) {
 				if (delivery.piboSessionId === piboSessionId) this.runReminderDeliveries.delete(eventId);
 			}
@@ -3067,7 +3121,19 @@ export class PiboSessionRouter {
 		const deferredGeneration = this.deferredRunReminders.get(piboSessionId);
 		if (deferredGeneration === expectedGeneration) return;
 		if (deferredGeneration !== undefined) this.deferredRunReminders.delete(piboSessionId);
-		if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified })) return;
+		if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified })) {
+			this.clearRunReminderAdmissionWarning(piboSessionId, expectedGeneration);
+			return;
+		}
+		if (includeAlreadyNotified) {
+			const status = this.sessions.get(piboSessionId)?.getStatus?.();
+			const effectiveEventIds = new Set([status?.activeEventId, ...(status?.queuedEventIds ?? [])].filter((id): id is string => Boolean(id)));
+			if ([...this.runReminderDeliveries.entries()].some(([eventId, delivery]) => (
+				effectiveEventIds.has(eventId)
+				&& delivery.piboSessionId === piboSessionId
+				&& delivery.generation === expectedGeneration
+			))) return;
+		}
 		const previous = this.scheduledRunReminders.get(piboSessionId);
 		if (previous?.generation === expectedGeneration) {
 			this.scheduledRunReminders.set(piboSessionId, {
@@ -3085,7 +3151,32 @@ export class PiboSessionRouter {
 
 	private refreshQueuedRunReminders(piboSessionId: string): void {
 		const removed = this.sessions.get(piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage) ?? 0;
-		if (removed > 0) this.scheduleRunReminder(piboSessionId, true);
+		if (removed > 0) {
+			this.scheduleRunReminder(piboSessionId, true);
+		} else if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified: true })) {
+			this.clearRunReminderAdmissionWarning(piboSessionId);
+		}
+	}
+
+	private clearRunReminderAdmissionWarning(piboSessionId: string, generation?: number): void {
+		if (generation !== undefined && this.runReminderAdmissionWarnings.get(piboSessionId) !== generation) return;
+		this.runReminderAdmissionWarnings.delete(piboSessionId);
+		this.sessions.get(piboSessionId)?.setRunReminderDeferredWarning?.(undefined);
+	}
+
+	private deferRunReminderAdmission(piboSessionId: string, generation: number, error: unknown): void {
+		const diagnostic = runReminderAdmissionDiagnostic(error);
+		this.sessions.get(piboSessionId)?.setRunReminderDeferredWarning?.(diagnostic.warning);
+		if (this.runReminderAdmissionWarnings.get(piboSessionId) === generation) return;
+		this.runReminderAdmissionWarnings.set(piboSessionId, generation);
+		console.warn("[pibo] run reminder deferred", {
+			piboSessionId,
+			generation,
+			code: diagnostic.code,
+			...(diagnostic.dimension ? { dimension: diagnostic.dimension } : {}),
+			...(diagnostic.current ? { current: diagnostic.current } : {}),
+			...(diagnostic.limit !== undefined ? { limit: diagnostic.limit } : {}),
+		});
 	}
 
 	private async deliverRunReminder(piboSessionId: string, expectedGeneration: number): Promise<void> {
@@ -3099,8 +3190,20 @@ export class PiboSessionRouter {
 		try {
 			const session = await this.getOrCreateSession(piboSessionId);
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
-			notification = this.runRegistry.createNotification(piboSessionId, { includeAlreadyNotified: scheduled.includeAlreadyNotified });
-			if (!notification) return;
+			// Release the queued snapshot before reserving its replacement. The
+			// interruption callback restores every unconsumed run to pending state.
+			const replaced = session.removeQueuedMessages?.((event) => {
+				if (!isRunReminderServiceMessage(event) || !event.id) return false;
+				const delivery = this.runReminderDeliveries.get(event.id);
+				return delivery?.piboSessionId === piboSessionId && delivery.generation === expectedGeneration;
+			}) ?? 0;
+			notification = this.runRegistry.createNotification(piboSessionId, {
+				includeAlreadyNotified: scheduled.includeAlreadyNotified || replaced > 0,
+			});
+			if (!notification) {
+				this.clearRunReminderAdmissionWarning(piboSessionId, expectedGeneration);
+				return;
+			}
 			eventId = randomUUID();
 			this.runReminderDeliveries.set(eventId, { piboSessionId, generation: expectedGeneration, notification });
 			session.enqueueMessage({
@@ -3111,17 +3214,14 @@ export class PiboSessionRouter {
 				id: eventId,
 				provenance: runReminderProvenance(notification),
 			});
+			this.clearRunReminderAdmissionWarning(piboSessionId, expectedGeneration);
 		} catch (error) {
 			if (eventId) this.runReminderDeliveries.delete(eventId);
 			if (notification) this.runRegistry.releaseNotification(piboSessionId, notification);
 			if (this.closing || this.quiescingSessions.has(piboSessionId) || expectedGeneration !== this.runReminderGeneration(piboSessionId)) return;
-			const message = error instanceof Error ? error.message : String(error);
-			this.emitOutput({
-				type: "session_error",
-				piboSessionId,
-				error: message,
-				errorDetails: runtimeSessionErrorDetails(message),
-			});
+			// Reminder delivery is internal recovery work. Preserve it for the next
+			// bounded state transition instead of emitting an unscoped fatal error.
+			this.deferRunReminderAdmission(piboSessionId, expectedGeneration, error);
 		}
 	}
 }
