@@ -13,6 +13,10 @@ test("Debug settings persist validated thresholds and expose the Debug route", a
 		import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 		import { DebugSettingsView } from "./src/apps/chat-ui/src/settings/DebugSettingsView.tsx";
 		import {
+			readStoredDebugFeatures,
+			writeStoredDebugFeatures,
+		} from "./src/apps/chat-ui/src/app-storage.ts";
+		import {
 			DEFAULT_TOOL_METRIC_THRESHOLDS,
 			readStoredToolMetricThresholds,
 			writeStoredToolMetricThresholds,
@@ -38,6 +42,11 @@ test("Debug settings persist validated thresholds and expose the Debug route", a
 			return new Response(JSON.stringify({ userSettings: { toolMetrics: { tokenCalculation } } }), { status: 200 });
 		};
 
+		assert.deepEqual(readStoredDebugFeatures(), { toolMetrics: true, modelInferenceMetrics: true });
+		writeStoredDebugFeatures({ toolMetrics: false, modelInferenceMetrics: true });
+		assert.deepEqual(readStoredDebugFeatures(), { toolMetrics: false, modelInferenceMetrics: true });
+		stored.set("pibo.chat.debugFeatures", JSON.stringify({ toolMetrics: true }));
+		assert.deepEqual(readStoredDebugFeatures(), { toolMetrics: true, modelInferenceMetrics: true });
 		assert.deepEqual(readStoredToolMetricThresholds(), DEFAULT_TOOL_METRIC_THRESHOLDS);
 		const custom = {
 			durationMs: { elevated: 500, high: 2_000, critical: 8_000 },
@@ -53,6 +62,7 @@ test("Debug settings persist validated thresholds and expose the Debug route", a
 
 		const thresholdChanges = [];
 		const debugChanges = [];
+		const featureChanges = [];
 		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
 		queryClient.setQueryData(["user-settings"], { toolMetrics: { tokenCalculation } });
 		const flush = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,6 +71,8 @@ test("Debug settings persist validated thresholds and expose the Debug route", a
 			renderer = TestRenderer.create(React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(DebugSettingsView, {
 				debugMode: false,
 				onDebugModeChange: (value) => debugChanges.push(value),
+				debugFeatures: { toolMetrics: true, modelInferenceMetrics: true },
+				onDebugFeaturesChange: (value) => featureChanges.push(value),
 				thresholds: DEFAULT_TOOL_METRIC_THRESHOLDS,
 				onThresholdsChange: (value) => thresholdChanges.push(value),
 			})));
@@ -80,9 +92,15 @@ test("Debug settings persist validated thresholds and expose the Debug route", a
 		await TestRenderer.act(async () => renderer.root.findByProps({ id: "tool-token-character-factor" }).props.onChange({ target: { value: "3.5" } }));
 		await TestRenderer.act(async () => { saveCalculation.props.onClick(); await flush(20); });
 		assert.deepEqual(calculationPatches.at(-1), { method: "characters", factor: 3.5 });
-		const debugToggle = renderer.root.findAllByType("button").find((button) => button.props["aria-pressed"] === false);
-		await TestRenderer.act(async () => debugToggle.props.onClick());
+		const toggleByTitle = (title) => renderer.root.findAllByType("button").find((button) => button.findAllByType("span").some((span) => span.children.includes(title)));
+		await TestRenderer.act(async () => toggleByTitle("Enable Debug mode").props.onClick());
 		assert.deepEqual(debugChanges, [true]);
+		await TestRenderer.act(async () => toggleByTitle("Tool call metrics").props.onClick());
+		await TestRenderer.act(async () => toggleByTitle("Model inference metrics").props.onClick());
+		assert.deepEqual(featureChanges, [
+			{ toolMetrics: false, modelInferenceMetrics: true },
+			{ toolMetrics: true, modelInferenceMetrics: false },
+		]);
 		const setInput = async (id, value) => {
 			const input = renderer.root.findByProps({ id });
 			await TestRenderer.act(async () => input.props.onChange({ target: { value } }));

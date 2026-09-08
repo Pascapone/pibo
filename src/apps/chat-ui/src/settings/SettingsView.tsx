@@ -37,6 +37,7 @@ import {
 	shortcutFromKeyboardEvent,
 	writeStoredWebAnnotationToggleShortcut,
 } from "../web-annotation-storage";
+import type { DebugFeatureSettings } from "../../../../shared/debug-features.js";
 import type { ToolMetricThresholds } from "../tool-metric-settings";
 import { DebugSettingsView } from "./DebugSettingsView";
 import { ProviderSettingsView } from "./ProviderSettingsView";
@@ -50,6 +51,8 @@ export function SettingsView({
 	setExpandThinking,
 	debugMode,
 	onDebugModeChange,
+	debugFeatures,
+	onDebugFeaturesChange,
 	toolMetricThresholds,
 	onToolMetricThresholdsChange,
 	modelDefaults,
@@ -71,6 +74,8 @@ export function SettingsView({
 	setExpandThinking: (value: boolean) => void;
 	debugMode: boolean;
 	onDebugModeChange: (value: boolean) => void;
+	debugFeatures: DebugFeatureSettings;
+	onDebugFeaturesChange: (value: DebugFeatureSettings) => void;
 	toolMetricThresholds: ToolMetricThresholds;
 	onToolMetricThresholdsChange: (value: ToolMetricThresholds) => void;
 	modelDefaults?: ModelDefaults;
@@ -119,6 +124,8 @@ export function SettingsView({
 				<DebugSettingsView
 					debugMode={debugMode}
 					onDebugModeChange={onDebugModeChange}
+					debugFeatures={debugFeatures}
+					onDebugFeaturesChange={onDebugFeaturesChange}
 					thresholds={toolMetricThresholds}
 					onThresholdsChange={onToolMetricThresholdsChange}
 				/>

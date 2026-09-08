@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DesignerPanel, InlineCheckboxToggle } from "../agents/designer-ui";
+import type { DebugFeatureSettings } from "../../../../shared/debug-features.js";
 import { getUserSettings, patchUserSettings } from "../api-settings";
 import {
 	DEFAULT_TOOL_METRIC_THRESHOLDS,
@@ -28,11 +29,15 @@ type ThresholdDraft = {
 export function DebugSettingsView({
 	debugMode,
 	onDebugModeChange,
+	debugFeatures,
+	onDebugFeaturesChange,
 	thresholds,
 	onThresholdsChange,
 }: {
 	debugMode: boolean;
 	onDebugModeChange: (value: boolean) => void;
+	debugFeatures: DebugFeatureSettings;
+	onDebugFeaturesChange: (value: DebugFeatureSettings) => void;
 	thresholds: ToolMetricThresholds;
 	onThresholdsChange: (value: ToolMetricThresholds) => void;
 }) {
@@ -68,18 +73,36 @@ export function DebugSettingsView({
 	};
 
 	return (
-		<DesignerPanel title="Tool diagnostics">
+		<DesignerPanel title="Debug configuration">
 			<div className="max-w-3xl">
 				<InlineCheckboxToggle
 					checked={debugMode}
-					title="Show Tool Debug metrics"
+					title="Enable Debug mode"
 					onToggle={() => onDebugModeChange(!debugMode)}
 				/>
 				<p className="mt-3 text-xs leading-relaxed text-slate-400">
-					Thresholds control only the signal-rail colors. Payload counts are diagnostics rather than provider usage or billing;
-					the signal rail records the selected calculation method with every completed Tool call.
+					The header Debug toggle controls whether enabled diagnostics appear. Feature selections remain saved when Debug mode is off.
 				</p>
-				<TokenCalculationSettings />
+				<div className="mt-4 grid gap-2 border border-slate-800 bg-[#111820] p-3 sm:grid-cols-2">
+					<InlineCheckboxToggle
+						checked={debugFeatures.toolMetrics}
+						title="Tool call metrics"
+						onToggle={() => onDebugFeaturesChange({ ...debugFeatures, toolMetrics: !debugFeatures.toolMetrics })}
+					/>
+					<InlineCheckboxToggle
+						checked={debugFeatures.modelInferenceMetrics}
+						title="Model inference metrics"
+						onToggle={() => onDebugFeaturesChange({ ...debugFeatures, modelInferenceMetrics: !debugFeatures.modelInferenceMetrics })}
+					/>
+				</div>
+				<p className="mt-3 text-xs leading-relaxed text-slate-400">
+					Model inference metrics use provider-reported usage. Tool payload counts are diagnostics rather than provider usage or billing;
+					the Tool signal rail records the selected calculation method with every completed Tool call.
+				</p>
+				<div className="mt-5 border-t border-slate-800 pt-5">
+					<h2 className="text-xs font-semibold uppercase tracking-wide text-slate-200">Tool metric configuration</h2>
+					<TokenCalculationSettings />
+				</div>
 				<div className="mt-5 grid gap-4">
 					<ThresholdRow
 						legend="Execution time"

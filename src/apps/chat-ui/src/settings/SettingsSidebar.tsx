@@ -43,7 +43,7 @@ export function SettingsSidebar({
 					<Bug size={13} className="text-[#11a4d4]" />
 					<div className="min-w-0">
 						<span className="block truncate text-sm text-slate-200">Debug</span>
-						<span className="block truncate font-mono text-[10px] text-slate-500">tool metric signals</span>
+						<span className="block truncate font-mono text-[10px] text-slate-500">tool + model signals</span>
 					</div>
 				</button>
 				<button

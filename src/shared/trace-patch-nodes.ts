@@ -76,6 +76,7 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.toolMetrics?.inputTokens === right.toolMetrics?.inputTokens &&
 		left.toolMetrics?.outputTokens === right.toolMetrics?.outputTokens &&
 		left.toolMetrics?.tokenBasis === right.toolMetrics?.tokenBasis &&
+		modelInferenceRecordsEqual(left.modelInferences, right.modelInferences) &&
 		left.summary === right.summary &&
 		left.input === right.input &&
 		left.output === right.output &&
@@ -85,6 +86,23 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.stableKey === right.stableKey &&
 		traceOrderKeyEqual(left.orderKey, right.orderKey)
 	);
+}
+
+function modelInferenceRecordsEqual(left: PiboTraceNode["modelInferences"], right: PiboTraceNode["modelInferences"]): boolean {
+	if (left === right) return true;
+	if (!left || !right || left.length !== right.length) return false;
+	return left.every((item, index) => {
+		const other = right[index];
+		return item.id === other?.id
+			&& item.completedAt === other.completedAt
+			&& item.metrics.inputTokens === other.metrics.inputTokens
+			&& item.metrics.outputTokens === other.metrics.outputTokens
+			&& item.metrics.cacheReadTokens === other.metrics.cacheReadTokens
+			&& item.metrics.cacheWriteTokens === other.metrics.cacheWriteTokens
+			&& item.metrics.reasoningTokens === other.metrics.reasoningTokens
+			&& item.metrics.totalTokens === other.metrics.totalTokens
+			&& item.metrics.costUsd === other.metrics.costUsd;
+	});
 }
 
 function traceOrderKeyEqual(left: PiboTraceNode["orderKey"], right: PiboTraceNode["orderKey"]): boolean {

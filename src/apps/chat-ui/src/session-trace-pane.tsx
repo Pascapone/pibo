@@ -21,7 +21,7 @@ import type {
   ThinkingLevel,
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
-import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
+import type { ChatSessionViewId, ChatSessionViewProps, ToolDisplayMode } from "./session-views/types";
 import { getMessageReceipts, getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
@@ -135,6 +135,7 @@ export function SessionTracePane({
   showRawEvents,
   showThinking,
   debugMode,
+  debugFeatures,
   toolMetricThresholds = DEFAULT_TOOL_METRIC_THRESHOLDS,
   expandThinking,
   toolDisplayMode,
@@ -190,6 +191,7 @@ export function SessionTracePane({
   showRawEvents: boolean;
   showThinking: boolean;
   debugMode: boolean;
+  debugFeatures?: ChatSessionViewProps["debugFeatures"];
   toolMetricThresholds?: ToolMetricThresholds;
   expandThinking: boolean;
   toolDisplayMode: ToolDisplayMode;
@@ -662,6 +664,7 @@ export function SessionTracePane({
     isLoading: loadingTrace,
     showThinking,
     debugMode,
+    debugFeatures,
     toolMetricThresholds,
     expandThinking,
     toolDisplayMode: effectiveToolDisplayMode,
