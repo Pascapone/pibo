@@ -6,9 +6,10 @@ type CommandRow={id:string;request_key:string;session_id:string;room_id:string;e
 export type MessageQueueInspection={
 	generatedAt:string;
 	sessionId?:string;
-	commands:Array<{id:string;fifo:number;sessionId:string;roomId:string;eventId:string;streamId:number;delivery:string;state:MessageCommandState;owner?:string;lease:{until:number;fresh:boolean};createdAt:number;updatedAt:number;error?:string;blockedBy?:string;blocks:string[];terminalOutcome:"completed"|"failed"|"ambiguous";terminalEvidence:ReturnType<MessageCommandStore["terminalEvidence"]>}>;
+	commands:Array<{id:string;context:"active"|"recent_terminal";sessionId:string;roomId:string;eventId:string;streamId:number;delivery:string;state:MessageCommandState;owner?:string;lease:{until:number;fresh:boolean};createdAt:number;updatedAt:number;error?:string;previousCommandId?:string;nextCommandId?:string;blockedBy?:string;blocks:string[];blocksTruncated:boolean;terminalOutcome:"completed"|"failed"|"ambiguous";terminalEvidence:ReturnType<MessageCommandStore["terminalEvidence"]>}>;
 	health:ReturnType<MessageCommandStore["health"]>;
 	truncated:boolean;
+	pagination:{active:{returned:number;truncated:boolean;afterStreamId:number;nextAfterStreamId?:number};terminalContext:{returned:number;truncated:boolean;beforeStreamId?:number;nextBeforeStreamId?:number}};
 	nextCommands:string[];
 };
 export type ReconcileDecision="mark-failed"|"confirm-completed";
@@ -25,23 +26,35 @@ export type ReconcileOptions={
 	beforeAudit?:()=>void;
 };
 
-function commandRows(store:PiboDataStore,sessionId?:string,limit=200):CommandRow[]{
-	const bounded=Math.max(1,Math.min(500,limit));
-	return (sessionId
-		?store.db.prepare("SELECT id,request_key,session_id,room_id,event_id,stream_id,delivery,state,owner,token,lease_until,created_at,updated_at,error FROM message_commands WHERE session_id=? ORDER BY stream_id LIMIT ?").all(sessionId,bounded)
-		:store.db.prepare("SELECT id,request_key,session_id,room_id,event_id,stream_id,delivery,state,owner,token,lease_until,created_at,updated_at,error FROM message_commands WHERE state IN ('accepted','waiting_slot','initializing','session_queue','running','interrupted') ORDER BY created_at,id LIMIT ?").all(bounded)) as CommandRow[];
-}
+const commandColumns="id,request_key,session_id,room_id,event_id,stream_id,delivery,state,owner,token,lease_until,created_at,updated_at,error";
 
-export function inspectMessageQueue(store:PiboDataStore,input:{sessionId?:string;limit?:number;now?:number}={}):MessageQueueInspection{
-	const now=input.now??Date.now(),limit=Math.max(1,Math.min(500,input.limit??200));
-	const rows=commandRows(store,input.sessionId,limit+1),selected=rows.slice(0,limit),commands=new MessageCommandStore(store);
-	const bySession=new Map<string,CommandRow[]>();for(const row of selected){const list=bySession.get(row.session_id)??[];list.push(row);bySession.set(row.session_id,list);}
-	return {generatedAt:new Date(now).toISOString(),sessionId:input.sessionId,commands:selected.map((row,index)=>{
-		const siblings=bySession.get(row.session_id)??[];
-		const blocker=siblings.find(candidate=>candidate.state==="interrupted"&&candidate.stream_id<row.stream_id);
-		const blocks=siblings.filter(candidate=>row.state==="interrupted"&&ACTIVE_STATES.has(candidate.state)&&candidate.stream_id>row.stream_id).map(candidate=>candidate.id);
-		return {id:row.id,fifo:index+1,sessionId:row.session_id,roomId:row.room_id,eventId:row.event_id,streamId:row.stream_id,delivery:row.delivery,state:row.state,...(row.owner?{owner:row.owner}:{}),lease:{until:row.lease_until,fresh:Boolean(row.owner&&row.lease_until>now)},createdAt:row.created_at,updatedAt:row.updated_at,...(row.error?{error:row.error}:{}),...(blocker?{blockedBy:blocker.id}:{}),blocks,terminalOutcome:commands.terminalOutcome(row.session_id,row.event_id)??"ambiguous",terminalEvidence:commands.terminalEvidence(row.session_id,row.event_id)};
-	}),health:commands.health(now),truncated:rows.length>limit,nextCommands:input.sessionId?[`pibo debug message-queue reconcile <command-id> --mark-failed --dry-run`,`pibo debug message-queue reconcile <command-id> --mark-failed --apply`]:["pibo debug message-queue inspect --session <pibo-session-id>"]};
+export function inspectMessageQueue(store:PiboDataStore,input:{sessionId?:string;limit?:number;now?:number;afterStreamId?:number;beforeTerminalStreamId?:number}={}):MessageQueueInspection{
+	const now=input.now??Date.now(),activeLimit=Math.max(1,Math.min(500,input.limit??200)),terminalLimit=Math.min(20,activeLimit),after=Math.max(0,Math.trunc(input.afterStreamId??0));
+	const activeRows=(input.sessionId
+		?store.db.prepare(`SELECT ${commandColumns} FROM message_commands WHERE session_id=? AND state IN ('accepted','waiting_slot','initializing','session_queue','running','interrupted') AND stream_id>? ORDER BY stream_id LIMIT ?`).all(input.sessionId,after,activeLimit+1)
+		:store.db.prepare(`SELECT ${commandColumns} FROM message_commands WHERE state IN ('accepted','waiting_slot','initializing','session_queue','running','interrupted') AND stream_id>? ORDER BY stream_id LIMIT ?`).all(after,activeLimit+1)) as CommandRow[];
+	const terminalBefore=input.beforeTerminalStreamId;
+	const terminalRows=(input.sessionId
+		?terminalBefore===undefined
+			?store.db.prepare(`SELECT ${commandColumns} FROM message_commands WHERE session_id=? AND state IN ('completed','failed') ORDER BY stream_id DESC LIMIT ?`).all(input.sessionId,terminalLimit+1)
+			:store.db.prepare(`SELECT ${commandColumns} FROM message_commands WHERE session_id=? AND state IN ('completed','failed') AND stream_id<? ORDER BY stream_id DESC LIMIT ?`).all(input.sessionId,terminalBefore,terminalLimit+1)
+		:terminalBefore===undefined
+			?store.db.prepare(`SELECT ${commandColumns} FROM message_commands WHERE state IN ('completed','failed') ORDER BY stream_id DESC LIMIT ?`).all(terminalLimit+1)
+			:store.db.prepare(`SELECT ${commandColumns} FROM message_commands WHERE state IN ('completed','failed') AND stream_id<? ORDER BY stream_id DESC LIMIT ?`).all(terminalBefore,terminalLimit+1)) as CommandRow[];
+	const activeTruncated=activeRows.length>activeLimit,terminalTruncated=terminalRows.length>terminalLimit,active=activeRows.slice(0,activeLimit),terminal=terminalRows.slice(0,terminalLimit);
+	const contextById=new Map<string,"active"|"recent_terminal">([...terminal.map(row=>[row.id,"recent_terminal"] as const),...active.map(row=>[row.id,"active"] as const)]);
+	const selected=[...new Map([...terminal,...active].map(row=>[row.id,row])).values()].sort((a,b)=>a.stream_id-b.stream_id),commands=new MessageCommandStore(store);
+	const projected=selected.map(row=>{
+		const previous=store.db.prepare("SELECT id FROM message_commands WHERE session_id=? AND stream_id<? ORDER BY stream_id DESC LIMIT 1").get(row.session_id,row.stream_id) as {id:string}|undefined;
+		const next=store.db.prepare("SELECT id FROM message_commands WHERE session_id=? AND stream_id>? ORDER BY stream_id LIMIT 1").get(row.session_id,row.stream_id) as {id:string}|undefined;
+		const blocker=ACTIVE_STATES.has(row.state)||row.state==="interrupted"?store.db.prepare(`SELECT id FROM message_commands WHERE session_id=? AND stream_id<? AND state IN ('accepted','waiting_slot','initializing','session_queue','running','interrupted') AND (?='queue' OR delivery='steer') ORDER BY stream_id LIMIT 1`).get(row.session_id,row.stream_id,row.delivery) as {id:string}|undefined:undefined;
+		const blockingRows=row.state==="interrupted"?store.db.prepare(`SELECT id FROM message_commands WHERE session_id=? AND stream_id>? AND state IN ('accepted','waiting_slot','initializing','session_queue','running') AND (delivery='queue' OR ?='steer') ORDER BY stream_id LIMIT 201`).all(row.session_id,row.stream_id,row.delivery) as Array<{id:string}>:[];
+		return {id:row.id,context:contextById.get(row.id)??"recent_terminal",sessionId:row.session_id,roomId:row.room_id,eventId:row.event_id,streamId:row.stream_id,delivery:row.delivery,state:row.state,...(row.owner?{owner:row.owner}:{}),lease:{until:row.lease_until,fresh:Boolean(row.owner&&row.lease_until>now)},createdAt:row.created_at,updatedAt:row.updated_at,...(row.error?{error:row.error}:{}),...(previous?{previousCommandId:previous.id}:{}),...(next?{nextCommandId:next.id}:{}),...(blocker&&blocker.id!==row.id?{blockedBy:blocker.id}:{}),blocks:blockingRows.slice(0,200).map(item=>item.id),blocksTruncated:blockingRows.length>200,terminalOutcome:commands.terminalOutcome(row.session_id,row.event_id)??("ambiguous" as const),terminalEvidence:commands.terminalEvidence(row.session_id,row.event_id)};
+	});
+	const nextCommands=input.sessionId?[`pibo debug message-queue reconcile <command-id> --mark-failed --dry-run`,`pibo debug message-queue reconcile <command-id> --mark-failed --apply`]:["pibo debug message-queue inspect --session <pibo-session-id>"];
+	if(activeTruncated&&active.length)nextCommands.push(`pibo debug message-queue inspect --session ${input.sessionId??"<pibo-session-id>"} --after-stream ${active.at(-1)!.stream_id}`);
+	if(terminalTruncated&&terminal.length)nextCommands.push(`pibo debug message-queue inspect --session ${input.sessionId??"<pibo-session-id>"} --before-terminal-stream ${Math.min(...terminal.map(row=>row.stream_id))}`);
+	return {generatedAt:new Date(now).toISOString(),sessionId:input.sessionId,commands:projected,health:commands.health(now),truncated:activeTruncated||terminalTruncated,pagination:{active:{returned:active.length,truncated:activeTruncated,afterStreamId:after,...(activeTruncated&&active.length?{nextAfterStreamId:active.at(-1)!.stream_id}:{})},terminalContext:{returned:terminal.length,truncated:terminalTruncated,...(terminalBefore!==undefined?{beforeStreamId:terminalBefore}:{}),...(terminalTruncated&&terminal.length?{nextBeforeStreamId:Math.min(...terminal.map(row=>row.stream_id))}:{})}},nextCommands};
 }
 
 function readCommand(store:PiboDataStore,id:string):CommandRow|undefined{
@@ -69,15 +82,17 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 		const evidence=commands.terminalEvidence(row.session_id,row.event_id),authoritativeCompleted=commands.terminalOutcome(row.session_id,row.event_id)==="completed";
 		if(options.decision==="confirm-completed"&&!authoritativeCompleted&&options.confirmWithoutEvidence!==row.id)throw new Error(`No unambiguous completed terminal evidence exists. To explicitly confirm side effects, add --confirm-without-evidence ${row.id}.`);
 		const candidates=successorRows(store,row),selected=options.cancelSuccessors?candidates:options.cancelSuccessorIds?.length?options.cancelSuccessorIds.map(id=>{const found=candidates.find(item=>item.id===id);if(!found)throw new Error(`Successor ${id} is not an unstarted FIFO successor of ${row.id}.`);return found;}):[];
+		const liveSuccessor=selected.find(item=>Boolean(item.owner&&item.lease_until>now));
+		if(liveSuccessor)throw Object.assign(new Error(`Selected successor ${liveSuccessor.id} still has a live owner lease; the entire reconciliation was refused.`),{code:"command_successor_live_lease",blockingCommandId:liveSuccessor.id,leaseUntil:liveSuccessor.lease_until});
 		const resultError=desired==="failed"?"Operator marked interrupted durable message failed; command was not replayed.":null;
 		const plan={applied:false,alreadyApplied:false,decision:options.decision,command:projection(row,desired,resultError),successors:selected.map(item=>projection(item,"failed","Cancelled during explicit predecessor reconciliation; command was never dispatched.")),evidence,healthBefore:commands.health(now),nextAction:`pibo debug message-queue inspect --session ${row.session_id}`};
 		if(!options.apply)return plan;
 		const changed=Number(store.db.prepare("UPDATE message_commands SET state=?,error=?,owner=NULL,lease_until=0,updated_at=? WHERE id=? AND state='interrupted' AND token=? AND updated_at=?").run(desired,resultError,now,row.id,row.token,row.updated_at).changes);
 		if(changed!==1)throw Object.assign(new Error("Command changed during reconciliation; transaction rolled back."),{code:"command_snapshot_changed"});
 		for(const item of selected){const successorChanged=Number(store.db.prepare("UPDATE message_commands SET state='failed',error='Cancelled during explicit predecessor reconciliation; command was never dispatched.',owner=NULL,lease_until=0,updated_at=? WHERE id=? AND state IN ('accepted','waiting_slot') AND token=? AND updated_at=?").run(now,item.id,item.token,item.updated_at).changes);if(successorChanged!==1)throw Object.assign(new Error(`Successor ${item.id} changed during reconciliation; transaction rolled back.`),{code:"command_snapshot_changed"});}
-		const iso=new Date(now).toISOString(),sessionStatus=desired==="failed"?"error":"idle";
-		store.db.prepare("UPDATE sessions SET status=?,updated_at=? WHERE id=?").run(sessionStatus,iso,row.session_id);
-		store.db.prepare("UPDATE session_navigation SET status=?,updated_at=? WHERE session_id=?").run(sessionStatus,iso,row.session_id);
+		const iso=new Date(now).toISOString();
+		// Session/navigation status is owned by current runtime and terminal product output.
+		// Reconciling a historical receipt must not overwrite a newer turn or live steer.
 		store.db.prepare("UPDATE telemetry_turns SET status=?,current_phase='reconciled',completed_at=COALESCE(completed_at,?),last_progress_at=?,updated_at=? WHERE pibo_session_id=? AND event_id=? AND status NOT IN ('completed','failed')").run(desired,iso,iso,iso,row.session_id,row.event_id);
 		options.beforeAudit?.();
 		const actor=(options.actor??process.env.USER??"operator").replace(/[^A-Za-z0-9_.@-]/g,"_").slice(0,100)||"operator";
@@ -89,7 +104,7 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 
 export function formatMessageQueueInspection(result:MessageQueueInspection):string{
 	const lines=["Durable message queue",`  status: ${result.health.status}`,`  interrupted: ${result.health.interruptedPredecessors}`,`  FIFO blocked: ${result.health.blockedSuccessors}`,`  expired leases: ${result.health.expiredOwnedLeases}`];
-	for(const row of result.commands){lines.push(`  ${row.fifo}. ${row.id} state=${row.state} delivery=${row.delivery} session=${row.sessionId} event=${row.eventId} owner=${row.owner??"-"} lease=${row.lease.fresh?"fresh":"stale/none"}${row.blockedBy?` blockedBy=${row.blockedBy}`:""}`);if(row.terminalEvidence.length)lines.push(`     evidence: outcome=${row.terminalOutcome??"ambiguous"} ${row.terminalEvidence.map(item=>`${item.type}@${item.streamId}`).join(", ")}`);if(row.blocks.length)lines.push(`     blocks: ${row.blocks.join(", ")}`);}
+	for(const row of result.commands){lines.push(`  stream=${row.streamId} ${row.id} context=${row.context} state=${row.state} delivery=${row.delivery} session=${row.sessionId} event=${row.eventId} owner=${row.owner??"-"} lease=${row.lease.fresh?"fresh":"stale/none"}${row.previousCommandId?` previous=${row.previousCommandId}`:""}${row.nextCommandId?` next=${row.nextCommandId}`:""}${row.blockedBy?` blockedBy=${row.blockedBy}`:""}`);if(row.terminalEvidence.length)lines.push(`     evidence: outcome=${row.terminalOutcome??"ambiguous"} ${row.terminalEvidence.map(item=>`${item.type}@${item.streamId}`).join(", ")}`);if(row.blocks.length)lines.push(`     blocks: ${row.blocks.join(", ")}`);}
 	lines.push("Next:",...result.nextCommands.map(command=>`  ${command}`));return lines.join("\n");
 }
 

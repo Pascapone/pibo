@@ -146,7 +146,7 @@ async function runDebugMessageQueue(args:string[]):Promise<void>{
 		console.log(`pibo debug message-queue - inspect and conservatively reconcile durable messages
 
 Commands:
-  inspect --session <ps_...> [--json]
+  inspect --session <ps_...> [--after-stream <n>] [--before-terminal-stream <n>] [--json]
   reconcile <cmd_...> --mark-failed [--cancel-successors] [--dry-run|--apply] [--json]
   reconcile <cmd_...> --confirm-completed [--confirm-without-evidence <cmd_...>] [--dry-run|--apply] [--json]
 
@@ -167,7 +167,8 @@ Next:
 		const module=await import("./message-queue.js");
 		if(command==="inspect"){
 			const sessionId=value("--session");if(!sessionId)throw new Error("message-queue inspect requires --session <pibo-session-id>");
-			const result=module.inspectMessageQueue(store,{sessionId});if(json)console.log(JSON.stringify(result,null,2));else console.log(module.formatMessageQueueInspection(result));return;
+			const parseStream=(flag:string)=>{const raw=value(flag);if(raw===undefined)return undefined;const parsed=Number(raw);if(!Number.isSafeInteger(parsed)||parsed<1)throw new Error(`${flag} requires a positive integer stream id`);return parsed;};
+			const result=module.inspectMessageQueue(store,{sessionId,afterStreamId:parseStream("--after-stream"),beforeTerminalStreamId:parseStream("--before-terminal-stream")});if(json)console.log(JSON.stringify(result,null,2));else console.log(module.formatMessageQueueInspection(result));return;
 		}
 		if(command==="reconcile"){
 			const commandId=args[1];if(!commandId||commandId.startsWith("--"))throw new Error("message-queue reconcile requires an exact <cmd_...> ID");
