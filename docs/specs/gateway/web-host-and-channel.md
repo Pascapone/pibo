@@ -11,7 +11,7 @@ generated:
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "7e4486235e22b52bf166b41a2ecdbeaeb84cd767"
+  commit: "a3ba8acd08baf9999676a0151119100f2938d0cd"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -160,6 +160,12 @@ traceability:
           name: "sendWebResponse contains a body failure after writeHead without writing a second header block"
         - path: "test/web-http.test.mjs"
           name: "sendWebResponse refuses every terminal or already-started response state"
+        - path: "test/web-http.test.mjs"
+          name: "disconnect during a pending compressed-body read cancels and unlocks the reader before headers"
+        - path: "test/web-http.test.mjs"
+          name: "compressed-body buffering rechecks response state before writeHead"
+        - path: "test/web-http.test.mjs"
+          name: "regular streaming cancels and unlocks its reader when the response ends mid-chunk"
         - path: "test/web-channel-failure-containment.test.mjs"
           name: "partially-written node handlers stay request-scoped"
         - path: "test/web-channel-failure-containment.test.mjs"
@@ -296,7 +302,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `7e4486235e22b52bf166b41a2ecdbeaeb84cd767`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
+Source symbols and named tests are bound to commit `a3ba8acd08baf9999676a0151119100f2938d0cd`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
 
 Package verification commands:
 
