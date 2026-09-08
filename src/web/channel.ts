@@ -246,6 +246,72 @@ function isEventStreamResponse(response: Response): boolean {
 	return response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream") === true;
 }
 
+function responseCanStart(response: ServerResponse): boolean {
+	return !response.destroyed && !response.writableEnded && !response.writableFinished && !response.headersSent;
+}
+
+function responseState(response: ServerResponse): string {
+	return [
+		`destroyed=${response.destroyed}`,
+		`writableEnded=${response.writableEnded}`,
+		`writableFinished=${response.writableFinished}`,
+		`headersSent=${response.headersSent}`,
+	].join(",");
+}
+
+function requestPath(request: IncomingMessage): string {
+	return (request.url ?? "/").split(/[?#]/, 1)[0]!.slice(0, 256).replace(/[\r\n]/g, "_");
+}
+
+function errorIdentity(error: unknown): string {
+	try {
+		if (!(error instanceof Error)) return typeof error;
+		const rawName = typeof error.name === "string" ? error.name : "Error";
+		const name = rawName.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "Error";
+		const code = "code" in error && typeof error.code === "string" ? error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) : undefined;
+		return code ? `${name}:${code}` : name;
+	} catch {
+		return "Error";
+	}
+}
+
+function logHttpBoundaryFailure(
+	phase: "request" | "request-terminal" | "upgrade" | "upgrade-terminal" | "error-response",
+	request: IncomingMessage,
+	error: unknown,
+	response?: ServerResponse,
+): void {
+	try {
+		const method = (request.method ?? "UNKNOWN").replace(/[^A-Z]/gi, "").slice(0, 16) || "UNKNOWN";
+		const state = response ? ` response={${responseState(response)}}` : "";
+		console.error(`[web-host] contained ${phase} failure method=${method} path=${requestPath(request)} error=${errorIdentity(error)}${state}`);
+	} catch {
+		// Diagnostics are best-effort and must never reopen the request rejection path.
+	}
+}
+
+function terminateResponse(response: ServerResponse, error?: unknown): void {
+	if (response.destroyed || response.writableEnded || response.writableFinished) return;
+	try {
+		response.destroy(error instanceof Error ? error : undefined);
+	} catch {
+		// A broken response implementation must not escape the request boundary.
+	}
+}
+
+function endUpgradeSocket(socket: Duplex, statusLine?: string): void {
+	if (socket.destroyed) return;
+	try {
+		socket.end(statusLine);
+	} catch {
+		try {
+			socket.destroy();
+		} catch {
+			// A broken socket implementation must not escape the upgrade boundary.
+		}
+	}
+}
+
 async function waitForServerClose(closePromise: Promise<void>, timeoutMs: number): Promise<boolean> {
 	return await new Promise<boolean>((resolve, reject) => {
 		let settled = false;
@@ -400,11 +466,19 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			await sendResponse(nodeResponse, notFound());
 		} catch (error) {
 			const status = error instanceof PiboAuthError || error instanceof PiboWebHttpError ? error.statusCode : 500;
-			if (!nodeResponse.destroyed) {
-				await sendResponse(
-					nodeResponse,
-					responseJson({ error: error instanceof Error ? error.message : String(error) }, { status }),
-				);
+			logHttpBoundaryFailure("request", nodeRequest, error, nodeResponse);
+			if (responseCanStart(nodeResponse)) {
+				try {
+					await sendResponse(
+						nodeResponse,
+						responseJson({ error: error instanceof Error ? error.message : String(error) }, { status }),
+					);
+				} catch (responseError) {
+					logHttpBoundaryFailure("error-response", nodeRequest, responseError, nodeResponse);
+					terminateResponse(nodeResponse, responseError);
+				}
+			} else {
+				terminateResponse(nodeResponse, error);
 			}
 		} finally {
 			nodeRequest.removeListener("aborted", abortRequest);
@@ -429,10 +503,12 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 			await app.handleUpgrade(nodeRequest, socket, head, createAppContext(ctx), requestURL);
 		} catch (error) {
-			if (!socket.destroyed) {
-				const unauthorized = error instanceof PiboAuthError || error instanceof PiboWebHttpError;
-				socket.end(`HTTP/1.1 ${unauthorized ? 401 : 502} ${unauthorized ? "Unauthorized" : "Bad Gateway"}\r\nConnection: close\r\n\r\n`);
-			}
+			logHttpBoundaryFailure("upgrade", nodeRequest, error);
+			const unauthorized = error instanceof PiboAuthError || error instanceof PiboWebHttpError;
+			endUpgradeSocket(
+				socket,
+				`HTTP/1.1 ${unauthorized ? 401 : 502} ${unauthorized ? "Unauthorized" : "Bad Gateway"}\r\nConnection: close\r\n\r\n`,
+			);
 		}
 	};
 
@@ -448,10 +524,24 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			context = channelContext;
 			for (const app of channelContext.getWebApps()) await app.initialize?.(createAppContext(channelContext));
 			server = createServer((request, response) => {
-				void handleRequest(request, response);
+				void handleRequest(request, response).catch((error: unknown) => {
+					try {
+						logHttpBoundaryFailure("request-terminal", request, error, response);
+						terminateResponse(response, error);
+					} catch {
+						// The terminal request boundary itself is intentionally nonthrowing.
+					}
+				});
 			});
 			server.on("upgrade", (request, socket, head) => {
-				void handleUpgrade(request, socket, head);
+				void handleUpgrade(request, socket, head).catch((error: unknown) => {
+					try {
+						logHttpBoundaryFailure("upgrade-terminal", request, error);
+						endUpgradeSocket(socket);
+					} catch {
+						// The terminal upgrade boundary itself is intentionally nonthrowing.
+					}
+				});
 			});
 			server.on("connection", (socket) => {
 				sockets.add(socket);

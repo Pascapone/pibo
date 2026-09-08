@@ -50,6 +50,7 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			return;
 		}
 		if(args[0]==="backup"){const {runStorageBackupCli}=await import("./storage-backup.js");await runStorageBackupCli(args.slice(1));return;}
+		if(args[0]==="storage"){const {runStorageMaintenanceCli}=await import("./storage-maintenance.js");await runStorageMaintenanceCli(args.slice(1));return;}
 		if (args[0] === "db") {
 			await runDebugDb(args.slice(1));
 			return;
@@ -1300,6 +1301,7 @@ function printDebugDiscovery(): void {
 
 Commands:
   backup   Create, verify or restore an explicit SQLite and payload snapshot
+  storage  Bounded SQLite status, verification, checkpoint, and retention
   db       Inspect and query local SQLite stores
   session  Inspect one Pibo Session by id or Chat URL
   summary  Show compact session diagnosis and drill-down commands
@@ -1322,6 +1324,7 @@ Commands:
   pty      Run and inspect interactive CLI/TUI commands under a PTY
 
 Next:
+  pibo debug storage status --json
   pibo debug db
   pibo debug summary <pibo-session-id>
   pibo debug final <pibo-session-id>
