@@ -2,7 +2,7 @@
 
 ## 2026-09-08
 
-- **Prefix persistence checkpoint**: Recorded the [partial implementation and local tests](/reports/prefix-persistence-implementation-2026-09-08.md), including Pi request preservation and shared cache-collapse diagnostics. Complete native restore, lifecycle, resource, performance and Pibo2 gates remain open; no all-runtime guarantee is claimed.
+- **Prefix persistence checkpoint**: Recorded the [partial implementation and local tests](/reports/prefix-persistence-implementation-2026-09-08.md), including Pi request preservation, shared cache-collapse diagnostics and actual Codex/OMP HTTP controls that distinguish stable native history from changed global instructions or Tools. Complete native restore, lifecycle, resource, performance and Pibo2 gates remain open; no all-runtime guarantee is claimed.
 
 - **Model-inference Debug diagnostics**: Added independently persisted Tool-call and model-inference diagnostic selections under the global Debug gate. Normalized provider usage now remains attached to its related trace owner and renders `IN`, `CACHED`, `UNCACHED`, and `OUT` in the Compact Terminal without adding pagination rows. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006) and [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rails). The deterministic headful fixture validates local projection and rendering, not a live provider call or production deployment.
 
