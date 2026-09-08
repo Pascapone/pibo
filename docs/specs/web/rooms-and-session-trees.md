@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:32:00Z"
+  at: "2026-09-08T14:55:00Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Rooms and normal Pibo Sessions implementation"
@@ -19,7 +19,7 @@ implementation:
   build_typecheck_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed Room workspace editing/inheritance, manual Run Room selection, actual provider workspace, and desktop/mobile fit passed"
 traceability:
-  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
+  commit: "ac5331fc094ba39fe9ed7ee8958eebdaeac4914d"
   requirements:
     - id: "WEB-TOPOLOGY-CONTAINERS-001"
       status: "implemented"
@@ -159,6 +159,8 @@ Room and Session create, rename, archive, delete, read-state, and ordering mutat
 Room and Session trees MUST preserve stable hierarchy, ordering, selected state, archived state, status, unread state, and Workflow-kind metadata. Malformed payloads MUST fail before rendering or be omitted without changing the selected Session.
 
 Workflow-backed Sessions MUST be identified textually, not by color alone.
+
+The Subsessions layer control sits to the left of the status lamp so lamps remain aligned across rows with and without children. Thin, muted tree connectors show child branches and nested levels for pinned and ordinary Sessions without changing the existing indentation. Connectors are decorative, ignore pointer input, and stop at the last sibling.
 
 # Migration, failure, and security behavior
 
