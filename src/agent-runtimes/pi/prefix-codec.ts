@@ -1,5 +1,6 @@
 import type { AgentSession, Skill } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { Context } from "@earendil-works/pi-ai";
 import { PrefixRecoveryRequiredError } from "../../sessions/prefix-capsule.js";
 import type { SessionPrefixController } from "../../sessions/prefix-session.js";
@@ -69,6 +70,30 @@ function inferenceFacts(snapshot: PiPrefixSnapshot): { cacheKeyDigest?: string; 
 	};
 }
 
+/** Provider-executed tools cannot rely on Pibo's later local execution checks. */
+function assertProviderToolAuthorization(snapshot: PiPrefixSnapshot, current: Record<string, unknown>): void {
+	const frozenTools = snapshot.providerStatic.tools;
+	if (frozenTools === undefined) return;
+	if (!Array.isArray(frozenTools) || current.tools !== undefined && !Array.isArray(current.tools)) {
+		throw new PrefixRecoveryRequiredError("unexpected provider tool envelope");
+	}
+	const available = new Map((Array.isArray(current.tools) ? current.tools : [])
+		.filter((tool): tool is Record<string, unknown> => object(tool) && typeof tool.type === "string")
+		.map(tool => [tool.type, tool]));
+	for (const tool of frozenTools) {
+		if (!object(tool) || typeof tool.type !== "string") throw new PrefixRecoveryRequiredError("invalid frozen provider tool");
+		if (tool.type === "function") continue;
+		if (tool.type !== "web_search" || Object.keys(tool).some(key => !["type", "external_web_access", "filters", "user_location", "search_context_size"].includes(key))) {
+			throw new PrefixRecoveryRequiredError("unsupported provider tool fields require a compatible prefix codec");
+		}
+		const offered = available.get(tool.type);
+		if (!offered) throw new PrefixRecoveryRequiredError("a frozen provider tool is no longer available under current authorization");
+		if (!isDeepStrictEqual(tool.filters, offered.filters) || tool.external_web_access !== offered.external_web_access) {
+			throw new PrefixRecoveryRequiredError("provider tool authorization filters changed; explicit transition required");
+		}
+	}
+}
+
 /** Read before SDK resource discovery, not after live context was rebuilt. */
 export async function restorePiCodexPrefix(controller: SessionPrefixController): Promise<PiPrefixSnapshot | undefined> {
 	const restored = await controller.restore(PI_CODEX_PREFIX_CODEC);
@@ -131,6 +156,7 @@ export async function installPiCodexPrefixCodec(
 						format: 2, systemPrompt: frozenContext.systemPrompt ?? "", skills: structuredClone(session.resourceLoader.getSkills().skills),
 						tools: captureTools(frozenContext.tools), providerStatic,
 					};
+					assertProviderToolAuthorization(captured, transformed);
 					await syncPiPrefixNativeState(session);
 					await controller.seal({
 						codec: PI_CODEX_PREFIX_CODEC, payload: JSON.stringify(captured), nativeSessionId: session.sessionId,
@@ -140,11 +166,12 @@ export async function installPiCodexPrefixCodec(
 					facts = inferenceFacts(snapshot);
 				}
 				// Configuration changes are not silently undone. They need a visible epoch transition.
-				for (const key of ["model", "reasoning", "text", "service_tier", "temperature", "prompt_cache_key"]) {
+				for (const key of ["model", "reasoning", "text", "service_tier", "temperature", "prompt_cache_key", "tool_choice"]) {
 					if (JSON.stringify(transformed[key]) !== JSON.stringify(snapshot.providerStatic[key])) {
 						throw new PrefixRecoveryRequiredError("provider configuration or cache affinity changed; explicit transition required");
 					}
 				}
+				assertProviderToolAuthorization(snapshot, transformed);
 				// Only a shallow envelope allocation; no per-turn history or tools serialization.
 				controller.recordInference(facts!);
 				return { ...snapshot.providerStatic, input: transformed.input };

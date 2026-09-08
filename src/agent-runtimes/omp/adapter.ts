@@ -643,29 +643,8 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			// native session, switch the new child into that persisted transcript
 			// so history/context carry over instead of starting a fresh session.
 			if (binding.state === "bound" && binding.nativeSessionId) {
-				// switch_session takes the .jsonl transcript PATH, not the session
-				// id UUID. Prefer the persisted transcript file (F4); fall back to
-				// the id only when no file was recorded.
-				const resumePath =
-					(binding.metadata && typeof binding.metadata.nativeSessionFile === "string"
-						? binding.metadata.nativeSessionFile
-						: undefined) ?? binding.nativeSessionId;
-				try {
-					await client.request({ type: "switch_session", sessionPath: resumePath }, "switch_session");
-					await threads.refresh();
-					// OMP regenerates the session id on switch but restores the
-					// transcript FILE. Re-read state so we persist the RESUMED
-					// transcript path (not the fresh pre-switch session's file).
-					const resumed = await client.request({ type: "get_state" }, "get_state");
-					const resumedData = resumed["data" as keyof typeof resumed];
-					if (resumedData && typeof resumedData === "object" && !Array.isArray(resumedData)) {
-						const rr = resumedData as Record<string, unknown>;
-						if (typeof rr.sessionFile === "string") nativeSessionFile = rr.sessionFile;
-					}
-				} catch (resumeError) {
-					// Keep the fresh session; a failed switch is not fatal.
-					// (bindNativeSessionId below still sets the binding.)
-				}
+				await threads.resumeBinding(binding);
+				nativeSessionFile = threads.current.sessionFile;
 			}
 		} catch (error) {
 			await client.dispose();

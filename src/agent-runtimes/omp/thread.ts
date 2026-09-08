@@ -45,6 +45,31 @@ export class OmpThreadController {
 		return this.snapshot;
 	}
 
+	/** A bound conversation must never silently fall back to the startup session. */
+	async resumeBinding(binding: RuntimeSessionBinding): Promise<void> {
+		const sessionPath = binding.metadata?.nativeSessionFile;
+		if (!binding.nativeSessionId || typeof sessionPath !== "string" || !sessionPath.trim()) {
+			throw new Error("OMP recovery required: the persisted native transcript path is missing.");
+		}
+		const result = await this.client.request({ type: "switch_session", sessionPath }, "switch_session");
+		const data = "data" in result ? result.data as Record<string, unknown> | undefined : undefined;
+		if (!data || typeof data !== "object" || Array.isArray(data) || data.cancelled !== false) {
+			throw new Error("OMP recovery required: native session resume was not confirmed.");
+		}
+		const state = await this.client.request({ type: "get_state" }, "get_state");
+		const restored = "data" in state ? state.data as Record<string, unknown> | undefined : undefined;
+		if (!restored || typeof restored !== "object" || Array.isArray(restored)
+			|| restored.sessionId !== binding.nativeSessionId || restored.sessionFile !== sessionPath) {
+			throw new Error("OMP recovery required: resumed native identity or transcript differs from its binding.");
+		}
+		this.snapshot = {
+			sessionId: binding.nativeSessionId, sessionFile: sessionPath,
+			sessionName: typeof restored.sessionName === "string" ? restored.sessionName : undefined,
+			messageCount: typeof restored.messageCount === "number" ? restored.messageCount : 0,
+			cwd: this.cwd,
+		};
+	}
+
 	getSessionSnapshot(runtimeInstanceId: string): AgentRuntimeNativeSessionSnapshot {
 		return {
 			adapterId: OMP_ADAPTER_ID,

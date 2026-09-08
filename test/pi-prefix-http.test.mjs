@@ -85,6 +85,10 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 		return new SessionPrefixController({ store: new PrefixCapsuleStore(join(root, "prefixes")), getBinding: () => binding, persistence: createAgentRuntimeBindingPersistence(sessions, { piboSessionId: session.id, onPersisted: next => { binding = next; } }) });
 	};
 	let hookText = "original provider suffix";
+	let providerSearchEnabled = true;
+	let searchFilters;
+	let externalWebAccess;
+	let providerExtras;
 	const open = async () => {
 		const profile = new InitialSessionContextBuilder("prefix-http").withBuiltinTools("disabled").withAutoContextFiles(false).addContextFile({ path: contextPath }).addSkill({ name: "prefix-skill", path: join(skillDir, "SKILL.md") }).createSession();
 		profile.sessionId = session.piSessionId;
@@ -95,7 +99,7 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 			cwd: root, profile, persistSession: true, modelRuntime, modelDefaults: {}, prefixController, resources,
 			extensionFactories: [pi => {
 				pi.registerTool({ name: "prefix_probe", label: "Prefix probe", description: "Read the deterministic fixture value", parameters: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "persistent tool result" }], details: {} }) });
-				pi.on("before_provider_request", event => ({ ...event.payload, instructions: `${event.payload.instructions}\n${hookText}`, tools: [...(event.payload.tools ?? []), { type: "web_search", search_context_size: hookText === "original provider suffix" ? "low" : "high" }] }));
+				pi.on("before_provider_request", event => ({ ...event.payload, instructions: `${event.payload.instructions}\n${hookText}`, tools: [...(event.payload.tools ?? []), ...(providerSearchEnabled ? [{ type: "web_search", search_context_size: hookText === "original provider suffix" ? "low" : "high", ...(searchFilters ? { filters: searchFilters } : {}), ...(externalWebAccess === undefined ? {} : { external_web_access: externalWebAccess }), ...providerExtras }] : [])] }));
 			}],
 		});
 		result.session.agent.transport = "sse";
@@ -107,6 +111,14 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	};
 	await savePiboCustomBasePrompt("Original base prompt", root);
 	runtime = await open();
+	if (repeatCount === 250) {
+		providerExtras = { authorization: "execution-only-secret" };
+		await runtime.session.prompt("reject unsupported execution credential fields");
+		assert.equal(api.requests.length, 0);
+		assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix, undefined);
+		assert.ok(!JSON.stringify(runtime.session.state.messages).includes("execution-only-secret"));
+		providerExtras = undefined;
+	}
 	await runtime.session.prompt("historic content ".repeat(repeatCount));
 	assert.equal(api.requests.length, 2, JSON.stringify(runtime.session.state.messages.filter(message => message.role === "assistant").map(message => ({ stopReason: message.stopReason, errorMessage: message.errorMessage }))));
 	assert.ok(api.requests[1].input.some(item => item.type === "function_call_output" && item.output.includes("persistent tool result")));
@@ -140,6 +152,22 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	assert.deepEqual(after.input.slice(0, before.input.length), before.input);
 	assert.ok((await readFile(nativePath, "utf8")).startsWith(nativeBefore), "native history is append-only in this fixture");
 	assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix.evidence, "adapter-inputs");
+	if (repeatCount === 250) {
+		providerSearchEnabled = false;
+		await runtime.session.prompt("provider tool permission revoked");
+		assert.equal(api.requests.length, 3, "revoked provider tools must not execute under frozen definitions");
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /current authorization/);
+		providerSearchEnabled = true;
+		searchFilters = { allowed_domains: ["example.test"] };
+		await runtime.session.prompt("provider domain authorization narrowed");
+		assert.equal(api.requests.length, 3);
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /authorization filters changed/);
+		searchFilters = undefined;
+		externalWebAccess = false;
+		await runtime.session.prompt("external network access revoked");
+		assert.equal(api.requests.length, 3);
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /authorization filters changed/);
+	}
 	if (repeatCount === 50000) {
 		const prefixBefore = sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix;
 		await runtime.session.prompt("second substantial turn ".repeat(10000));

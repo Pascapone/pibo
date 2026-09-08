@@ -34,6 +34,7 @@ export class SessionPrefixController {
 	private readonly runtimeGeneration: string;
 	private inferenceSequence = 0;
 	private inferenceEvidence?: CacheInferenceEvidence;
+	private inferenceEvidenceFailed = false;
 	private ownership?: PrefixSessionOwnership;
 
 	async acquireOwnership(): Promise<() => void> {
@@ -107,16 +108,24 @@ export class SessionPrefixController {
 
 	/** Only compact, already computed facts. No prompt serialization on the telemetry path. */
 	recordInference(facts: { cacheKeyDigest?: string; configurationDigest?: string }): void {
-		const prefix = this.binding;
-		this.inferenceEvidence = {
-			id: `${this.runtimeGeneration}:${++this.inferenceSequence}`, atMs: Date.now(),
-			runtimeGeneration: this.runtimeGeneration, prefixDigest: prefix?.capsule.digest,
-			...(prefix ? { epoch: String(prefix.epoch) } : {}),
-			...facts, historyContinuity: "unknown",
-		};
+		// Operational checks have already completed at the dispatch boundary.
+		// Diagnostics must neither block it nor reuse the preceding request's facts.
+		this.inferenceEvidence = undefined;
+		try {
+			const prefix = this.binding;
+			this.inferenceEvidence = {
+				id: `${this.runtimeGeneration}:${++this.inferenceSequence}`, atMs: Date.now(),
+				runtimeGeneration: this.runtimeGeneration, prefixDigest: prefix?.capsule.digest,
+				...(prefix ? { epoch: String(prefix.epoch) } : {}),
+				...facts, historyContinuity: "unknown",
+			};
+			this.inferenceEvidenceFailed = false;
+		} catch { this.inferenceEvidenceFailed = true; }
 	}
 
 	getCacheEvidence(): CacheInferenceEvidence | undefined {
+		// The routed best-effort collector counts this as a dropped observation.
+		if (this.inferenceEvidenceFailed) throw new Error("Cache inference evidence unavailable");
 		return this.inferenceEvidence ? { ...this.inferenceEvidence } : undefined;
 	}
 

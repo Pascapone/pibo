@@ -86,6 +86,37 @@ test("OMP RPC client performs ready handshake then protocol negotiation", async 
 	assert.equal(client.connected, true);
 });
 
+test("OMP bound resume requires a confirmed matching native transcript", async () => {
+	const binding = { nativeSessionId: "original", metadata: { nativeSessionFile: "/native/original.jsonl" } };
+	for (const failure of ["missing-path", "rpc-error", "cancelled", "missing-confirmation", "wrong-id", "wrong-file", "missing-state", undefined]) {
+		const calls = [];
+		const client = { request: async command => {
+			calls.push(command.type);
+			if (command.type === "switch_session") {
+				assert.equal(command.sessionPath, binding.metadata.nativeSessionFile);
+				if (failure === "rpc-error") throw new Error("native resume failed");
+				return { data: failure === "missing-confirmation" ? {} : { cancelled: failure === "cancelled" } };
+			}
+			return { data: failure === "missing-state" ? undefined : {
+				sessionId: failure === "wrong-id" ? "fresh" : binding.nativeSessionId,
+				sessionFile: failure === "wrong-file" ? "/native/fresh.jsonl" : binding.metadata.nativeSessionFile,
+				messageCount: 37,
+			} };
+		} };
+		const controller = new OmpThreadController(client, "/workspace", { sessionId: "fresh" });
+		const resume = controller.resumeBinding(failure === "missing-path" ? { ...binding, metadata: {} } : binding);
+		if (failure) {
+			await assert.rejects(resume, /recovery required|native resume failed/, failure);
+			assert.equal(controller.current.sessionId, "fresh", "unverified resume must not publish a binding");
+			if (failure === "missing-path") assert.deepEqual(calls, []);
+		} else {
+			await resume;
+			assert.equal(controller.current.sessionId, "original");
+			assert.equal(controller.current.messageCount, 37);
+		}
+	}
+});
+
 test("OMP RPC client correlates get_state response by id", async (t) => {
 	const client = await startClient(t, "state");
 	const response = await client.request({ type: "get_state" }, "get_state");

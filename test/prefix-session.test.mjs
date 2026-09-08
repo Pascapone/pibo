@@ -34,6 +34,13 @@ for (const Store of [SqlitePiboSessionStore, PiboDataSessionStore]) {
 		assert.equal(await controller.restore("pi-v1"), undefined);
 		const prefix = await controller.seal(input);
 		assert.equal(prefix.epoch, 1);
+		controller.recordInference({ configurationDigest: "a".repeat(64) });
+		const evidence = controller.getCacheEvidence();
+		assert.doesNotThrow(() => controller.recordInference({ get configurationDigest() { throw new Error("diagnostic producer failed"); } }));
+		assert.throws(() => controller.getCacheEvidence(), /evidence unavailable/, "a diagnostic failure must not reuse the preceding inference");
+		controller.recordInference({ configurationDigest: "b".repeat(64) });
+		assert.notEqual(controller.getCacheEvidence().id, evidence.id);
+		assert.equal(controller.getCacheEvidence().configurationDigest, "b".repeat(64));
 		assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix.capsule.digest, prefix.capsule.digest);
 		await assert.rejects(competitor.seal({ ...input, payload: "racing replacement" }), /changed concurrently/);
 		await assert.rejects(controller.seal({ ...input, payload: "changed" }), /already sealed/);
