@@ -133,6 +133,9 @@ function PayloadRefs({ refs }: { refs?: CompactTerminalRow["payloadRefs"] }) {
 	);
 }
 
+// Keep text shaping bounded even for long, unbroken multibyte output.
+const PAYLOAD_READER_SECTION_BYTES = 4 * 1024;
+
 function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePayloadRef }) {
 	const generation = useRef(0);
 	const pending = useRef(false);
@@ -151,7 +154,7 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 		setLoadingMore(false);
 		setLoadError(undefined);
 		setState({ status: "loading" });
-		getTracePayload(refInfo.ref, { offset: 0, limit: 65536 })
+		getTracePayload(refInfo.ref, { offset: 0, limit: PAYLOAD_READER_SECTION_BYTES })
 			.then((chunk) => {
 				if (cancelled) return;
 				setState({ status: "loaded", data: chunk.data, offset: 0, previous: [], hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
@@ -173,7 +176,7 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 		pending.current = true; setLoadingMore(true); setLoadError(undefined);
 		const current = generation.current;
 		try {
-			const chunk = await getTracePayload(refInfo.ref, { offset, limit: 65536 });
+			const chunk = await getTracePayload(refInfo.ref, { offset, limit: PAYLOAD_READER_SECTION_BYTES });
 			if (current !== generation.current) return;
 			setState({ status: "loaded", data: chunk.data, offset, previous: back ? state.previous.slice(0, -1) : [...state.previous, state.offset], hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
 		} catch (error) {
