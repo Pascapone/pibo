@@ -5,7 +5,7 @@ description: "Priorisiert den belegten Annahme-Fix und den schrittweisen Umbau z
 tags: ["performance", "gateway", "sqlite", "concurrency", "scalability"]
 status: "draft"
 authority: "directive"
-generated: { by: "openai/codex", at: "2026-09-06T19:38:08Z" }
+generated: { by: "openai/codex", at: "2026-09-08T06:00:00Z" }
 sources:
   - id: "audit"
     resource: "/reports/production-performance-audit-2026-09-06.md"
@@ -456,3 +456,10 @@ Nach jedem abgeschlossenen Paket aktuelle Verträge in die zuständigen Spezifik
 [^audit]: Read-only-Produktionsaudit vom 6. September 2026; die Messungen sind eine Diagnose, keine bereits erreichten Ziel-SLOs.
 [^sqlite-wal]: Offizielle SQLite-Dokumentation: getrennte Reader/Writer- und Checkpoint-Eigenschaften; am 6. September 2026 geprüft.
 [^sqlite-backup]: Offizielle SQLite-Dokumentation der Online-Backup-Verfahren; am 6. September 2026 geprüft.
+
+
+## Abnahmevereinbarung vom 8. September 2026
+
+Der Auftraggeber hat den zweistündigen Dauertest vorerst zurückgestellt und ausdrücklich erlaubt, vorher zu mergen und zu releasen. Dieser Test bleibt als spätere Langzeitmessung offen; er ist für die jetzt angefragte testweise Installation kein Freigabeblocker.
+
+Die aktuelle Abschlussprüfung konzentriert sich auf gleichzeitige Agent-Antworten, Schreiben, Streaming und Lesen sowie vollständigen Zugriff auf große Einzelinhalte. Kostenpflichtige Testaufrufe verwenden ausdrücklich `openai-codex/gpt-5.6-luna` mit Reasoning Effort `low`; die wirksame Session-Konfiguration wird vor dem Senden geprüft. Kurze integrierte Funktionsläufe ersetzen keinen statistischen Nachweis der langfristigen Kapazitätsziele dieses Plans.

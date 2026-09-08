@@ -1,0 +1,25 @@
+{
+  "at": "2026-09-08T06:19:11.725Z",
+  "headful": true,
+  "viewport": {
+    "width": 1431,
+    "height": 908
+  },
+  "nativeFetch": true,
+  "label": "Full content (10241 KB)",
+  "firstBytes": 4096,
+  "next": {
+    "changed": true,
+    "bytes": 4098,
+    "previousEnabled": true
+  },
+  "previousRestoresExactText": true,
+  "renderedSections": 1,
+  "longTasksMs": [
+    103,
+    186,
+    183,
+    178
+  ],
+  "downloadPresent": true
+}

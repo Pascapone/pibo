@@ -1,0 +1,37 @@
+{
+  "profile": "10 sessions, 500 deltas/s, 100 tool events/s, concurrent navigation/history/SSE",
+  "model": "deterministic; no paid calls",
+  "offered": 30,
+  "accepted": 30,
+  "started": 30,
+  "completed": 30,
+  "maxConcurrent": 10,
+  "reads": 213,
+  "sseFrames": 5020,
+  "admissionMs": {
+    "count": 30,
+    "p95": 96.49443900000006,
+    "p99": 98.65504099999998,
+    "max": 98.65504099999998
+  },
+  "readMs": {
+    "count": 213,
+    "p95": 45.399664999999914,
+    "p99": 61.49063399999977,
+    "max": 67.89291800000046
+  },
+  "firstDeltaMs": {
+    "count": 30,
+    "p95": 195.993246,
+    "p99": 197.31793599999992,
+    "max": 197.31793599999992
+  },
+  "persistedAnswers": 30,
+  "persistedToolResults": 600,
+  "eventLoop": {
+    "p99Ms": 34.963455,
+    "maxMs": 54.788095
+  },
+  "errors": [],
+  "rssBytes": 485552128
+}

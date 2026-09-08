@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T10:45:00Z"
+  at: "2026-09-08T06:00:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -22,8 +22,21 @@ implementation:
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "0fe71c72a1d3bcb3b0d06295d323317a452b367a"
   requirements:
+    - id: "CMP-POOL-005"
+      status: "implemented"
+      sources:
+        - path: "src/compute/pool/seeds.ts"
+          symbol: "copyPiRuntimeSeed"
+      tests:
+        - path: "test/compute-deployment-pool.test.mjs"
+          name: "deployment seeds never clone OAuth sessions or unknown credential types"
+        - path: "test/compute-deployment-pool.test.mjs"
+          name: "OAuth-only seeds omit credentials and malformed credentials preserve the active seed"
+      public: ["pibo compute pool acquire", "PIBO_COMPUTE_POOL_SEED_SOURCE_PI_HOME"]
+      failures: ["Malformed credentials fail without leaking their contents or replacing the active seed; unsupported credential types are not copied."]
+      confidence: "high"
     - id: "CMP-POOL-001"
       status: "implemented"
       sources:
@@ -262,3 +275,7 @@ Later validation commands:
 - npm run build
 - pibo compute pool status --json && pibo compute pool doctor --json && pibo compute pool artifacts --json
 - pibo debug pty run --expect 'status' --expect 'acquire' -- pibo compute pool --help
+
+## Requirement: CMP-POOL-005 OAuth credential ownership
+
+All seed modes exclude OAuth access and refresh tokens from the Pi credential seed. Each OAuth login belongs to one runtime credential store; deployment slots must authenticate independently. A selected Pi seed may copy typed API keys using only their type and key fields, plus the existing model configuration. The source credential file remains unchanged. OAuth-only seeds create no credential file, and an unset Pi seed source disables Pi credential seeding entirely.

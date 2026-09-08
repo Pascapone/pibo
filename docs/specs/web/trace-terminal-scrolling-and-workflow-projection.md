@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-06T11:45:00Z"
+  at: "2026-09-08T06:00:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,8 +23,27 @@ implementation:
   build_typecheck_package_execution: "source checks and all typechecks passed after final integration; earlier clean full build passed"
   browser_execution: "headed completed and pending Workflow projections, desktop/mobile fit, and supported manual editor inspection passed"
 traceability:
-  commit: "ef2147b50a7e6fdfe24e19d2ff2ab2dc3aeb5f26"
+  commit: "0fe71c72a1d3bcb3b0d06295d323317a452b367a"
   requirements:
+    - id: "WEB-TRACE-PAYLOAD-010"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat/trace-v2.ts"
+          symbol: "readTracePayloadChunk"
+        - path: "src/apps/chat-ui/src/session-views/compact-terminal/TerminalDetails.tsx"
+          symbol: "PayloadRefDetail"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "writeChatEventFrames"
+      tests:
+        - path: "test/chat-large-payload-replay.test.mjs"
+          name: "large live outputs retain full references across SSE replay and timeline"
+        - path: "test/trace-v2-fast-path.test.mjs"
+          name: "payload chunks reconstruct UTF-8 without full reads for identity and gzip"
+        - path: "test/session-ui-terminal-rows.test.mjs"
+          name: "referenced assistant messages expose expandable full content"
+      public: ["GET /api/chat/trace/payload/:ref", "GET /api/chat/trace/payload/:ref?download=1", "Terminal full-content reader"]
+      failures: ["Read failures retain the previous section for retry; reference changes invalidate pending loads; downloads require the same authenticated session resolution as chunk reads."]
+      confidence: "high"
     - id: "WEB-TRACE-VIEWPORT-009"
       status: "implemented"
       sources:
@@ -546,3 +565,11 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 - SPC-ORCH-005
 - SPC-WEB-004
 - SPC-WEB-006
+
+## Requirement: WEB-TRACE-PAYLOAD-010 Complete large content with bounded rendering
+
+Large assistant, reasoning, and tool content retains its stored reference through durable live output, historical SSE replay, client projection, and timeline reads. A small preview does not replace the reference to the full content.
+
+Terminal rows with referenced content expose an explicit full-content reader. It displays one 4-KiB section at a time, with forward and backward navigation; a UTF-8 boundary may include up to three additional bytes. The reader retains section offsets rather than an ever-growing text buffer. The full content can also be downloaded through a streaming attachment response. Conversation-level lazy history paging and Infinite Scrolling remain independent of this single-content reader.
+
+Chunk reads use bounded file ranges for identity payloads and streaming decompression for gzip payloads. Byte cursors preserve complete UTF-8 code points. The download pipeline closes its input on cancellation and does not build the complete response in application memory.

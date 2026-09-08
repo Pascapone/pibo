@@ -2,6 +2,8 @@
 
 ## 2026-09-08
 
+- **Final performance acceptance**: Added the [integrated acceptance report](/reports/performance-scalability-final-acceptance-2026-09-08.md), recording real Luna/low concurrency, deterministic mixed writes, complete large-message references and bounded reading/downloads. Updated the [Terminal contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md), [deployment seed contract](/specs/compute/deployment-pool.md) and [plan](/plans/pibo-performance-and-scalability.md). The user deferred the two-hour soak; sustained statistical capacity remains unproven.
+
 - **Performance review corrections**: Added the [renewed A–H review](/reports/performance-scalability-review-2026-09-08.md), recording reproduced lifecycle, navigation, paging and maintenance defects, forward-propagated fixes and renewed validation. The report qualifies the earlier capacity-proof conclusion: integrated load, soak and successful real-provider acceptance remain open.
 
 ## 2026-09-07
