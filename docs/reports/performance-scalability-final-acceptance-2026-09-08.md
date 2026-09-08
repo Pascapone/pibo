@@ -21,7 +21,7 @@ sources:
 
 The two remaining functional gates from the [independent A–H review](/reports/performance-scalability-review-2026-09-08.md) are addressed: concurrent model work with simultaneous reads/writes, and complete retrieval of large messages. The user explicitly deferred the two-hour soak as a merge/release prerequisite. This report supports merging the corrected PR stack for a trial installation; it does not establish sustained capacity, a 10,000-admission latency distribution, or release-specific package acceptance. No PR was merged and no npm release was published during this validation.
 
-The latest source candidate is `0fe71c72a1d3bcb3b0d06295d323317a452b367a`, including upstream `dev`'s selectable Luna Reserve addition. Remaining fixes are carried by PR 971 on top of the reviewed chain. Earlier report measurements and failures are preserved, not retrospectively relabeled as successful.
+The latest source candidate is `0fe71c72a1d3bcb3b0d06295d323317a452b367a`, including upstream `dev`'s selectable Luna Reserve addition. Remaining fixes are carried by PR 971 on top of the reviewed chain. PR 971 also merges package A's original branch history and acceptance evidence, so its head contains all eight PR heads. The history/documentation integration changes no source, test or build-script bytes relative to the accepted candidate. Merge the integrated head with a merge commit to preserve that ancestry; independently applying A after the later copied patch history would require conflict resolution. Earlier report measurements and failures are preserved, not retrospectively relabeled as successful.
 
 # Concurrent writing and real model responses
 
