@@ -1,3 +1,4 @@
+import type { PiboCompactionStats } from "../core/events.js";
 import type { MessageReceipt, MessageCommandClaim, MessageCommandState, MessageCommandStore } from "./message-command-store.js";
 import type { PiboRoom } from "../apps/chat/types/rooms.js";
 import type { PiboSession } from "../sessions/store.js";
@@ -7,6 +8,7 @@ import { BoundedWorkerClient, StorageUnavailableError, type BoundedWorkerOptions
 
 export type AsyncOutputIngestResult = OutputEventIngestResult & {
 	stored: { createdAt: string; eventId: string };
+	enrichment?: { compactionStats: PiboCompactionStats };
 };
 
 /** Admission/output writer; bulk reads must use a separate worker connection. */
@@ -75,8 +77,12 @@ export class AsyncChatStorage {
 	ingestUser(input: UserMessageAcceptedIngestInput): Promise<UserMessageAcceptedIngestResult> {
 		return this.writer.request({ type: "ingestUser", input });
 	}
-	ingestOutput(input: OutputEventIngestInput): Promise<AsyncOutputIngestResult> {
-		return this.writer.request({ type: "ingestOutput", input }, { priority: "output", fairnessKey:input.roomId });
+	async ingestOutput(input: OutputEventIngestInput): Promise<AsyncOutputIngestResult> {
+		const result = await this.writer.request<AsyncOutputIngestResult>({ type: "ingestOutput", input }, { priority: "output", fairnessKey:input.roomId });
+		if (input.event.type === "compaction_end" && result.enrichment?.compactionStats) {
+			input.event.compactionStats = result.enrichment.compactionStats;
+		}
+		return result;
 	}
 	cancelPendingCommands(sessionId: string): Promise<number> { return this.writer.request({ type:"cancelPendingCommands",sessionId },{priority:"control"}); }
 	commandReceiptPage(sessionId: string): Promise<{receipts:MessageReceipt[];queue:ReturnType<MessageCommandStore["queueStatus"]>}> { return this.writer.request({type:"commandReceiptPage",sessionId},{priority:"control"}); }
