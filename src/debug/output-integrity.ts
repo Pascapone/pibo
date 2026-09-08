@@ -42,6 +42,9 @@ type CollisionRow = {
 	streamId: number;
 	createdAt: string;
 	idempotencyKey: string | null;
+	existingProvenance: string | null;
+	incomingProvenance: string | null;
+	fieldDifferences: string | null;
 };
 
 type CollisionEventRow = {
@@ -108,11 +111,15 @@ export type OutputIntegrityFinding = {
 	sessionStatus?: string;
 	projectedStatus?: "idle" | "running" | "error";
 	openTurns?: number;
+	existingProvenance?: Record<string, unknown>;
+	incomingProvenance?: Record<string, unknown>;
+	fieldDifferences?: Array<{ field: string; change: string }>;
 };
 
 export type OutputIntegrityAudit = {
 	resultType: "debug.integrity.output";
 	readOnly: true;
+	health: { status: "healthy" | "degraded"; threshold: number; observedCollisions: number };
 	scope: {
 		piboSessionId?: string;
 		since?: string;
@@ -331,7 +338,10 @@ export function inspectOutputIntegrity(input: {
 				findings.push(...queryRows<CollisionRow>(db, `
 					SELECT session_id AS sessionId, event_id AS eventId, stream_id AS streamId,
 						created_at AS createdAt,
-						${COLLISION_KEY_SQL} AS idempotencyKey
+						${COLLISION_KEY_SQL} AS idempotencyKey,
+						json_extract(attributes_json, '$.existingProvenance') AS existingProvenance,
+						json_extract(attributes_json, '$.incomingProvenance') AS incomingProvenance,
+						json_extract(attributes_json, '$.fieldDifferences') AS fieldDifferences
 					FROM event_log
 					WHERE type = 'pibo.output.identity_collision' ${scope.sql}
 					ORDER BY stream_id DESC
@@ -343,6 +353,9 @@ export function inspectOutputIntegrity(input: {
 					streamId: row.streamId,
 					lastAt: row.createdAt,
 					...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+					...(parseRecord(row.existingProvenance) ? { existingProvenance: parseRecord(row.existingProvenance)! } : {}),
+					...(parseDifferences(row.fieldDifferences).length ? { fieldDifferences: parseDifferences(row.fieldDifferences) } : {}),
+					...(parseRecord(row.incomingProvenance) ? { incomingProvenance: parseRecord(row.incomingProvenance)! } : {}),
 				})));
 				findings.push(...queryRows<OutputKeyReuseRow>(db, `
 					WITH output_keys AS (
@@ -471,6 +484,7 @@ export function inspectOutputIntegrity(input: {
 	return {
 		resultType: "debug.integrity.output",
 		readOnly: true,
+		health: { status: Math.max(identityCollisions, deadIdentityCollisions) >= 1 ? "degraded" : "healthy", threshold: 1, observedCollisions: Math.max(identityCollisions, deadIdentityCollisions) },
 		scope: {
 			...(input.piboSessionId ? { piboSessionId: input.piboSessionId } : {}),
 			...(input.since ? { since: input.since } : {}),
@@ -567,6 +581,8 @@ export function formatOutputIntegrityAudit(audit: OutputIntegrityAudit): string 
 	const lines = [
 		`pibo debug integrity output`,
 		`readOnly\t${audit.readOnly}`,
+		`health\t${audit.health.status}`,
+		`collisionThreshold\t${audit.health.threshold}`,
 		`session\t${scope}`,
 		...(audit.scope.since ? [`since\t${audit.scope.since}`] : []),
 		...(audit.scope.before ? [`before\t${audit.scope.before}`] : []),
@@ -733,6 +749,27 @@ function tableExists(db: DatabaseSync, table: string): boolean {
 	return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
 }
 
+function parseRecord(value: string | null): Record<string, unknown> | undefined {
+	if (!value) return undefined;
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined;
+	} catch { return undefined; }
+}
+
+function parseDifferences(value: string | null): Array<{ field: string; change: string }> {
+	if (!value) return [];
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		if (!Array.isArray(parsed)) return [];
+		return parsed.filter((item): item is { field: string; change: string } => Boolean(item) && typeof item === "object" && typeof item.field === "string" && typeof item.change === "string").slice(0, 24);
+	} catch { return []; }
+}
+
+function provenanceLabel(value: Record<string, unknown> | undefined): string {
+	return value ? `${String(value.producer ?? "unknown")}/${String(value.projection ?? "unknown")}/${String(value.phase ?? "unknown")}` : "unknown";
+}
+
 function pendingJobFinding(row: ReliabilityRow): OutputIntegrityFinding {
 	return {
 		kind: "pending_output_job",
@@ -768,7 +805,7 @@ function findingDetail(finding: OutputIntegrityFinding): string {
 	if (finding.kind === "turn_lifecycle") return `started=${finding.started ?? 0},assistant=${finding.assistantMessages ?? 0},messageFinished=${finding.messageFinished ?? 0},sessionErrors=${finding.sessionErrors ?? 0}`;
 	if (finding.kind === "thinking_lifecycle") return `thinking=${finding.thinkingIndex ?? 0},started=${finding.started ?? 0},finished=${finding.finished ?? 0}`;
 	if (finding.kind === "tool_lifecycle") return `tool=${finding.toolCallId ?? "-"},ordinal=${finding.toolInvocationOrdinal ?? 0},called=${finding.called ?? 0},started=${finding.started ?? 0},finished=${finding.finished ?? 0}`;
-	if (finding.kind === "identity_collision") return finding.idempotencyKey ?? `stream=${finding.streamId ?? "-"}`;
+	if (finding.kind === "identity_collision") return `${finding.idempotencyKey ?? `stream=${finding.streamId ?? "-"}`},existing=${provenanceLabel(finding.existingProvenance)},incoming=${provenanceLabel(finding.incomingProvenance)},fields=${finding.fieldDifferences?.map((item) => `${item.field}:${item.change}`).join("|") ?? "unknown"}`;
 	if (finding.kind === "output_key_reuse") return `uses=${finding.uses ?? 0},key=${finding.idempotencyKey ?? "-"}`;
 	if (finding.kind === "session_trace_status") return `session=${finding.sessionStatus ?? "-"},projected=${finding.projectedStatus ?? "-"},openTurns=${finding.openTurns ?? 0}`;
 	if (finding.kind === "pending_output_job") return `payloadValid=${finding.payloadValid ?? false},attempts=${finding.attempts ?? 0}/${finding.maxAttempts ?? 0}`;

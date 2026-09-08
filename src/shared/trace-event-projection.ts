@@ -718,16 +718,26 @@ function attachModelInferenceToLatestOutput(
 ): void {
 	const eventId = event.eventId;
 	const candidates = flattenTraceNodes(nodes)
-		.filter((node) => node.eventId === eventId && traceNodeStartedBeforeInference(node, storedEvent) && (
+		.filter((node) => node.eventId === eventId && (event.inferenceTarget || traceNodeStartedBeforeInference(node, storedEvent)) && (
 			node.type === "assistant.message"
 			|| node.type === "model.reasoning"
 			|| node.type === "tool.call"
 			|| node.type === "agent.delegation"
 		))
 		.sort(compareTraceNodes);
-	const target = candidates.at(-1) ?? (eventId ? byId.get(messageTurnNodeId(eventId)) : undefined);
+	const anchor = event.inferenceTarget;
+	const turnNode = eventId ? byId.get(messageTurnNodeId(eventId)) : undefined;
+	const target = anchor
+		? (anchor.type === "tool"
+			? candidates.find((node) => node.toolCallId === anchor.toolCallId)
+			: anchor.type === "assistant"
+				? candidates.find((node) => node.stableKey === `assistant:${eventId}:assistant:${anchor.assistantIndex}`)
+				: turnNode) ?? turnNode
+		: candidates.at(-1) ?? turnNode;
 	if (!target) return;
-	const id = eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
+	const id = event.inferenceId
+		? `${eventId ?? storedEvent.piboSessionId}:inference:${event.inferenceId}`
+		: eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
 	const record = {
 		id,
 		completedAt: storedEvent.createdAt,

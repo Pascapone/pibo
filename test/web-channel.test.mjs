@@ -3289,7 +3289,7 @@ test("chat web app exposes unread room and session counts", async () => {
 	}
 });
 
-test("chat web app marks the selected session subtree read during bootstrap", async () => {
+test("chat web app keeps child-session unread state out of the room badge and marks the selected subtree read", async () => {
 	const { channel, baseURL, emitOutput, emitOutputAndDrain, sessions } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 	});
@@ -3341,7 +3341,7 @@ test("chat web app marks the selected session subtree read during bootstrap", as
 		);
 		assert.equal(unreadResponse.status, 200);
 		const unreadData = await unreadResponse.json();
-		assert.equal(unreadData.rooms[0].unreadCount, 2);
+		assert.equal(unreadData.rooms[0].unreadCount, undefined);
 		assert.equal(unreadData.sessions[0].children[0].unreadCount, 2);
 
 		const readResponse = await fetch(
@@ -3391,6 +3391,15 @@ test("chat web app room event streams do not mark assistant messages read", asyn
 			eventId: "room-stream-turn",
 			text: "background answer",
 		});
+
+		const intermediateResponse = await fetch(`${baseURL}/api/chat/bootstrap?markRead=false&piboSessionId=${encodeURIComponent(session.id)}`, {
+			headers: { "x-test-user": "user-1" },
+		});
+		assert.equal(intermediateResponse.status, 200);
+		const intermediate = await intermediateResponse.json();
+		assert.equal(intermediate.rooms[0].unreadCount, undefined);
+		assert.equal(intermediate.sessions[0].unreadCount, undefined);
+
 		await emitOutputAndDrain({
 			type: "message_finished",
 			piboSessionId: session.id,
@@ -3918,7 +3927,7 @@ test("chat web app keeps active session completions read while preserving unfocu
 		});
 		assert.equal(bootstrapResponse.status, 200);
 		bootstrap = await bootstrapResponse.json();
-		assert.equal(bootstrap.rooms[0].unreadCount, 1);
+		assert.equal(bootstrap.rooms[0].unreadCount, undefined);
 		assert.equal(bootstrap.sessions[0].children[0].unreadCount, 1);
 
 		controller.abort();
@@ -9199,6 +9208,17 @@ test("versioned durable admission acknowledges before cold runtime dispatch and 
 	} finally {unblock();await host.channel.stop?.();}
 });
 
+
+test("Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts",async()=>{
+ let unblock;const blocked=new Promise(resolve=>{unblock=resolve;});const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(){await blocked;return {type:"message_queued"};}});const headers={"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"};
+ try{
+  const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers})).json();const send=id=>fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers,body:JSON.stringify({admissionVersion:2,piboSessionId:session.id,text:"duplicate content",clientTxnId:id})});
+  const firstResponse=await send("barrier-first");assert.equal(firstResponse.status,202);const first=await firstResponse.json();await waitForCondition(()=>host.emitted.length===1,"first command did not enter dispatch");
+  const db=new DatabaseSync(host.dataStorePath);try{db.prepare("UPDATE message_commands SET state='interrupted',owner=NULL,lease_until=0,error='fixture interruption' WHERE id=?").run(first.receipt.id);}finally{db.close();}
+  const rejected=await send("barrier-second");assert.equal(rejected.status,409);assert.equal(rejected.headers.get("retry-after"),null);const body=await rejected.json();assert.equal(body.code,"command_reconciliation_required");assert.equal(body.retryable,false);assert.equal(body.scope,"session");assert.equal(body.blockingCommandId,first.receipt.id);assert.match(body.error,/previous interrupted message requires review/i);
+  const status=await(await fetch(`${host.baseURL}/gateway/status`)).json();assert.equal(status.runtimeQueue.layer,"runtime-session");assert.equal(status.durableMessageQueue.status,"degraded");assert.equal(status.durableMessageQueue.affectedScopes[0].sessionId,session.id);assert.equal(JSON.stringify(status).includes("duplicate content"),false);
+ }finally{unblock();await host.channel.stop?.();}
+});
 
 test("web startup dispatches a committed command without an HTTP request", async () => {
  const storageDir=mkdtempSync(join(tmpdir(),"pibo-command-startup-"));

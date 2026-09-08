@@ -25,7 +25,7 @@ import { TerminalModelCard } from "./TerminalModelCard";
 import { TerminalStatusCard } from "./TerminalStatusCard";
 import { TerminalThinkingCard } from "./TerminalThinkingCard";
 import { readTerminalReadingPosition, writeTerminalReadingPosition, type TerminalReadingPosition } from "./terminal-reading-position";
-import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS, type CompactTerminalImagePreview, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
+import { buildCompactTerminalRows, findActiveTurnStartedAt, formatTerminalDuration, type CompactTerminalImagePreview, type CompactTerminalLine, type CompactTerminalRow } from "../../../../../session-ui/terminalRows.js";
 
 const SHOW_LATEST_THRESHOLD_PX = 180;
 const OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX = 4_800;
@@ -33,7 +33,7 @@ const COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX = 800;
 const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
-const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
+const COLLAPSED_EXPLORING_PREVIEW_LINES = 5;
 type TerminalNavigationKind = "compaction" | "system" | "tool" | "user";
 type TerminalImageDialogState = {
 	images: readonly CompactTerminalImagePreview[];
@@ -304,9 +304,9 @@ export function CompactTerminalSessionView({
 			return next;
 		});
 	};
-	const openImagePreviews = useCallback((images: readonly CompactTerminalImagePreview[]) => {
+	const openImagePreviews = useCallback((images: readonly CompactTerminalImagePreview[], index = 0) => {
 		const previewable = previewableTerminalImages(images);
-		if (previewable.length) setImageDialog({ images: previewable, index: 0 });
+		if (previewable.length) setImageDialog({ images: previewable, index });
 	}, []);
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
 		<div className="px-4 @max-[420px]:px-2">
@@ -559,12 +559,14 @@ function TerminalRow({
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
-	onViewImages: (images: readonly CompactTerminalImagePreview[]) => void;
+	onViewImages: (images: readonly CompactTerminalImagePreview[], index?: number) => void;
 	signals: ChatSessionViewProps["signals"];
 }) {
 	const collapseToolCallPreview = !expanded && isToolCallLikeRow(row);
-	const visibleLines = collapseToolCallPreview ? collapsedToolCallPreviewLines(row) : row.lines;
-	const handleRowDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
+	const imageRow = row.kind === "tool.image" || row.kind === "tool.group.images";
+	const images = previewableTerminalImages(row.imagePreviews ?? []);
+	const visibleLines = imageRow ? row.lines.slice(0, 1) : collapseToolCallPreview ? collapsedToolCallPreviewLines(row) : row.lines;
+	const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
 		if (!row.expandable || isInteractiveEventTarget(event)) return;
 		onToggle();
 	};
@@ -630,7 +632,7 @@ function TerminalRow({
 			data-order-source={row.orderSource}
 			data-order-stream-id={row.orderStreamId}
 			data-order-frame-index={row.orderStreamFrameIndex}
-			onDoubleClick={row.expandable ? handleRowDoubleClick : undefined}
+			onClick={row.expandable ? handleRowClick : undefined}
 			onKeyDown={row.expandable ? handleRowKeyDown : undefined}
 			role={row.expandable ? "button" : undefined}
 			tabIndex={row.expandable || focused ? 0 : undefined}
@@ -638,7 +640,7 @@ function TerminalRow({
 			aria-current={focused ? "true" : undefined}
 		>
 			<div className="flex gap-3">
-				<div className="min-w-0 flex-1">
+				<div className={`min-w-0 flex-1 ${collapseToolCallPreview ? "max-h-[7.25em] overflow-hidden" : ""}`}>
 					<TerminalRowContent
 						row={row}
 						visibleLines={visibleLines}
@@ -649,14 +651,20 @@ function TerminalRow({
 						onFork={onFork}
 					/>
 				</div>
+				{row.expandable ? <ChevronDown size={13} aria-hidden="true" className={`mt-0.5 shrink-0 text-slate-500 transition-transform ${expanded ? "" : "-rotate-90"}`} /> : null}
 				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
-			{Object.values(row.payloadRefs ?? {}).some(Boolean) ? (
-				<button type="button" aria-expanded={expanded} onClick={onToggle} className="mt-2 border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8]">
-					{expanded ? "Hide full content" : "Show full content"}
-				</button>
+			{expanded && imageRow && images.length ? (
+				<div className="ml-8 mt-2 flex gap-2 overflow-x-auto pb-2" aria-label="Viewed images">
+					{images.map((image, index) => (
+						<button key={image.id} type="button" onClick={() => onViewImages(images, index)} className="w-24 shrink-0 rounded-sm border border-slate-700 bg-[#0e1116] p-1 text-left hover:border-[#11a4d4] focus-visible:outline focus-visible:outline-[#11a4d4]" aria-label={`Preview ${image.label}`}>
+							<img src={chatImagePreviewUrls(image, piboSessionId)[0]} alt={image.label} loading="lazy" className="h-16 w-full object-contain" />
+							<span className="block truncate text-[10px] text-slate-400">{image.label}</span>
+						</button>
+					))}
+				</div>
 			) : null}
-			{expanded ? (
+			{expanded && (!imageRow || !images.length || row.status === "error") ? (
 				<TerminalDetails
 					row={row}
 					piboSessionId={piboSessionId}
@@ -805,7 +813,7 @@ function TerminalRowActions({
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 	onViewImages: (images: readonly CompactTerminalImagePreview[]) => void;
 }) {
-	const images = previewableTerminalImages(row.imagePreviews ?? []);
+	const images = row.kind === "tool.image" || row.kind === "tool.group.images" ? [] : previewableTerminalImages(row.imagePreviews ?? []);
 	if (!row.linkedPiboSessionId && images.length === 0) return null;
 	return (
 		<div className="flex shrink-0 items-start gap-1">
@@ -823,7 +831,7 @@ function TerminalRowActions({
 	);
 }
 
-function TerminalImageDialog({
+export function TerminalImageDialog({
 	state,
 	piboSessionId,
 	onClose,
@@ -878,11 +886,11 @@ function TerminalImageDialog({
 							key={source}
 							src={source}
 							alt={`Tool image: ${image?.label ?? "image preview"}`}
-							loading="lazy"
+							loading="eager"
 							decoding="async"
 							onLoad={() => setLoadState("loaded")}
 							onError={() => setLoadState("error")}
-							className={`max-h-[calc(100dvh-12rem)] max-w-full object-contain ${loadState === "loaded" ? "block" : "invisible"}`}
+							className={`block max-h-[calc(100dvh-12rem)] max-w-full object-contain ${loadState === "loaded" ? "" : "opacity-0"}`}
 						/>
 					) : null}
 					{loadState === "loading" ? (
@@ -907,9 +915,7 @@ function TerminalImageDialog({
 }
 
 function previewableTerminalImages(images: readonly CompactTerminalImagePreview[]): CompactTerminalImagePreview[] {
-	return images
-		.filter((image) => Boolean(image.payloadRef ? image.traceNodeId : image.generatedToolCallId || image.path))
-		.slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS);
+	return images.filter((image) => Boolean(image.payloadRef ? image.traceNodeId : image.generatedToolCallId || image.path));
 }
 
 function terminalRowClassName(row: CompactTerminalRow, focused = false): string {

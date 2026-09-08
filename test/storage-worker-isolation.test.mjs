@@ -36,6 +36,60 @@ async function ready(client) {
   assert.equal(client.status().ready, true);
 }
 
+test('async output ingest returns compaction enrichments to the live event object', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pibo-storage-compaction-enrichment-'));
+  const path = join(root, 'data.sqlite'), payloads = join(root, 'payloads');
+  const now = '2026-09-08T12:00:00.000Z';
+  const session = { id: 'ps_async_compaction', piSessionId: '', channel: 'web', kind: 'chat', profile: 'default', metadata: {}, createdAt: now, updatedAt: now };
+  const store = new PiboDataStore(path, { payloadRootDir: payloads });
+  new ChatDataIngestService(store).ingestOutputEvent({
+    session,
+    actorId: 'test',
+    event: {
+      type: 'tool_execution_finished',
+      piboSessionId: session.id,
+      eventId: 'turn-1',
+      toolCallId: 'tool-1',
+      toolName: 'bash',
+      result: 'done',
+      isError: false,
+      toolMetrics: { durationMs: 10, inputTokens: 1, outputTokens: 42, tokenBasis: 'tiktoken/cl100k_base' },
+    },
+  });
+  store.close();
+
+  const storage = new AsyncChatStorage(path, payloads);
+  const event = {
+    type: 'compaction_end',
+    piboSessionId: session.id,
+    eventId: 'turn-1',
+    compactionIndex: 0,
+    reason: 'codex_context_compaction',
+    result: { type: 'contextCompaction', id: 'native-compaction-1' },
+    aborted: false,
+  };
+  try {
+    await ready(storage);
+    const result = await storage.ingestOutput({ session, actorId: 'test', event });
+    const expected = {
+      toolCallCount: 1,
+      maxToolOutputTokens: 42,
+      maxToolOutputTokenBasis: 'tiktoken/cl100k_base',
+    };
+    assert.deepEqual(result.enrichment?.compactionStats, expected);
+    assert.deepEqual(event.compactionStats, expected);
+
+    const { compactionStats: _discarded, ...replayEvent } = event;
+    const replay = await storage.ingestOutput({ session, actorId: 'test', event: replayEvent });
+    assert.equal(replay.duplicate, true);
+    assert.deepEqual(replay.enrichment?.compactionStats, expected);
+    assert.deepEqual(replayEvent.compactionStats, expected);
+  } finally {
+    await storage.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('slow worker CPU leaves the calling thread responsive and enforces queue counts and bytes', async () => {
   const client = new BoundedWorkerClient(controlled, { maxPending: 2, maxPendingBytes: 512, maxMessageBytes: 256, maxAgeMs: 1000 });
   try {

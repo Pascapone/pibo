@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-06T03:00:00Z"
+  at: "2026-09-08T17:55:23Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "7e68cb0fdc69d0f91e469ea86123d273dbf0613c"
+  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -148,6 +148,51 @@ traceability:
         - "Local auth requires loopback except compute workers, where Docker networking is explicitly the security boundary."
         - "Host catch responses expose error.message; generic secret-safe redaction is not implemented."
       confidence: "high"
+    - id: "WP02-GW-WEB-007"
+      status: "implemented"
+      sources:
+        - path: "src/web/http.ts"
+          symbol: "sendWebResponse"
+        - path: "src/web/channel.ts"
+          symbol: "createWebHostChannel"
+      tests:
+        - path: "test/web-http.test.mjs"
+          name: "sendWebResponse contains a body failure after writeHead without writing a second header block"
+        - path: "test/web-http.test.mjs"
+          name: "sendWebResponse refuses every terminal or already-started response state"
+        - path: "test/web-http.test.mjs"
+          name: "disconnect during a pending compressed-body read cancels and unlocks the reader before headers"
+        - path: "test/web-http.test.mjs"
+          name: "compressed-body buffering rechecks response state before writeHead"
+        - path: "test/web-http.test.mjs"
+          name: "regular streaming cancels and unlocks its reader when the response ends mid-chunk"
+        - path: "test/web-channel-failure-containment.test.mjs"
+          name: "partially-written node handlers stay request-scoped"
+        - path: "test/web-channel-failure-containment.test.mjs"
+          name: "client disconnect cancels a streaming body without an unhandled rejection"
+        - path: "test/web-channel-failure-containment.test.mjs"
+          name: "a defect in async upgrade error handling is contained at the socket entry point"
+      failures:
+        - "A response that has been destroyed, ended, finished, or had headers sent cannot start another status line or header block."
+        - "Post-header body failures and client disconnects cancel the Web body reader and close only the affected response or socket."
+        - "Request diagnostics omit headers, cookies, bodies, query strings, error messages, and credentials."
+      confidence: "high"
+    - id: "WP02-GW-STATUS-008"
+      status: "implemented"
+      sources:
+        - path: "src/web/channel.ts"
+          symbol: "createGatewayStatusResponse"
+        - path: "src/gateway/cli.ts"
+          symbol: "printSafetyStatus"
+      tests:
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "reports degraded run-job reliability without counting orphan jobs as active runs"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "gateway doctor reports degraded run-job reliability without presenting it as active work"
+      public: ["/gateway/status reliability", "pibo gateway web status", "pibo gateway web doctor"]
+      failures:
+        - "Orphan reliability state is degraded and observable but does not become active work or a replay trigger."
+      confidence: "high"
     - id: "WP02-GW-STATUS-006"
       status: "implemented"
       sources:
@@ -169,6 +214,27 @@ traceability:
         - "Depth optimization does not omit active telemetry, queue state, or runtime activity and does not change restart-safety decisions."
         - "Missing-parent and cycle traversal retains the existing bounded depth behavior."
       confidence: "high"
+    - id: "WP02-GW-STATUS-007"
+      status: "implemented"
+      sources:
+        - path: "src/web/channel.ts"
+          symbol: "createGatewayStatusResponse"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "gatewayStatus"
+        - path: "src/gateway/cli.ts"
+          symbol: "parseGatewaySafetyPayload"
+      tests:
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "exits nonzero for a durable FIFO inconsistency while runtime health is good"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "reports app storage status failures as ambiguous instead of healthy"
+        - path: "test/web-channel.test.mjs"
+          name: "Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts"
+      public: ["/gateway/status", "pibo gateway web status", "pibo gateway web doctor"]
+      failures:
+        - "Doctor fails for a durable admission barrier or unavailable durable storage even when HTTP and runtime status are healthy."
+        - "Status reads are metadata-only and do not enqueue or mutate commands."
+      confidence: "high"
 ---
 
 # Scope
@@ -181,8 +247,8 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 - Persistence and models: PiboChannelAuthMode; PiboChannel; PiboChannelContext; WebHostChannel; no host-owned product database.
 - Routes and protocols: default 127.0.0.1:4788; public /health; public /gateway/status; /api/auth/* to auth service; Simple Agent API dispatch before apps; unique plugin mountPath/apiPrefix dispatch; root redirect to explicit landing app or first app; host-based Node request/upgrade handlers
-- State transitions: Channel start requires context and binds one HTTP server. Canonical-origin redirect precedes public/auth/app dispatch. Stop aborts active event streams, closes idle connections, drains ordinary responses, then force-destroys remaining sockets after the configured timeout.
-- Failure and security: Web channel declares auth mode required, and gateway startup rejects required-auth channels without an auth service. Generic Fetch request bodies are limited to 4 MiB; JSON bodies must be objects. Internal socket-peer header is injected from the TCP peer and stripped from responses. Local auth requires loopback except compute workers, where Docker networking is explicitly the security boundary. Host catch responses expose error.message; generic secret-safe redaction is not implemented.
+- State transitions: Channel start requires context and binds one HTTP server. Canonical-origin redirect precedes public/auth/app dispatch. Response startup distinguishes destroyed, ended, finished, and headers-sent state. A post-header failure cancels the body reader and destroys only the affected response; request and upgrade fire-and-forget promises have terminal rejection boundaries. Stop aborts active event streams, closes idle connections, drains ordinary responses, then force-destroys remaining sockets after the configured timeout.
+- Failure and security: Web channel declares auth mode required, and gateway startup rejects required-auth channels without an auth service. Generic Fetch request bodies are limited to 4 MiB; JSON bodies must be objects. Internal socket-peer header is injected from the TCP peer and stripped from responses. Local auth requires loopback except compute workers, where Docker networking is explicitly the security boundary. Host catch responses expose error.message to the affected client when no response has started; bounded server diagnostics omit message text, request headers, cookies, bodies, credentials, and query strings.
 - Compatibility: Better Auth is default; legacy devAuth aliases local mode for one release. PIBO_DEV_AUTH=1 fails closed. Host-based Node handlers/upgrades remain app-owned bypass paths and must enforce their own auth/body rules.
 
 # Requirements and invariants
@@ -207,6 +273,14 @@ Web response handling SHALL preserve streaming cancellation and bounded gzip beh
 
 Gateway auth-mode selection SHALL default to Better Auth, reject legacy PIBO_DEV_AUTH, and permit local auth only on loopback or an explicitly warned compute-worker network boundary.
 
+## Requirement: WP02-GW-WEB-007: HTTP failures remain inside their request or upgrade boundary
+
+Before writing a status line, the host SHALL distinguish destroyed, ended, finished, and headers-sent responses. If response streaming fails after headers, it SHALL cancel the body reader and close the affected response without writing a second header block. A client disconnect SHALL cancel streaming without an unhandled rejection. Application Node handlers that partially write and then throw SHALL be contained, while failures before response startup SHALL retain the normal JSON error response. Every asynchronous request and upgrade entry point SHALL terminate rejected fire-and-forget promises at the request or socket boundary. Diagnostics SHALL identify the phase, method, bounded path, error class/code, and response state without recording bodies, header values, cookies, credentials, query strings, or error messages.
+
+## Requirement: WP02-GW-STATUS-008: Gateway health separates degraded run-job reliability from active work
+
+Gateway status and doctor SHALL report expired orphan run-job and `orphan_run_job` dead-letter counts. Those records SHALL NOT appear in `activeRuns` or block as active yielded execution. Doctor SHALL return a degraded exit when orphan reliability records remain, without replaying or otherwise executing them.
+
 ## Requirement: WP02-GW-STATUS-006: Signal projection reuses its complete listed view
 
 When known-session signal projection has listed the stored Sessions, it SHALL derive ancestor depths from that same per-call view without rereading each Session or ancestor from storage. Parent-first projection, current queue/activity signals, and available active telemetry SHALL remain unchanged. A subsequent projection SHALL use a fresh listed view rather than a cross-request cache.
@@ -217,6 +291,14 @@ When known-session signal projection has listed the stored Sessions, it SHALL de
 - Missing parents and cycles retain the existing depth behavior. Runtime-status enumeration still performs per-runtime projection; this requirement does not promise constant-time scaling or a universal latency deadline.
 
 Exact-code Docker regression and Pibo2 status/load/safety/streaming evidence are in the [status scaling report](/reports/gateway-status-scaling-validation-2026-09-06.md). No timeout extension or restart attempt was used to satisfy acceptance.
+
+## Requirement: WP02-GW-STATUS-007: Runtime and durable message queues have separate health
+
+`/gateway/status` labels the in-memory runtime Session queue as `runtimeQueue` and retains `runtimeStatuses` for compatibility. The separate `durableMessageQueue` contribution reports state/delivery totals, interrupted predecessors, FIFO-blocked successors, dispatchable and blocked wait ages, expired owned leases, admission degradation by global/Room/Session scope, storage availability, affected identifiers, limits, and explicit bounds. It contains no message text.
+
+`pibo gateway web|dev status` renders both layers and points to `pibo debug message-queue`; `--json` includes next discovery commands. `doctor` exits nonzero when durable storage is unavailable/ambiguous or a durable admission inconsistency is degraded, even if HTTP reachability, mode, and runtime status are otherwise healthy. A healthy dispatchable durable backlog remains visible without being mislabeled as an interrupted barrier.
+
+Status is read-only and bounded. Restart-safety output discloses durable work and inconsistencies, while the existing active runtime/yielded-run policy remains the independent source of restart blocking decisions; durable `accepted`, terminal, and `interrupted` rows are not silently reclassified as live runtime execution.
 
 # Interfaces and ownership
 
@@ -255,7 +337,7 @@ Related ownership boundaries:
 - Generic Fetch request bodies are limited to 4 MiB; JSON bodies must be objects.
 - Internal socket-peer header is injected from the TCP peer and stripped from responses.
 - Local auth requires loopback except compute workers, where Docker networking is explicitly the security boundary.
-- Host catch responses expose error.message; generic secret-safe redaction is not implemented.
+- Host catch responses expose error.message only to the affected client when no response has started; request-scoped server diagnostics do not log message text, response bodies, headers, cookies, credentials, or query strings.
 
 # Known limits
 
@@ -263,19 +345,19 @@ Related ownership boundaries:
 - Non-current claim excluded: claim host errors are secret-safe normalized: the generic catch returns error.message.
 - Non-current claim excluded: claim the host enforces same-origin mutation globally; individual apps do so where implemented.
 - Non-current claim excluded: normatively absorb /api/health or /api/send-message into this spec.
-- Current limit or evidence gap: Generic 500 responses may expose raw error messages; security-safe error normalization is not implemented.
+- Current limit or evidence gap: Generic 500 response bodies may expose raw error messages to the requesting client; client-facing security-safe error normalization is not implemented.
 - Current limit or evidence gap: Host-based handleNodeRequest and handleUpgrade paths bypass generic Fetch body-limit/auth flow and rely on each app.
 - Current limit or evidence gap: Real Better Auth, canonical-origin, and platform behavior remains unperformed.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `7e68cb0fdc69d0f91e469ea86123d273dbf0613c`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
+Source symbols and named tests are bound to commit `2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
 
 Package verification commands:
 
 - `npm run build`
 - `npm run typecheck`
-- `node scripts/run-test-suite.mjs test/channel-runtime.test.mjs test/web-channel.test.mjs test/plugin-registry.test.mjs test/web-http.test.mjs test/web-channel-shutdown.test.mjs test/web-gateway.test.mjs`
+- `node scripts/run-test-suite.mjs test/channel-runtime.test.mjs test/web-channel.test.mjs test/plugin-registry.test.mjs test/web-http.test.mjs test/web-channel-failure-containment.test.mjs test/web-channel-shutdown.test.mjs test/web-gateway.test.mjs`
 
 # Related concepts
 

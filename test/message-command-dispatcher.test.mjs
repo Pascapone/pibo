@@ -27,6 +27,19 @@ test('a persisted terminal event releases the local claim and starts the next co
  }finally{await dispatcher.dispose();}
 });
 
+test('runtime queue capacity failures persist dimension-specific numeric diagnostics without message content',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let available=claim(1);const transitions=[];
+ const storage={claimCommand:async()=>{const next=available;available=undefined;return next;},heartbeatCommand:async()=>true,transitionCommand:async(...args)=>{transitions.push(args);return true;}};
+ const secret='never persist this message';
+ const error=Object.assign(new Error(secret),{code:'runtime_capacity_unavailable',dimension:'queue_bytes',current:{messageBytes:12,queueCount:4,queueBytes:4194305,oldestWaitMs:42},limit:4194304});
+ const dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>({id:'session'}),emit:async()=>{throw error;}});
+ try {
+  await yieldLoop();await yieldLoop();
+  const failed=transitions.find(([, , , state])=>state==='failed');
+  assert.match(failed[4],/queue_bytes/);assert.match(failed[4],/queueBytes=4194305/);assert.match(failed[4],/limit=4194304/);assert.doesNotMatch(failed[4],new RegExp(secret));
+ }finally{await dispatcher.dispose();}
+});
+
 test('frequent dispatch checks renew active ownership only on the separate lease cadence',async t=>{
  t.mock.timers.enable({apis:['setTimeout','Date'],now:1000});let available=claim(1);let renewals=0;
  const storage={claimCommand:async()=>{const next=available;available=undefined;return next;},heartbeatCommand:async()=>{renewals++;return true;},transitionCommand:async()=>true};

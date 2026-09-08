@@ -249,7 +249,7 @@ test("chat data ingest preserves post-compaction output and repeated lifecycle e
 			{ type: "compaction_start", piboSessionId: session.id, eventId: "turn-1", compactionIndex: 0, reason: "context_guard" },
 			{ type: "compaction_end", piboSessionId: session.id, eventId: "turn-1", compactionIndex: 0, reason: "context_guard", result: { summary: "compact" }, aborted: false },
 			{ type: "assistant_message", piboSessionId: session.id, eventId: "turn-1", assistantIndex: 1, text: "final answer" },
-			{ type: "assistant_usage", piboSessionId: session.id, eventId: "turn-1", usageIndex: 1, inputTokens: 6, outputTokens: 3, totalTokens: 9 },
+			{ type: "assistant_usage", piboSessionId: session.id, eventId: "turn-1", usageIndex: 1, inferenceId: "native-turn:usage:1", inferenceTarget: { type: "assistant", assistantIndex: 1 }, inputTokens: 6, outputTokens: 3, totalTokens: 9 },
 			{ type: "message_finished", piboSessionId: session.id, eventId: "turn-1" },
 		];
 
@@ -282,13 +282,32 @@ test("chat data ingest preserves post-compaction output and repeated lifecycle e
 			...eventRow(20, "assistant_usage", rows[5].attributes),
 			attributes_json: JSON.stringify(rows[5].attributes),
 		});
+		const mappedCompactionStart = storedPiboEventFromV2Row({
+			...eventRow(20, "compaction_start", rows[2].attributes),
+			attributes_json: JSON.stringify(rows[2].attributes),
+		});
+		const nativeResult = { type: "contextCompaction", id: "native-compaction-1" };
 		const mappedCompaction = storedPiboEventFromV2Row({
 			...eventRow(21, "compaction_end", rows[3].attributes),
-			attributes_json: JSON.stringify({ ...rows[3].attributes, inlinePayload: { summary: "compact" } }),
+			attributes_json: JSON.stringify({ ...rows[3].attributes, inlinePayload: nativeResult }),
 		});
 		assert.equal(mappedUsage.payload.usageIndex, 1);
+		assert.equal(mappedUsage.payload.inferenceId, "native-turn:usage:1");
+		assert.deepEqual(mappedUsage.payload.inferenceTarget, { type: "assistant", assistantIndex: 1 });
+		assert.equal(mappedCompaction.payload.type, "compaction_end");
 		assert.equal(mappedCompaction.payload.compactionIndex, 0);
-		assert.equal(mappedCompaction.payload.result.summary, "compact");
+		assert.deepEqual(mappedCompaction.payload.result, nativeResult);
+		assert.deepEqual(mappedCompaction.payload.compactionStats, { toolCallCount: 0 });
+
+		const trace = buildTraceViewFromEvents({
+			session: { id: session.id, piSessionId: session.piSessionId, title: "Native compaction" },
+			events: [mappedCompactionStart, mappedCompaction],
+			status: "idle",
+		});
+		const compaction = trace.nodes.find((node) => node.type === "execution.compaction");
+		assert.equal(compaction.status, "done");
+		assert.deepEqual(compaction.output, nativeResult);
+		assert.deepEqual(compaction.compactionStats, { toolCallCount: 0 });
 	} finally {
 		store.close();
 	}

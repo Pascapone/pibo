@@ -170,6 +170,7 @@ export function repairOutputTurn(input: {
 				actorId: "pibo-debug-repair",
 				event: current.terminalEvent,
 				createdAt,
+				persistenceProvenance: { producer: "debug-repair", projection: "product-history", phase: "operator-repair" },
 			});
 			const audit = data.eventLog.appendEvent({
 				sessionId: input.piboSessionId,

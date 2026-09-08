@@ -128,7 +128,7 @@ import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
 import { ScopedUserSkillManager } from "../../user-skills/manager.js";
-import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
+import { ChatDataIngestService, legacyOutputIdempotencyKey, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
@@ -428,6 +428,7 @@ type ChatEventCommands = {
 
 type ChatReadState = {
 	markSessionRead(piboSessionId: string, lastReadStreamId: number): void;
+	hasUnreadErrorsBySession(input: { piboSessionIds: string[] }): Set<string>;
 	countUnreadMessagesBySession(input: { piboSessionIds: string[] }): Map<string, number>;
 };
 
@@ -1173,6 +1174,11 @@ async function deliverWebOutputPersistenceState(
 					actorId: persistenceState.actorId ?? session.id,
 					event: delivery.event,
 					createdAt,
+					persistenceProvenance: {
+						producer: "chat-web" as const,
+						projection: "product-history" as const,
+						phase: retryContext.attempt > 1 ? "durable-replay" as const : "live" as const,
+					},
 				};
 				const asyncIngested = state.asyncStorage ? await state.asyncStorage.ingestOutput(ingestInput) : undefined;
 				const ingested = asyncIngested ?? state.ingestService.ingestOutputEvent(ingestInput);
@@ -1292,7 +1298,7 @@ function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersiste
 		const delivery = rawDelivery as Record<string, unknown>;
 		if (!isPiboOutputEvent(delivery.event) || !outputIdempotencyKey(delivery.event)) return undefined;
 		const deliveryId = outputPersistenceDeliveryKey(delivery.event);
-		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId) return undefined;
+		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId && delivery.deliveryId !== legacyOutputIdempotencyKey(delivery.event)) return undefined;
 		const v2 = delivery.v2;
 		if (v2 !== undefined && (
 			!v2 || typeof v2 !== "object" || Array.isArray(v2)
@@ -3822,18 +3828,25 @@ async function buildSessionUnreadCounts(
 	});
 }
 
-function hasUnreadInSessionSubtree(sessions: readonly PiboSession[], sessionUnreadCounts: ReadonlyMap<string, number>, rootSessionId: string): boolean {
-	return sessionSubtree(sessions, rootSessionId).some((session) => (sessionUnreadCounts.get(session.id) ?? 0) > 0);
+function buildSessionUnreadErrors(
+	state: ChatWebAppState,
+	sessions: PiboSession[],
+): Set<string> {
+	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+	const visibleSessionIds = sessions
+		.filter((session) => !hasArchivedSessionInPath(session, sessionsById))
+		.map((session) => session.id);
+	return state.readState.hasUnreadErrorsBySession({ piboSessionIds: visibleSessionIds });
 }
 
 function sessionIdsWithUnreadInSubtree(
 	sessions: readonly PiboSession[],
-	sessionUnreadCounts: ReadonlyMap<string, number>,
+	unreadSessionIds: ReadonlySet<string>,
 ): ReadonlySet<string> {
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	const result = new Set<string>();
 	for (const session of sessions) {
-		if ((sessionUnreadCounts.get(session.id) ?? 0) <= 0) continue;
+		if (!unreadSessionIds.has(session.id)) continue;
 		let current: PiboSession | undefined = session;
 		const visited = new Set<string>();
 		while (current && !visited.has(current.id)) {
@@ -3846,16 +3859,11 @@ function sessionIdsWithUnreadInSubtree(
 }
 
 type SignalStatusOptions = {
-	sessions?: readonly PiboSession[];
-	sessionUnreadCounts?: ReadonlyMap<string, number>;
-	sessionIdsWithUnreadInSubtree?: ReadonlySet<string>;
+	sessionIdsWithUnreadErrorInSubtree?: ReadonlySet<string>;
 };
 
 function signalStatusHasUnreadError(options: SignalStatusOptions, piboSessionId: string): boolean {
-	if (options.sessionIdsWithUnreadInSubtree) return options.sessionIdsWithUnreadInSubtree.has(piboSessionId);
-	return options.sessions && options.sessionUnreadCounts
-		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
-		: true;
+	return options.sessionIdsWithUnreadErrorInSubtree?.has(piboSessionId) ?? true;
 }
 
 function signalStatusFromSnapshot(
@@ -3887,19 +3895,19 @@ function sessionIndexItemsWithSignalState(
 	context: PiboWebAppContext,
 	sessions: readonly PiboSession[],
 	indexItems: readonly ChatWebSessionIndexItem[],
-	sessionUnreadCounts: ReadonlyMap<string, number> = new Map(),
+	sessionUnreadErrors: ReadonlySet<string> = new Set(),
 ): ChatWebSessionIndexItem[] {
 	const snapshotSignalStatuses = context.channelContext.snapshotSignalStatuses;
 	const signalStatuses = snapshotSignalStatuses?.().sessions;
 	const snapshotSignalSession = context.channelContext.snapshotSignalSession;
 	if (!signalStatuses && !snapshotSignalSession) return [...indexItems];
 	const bySessionId = new Map(indexItems.map((item) => [item.piboSessionId, item]));
-	const unreadSessionSubtreeIds = sessionIdsWithUnreadInSubtree(sessions, sessionUnreadCounts);
+	const unreadErrorSubtreeIds = sessionIdsWithUnreadInSubtree(sessions, sessionUnreadErrors);
 	for (const session of sessions) {
 		const existing = bySessionId.get(session.id);
 		const signal = signalStatuses
-			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadInSubtree: unreadSessionSubtreeIds })
-			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadInSubtree: unreadSessionSubtreeIds });
+			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds })
+			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds });
 		if (!signal?.status) continue;
 		if (signal.status === "idle" && existing?.status !== "running" && existing?.status !== "error") continue;
 		bySessionId.set(session.id, {
@@ -3930,7 +3938,7 @@ function buildRoomUnreadCounts(
 	const counts = new Map<string, number>();
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	for (const session of sessions) {
-		if (hasArchivedSessionInPath(session, sessionsById)) continue;
+		if (session.parentId || hasArchivedSessionInPath(session, sessionsById)) continue;
 		const unreadCount = sessionUnreadCounts.get(session.id) ?? 0;
 		if (unreadCount <= 0) continue;
 		let root = session;
@@ -4668,7 +4676,11 @@ async function sendChatMessage(input: {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
 		if (code === "command_conflict") return responseJson({ error:"Transaction conflicts with an existing message.",code }, { status:409 });
 		if (code === "command_too_large") return responseJson({ error:"Message exceeds the durable command limit.",code }, { status:413 });
-		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code }, { status:429,headers:{"retry-after":"1"} });
+		if (code === "command_reconciliation_required") {
+			const details=error as {retryable?:boolean;scope?:string;blockingCommandId?:string;blockedSince?:number;oldestWaitAgeMs?:number;nextAction?:string};
+			return responseJson({error:"A previous interrupted message requires review before this session can accept more messages.",code,retryable:false,scope:details.scope??"session",blockingCommandId:details.blockingCommandId,blockedSince:details.blockedSince,oldestWaitAgeMs:details.oldestWaitAgeMs,nextAction:details.nextAction},{status:409});
+		}
+		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code,retryable:true,scope:"capacity" }, { status:429,headers:{"retry-after":"1"} });
 		if (code === "room_not_found") throw new PiboWebHttpError("Room not found", 404);
 		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
 		if (code.startsWith("storage_")) return responseJson({ error: "Storage unavailable; retry with the same client transaction ID.", code, acceptanceUnknown: code === "storage_unknown" || code === "storage_operation_failed" }, { status: 503, headers: { "retry-after": "1" } });
@@ -4753,6 +4765,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			ensureCustomAgentProfiles(state,context);
 			ensureEventIndexing(state,context);
 			if (state.asyncStorage) state.commandDispatcher ??= new MessageCommandDispatcher(state.asyncStorage,context.channelContext);
+		},
+		async gatewayStatus() {
+			if(!state.asyncStorage)return {durableMessageQueue:{status:"ambiguous",storage:{available:false,error:"Durable message storage is not file-backed."},degradedReasons:["durable message storage unavailable"]}};
+			try{return {durableMessageQueue:await state.asyncStorage.durableQueueHealth()};}
+			catch(error){return {durableMessageQueue:{status:"ambiguous",storage:{available:false,error:error instanceof Error?error.message:"Storage unavailable"},degradedReasons:["durable message queue storage read failed"]}};}
 		},
 		async drain() {
 			await state.outputPersistenceRetries.drain();
@@ -4960,9 +4977,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
                   if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey};
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
+				const sessionUnreadErrors = buildSessionUnreadErrors(state, ownedSessions);
 				const sessions = await buildSessionNodes(
 					roomSessions,
-					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadCounts),
+					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
 					process.cwd(),
 					sessionUnreadCounts,
 					{ skipPiMetadataFallback: true },
@@ -5019,10 +5037,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
                   if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey};
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
+				const sessionUnreadErrors = buildSessionUnreadErrors(state, ownedSessions);
 				const [sessions, catalog] = await Promise.all([
 					buildSessionNodes(
 						roomSessions,
-						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadCounts),
+						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
 						process.cwd(),
 						sessionUnreadCounts,
 						sessionNodeHistoryOptions(context),

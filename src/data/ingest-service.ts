@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
-import { outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
+import { legacyOutputIdentityFingerprintCandidates, OUTPUT_IDENTITY_FINGERPRINT_VERSION, outputIdentityFieldDigests, outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { PiboDataStore } from "./pibo-store.js";
 import type { PreparedPayload } from "./payload-store.js";
@@ -28,6 +28,12 @@ export type UserMessageAcceptedIngestResult = {
 	duplicate: boolean;
 };
 
+export type OutputPersistenceProvenance = {
+	producer: "chat-web" | "local-cli" | "runtime-recovery" | "debug-repair" | "direct-ingest";
+	projection: "product-history";
+	phase: "live" | "durable-replay" | "startup-recovery" | "operator-repair" | "direct";
+};
+
 export type OutputEventIngestInput = {
 	session: PiboSession;
 	roomId?: string;
@@ -35,6 +41,7 @@ export type OutputEventIngestInput = {
 	event: PiboOutputEvent;
 	legacyStreamId?: number;
 	createdAt?: string;
+	persistenceProvenance?: OutputPersistenceProvenance;
 };
 
 export type OutputEventIngestResult = {
@@ -68,6 +75,7 @@ export function outputPersistenceErrorIsRetryable(error: unknown): boolean {
 
 const INLINE_MESSAGE_PAYLOAD_THRESHOLD_BYTES = 16 * 1024;
 const INLINE_JSON_PAYLOAD_THRESHOLD_BYTES = 16 * 1024;
+const MAX_FINGERPRINT_FIELD_DIFFERENCES = 24;
 
 export class ChatDataIngestService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -154,15 +162,32 @@ export class ChatDataIngestService {
 		const event = input.event;
 		const idempotencyKey = outputIdempotencyKey(event);
 		const identityFingerprint = outputIdentityFingerprint(event);
+		const identityFieldDigests = outputIdentityFieldDigests(event);
+		const incomingProvenance = input.persistenceProvenance ?? {
+			producer: "direct-ingest",
+			projection: "product-history",
+			phase: "direct",
+		} satisfies OutputPersistenceProvenance;
 		const partFingerprint = isOutputPartEvent(event) ? outputPartFingerprint(event) : undefined;
 		if (idempotencyKey) {
-			const existing = this.store.eventLog.findByIdempotencyKey(idempotencyKey);
+			const directExisting = this.store.eventLog.findByIdempotencyKey(idempotencyKey);
+			const legacyExisting = !directExisting && event.type === "execution_result"
+				? this.store.eventLog.findByIdempotencyKey(legacyOutputIdempotencyKey(event)!)
+				: undefined;
+			const legacyPhaseMatches = legacyExisting && event.type === "execution_result"
+				? legacyExecutionResultPhase(legacyExisting.attributes) === executionResultPhase(event)
+				: false;
+			const existing = directExisting ?? (legacyExisting && (
+				storedFingerprintMatches(legacyExisting.attributes, event, identityFingerprint) || legacyPhaseMatches
+			) ? legacyExisting : undefined);
 			if (existing) {
 				const existingFingerprint = typeof existing.attributes.identityFingerprint === "string"
 					? existing.attributes.identityFingerprint
 					: undefined;
-				if (existingFingerprint && existingFingerprint !== identityFingerprint) {
+				if (existingFingerprint && !storedFingerprintMatches(existing.attributes, event, identityFingerprint)) {
 					const now = input.createdAt ?? new Date().toISOString();
+					const existingFieldDigests = stringMap(existing.attributes.identityFieldDigests);
+					const fieldDifferences = diffFieldDigests(existingFieldDigests, identityFieldDigests);
 					this.store.eventLog.appendEvent({
 						sessionId: input.session.id,
 						sessionSequence: this.nextEventSequence(input.session.id),
@@ -181,6 +206,10 @@ export class ChatDataIngestService {
 							existingFingerprint,
 							incomingFingerprint: identityFingerprint,
 							incomingType: event.type,
+							existingProvenance: redactedPersistenceProvenance(existing.attributes.persistenceProvenance),
+							incomingProvenance,
+							fieldDifferences,
+							fieldDifferencesTruncated: fieldDifferences.length >= MAX_FINGERPRINT_FIELD_DIFFERENCES,
 						},
 						createdAt: now,
 						indexedAt: now,
@@ -226,6 +255,9 @@ export class ChatDataIngestService {
 				previewText: previewTextForOutputEvent(event),
 				attributes: compactObject({
 					identityFingerprint,
+					identityFingerprintVersion: OUTPUT_IDENTITY_FINGERPRINT_VERSION,
+					identityFieldDigests,
+					persistenceProvenance: incomingProvenance,
 					outputPartFingerprint: partFingerprint,
 					eventIdentityScoped: eventIdForOutputEvent(event) !== undefined,
 					semanticEventId: eventIdForOutputEvent(event),
@@ -399,6 +431,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function stringMap(value: unknown): Record<string, string> {
+	if (!isRecord(value)) return {};
+	return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string").slice(0, 64));
+}
+
+function diffFieldDigests(existing: Record<string, string>, incoming: Record<string, string>): PiboJsonValue[] {
+	return [...new Set([...Object.keys(existing), ...Object.keys(incoming)])]
+		.sort()
+		.filter((field) => existing[field] !== incoming[field])
+		.slice(0, MAX_FINGERPRINT_FIELD_DIFFERENCES)
+		.map((field) => ({
+			field,
+			change: existing[field] === undefined ? "added" : incoming[field] === undefined ? "removed" : "changed",
+		}));
+}
+
+function redactedPersistenceProvenance(value: unknown): PiboJsonObject {
+	if (!isRecord(value)) return { producer: "unknown", projection: "product-history", phase: "unknown" };
+	const bounded = (field: string) => typeof value[field] === "string" ? value[field].slice(0, 64) : "unknown";
+	return { producer: bounded("producer"), projection: bounded("projection"), phase: bounded("phase") };
+}
+
+function executionResultPhase(event: Extract<PiboOutputEvent, { type: "execution_result" }>): "queued" | "complete" {
+	return isRecord(event.result) && event.result.queued === true ? "queued" : "complete";
+}
+
+function legacyExecutionResultPhase(attributes: PiboJsonObject): "queued" | "complete" {
+	return isRecord(attributes.inlinePayload) && attributes.inlinePayload.queued === true ? "queued" : "complete";
+}
+
+function storedFingerprintMatches(attributes: PiboJsonObject, event: PiboOutputEvent, currentFingerprint: string): boolean {
+	const fingerprint = attributes.identityFingerprint;
+	if (typeof fingerprint !== "string") return true;
+	if (attributes.identityFingerprintVersion === OUTPUT_IDENTITY_FINGERPRINT_VERSION) return fingerprint === currentFingerprint;
+	// Versionless fingerprints were produced by v1. Compare with the exact old
+	// algorithm instead of comparing incompatible hash formats.
+	return legacyOutputIdentityFingerprintCandidates(event).includes(fingerprint);
+}
+
 function deterministicId(prefix: string, value: string): string {
 	return `${prefix}_${createHash("sha256").update(value).digest("hex").slice(0, 32)}`;
 }
@@ -441,6 +512,13 @@ export function outputPersistenceDeliveryKey(event: PiboOutputEvent): string {
 		?? `pibo.output:${event.piboSessionId}:${event.type}:render:${event.renderSequence ?? "unpositioned"}`;
 }
 
+/** Accepted only while recovering pre-phase execution-result envelopes. */
+export function legacyOutputIdempotencyKey(event: PiboOutputEvent): string | undefined {
+	if (event.type !== "execution_result") return outputIdempotencyKey(event);
+	const base = event.eventId;
+	return base ? `pibo.output:${event.piboSessionId}:${event.type}:${base}:${event.action}` : undefined;
+}
+
 function outputPartKey(event: PiboOutputEvent): string {
 	if (event.type === "tool_call") return `${event.toolCallId}:${event.toolInvocationOrdinal ?? 0}:${event.argsComplete ? "complete" : "partial"}:${hashJson(event.args)}`;
 	if ("toolCallId" in event) return `${event.toolCallId ?? "main"}:${event.toolInvocationOrdinal ?? 0}`;
@@ -449,7 +527,7 @@ function outputPartKey(event: PiboOutputEvent): string {
 	if (event.type === "assistant_usage") return String(event.usageIndex ?? hashJson({ inputTokens: event.inputTokens, outputTokens: event.outputTokens, cacheReadTokens: event.cacheReadTokens, cacheWriteTokens: event.cacheWriteTokens, reasoningTokens: event.reasoningTokens, totalTokens: event.totalTokens, costUsd: event.costUsd }));
 	if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") return String(event.thinkingIndex ?? event.contentIndex ?? 0);
 	if (event.type === "compaction_start" || event.type === "compaction_end") return String(event.compactionIndex ?? 0);
-	if (event.type === "execution_result") return event.action;
+	if (event.type === "execution_result") return `${event.action}:${executionResultPhase(event)}`;
 	return "main";
 }
 
@@ -519,6 +597,8 @@ function specificAttributesForOutputEvent(event: PiboOutputEvent): Record<string
 	if (event.type === "assistant_message" || event.type === "assistant_delta") return { assistantIndex: event.assistantIndex, contentIndex: event.contentIndex };
 	if (event.type === "assistant_usage") return {
 		usageIndex: event.usageIndex,
+		inferenceId: event.inferenceId,
+		inferenceTarget: event.inferenceTarget,
 		inputTokens: event.inputTokens,
 		outputTokens: event.outputTokens,
 		cacheReadTokens: event.cacheReadTokens,

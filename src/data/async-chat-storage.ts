@@ -1,4 +1,5 @@
-import type { MessageReceipt, MessageCommandClaim, MessageCommandState, MessageCommandStore } from "./message-command-store.js";
+import type { PiboCompactionStats } from "../core/events.js";
+import type { DurableMessageQueueHealth, MessageReceipt, MessageCommandClaim, MessageCommandState, MessageCommandStore } from "./message-command-store.js";
 import type { PiboRoom } from "../apps/chat/types/rooms.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatEventAppendInput, StoredChatEvent } from "../apps/chat/types/event-store.js";
@@ -7,6 +8,7 @@ import { BoundedWorkerClient, StorageUnavailableError, type BoundedWorkerOptions
 
 export type AsyncOutputIngestResult = OutputEventIngestResult & {
 	stored: { createdAt: string; eventId: string };
+	enrichment?: { compactionStats: PiboCompactionStats };
 };
 
 /** Admission/output writer; bulk reads must use a separate worker connection. */
@@ -75,8 +77,12 @@ export class AsyncChatStorage {
 	ingestUser(input: UserMessageAcceptedIngestInput): Promise<UserMessageAcceptedIngestResult> {
 		return this.writer.request({ type: "ingestUser", input });
 	}
-	ingestOutput(input: OutputEventIngestInput): Promise<AsyncOutputIngestResult> {
-		return this.writer.request({ type: "ingestOutput", input }, { priority: "output", fairnessKey:input.roomId });
+	async ingestOutput(input: OutputEventIngestInput): Promise<AsyncOutputIngestResult> {
+		const result = await this.writer.request<AsyncOutputIngestResult>({ type: "ingestOutput", input }, { priority: "output", fairnessKey:input.roomId });
+		if (input.event.type === "compaction_end" && result.enrichment?.compactionStats) {
+			input.event.compactionStats = result.enrichment.compactionStats;
+		}
+		return result;
 	}
 	cancelPendingCommands(sessionId: string): Promise<number> { return this.writer.request({ type:"cancelPendingCommands",sessionId },{priority:"control"}); }
 	commandReceiptPage(sessionId: string): Promise<{receipts:MessageReceipt[];queue:ReturnType<MessageCommandStore["queueStatus"]>}> { return this.writer.request({type:"commandReceiptPage",sessionId},{priority:"control"}); }
@@ -85,6 +91,7 @@ export class AsyncChatStorage {
 	claimCommand(owner: string, leaseMs: number): Promise<MessageCommandClaim | undefined> { return this.writer.request({ type: "claimCommand", owner, leaseMs }, { priority: "background" }); }
 	transitionCommand(id: string, owner: string, token: number, state: MessageCommandState, error?: string): Promise<boolean> { return this.writer.request({ type: "transitionCommand", id, owner, token, state, error },{priority:"control"}); }
 	heartbeatCommand(id: string, owner: string, token: number, leaseMs: number): Promise<boolean> { return this.writer.request({ type: "heartbeatCommand", id, owner, token, leaseMs },{priority:"control"}); }
+	durableQueueHealth(): Promise<DurableMessageQueueHealth> { return this.writer.request({type:"durableQueueHealth"},{priority:"control",timeoutMs:500}); }
 	status() {
 		const writer = this.writer.status();
 		const reader = this.reader?.status();

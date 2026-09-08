@@ -4,6 +4,23 @@ import type { PiboChannelContext } from "../../channels/types.js";
 import type { AsyncChatStorage } from "../../data/async-chat-storage.js";
 import type { MessageCommandClaim } from "../../data/message-command-store.js";
 
+const RUNTIME_QUEUE_CAPACITY_DIMENSIONS = new Set(["message_bytes", "queue_count", "queue_bytes", "oldest_wait_age"]);
+
+function runtimeCapacityDispatchFailure(error: unknown): string {
+	const fallback = "Runtime capacity was unavailable before dispatch; the message did not run.";
+	if (!error || typeof error !== "object" || !("dimension" in error) || !("current" in error) || !("limit" in error)) return fallback;
+	const dimension = typeof error.dimension === "string" && RUNTIME_QUEUE_CAPACITY_DIMENSIONS.has(error.dimension)
+		? error.dimension
+		: undefined;
+	const current = error.current && typeof error.current === "object" ? error.current as Record<string, unknown> : undefined;
+	const values = current && ["messageBytes", "queueCount", "queueBytes", "oldestWaitMs"].every((key) => (
+		typeof current[key] === "number" && Number.isFinite(current[key]) && current[key] >= 0
+	)) ? current as { messageBytes: number; queueCount: number; queueBytes: number; oldestWaitMs: number } : undefined;
+	const limit = typeof error.limit === "number" && Number.isFinite(error.limit) && error.limit >= 0 ? error.limit : undefined;
+	if (!dimension || !values || limit === undefined) return fallback;
+	return `Runtime queue ${dimension} capacity was unavailable before dispatch (messageBytes=${values.messageBytes}, queueCount=${values.queueCount}, queueBytes=${values.queueBytes}, oldestWaitMs=${values.oldestWaitMs}, limit=${limit}); the message did not run.`;
+}
+
 /** Owns bounded dispatches; durable claims, not this map, own accepted work. */
 export class MessageCommandDispatcher {
 	private readonly owner = `message-dispatch:${randomUUID()}`;
@@ -78,7 +95,7 @@ export class MessageCommandDispatcher {
 				const capacity = Boolean(error && typeof error === "object" && "code" in error && error.code === "runtime_capacity_unavailable");
 				try {
 					await this.storage.transitionCommand(claim.id,this.owner,claim.token,cancelled || steering || capacity ? "failed" : "interrupted",
-						cancelled ? "Message cancelled before runtime dispatch." : capacity ? "Runtime capacity was unavailable before dispatch; the message did not run." : steering ? "Steering is unavailable; the message was not queued as a normal turn." : "Runtime dispatch outcome is unclear; inspect the session before retrying.");
+						cancelled ? "Message cancelled before runtime dispatch." : capacity ? runtimeCapacityDispatchFailure(error) : steering ? "Steering is unavailable; the message was not queued as a normal turn." : "Runtime dispatch outcome is unclear; inspect the session before retrying.");
 				} catch { /* Lease expiry retains the uncertain outcome. */ }
 				this.forget(claim.id);this.wake();
 			}

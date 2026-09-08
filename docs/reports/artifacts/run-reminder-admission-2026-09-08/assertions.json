@@ -1,0 +1,24 @@
+{
+  "implementation": "75fccac5617c51ae936ccc8cb95c86be71dcbcee",
+  "fixture": "test/run-reminder-admission.test.mjs",
+  "viewport": {
+    "width": 1280,
+    "height": 900
+  },
+  "runtime": {
+    "processing": true,
+    "streaming": true,
+    "queuedMessages": 64,
+    "warnings": [
+      "Run reminder deferred: runtime queue queue_count capacity is unavailable; pending run state is retained."
+    ]
+  },
+  "durableStatus": "running",
+  "navigationStatus": "running",
+  "latestTurnState": "running",
+  "pendingNotification": true,
+  "fatalOutputCount": 0,
+  "traceErrorRoots": 0,
+  "chatShellState": "ready",
+  "consoleExceptionsDuringProbe": 0
+}

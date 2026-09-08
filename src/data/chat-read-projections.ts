@@ -14,7 +14,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS chat_trace_delete AFTER DELETE ON event_log WHEN OLD.session_id IS NOT NULL BEGIN
  INSERT INTO chat_trace_revisions VALUES(OLD.session_id,1) ON CONFLICT(session_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE INDEX IF NOT EXISTS idx_event_log_unread_stream ON event_log(stream_id) WHERE (retention_class='chat_message' AND type IN ('user.message.accepted','assistant_message')) OR type='session_error';
+CREATE INDEX IF NOT EXISTS idx_event_log_unread_stream ON event_log(stream_id) WHERE type='message_finished';
 CREATE TABLE IF NOT EXISTS chat_unread_index(stream_id INTEGER PRIMARY KEY,session_id TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_chat_unread_session_stream ON chat_unread_index(session_id,stream_id);
 CREATE TABLE IF NOT EXISTS chat_unread_counts(session_id TEXT PRIMARY KEY,unread_count INTEGER NOT NULL DEFAULT 0);
@@ -25,13 +25,13 @@ END;
 CREATE TRIGGER IF NOT EXISTS chat_unread_count_delete AFTER DELETE ON chat_unread_index BEGIN
  UPDATE chat_unread_counts SET unread_count=MAX(0,unread_count-CASE WHEN OLD.stream_id>COALESCE((SELECT last_read_stream_id FROM app_session_read_state WHERE session_id=OLD.session_id),0) THEN 1 ELSE 0 END) WHERE session_id=OLD.session_id;
 END;
-CREATE TRIGGER IF NOT EXISTS chat_unread_event_insert AFTER INSERT ON event_log WHEN NEW.session_id IS NOT NULL AND ((NEW.retention_class='chat_message' AND NEW.type IN ('user.message.accepted','assistant_message')) OR NEW.type='session_error') BEGIN
+CREATE TRIGGER IF NOT EXISTS chat_unread_event_insert AFTER INSERT ON event_log WHEN NEW.session_id IS NOT NULL AND NEW.type='message_finished' BEGIN
  INSERT OR IGNORE INTO chat_unread_index VALUES(NEW.stream_id,NEW.session_id);
 END;
 CREATE TRIGGER IF NOT EXISTS chat_unread_event_delete AFTER DELETE ON event_log BEGIN DELETE FROM chat_unread_index WHERE stream_id=OLD.stream_id; END;
 CREATE TRIGGER IF NOT EXISTS chat_unread_event_update AFTER UPDATE ON event_log BEGIN
  DELETE FROM chat_unread_index WHERE stream_id=OLD.stream_id;
- INSERT OR IGNORE INTO chat_unread_index SELECT NEW.stream_id,NEW.session_id WHERE NEW.session_id IS NOT NULL AND ((NEW.retention_class='chat_message' AND NEW.type IN ('user.message.accepted','assistant_message')) OR NEW.type='session_error');
+ INSERT OR IGNORE INTO chat_unread_index SELECT NEW.stream_id,NEW.session_id WHERE NEW.session_id IS NOT NULL AND NEW.type='message_finished';
 END;
 CREATE TRIGGER IF NOT EXISTS chat_unread_mark_insert AFTER INSERT ON app_session_read_state BEGIN
  INSERT INTO chat_unread_counts(session_id,unread_count) SELECT NEW.session_id,COUNT(*) FROM chat_unread_index WHERE session_id=NEW.session_id AND stream_id>NEW.last_read_stream_id
@@ -97,7 +97,7 @@ export class ChatReadProjectionStore {
    const current=this.status();
    if(current.paused||current.complete){this.db.exec("COMMIT");return {...current,processed:0};}
    if(current.historyComplete){
-    const rows=this.db.prepare("SELECT stream_id,session_id FROM event_log INDEXED BY idx_event_log_unread_stream WHERE stream_id>? AND stream_id<=? AND ((retention_class='chat_message' AND type IN ('user.message.accepted','assistant_message')) OR type='session_error') ORDER BY stream_id LIMIT ?").all(current.event_cursor,current.event_target,limit) as Array<{stream_id:number;session_id:string|null}>;
+    const rows=this.db.prepare("SELECT stream_id,session_id FROM event_log INDEXED BY idx_event_log_unread_stream WHERE stream_id>? AND stream_id<=? AND type='message_finished' ORDER BY stream_id LIMIT ?").all(current.event_cursor,current.event_target,limit) as Array<{stream_id:number;session_id:string|null}>;
     const insert=this.db.prepare("INSERT OR IGNORE INTO chat_unread_index VALUES(?,?)");let processed=0;const started=performance.now();
     for(const row of rows){if(row.session_id)insert.run(row.stream_id,row.session_id);processed++;if(performance.now()-started>=maxMs)break;}
     const cursor=processed===rows.length&&rows.length<limit?current.event_target:rows[processed-1]!.stream_id;

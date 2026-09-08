@@ -391,7 +391,7 @@ test("compact image tool rows group consecutive image reads", () => {
 	const group = rows[0];
 	assert.equal(group.kind, "tool.group.images");
 	assert.deepEqual(group.lines.map((line) => line.tokens.map((entry) => entry.text).join("")), [
-		"Viewed images",
+		"3 Images Viewed",
 		"Viewed image /tmp/image-1.png",
 		"Viewed image /tmp/image-2.png",
 		"Viewed image /tmp/image-3.png",
@@ -400,6 +400,25 @@ test("compact image tool rows group consecutive image reads", () => {
 	assert.deepEqual(group.detailItems.map((item) => item.output.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
 	assert.deepEqual(group.imagePreviews.map((preview) => preview.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
 	assert.doesNotMatch(JSON.stringify(group), /abcabc|iVBOR/);
+});
+
+test("image galleries append without losing identity, also with debug metrics", () => {
+	const images = Array.from({ length: 24 }, (_, index) => traceNode("tool.call", `gallery-${index}`, {
+		order: index + 1,
+		title: "view_image",
+		input: { path: `/tmp/gallery-${index}.png` },
+		output: { content: [{ type: "image", data: "abc", mimeType: "image/png" }], details: { path: `/tmp/gallery-${index}.png` } },
+	}));
+	for (const debugMode of [false, true]) {
+		const build = (nodes) => buildCompactTerminalRows(traceView(nodes), { showThinking: false, debugMode });
+		const first = build(images.slice(0, 1))[0];
+		const group = build(images)[0];
+		assert.equal(group.id, first.id);
+		assert.equal(group.imagePreviews.length, 24);
+		assert.equal(group.imagePreviews.at(-1).path, "/tmp/gallery-23.png");
+		const interrupted = build([images[0], traceNode("tool.call", "separator", { order: 1, startedAt: "2026-05-16T10:00:01.500Z", title: "bash", input: { command: "pwd" }, output: "/tmp" }), images[1]]);
+		assert.equal(interrupted.length, 3, "another tool call terminates the gallery");
+	}
 });
 
 test("compact image preview metadata is bounded to twenty images", () => {

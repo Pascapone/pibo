@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-07T08:35:34.027058Z"
+  at: "2026-09-08T17:55:23Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "e52bd62f86953da2fc316c22b6de55a0c70233a4"
+  commit: "800bb6ec5dd0b13b64c6333719ac1a88239d1462"
   requirements:
     - id: "WEB-COMPOSER-ADMISSION-006"
       status: "implemented"
@@ -46,10 +46,17 @@ traceability:
           name: "process death preserves committed commands and fences uncertain dispatch"
         - path: "test/message-command-store.test.mjs"
           name: "independent dispatcher processes claim one committed command only once"
+        - path: "test/message-command-store.test.mjs"
+          name: "lease recovery monotonically honors every terminal output with a deterministic persistence barrier"
+        - path: "test/message-command-store.test.mjs"
+          name: "admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available"
+        - path: "test/web-channel.test.mjs"
+          name: "Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts"
         - path: "test/chat-ui-pending-message-delivery.test.mjs"
           name: "message API distinguishes unknown acceptance from explicit rejection"
       failures:
-        - "Expired dispatched ownership becomes interrupted and is not automatically replayed."
+        - "Expired dispatched ownership without terminal evidence becomes interrupted and is not automatically replayed."
+        - "Admission behind an interrupted FIFO predecessor returns a Session-scoped, non-retryable reconciliation conflict without committing an event, payload, or command."
         - "Schema v11 cannot be opened by binaries that reject versions newer than v10."
       confidence: "high"
     - id: "WEB-COMPOSER-DRAFTS-001"
@@ -307,7 +314,9 @@ An explicit `admissionVersion: 2` on the message route commits a durable command
 
 The room/actor/client transaction key retains its scope. For version 2 it binds the target Session, effective message content and delivery mode. An unchanged retry returns the same receipt; conflicting reuse or a key already accepted under the legacy contract returns 409. Command payloads are bounded to 1 MiB, with reference-backed durable storage. Compact receipts have no time-based expiry and remain independent of optional trace/telemetry retention for the lifetime of this database. This does not promise identity across database replacement or restore to a state before acceptance.
 
-The startup dispatcher uses durable fenced claims, at most twelve local outstanding dispatches, including the reserved Steering allowance, and 30-second renewable leases. Normal commands remain FIFO per Session; Steering keeps its separate delivery mode and bypasses an active normal turn. Runtime outputs advance receipt state through `accepted`, `waiting_slot`, `initializing`, `session_queue`, `running` and `completed`/`failed`. Expired unstarted claims can be reclaimed; expired potentially dispatched claims become `interrupted`. They require reconciliation and are never blindly replayed. A later durable terminal output can reconcile an interrupted receipt. This is not an exactly-once guarantee for provider/tool effects.
+The startup dispatcher uses durable fenced claims, at most twelve local outstanding dispatches, including the reserved Steering allowance, and 30-second renewable leases. Normal commands remain FIFO per Session; Steering keeps its separate delivery mode and bypasses an active normal turn. Runtime outputs advance receipt state through `accepted`, `waiting_slot`, `initializing`, `session_queue`, `running` and `completed`/`failed`. Expired unstarted claims can be reclaimed. Lease recovery first rechecks persisted `message_finished`, `session_error`, and `message_steered` evidence and monotonically settles the matching receipt; only potentially dispatched claims without unambiguous terminal evidence become `interrupted`. Startup repeats this repair in bounded batches without appending output. Ambiguous work is never replayed. Unstarted normal successors behind a still-interrupted predecessor are explicitly failed as not dispatched, in bounded batches, rather than remaining silently accepted. This is not an exactly-once guarantee for provider/tool effects.
+
+New normal admission behind an interrupted predecessor returns HTTP 409 `command_reconciliation_required`, `retryable: false`, Session scope, the blocking command identity, blocked-since age, and the supported inspection action. The rejected transaction commits no accepted product event, payload, or command. An unchanged retry of a transaction committed before the barrier still returns its existing receipt. Capacity pressure remains the separate retryable HTTP 429 `command_overloaded` response.
 
 Authenticated `GET /api/chat/message-receipts/:id` returns one receipt after Session/Room access resolution. The Session receipt-list endpoint returns up to 70 active/uncertain entries plus 64 recent terminal entries, alongside bounded Session queue diagnostics. The UI polls that bounded metadata, displays durable acceptance separately from runtime queue/start, and preserves unchanged node identities. Unknown acceptance is explicitly reported; unchanged retries retain their transaction ID in memory and, when available, tab session storage. Explicit rejection preserves composer text and attachments. A trace refresh failure after acceptance does not roll back the accepted send.
 
@@ -376,6 +385,8 @@ upstream/dev refresh source and named-test inspection define the current contrac
 ### Requirement: WEB-COMPOSER-FILES-004
 
 Upload, attachment, download, and image-preview flows MUST enforce configured count/path/root/format/size bounds, retain per-Session attachment selection, and report delayed download progress before browser transfer.
+
+Image filenames in Attached uploads open the shared image-preview dialog for the selected Session. Copy-path and detach remain separate actions; non-image filenames remain plain text. Desktop and mobile use the same authenticated preview endpoint, loading/error states, Escape handling, and focus restoration.
 
 #### Current
 

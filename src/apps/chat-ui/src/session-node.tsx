@@ -218,11 +218,6 @@ export function SessionNode({
 							<span className={`block min-w-0 truncate text-[13px] leading-none ${node.archived ? "text-slate-500" : "text-slate-200"}`}>{safeTitle}</span>
 						</button>
 						<span className="inline-flex items-center justify-end gap-1">
-							{loading ? (
-								<Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading session" />
-							) : (
-								<span className={signal.className} title={signal.title} aria-label={signal.title} />
-							)}
 							{hasChildren ? (
 								<button
 									type="button"
@@ -238,6 +233,11 @@ export function SessionNode({
 									<Layers size={12} />
 								</button>
 							) : null}
+							{loading ? (
+								<Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading session" />
+							) : (
+								<span className={signal.className} title={signal.title} aria-label={signal.title} />
+							)}
 						</span>
 					</div>
 				)}
@@ -284,8 +284,11 @@ export function SessionNode({
 				{dropPosition === "after" ? <span className="pointer-events-none absolute inset-x-1 -bottom-px z-10 h-px bg-[#11a4d4]" /> : null}
 			</div>
 			{hasChildren ? (
-				<div id={subsessionsRegionId} hidden={!expanded}>
-					{expanded ? node.children.map((child) => (
+				<div id={subsessionsRegionId} hidden={!expanded} className="relative">
+					{expanded ? node.children.map((child, index) => (
+						<div key={child.piboSessionId} className="relative">
+							<span aria-hidden="true" className={`pointer-events-none absolute top-0 w-px bg-slate-600/45 ${index === node.children.length - 1 ? "h-4" : "bottom-0"}`} style={{ left: 14 + depth * 14 }} />
+							<span aria-hidden="true" className="pointer-events-none absolute top-4 h-px w-2 bg-slate-600/45" style={{ left: 14 + depth * 14 }} />
 						<SessionNode
 							key={child.piboSessionId}
 							node={child}
@@ -302,6 +305,7 @@ export function SessionNode({
 							showWorkflowSessionKindMarkers={showWorkflowSessionKindMarkers}
 							mutationsDisabled={mutationsDisabled}
 						/>
+						</div>
 					)) : null}
 				</div>
 			) : null}
