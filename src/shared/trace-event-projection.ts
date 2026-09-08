@@ -714,7 +714,7 @@ function attachModelInferenceToLatestOutput(
 ): void {
 	const eventId = event.eventId;
 	const candidates = flattenTraceNodes(nodes)
-		.filter((node) => node.eventId === eventId && (
+		.filter((node) => node.eventId === eventId && traceNodeStartedBeforeInference(node, storedEvent) && (
 			node.type === "assistant.message"
 			|| node.type === "model.reasoning"
 			|| node.type === "tool.call"
@@ -738,6 +738,20 @@ function attachModelInferenceToLatestOutput(
 		},
 	};
 	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record];
+}
+
+function traceNodeStartedBeforeInference(node: PiboTraceNode, storedEvent: ChatWebStoredEvent): boolean {
+	const inferenceTime = Date.parse(storedEvent.createdAt);
+	const nodeTime = Date.parse(node.startedAt ?? node.completedAt ?? "");
+	if (Number.isFinite(inferenceTime) && Number.isFinite(nodeTime)) return nodeTime <= inferenceTime;
+	const inferenceRenderSequence = storedEvent.renderSequence;
+	const nodeRenderSequence = node.orderKey?.renderSequence;
+	if (inferenceRenderSequence !== undefined && nodeRenderSequence !== undefined) {
+		return nodeRenderSequence <= inferenceRenderSequence;
+	}
+	const inferenceSequence = storedEvent.eventSequence ?? storedEvent.streamId;
+	const nodeSequence = node.orderKey?.eventSequence ?? node.orderKey?.streamId;
+	return inferenceSequence === undefined || nodeSequence === undefined || nodeSequence <= inferenceSequence;
 }
 
 // ── event → node helpers ─────────────────────────────────────────

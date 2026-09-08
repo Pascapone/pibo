@@ -100,6 +100,54 @@ test("usage attaches to the Tool or message span that completed the endpoint res
 	assert.deepEqual(legacyRows.find((row) => row.kind === "message.assistant")?.modelInferences?.[0]?.metrics, metrics);
 });
 
+test("replay assigns each inference to the output that existed when usage was reported", () => {
+	const toolMetrics = { durationMs: 7, inputTokens: 5, outputTokens: 13, tokenBasis: "characters/4" };
+	const replayEvents = [
+		{ type: "message_started", text: "Read", source: "user" },
+		{ type: "tool_call", toolCallId: "call", toolName: "read", args: { path: "/etc/issue" }, argsComplete: true },
+		{ type: "assistant_usage", usageIndex: 0, ...metrics },
+		{ type: "tool_execution_started", toolCallId: "call", toolName: "read", args: { path: "/etc/issue" } },
+		{ type: "tool_execution_finished", toolCallId: "call", toolName: "read", result: "Ubuntu", isError: false, toolMetrics },
+		{ type: "assistant_message", assistantIndex: 0, text: "Done" },
+		{ type: "assistant_usage", usageIndex: 1, ...metrics },
+		{ type: "message_finished", source: "user" },
+	].map((event, index) => ({
+		id: `replay-stored-${index}`,
+		eventSequence: index + 1,
+		piboSessionId: "ps_replay_usage",
+		type: event.type,
+		createdAt: `2026-09-08T05:20:0${index}.000Z`,
+		payload: { ...event, piboSessionId: "ps_replay_usage", eventId: "replay-turn" },
+	}));
+	const replay = buildTraceViewFromEvents({
+		session: { id: "ps_replay_usage", piSessionId: "pi_replay_usage" },
+		events: replayEvents,
+		historyEntries: [{
+			id: "product-assistant",
+			type: "message",
+			source: "product",
+			createdAt: "2026-09-08T05:20:05.000Z",
+			sequence: 6,
+			turnId: "replay-turn",
+			role: "assistant",
+			content: "Done",
+			assistantIndex: 0,
+			status: "complete",
+		}],
+		status: "idle",
+	});
+	const nodes = flatten(replay.nodes);
+	const tool = nodes.find((node) => node.toolCallId === "call");
+	const assistant = nodes.find((node) => node.type === "assistant.message");
+	assert.deepEqual(tool?.toolMetrics, toolMetrics);
+	assert.deepEqual(tool?.modelInferences?.map((record) => record.id), ["replay-turn:usage:0"]);
+	assert.deepEqual(assistant?.modelInferences?.map((record) => record.id), ["replay-turn:usage:1"]);
+	const rows = buildCompactTerminalRows(replay, { showThinking: false, debugMode: true });
+	assert.deepEqual(rows.find((row) => row.isToolCall)?.toolMetrics, toolMetrics);
+	assert.deepEqual(rows.find((row) => row.isToolCall)?.modelInferences, tool?.modelInferences);
+	assert.deepEqual(rows.find((row) => row.kind === "message.assistant")?.modelInferences, assistant?.modelInferences);
+});
+
 test("model and Tool diagnostics can be enabled independently under the global Debug mode", () => {
 	const trace = {
 		piboSessionId: "ps_features",
