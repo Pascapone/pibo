@@ -23,6 +23,8 @@ export type PiboWebApp = {
 	/** Flush pending background persistence and retries; producers must be quiescent. */
 	drain?(): Promise<void>;
 	initialize?(context: PiboWebAppContext): Promise<void> | void;
+	/** Bounded read-only contribution to /gateway/status. */
+	gatewayStatus?(): Promise<Record<string,unknown>> | Record<string,unknown>;
 	dispose?(): Promise<void> | void;
 	matchesHost?(hostname: string): boolean;
 	handleNodeRequest?(

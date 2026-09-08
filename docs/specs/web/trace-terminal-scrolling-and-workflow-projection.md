@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T08:12:30Z"
+  at: "2026-09-08T14:55:00Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
@@ -23,7 +23,7 @@ implementation:
   build_typecheck_package_execution: "full build and all package typechecks passed in the isolated Docker worker"
   browser_execution: "headful local Debug settings and Terminal model-usage rail passed at 800x457; CDP reload reported no console exceptions, log errors, or network failures"
 traceability:
-  commit: "6080be5c64205342091733bedde9596a6f9f6465"
+  commit: "ac5331fc094ba39fe9ed7ee8958eebdaeac4914d"
   requirements:
     - id: "WEB-TRACE-PAYLOAD-010"
       status: "implemented"
@@ -621,6 +621,8 @@ Legacy/current runtime turns use stable product identity; workflow UI models acc
 
 Large assistant, reasoning, and tool content retains its stored reference through durable live output, historical SSE replay, client projection, and timeline reads. A small preview does not replace the reference to the full content.
 
-Terminal rows with referenced content expose an explicit full-content reader. It displays one 4-KiB section at a time, with forward and backward navigation; a UTF-8 boundary may include up to three additional bytes. The reader retains section offsets rather than an ever-growing text buffer. The full content can also be downloaded through a streaming attachment response. Conversation-level lazy history paging and Infinite Scrolling remain independent of this single-content reader.
+Collapsed Default-mode tool rows show at most five visual lines. Clicking the row or pressing Enter/Space expands it; referenced content loads through that expansion without a separate “Show full content” button. The expanded reader displays one 4-KiB section at a time, with forward and backward navigation; a UTF-8 boundary may include up to three additional bytes. The reader retains section offsets rather than an ever-growing text buffer. The full content can also be downloaded through a streaming attachment response. Conversation-level lazy history paging and Infinite Scrolling remain independent of this single-content reader.
+
+Consecutive image reads in Default mode form one expandable gallery, including when Debug metrics are enabled. The gallery shows an image count and horizontally scrollable thumbnails on expansion. Appending another read preserves the first row's identity and expansion; an intervening tool call ends the group. Thumbnails open a keyboard-navigable dialog on desktop and mobile. Dialog images load eagerly rather than depending on lazy visibility, while collapsed galleries do not mount thumbnails. Exact payload references remain authoritative and never fall back to a different filesystem image.
 
 Chunk reads use bounded file ranges for identity payloads and streaming decompression for gzip payloads. Byte cursors preserve complete UTF-8 code points. The download pipeline closes its input on cancellation and does not build the complete response in application memory.

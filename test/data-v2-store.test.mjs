@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
+import { ChatReadProjectionStore } from "../dist/data/chat-read-projections.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { applyPiboDataSchema, PIBO_DATA_SCHEMA_VERSION } from "../dist/data/schema.js";
 import { hydrateDebugEventRow } from "../dist/debug/persisted-payloads.js";
@@ -74,6 +76,47 @@ test("v2 schema migration is idempotent", () => {
 		db.prepare("SELECT name FROM pragma_index_info('idx_payloads_identity') ORDER BY seqno").all().map((row) => row.name),
 		["sha256", "content_type", "retention_class"],
 	);
+	db.close();
+});
+
+test("v13 unread projection migrates from message fragments to completed turn boundaries", () => {
+	const dir = tempDir("pibo-data-terminal-unread-");
+	const db = new DatabaseSync(join(dir, "pibo.sqlite"));
+	applyPiboDataSchema(db);
+	const insert = db.prepare(`
+		INSERT INTO event_log (session_id, session_sequence, topic, type, source, retention_class, created_at)
+		VALUES ('session', ?, 'pibo.output', ?, 'test', ?, '2026-09-08T00:00:00.000Z')
+	`);
+	insert.run(1, "user.message.accepted", "chat_message");
+	insert.run(2, "assistant_message", "chat_message");
+	insert.run(3, "session_error", "trace_event");
+	insert.run(4, "message_finished", "chat_message");
+	db.exec(`
+		DELETE FROM chat_unread_counts;
+		DELETE FROM chat_unread_index;
+		INSERT INTO chat_unread_index (stream_id, session_id)
+		SELECT stream_id, session_id
+		FROM event_log
+		WHERE (retention_class = 'chat_message' AND type IN ('user.message.accepted', 'assistant_message'))
+			OR type = 'session_error';
+		PRAGMA user_version = 13;
+	`);
+	assert.equal(db.prepare("SELECT unread_count FROM chat_unread_counts WHERE session_id = 'session'").get().unread_count, 3);
+
+	applyPiboDataSchema(db);
+	assert.equal(db.prepare("PRAGMA user_version").get().user_version, PIBO_DATA_SCHEMA_VERSION);
+	assert.equal(db.prepare("SELECT COUNT(*) AS count FROM chat_unread_index").get().count, 0);
+	const reads = new ChatReadStateService({ db });
+	assert.equal(reads.countUnreadMessagesBySession({ piboSessionIds: ["session"] }).get("session"), 1);
+
+	const projection = new ChatReadProjectionStore(db);
+	for (let step = 0; step < 10 && !projection.status().unreadComplete; step++) projection.step(16, 1_000);
+	assert.equal(projection.status().unreadComplete, true);
+	assert.deepEqual(
+		db.prepare("SELECT e.type FROM chat_unread_index u JOIN event_log e ON e.stream_id = u.stream_id ORDER BY u.stream_id").all().map((row) => ({ ...row })),
+		[{ type: "message_finished" }],
+	);
+	assert.equal(reads.countUnreadMessagesBySession({ piboSessionIds: ["session"] }).get("session"), 1);
 	db.close();
 });
 

@@ -239,10 +239,165 @@ test("nodeRequestToWebRequest rejects oversized request bodies", async () => {
 	);
 });
 
+test("sendWebResponse contains a body failure after writeHead without writing a second header block", async () => {
+	class FailingResponse extends EventEmitter {
+		writableEnded = false;
+		writableFinished = false;
+		destroyed = false;
+		headersSent = false;
+		writeHeadCalls = 0;
+		writeHead() {
+			this.writeHeadCalls += 1;
+			this.headersSent = true;
+		}
+		write() {
+			return true;
+		}
+		end() {
+			this.writableEnded = true;
+		}
+		destroy() {
+			this.destroyed = true;
+			this.emit("close");
+		}
+	}
+	const response = new FailingResponse();
+	let pull = 0;
+	const body = new ReadableStream({
+		pull(controller) {
+			if (pull++ === 0) controller.enqueue(new Uint8Array([1]));
+			else controller.error(new Error("injected stream failure"));
+		},
+	}, { highWaterMark: 0 });
+
+	await assert.rejects(
+		() => sendWebResponse(response, new Response(body)),
+		/injected stream failure/,
+	);
+	assert.equal(response.writeHeadCalls, 1);
+	assert.equal(response.destroyed, true);
+});
+
+test("sendWebResponse refuses every terminal or already-started response state", async () => {
+	for (const state of ["destroyed", "writableEnded", "writableFinished", "headersSent"]) {
+		const response = new EventEmitter();
+		Object.assign(response, {
+			destroyed: false,
+			writableEnded: false,
+			writableFinished: false,
+			headersSent: false,
+			writeHead() {
+				assert.fail("writeHead must not be called");
+			},
+		});
+		response[state] = true;
+		await assert.rejects(() => sendWebResponse(response, new Response("body")), /HTTP response/);
+	}
+});
+
+test("disconnect during a pending compressed-body read cancels and unlocks the reader before headers", async () => {
+	class PendingResponse extends EventEmitter {
+		req = { headers: { "accept-encoding": "gzip" } };
+		writableEnded = false;
+		writableFinished = false;
+		destroyed = false;
+		headersSent = false;
+		writeHeadCalls = 0;
+		writeHead() {
+			this.writeHeadCalls += 1;
+			this.headersSent = true;
+		}
+		end() {
+			this.writableEnded = true;
+		}
+		destroy() {
+			this.destroyed = true;
+			this.emit("close");
+		}
+	}
+	let canceled = false;
+	const body = new ReadableStream({
+		pull() {
+			// Deliberately remain pending until the client closes.
+		},
+		cancel() {
+			canceled = true;
+		},
+	}, { highWaterMark: 0 });
+	const response = new PendingResponse();
+	const sending = sendWebResponse(response, new Response(body, { headers: { "content-type": "application/json" } }));
+	await delay(10);
+	response.emit("close");
+	await sending;
+	assert.equal(canceled, true);
+	assert.equal(response.writeHeadCalls, 0);
+	assert.equal(body.locked, false);
+});
+
+test("compressed-body buffering rechecks response state before writeHead", async () => {
+	class EndedResponse extends EventEmitter {
+		req = { headers: { "accept-encoding": "gzip" } };
+		writableEnded = false;
+		writableFinished = false;
+		destroyed = false;
+		headersSent = false;
+		writeHeadCalls = 0;
+		writeHead() {
+			this.writeHeadCalls += 1;
+		}
+		end() {
+			this.writableEnded = true;
+		}
+	}
+	const response = new EndedResponse();
+	const body = new ReadableStream({
+		pull(controller) {
+			response.writableEnded = true;
+			controller.enqueue(new Uint8Array(2048));
+			controller.close();
+		},
+	}, { highWaterMark: 0 });
+	await sendWebResponse(response, new Response(body, { headers: { "content-type": "application/json" } }));
+	assert.equal(response.writeHeadCalls, 0);
+	assert.equal(body.locked, false);
+});
+
+test("regular streaming cancels and unlocks its reader when the response ends mid-chunk", async () => {
+	let canceled = false;
+	const response = new EventEmitter();
+	Object.assign(response, {
+		writableEnded: false,
+		writableFinished: false,
+		destroyed: false,
+		headersSent: false,
+		writeHead() {
+			this.headersSent = true;
+		},
+		write() {
+			this.writableEnded = true;
+			return true;
+		},
+		end() {
+			this.writableEnded = true;
+		},
+	});
+	const body = new ReadableStream({
+		start(controller) {
+			controller.enqueue(new Uint8Array(128 * 1024));
+		},
+		cancel() {
+			canceled = true;
+		},
+	}, { highWaterMark: 0 });
+	await sendWebResponse(response, new Response(body));
+	assert.equal(canceled, true);
+	assert.equal(body.locked, false);
+});
+
  test('streaming HTTP waits for socket drain before pulling another frame and splits large writes',async()=>{
   class SocketResponse extends EventEmitter {
-   writableEnded=false;destroyed=false;allow=false;writes=[];
-   writeHead(){}
+   writableEnded=false;writableFinished=false;headersSent=false;destroyed=false;allow=false;writes=[];
+   writeHead(){this.headersSent=true;}
    write(bytes){this.writes.push(bytes.length);return this.allow;}
    end(){this.writableEnded=true;}
    destroy(){this.destroyed=true;this.emit('close');}
@@ -255,7 +410,7 @@ test("nodeRequestToWebRequest rejects oversized request bodies", async () => {
   assert.deepEqual(response.writes,[64*1024,64*1024,64*1024,64*1024]);assert.equal(response.writableEnded,true);
  });
  test('aborting a backpressured HTTP stream cancels its reader without waiting for socket drain',async()=>{
-  class SocketResponse extends EventEmitter {writableEnded=false;destroyed=false;writeHead(){}write(){return false;}end(){this.writableEnded=true;}destroy(){this.destroyed=true;this.emit('close');}}
+  class SocketResponse extends EventEmitter {writableEnded=false;writableFinished=false;headersSent=false;destroyed=false;writeHead(){this.headersSent=true;}write(){return false;}end(){this.writableEnded=true;}destroy(){this.destroyed=true;this.emit('close');}}
   const response=new SocketResponse();let canceled=false;const abort=new AbortController();
   const body=new ReadableStream({pull(c){c.enqueue(new Uint8Array(1));},cancel(){canceled=true;}},{highWaterMark:0});
   const sending=sendWebResponse(response,new Response(body,{headers:{'content-type':'text/event-stream'}}),{signal:abort.signal});

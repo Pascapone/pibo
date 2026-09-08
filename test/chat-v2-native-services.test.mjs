@@ -539,7 +539,7 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 		completedAt: undefined,
 		durationMs: undefined,
 	}]);
-	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 3);
+	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).get(piboSession.id), 1);
 	readState.markSessionRead(piboSession.id, timeline.getLatestStreamId({ piboSessionId: piboSession.id }));
 	assert.equal(readState.countUnreadMessagesBySession({ piboSessionIds: [piboSession.id] }).has(piboSession.id), false);
 
@@ -565,20 +565,23 @@ test("unread counts serve the maintained projection and keep the indexed fallbac
 		});
 
 		append(targetSessionId, "user.message.accepted");
-		const atCursor = append(targetSessionId, "assistant_message");
+		append(targetSessionId, "assistant_message");
+		const atCursor = append(targetSessionId, "message_finished");
 		readState.markSessionRead(targetSessionId, atCursor.streamId);
 		append(targetSessionId, "user.message.accepted");
 		append(targetSessionId, "assistant_message");
 		append(targetSessionId, "session_error", "trace_event");
 		append(targetSessionId, "assistant_delta", "live_event");
+		append(targetSessionId, "message_finished");
 		append(missingReadStateSessionId, "assistant_message");
+		append(missingReadStateSessionId, "message_finished");
 
 		const fillerIds = Array.from({ length: 399 }, (_, index) => `ps_unread_range_filler_${index}`);
 		const uniqueIds = [targetSessionId, ...fillerIds, missingReadStateSessionId];
 		const requestedIds = [...uniqueIds, targetSessionId, missingReadStateSessionId];
 		const expectedCounts = [
 			[missingReadStateSessionId, 1],
-			[targetSessionId, 3],
+			[targetSessionId, 1],
 		];
 		const captureUnreadSql = () => {
 			let unreadSql;

@@ -45,6 +45,43 @@ function flatten(nodes) {
 	return nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
 }
 
+test("explicit Codex step ownership survives live patches, replay, duplicate updates and later outputs", () => {
+	const input = [
+		{ type: "message_started", text: "Steps", source: "user" },
+		{ type: "tool_call", toolCallId: "first", toolName: "exec", args: {}, argsComplete: true },
+		{ type: "tool_call", toolCallId: "parallel", toolName: "exec", args: {}, argsComplete: true },
+		{ type: "assistant_usage", usageIndex: 0, inferenceId: "native:step:0", inferenceTarget: { type: "tool", toolCallId: "parallel" }, ...metrics },
+		{ type: "tool_call", toolCallId: "next", toolName: "exec", args: {}, argsComplete: true },
+		{ type: "tool_execution_finished", toolCallId: "parallel", toolName: "exec", result: "late", isError: false },
+		{ type: "assistant_usage", usageIndex: 1, inferenceId: "native:step:1", inferenceTarget: { type: "tool", toolCallId: "next" }, ...metrics },
+		{ type: "assistant_message", assistantIndex: 0, text: "Done" },
+		{ type: "assistant_usage", usageIndex: 2, inferenceId: "native:step:2", inferenceTarget: { type: "assistant", assistantIndex: 0 }, ...metrics },
+		// Replayed notification after final output must neither move nor duplicate usage.
+		{ type: "assistant_usage", usageIndex: 3, inferenceId: "native:step:0", inferenceTarget: { type: "tool", toolCallId: "parallel" }, ...metrics },
+		{ type: "message_finished", source: "user" },
+	];
+	const stored = input.map((event, index) => ({
+		id: `codex-${index}`, eventSequence: index + 1, piboSessionId: "ps_model_metrics", type: event.type,
+		createdAt: new Date(Date.UTC(2026, 8, 8, 5, 30, index)).toISOString(),
+		payload: { ...event, piboSessionId: "ps_model_metrics", eventId: "turn" },
+	}));
+	let patched = view([]);
+	for (const event of stored) patched = patchTraceViewWithEvents(patched, [event], "idle");
+	const streamState = createChatStreamState();
+	let sequence = 0;
+	const live = view(applyTraceLiveEvents({ currentEvents: [], streamEvents: stored.flatMap((event) => chatStreamFramesFromOutputEvent(event.payload, streamState)), piboSessionId: "ps_model_metrics", nextSequence: () => ++sequence, now: () => "2026-09-08T05:30:00.000Z" }));
+	for (const trace of [view(stored), patched, live]) {
+		const nodes = flatten(trace.nodes);
+		assert.equal(nodes.flatMap((node) => node.modelInferences ?? []).length, 3);
+		assert.equal(nodes.find((node) => node.toolCallId === "first").modelInferences, undefined);
+		assert.equal(nodes.find((node) => node.toolCallId === "parallel").modelInferences[0].id, "turn:inference:native:step:0");
+		assert.equal(nodes.find((node) => node.toolCallId === "next").modelInferences[0].id, "turn:inference:native:step:1");
+		assert.equal(nodes.find((node) => node.type === "assistant.message").modelInferences[0].id, "turn:inference:native:step:2");
+		const rows = buildCompactTerminalRows(trace, { showThinking: false, debugMode: true });
+		assert.equal(rows.filter((row) => row.isToolCall && row.modelInferences?.length).length, 2);
+	}
+});
+
 test("provider usage becomes a durable per-inference trace node across replay, patches, live frames and timeline compaction", () => {
 	const stored = events();
 	const replay = view(JSON.parse(JSON.stringify(stored)));

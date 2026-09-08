@@ -8,7 +8,7 @@ const execFileAsync = promisify(execFile);
 async function runRoomFallbackScenarios() {
 	const script = `
 		import assert from "node:assert/strict";
-		const { fallbackRoomIdWhenHidingArchived, resolveRoomContextLabel } = await import("./src/apps/chat-ui/src/session-sidebar-helpers.ts");
+		const { fallbackRoomIdWhenHidingArchived, resolveRoomContextLabel, sessionNodeSignal } = await import("./src/apps/chat-ui/src/session-sidebar-helpers.ts");
 
 		const room = (id, metadata = {}, children = []) => ({
 			id,
@@ -43,6 +43,10 @@ async function runRoomFallbackScenarios() {
 		assert.equal(resolveRoomContextLabel([staleBootstrapRoom], "room-missing", staleBootstrapRoom), "room-missing");
 		assert.equal(resolveRoomContextLabel([staleBootstrapRoom], "room-alpha", staleBootstrapRoom), "Alpha");
 		assert.equal(resolveRoomContextLabel([], null, staleBootstrapRoom), "Alpha");
+
+		const recentlyActive = { piboSessionId: "ps-recent", status: "idle", lastActivityAt: "2026-09-08T12:00:00.000Z", children: [] };
+		assert.match(sessionNodeSignal(recentlyActive, Date.parse("2026-09-08T12:00:01.000Z")).className, /session-signal-idle/);
+		assert.match(sessionNodeSignal({ ...recentlyActive, unreadCount: 1 }, Date.parse("2026-09-08T12:00:01.000Z")).className, /session-signal-unread/);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

@@ -42,6 +42,29 @@ test("completed compaction card renders segment metrics and Markdown disclosure"
 	`], { cwd: process.cwd(), stdio: "pipe" });
 });
 
+test("native Codex compaction explains unavailable text without inventing a summary", () => {
+	execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
+		import assert from "node:assert/strict";
+		import React from "react";
+		import { renderToStaticMarkup } from "react-dom/server";
+		import { TerminalCompactionCard } from "./src/apps/chat-ui/src/session-views/compact-terminal/TerminalCompactionCard.tsx";
+		globalThis.React = React;
+		const markup = renderToStaticMarkup(React.createElement(TerminalCompactionCard, {
+			row: {
+				id: "codex-compaction-1",
+				kind: "execution.compaction",
+				status: "done",
+				lines: [],
+				sourceNodeIds: ["codex-compaction-1"],
+				input: { reason: "codex_context_compaction" },
+				compactionStats: { toolCallCount: 1 },
+			},
+		}));
+		assert.match(markup, /Codex did not provide compaction text\./);
+		assert.doesNotMatch(markup, /data-pibo-markdown-kind="compaction"/);
+	`], { cwd: process.cwd(), stdio: "pipe" });
+});
+
 test("Terminal topbar exposes compaction count navigation", () => {
 	const source = fs.readFileSync("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx", "utf8");
 	assert.match(source, /type TerminalNavigationKind = "compaction" \| "system" \| "tool" \| "user"/);

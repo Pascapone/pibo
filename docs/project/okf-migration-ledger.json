@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/run-reminder-admission-validation-2026-09-08.md",
+      "state": "conformant",
+      "classification": "runtime reminder validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-final-acceptance-2026-09-08.md",
       "state": "conformant",
       "classification": "integrated performance and full-content acceptance",
@@ -12489,6 +12498,18 @@
       "file_bytes": 15449,
       "file_sha256": "797586e19744d66506709bae2fbafd99a810727ddbdd8f519532d670034608d5",
       "body_sha256": "cc92de35fbfedf039c11a94995dcbf8a97e98b54ec9eadd9cf8e56af4bb0e5c6",
+      "lineage": null
+    },
+    {
+      "path": "docs/specs/data/storage-maintenance.md",
+      "state": "conformant",
+      "classification": "canonical specification",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "stable",
+      "file_bytes": 9701,
+      "file_sha256": "a8ca2cc8b87d3295c63f73b626d7a895254d6429ecae6337314f376866ffb9b6",
+      "body_sha256": "b88cfb6eecb241905d4ff87e0da5f8a406e527a4ae6d8111fd63f2a028599eaf",
       "lineage": null
     },
     {

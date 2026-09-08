@@ -50,6 +50,8 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			return;
 		}
 		if(args[0]==="backup"){const {runStorageBackupCli}=await import("./storage-backup.js");await runStorageBackupCli(args.slice(1));return;}
+		if(args[0]==="message-queue"){await runDebugMessageQueue(args.slice(1));return;}
+		if(args[0]==="storage"){const {runStorageMaintenanceCli}=await import("./storage-maintenance.js");await runStorageMaintenanceCli(args.slice(1));return;}
 		if (args[0] === "db") {
 			await runDebugDb(args.slice(1));
 			return;
@@ -138,6 +140,51 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+async function runDebugMessageQueue(args:string[]):Promise<void>{
+	if(!args.length||args[0]==="--help"||args[0]==="-h"){
+		console.log(`pibo debug message-queue - inspect and conservatively reconcile durable messages
+
+Commands:
+  inspect --session <ps_...> [--after-stream <n>] [--before-terminal-stream <n>] [--json]
+  reconcile <cmd_...> --mark-failed [--cancel-successors] [--dry-run|--apply] [--json]
+  reconcile <cmd_...> --confirm-completed [--confirm-without-evidence <cmd_...>] [--dry-run|--apply] [--json]
+
+Safety:
+  Dry-run is the default. --apply mutates the exact command transactionally.
+  Replay is unsupported: this command never executes a message or repeats side effects.
+  /clear only cancels unstarted runtime/queue work; it does not reconcile an interrupted durable predecessor.
+
+Next:
+  pibo debug message-queue inspect --session <pibo-session-id>`);return;
+	}
+	const command=args[0],json=args.includes("--json");
+	const value=(flag:string)=>{const index=args.indexOf(flag);if(index<0)return undefined;const result=args[index+1];if(!result||result.startsWith("--"))throw new Error(`${flag} requires a value`);return result;};
+	const {PiboDataStore}=await import("../data/pibo-store.js");const descriptor=resolveDebugStore("pibo-data");if(!descriptor.exists)throw new Error(`Pibo data store not found at ${descriptor.path}`);
+	const mutating=command==="reconcile"&&args.includes("--apply");
+	const store=new PiboDataStore(descriptor.path,{readOnly:!mutating});
+	try{
+		const module=await import("./message-queue.js");
+		if(command==="inspect"){
+			const sessionId=value("--session");if(!sessionId)throw new Error("message-queue inspect requires --session <pibo-session-id>");
+			const parseStream=(flag:string)=>{const raw=value(flag);if(raw===undefined)return undefined;const parsed=Number(raw);if(!Number.isSafeInteger(parsed)||parsed<1)throw new Error(`${flag} requires a positive integer stream id`);return parsed;};
+			const result=module.inspectMessageQueue(store,{sessionId,afterStreamId:parseStream("--after-stream"),beforeTerminalStreamId:parseStream("--before-terminal-stream")});if(json)console.log(JSON.stringify(result,null,2));else console.log(module.formatMessageQueueInspection(result));return;
+		}
+		if(command==="reconcile"){
+			const commandId=args[1];if(!commandId||commandId.startsWith("--"))throw new Error("message-queue reconcile requires an exact <cmd_...> ID");
+			if(args.includes("--replay"))throw new Error("Replay is unsupported because provider and tool side effects cannot be proven idempotent. Choose --mark-failed or --confirm-completed.");
+			const decisions=[args.includes("--mark-failed")?"mark-failed":undefined,args.includes("--confirm-completed")?"confirm-completed":undefined].filter(Boolean) as Array<"mark-failed"|"confirm-completed">;
+			if(decisions.length!==1)throw new Error("Choose exactly one decision: --mark-failed or --confirm-completed");
+			if(args.includes("--apply")&&args.includes("--dry-run"))throw new Error("Choose either --dry-run or --apply");
+			const known=new Set(["--json","--mark-failed","--confirm-completed","--cancel-successors","--dry-run","--apply","--confirm-without-evidence","--cancel-successor"]);
+			for(let index=2;index<args.length;index++){const item=args[index];if(!item.startsWith("--"))continue;if(!known.has(item))throw new Error(`Unknown message-queue reconciliation option "${item}"`);if(item==="--confirm-without-evidence"||item==="--cancel-successor")index++;}
+			const cancelSuccessorIds:string[]=[];for(let index=0;index<args.length;index++)if(args[index]==="--cancel-successor"){const id=args[index+1];if(!id)throw new Error("--cancel-successor requires a command ID");cancelSuccessorIds.push(id);}
+			const result=module.reconcileMessageCommand(store,{commandId,decision:decisions[0]!,apply:args.includes("--apply"),confirmWithoutEvidence:value("--confirm-without-evidence"),cancelSuccessors:args.includes("--cancel-successors"),cancelSuccessorIds});
+			if(json)console.log(JSON.stringify({...result,nextCommands:[result.nextAction]},null,2));else console.log(module.formatMessageQueueReconciliation(result));return;
+		}
+		throw new Error(`Unknown pibo debug message-queue command "${command}". Run pibo debug message-queue --help.`);
+	}finally{store.close();}
 }
 
 async function runDebugIntegrity(args: string[]): Promise<void> {
@@ -248,6 +295,25 @@ function validateOutputPersistenceInspectionArgs(args: string[], allowPositional
 async function runDebugRepair(args: string[]): Promise<void> {
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
 		printDebugRepairDiscovery();
+		return;
+	}
+	if (args[0] === "output-collision") {
+		if (args[1] === "--help" || args[1] === "-h") { printDebugRepairDiscovery(); return; }
+		const jobIndex = args.indexOf("--job");
+		const jobId = jobIndex >= 0 ? args[jobIndex + 1] : undefined;
+		if (!jobId || jobId.startsWith("-")) throw new Error("pibo debug repair output-collision requires --job <dead-job-id>");
+		const allowed = new Set(["--job", jobId, "--json", "--dry-run", "--apply", "--keep-existing"]);
+		const unknown = args.slice(1).find((arg) => !allowed.has(arg));
+		if (unknown) throw new Error(`Unknown output collision repair option "${unknown}"`);
+		if (args.includes("--apply") && args.includes("--dry-run")) throw new Error("Choose either --dry-run or --apply");
+		const { repairOutputCollision } = await import("./output-collision-repair.js");
+		const result = repairOutputCollision({ dataStore: resolveDebugStore("pibo-data"), reliabilityStore: resolveDebugStore("reliability"), jobId, apply: args.includes("--apply"), keepExisting: args.includes("--keep-existing") });
+		console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : [
+			"pibo debug repair output-collision", `mode\t${result.mode}`, `job\t${result.jobId}`, `decision\t${result.decision}`,
+			`applied\t${result.applied}`, `idempotent\t${result.idempotent}`, `transcript\t${result.projections.transcript}`,
+			`trace\t${result.projections.trace}`, `navigation\t${result.projections.navigation}`, `command\t${result.projections.command}`,
+			...(result.auditStreamId ? [`audit\t${result.auditStreamId}`] : []), "", ...result.warnings.map((warning) => `warning\t${warning}`),
+		].join("\n"));
 		return;
 	}
 	if (args[0] !== "output") {
@@ -852,7 +918,7 @@ async function runDebugJobs(args: string[]): Promise<void> {
 	const reliability = new PiboReliabilityStore(store.path);
 	try {
 		if (command === "list") {
-			const jobs = reliability.listJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
+			const jobs = reliability.inspectJobs({ queue: options.queue, limit: options.limit ? Number(options.limit) : undefined });
 			if (options.json) console.log(formatJson({ jobs: jobs.map(observableJobRow) }));
 			else console.log(formatRows(jobs.map(compactJobRow)));
 			return;
@@ -869,6 +935,25 @@ async function runDebugJobs(args: string[]): Promise<void> {
 			const job = reliability.requeueDead(jobId);
 			if (options.json) console.log(formatJson({ job }));
 			else console.log(formatRows([compactJobRow(job)]));
+			return;
+		}
+		if (command === "reconcile-runs") {
+			if (options.apply === options.dryRun) {
+				throw new Error("pibo debug jobs reconcile-runs requires exactly one of --dry-run or --apply");
+			}
+			const result = reliability.reconcileOrphanRunJobs({ apply: options.apply });
+			const output = {
+				checkedAt: result.checkedAt,
+				mode: result.apply ? "apply" : "dry-run",
+				candidateCount: result.candidates.length,
+				moved: result.moved,
+				jobs: result.candidates.map(observableJobRow),
+			};
+			if (options.json) console.log(formatJson(output));
+			else {
+				console.log(formatRows([{ checkedAt: output.checkedAt, mode: output.mode, candidateCount: output.candidateCount, moved: output.moved }]));
+				if (result.candidates.length) console.log(formatRows(result.candidates.map(compactJobRow)));
+			}
 			return;
 		}
 		throw new Error(`Unknown pibo debug jobs command "${command}". Run pibo debug jobs --help.`);
@@ -1159,7 +1244,7 @@ function compactEventRow(event: { streamId: number; topic: string; key?: string;
 	};
 }
 
-function compactJobRow(job: { jobId: string; queue: string; state: string; payload: unknown; runAt: string; attempts: number; maxAttempts: number; workerId?: string; lastError?: string }): Record<string, unknown> {
+function compactJobRow(job: { jobId: string; queue: string; state: string; payload: unknown; runAt: string; attempts: number; maxAttempts: number; workerId?: string; claimExpiresAt?: string; claimExpired?: boolean; missingRunRecord?: boolean; effectiveLiveness?: string; lastError?: string }): Record<string, unknown> {
 	const correlation = outputPersistenceJobCorrelation(job.payload);
 	return {
 		jobId: job.jobId,
@@ -1171,6 +1256,10 @@ function compactJobRow(job: { jobId: string; queue: string; state: string; paylo
 		eventId: correlation.eventId,
 		phase: correlation.phase,
 		workerId: job.workerId,
+		claimExpiresAt: job.claimExpiresAt,
+		claimExpired: job.claimExpired,
+		missingRunRecord: job.missingRunRecord,
+		effectiveLiveness: job.effectiveLiveness,
 		lastError: job.lastError,
 	};
 }
@@ -1277,6 +1366,8 @@ function printDebugDiscovery(): void {
 
 Commands:
   backup   Create, verify or restore an explicit SQLite and payload snapshot
+  message-queue Inspect or reconcile interrupted durable message commands
+  storage  Bounded SQLite status, verification, checkpoint, and retention
   db       Inspect and query local SQLite stores
   session  Inspect one Pibo Session by id or Chat URL
   summary  Show compact session diagnosis and drill-down commands
@@ -1299,6 +1390,7 @@ Commands:
   pty      Run and inspect interactive CLI/TUI commands under a PTY
 
 Next:
+  pibo debug storage status --json
   pibo debug db
   pibo debug summary <pibo-session-id>
   pibo debug final <pibo-session-id>
@@ -1377,6 +1469,8 @@ function printDebugRepairDiscovery(): void {
 Usage:
   pibo debug repair output <pibo-session-id> <event-id> [--dry-run|--apply] [--json]
   pibo debug repair output --session <pibo-session-id> [--since <iso-date>] [--before <iso-date>] [--limit n] [--dry-run|--apply] [--json]
+  pibo debug repair output-collision --job <dead-job-id> [--dry-run] [--json]
+  pibo debug repair output-collision --job <dead-job-id> --apply --keep-existing [--json]
 
 Behavior:
   Dry-run is the default. --apply is required for every mutation.
@@ -1385,6 +1479,8 @@ Behavior:
   Repair never invents assistant content. Without an exact Reliability terminal, only a completed assistant record can justify message_finished.
   Every applied terminal writes a pibo.output.repair_applied audit event in the same transaction.
   Repair does not delete or replay pending or dead output-persistence jobs.
+  Collision dry-run reports transcript, trace, navigation, and command projection state.
+  Collision apply requires --keep-existing, records an idempotent audit, and never compares or replays conflicting bodies or side effects.
 
 Next:
   pibo debug repair output ps_... <event-id> --dry-run --json
@@ -1638,9 +1734,11 @@ Usage:
   pibo debug jobs list [--queue queue] [--limit n] [--json]
   pibo debug jobs dead [--queue queue] [--limit n] [--json]
   pibo debug jobs replay <job-id> [--json]
+  pibo debug jobs reconcile-runs (--dry-run|--apply) [--json]
 
 Next:
   pibo debug jobs list --queue runs
+  pibo debug jobs reconcile-runs --dry-run
   pibo debug jobs dead --queue runs
 `);
 }

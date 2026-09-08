@@ -103,7 +103,7 @@ export class BoundedWorkerClient {
 		this.worker = new Worker(url, { resourceLimits: { maxOldGenerationSizeMb: 256 }, ...options.workerOptions });
 		this.worker.unref();
 		this.startupTimer = setTimeout(() => this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker startup timed out.")), this.maximum.startupTimeoutMs);
-		this.worker.on("message", (message: { ready?: boolean; worker?: Record<string, unknown>; id?: number; value?: unknown; error?: { code?: string; message?: string } }) => {
+		this.worker.on("message", (message: { ready?: boolean; worker?: Record<string, unknown>; id?: number; value?: unknown; error?: { code?: string; message?: string; details?: Record<string,unknown> } }) => {
 			this.lastResponseAt = performance.now();
 			if (message.worker) this.workerIdentity = message.worker;
 			if (message.ready) { clearTimeout(this.startupTimer); this.ready = true; this.workerIdentity = message.worker; this.pump(); return; }
@@ -116,7 +116,7 @@ export class BoundedWorkerClient {
 				pending.settled = true;
 				if (message.error) {
 					this.rejected++;
-					pending.reject(Object.assign(new Error(message.error.message ?? "Storage operation failed."), { code: message.error.code ?? "storage_operation_failed" }));
+					pending.reject(Object.assign(new Error(message.error.message ?? "Storage operation failed."), { code: message.error.code ?? "storage_operation_failed", ...message.error.details }));
 				} else {
 					try { boundedMessageBytes(message.value, this.maximum.maxMessageBytes); this.completed++; pending.resolve(message.value); }
 					catch (error) { this.rejected++; pending.reject(error as Error); }

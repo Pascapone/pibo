@@ -2001,8 +2001,9 @@ test("pibo debug jobs lists dead jobs and replays one", async () => {
 	const cwd = await makeDebugFixture();
 	try {
 		const live = await execFileAsync("node", [cliPath, "debug", "jobs", "list", "--queue", "runs"], { cwd });
-		assert.match(live.stdout, /jobId\tqueue\tstate\trunAt\tattempts\tpiboSessionId\teventId\tphase\tworkerId\tlastError/);
+		assert.match(live.stdout, /jobId\tqueue\tstate\trunAt\tattempts\tpiboSessionId\teventId\tphase\tworkerId\tclaimExpiresAt\tclaimExpired\tmissingRunRecord\teffectiveLiveness\tlastError/);
 		assert.match(live.stdout, /job_live\truns\tpending/);
+		assert.match(live.stdout, /false\ttrue\torphan_pending/);
 
 		const dead = await execFileAsync("node", [cliPath, "debug", "jobs", "dead", "--queue", "runs"], { cwd });
 		assert.match(dead.stdout, /job_dead\truns\t1\/1/);
@@ -2013,6 +2014,65 @@ test("pibo debug jobs lists dead jobs and replays one", async () => {
 
 		const deadAfterReplay = await execFileAsync("node", [cliPath, "debug", "jobs", "dead", "--queue", "runs"], { cwd });
 		assert.doesNotMatch(deadAfterReplay.stdout, /job_dead/);
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug jobs reconcile-runs supports dry-run and apply against a temporary reliability store", async () => {
+	const cwd = await makeDebugFixture();
+	const storePath = join(cwd, ".pibo", "pibo-events.sqlite");
+	const reliability = new PiboReliabilityStore(storePath);
+	try {
+		const orphan = reliability.enqueue({
+			jobId: "job_expired_orphan_cli",
+			queue: "runs",
+			payload: { runId: "run_missing_cli", secret: "must-not-print" },
+		});
+		reliability.claimJob(orphan.jobId, "run-registry:gone", 1000);
+		reliability.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", orphan.jobId);
+	} finally {
+		reliability.close();
+	}
+
+	try {
+		const listed = await execFileAsync("node", [cliPath, "debug", "jobs", "list", "--queue", "runs", "--json"], { cwd });
+		const listedJobs = JSON.parse(listed.stdout).jobs;
+		const orphan = listedJobs.find((job) => job.jobId === "job_expired_orphan_cli");
+		assert.equal(orphan.claimExpired, true);
+		assert.equal(orphan.missingRunRecord, true);
+		assert.equal(orphan.effectiveLiveness, "expired_orphan");
+		assert.doesNotMatch(listed.stdout, /must-not-print/);
+
+		const dryRun = await execFileAsync("node", [cliPath, "debug", "jobs", "reconcile-runs", "--dry-run", "--json"], { cwd });
+		assert.deepEqual(JSON.parse(dryRun.stdout), {
+			checkedAt: JSON.parse(dryRun.stdout).checkedAt,
+			mode: "dry-run",
+			candidateCount: 1,
+			moved: 0,
+			jobs: [orphan],
+		});
+
+		const stillLive = new PiboReliabilityStore(storePath);
+		try {
+			assert.equal(stillLive.hasLiveJob("job_expired_orphan_cli"), true);
+		} finally {
+			stillLive.close();
+		}
+
+		const apply = await execFileAsync("node", [cliPath, "debug", "jobs", "reconcile-runs", "--apply", "--json"], { cwd });
+		assert.equal(JSON.parse(apply.stdout).moved, 1);
+		const after = new PiboReliabilityStore(storePath);
+		try {
+			assert.equal(after.hasLiveJob("job_expired_orphan_cli"), false);
+			assert.equal(after.listDead({ queue: "runs" }).find((job) => job.jobId === "job_expired_orphan_cli")?.deadReason, "orphan_run_job");
+		} finally {
+			after.close();
+		}
+
+		const repeated = await execFileAsync("node", [cliPath, "debug", "jobs", "reconcile-runs", "--apply", "--json"], { cwd });
+		assert.equal(JSON.parse(repeated.stdout).moved, 0);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}

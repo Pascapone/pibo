@@ -349,6 +349,8 @@ export type PiboAssistantUsageEvent = {
 	piboSessionId: string;
 	eventId?: string;
 	usageIndex?: number;
+	inferenceId?: string;
+	inferenceTarget?: { type: "tool"; toolCallId: string } | { type: "assistant"; assistantIndex: number } | { type: "turn" };
 	inputTokens?: number;
 	outputTokens?: number;
 	cacheReadTokens?: number;

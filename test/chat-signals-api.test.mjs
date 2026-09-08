@@ -372,7 +372,7 @@ test("chat navigation and bootstrap use one bulk signal snapshot for large sessi
 		const navigationBody = await navigation.json();
 		assert.equal(findSessionNode(navigationBody.sessions, activeRoot.id)?.status, "running");
 		assert.equal(findSessionNode(navigationBody.sessions, failed.id)?.status, "error");
-		assert.equal(findSessionNode(navigationBody.sessions, failed.id)?.unreadCount, 1);
+		assert.equal(findSessionNode(navigationBody.sessions, failed.id)?.unreadCount, undefined);
 		assert.deepEqual(signalSnapshotCalls, { bulk: 1, perSession: 0 });
 
 		const readResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(failed.id)}/read`, {
@@ -449,7 +449,7 @@ test("chat navigation treats session errors as acknowledged after marked read", 
 		assert.equal(unreadResponse.status, 200);
 		const unreadBody = await unreadResponse.json();
 		assert.equal(findSessionNode(unreadBody.sessions, failed.id)?.status, "error");
-		assert.equal(findSessionNode(unreadBody.sessions, failed.id)?.unreadCount, 1);
+		assert.equal(findSessionNode(unreadBody.sessions, failed.id)?.unreadCount, undefined);
 
 		const readResponse = await fetch(`${baseURL}/api/chat/sessions/${encodeURIComponent(failed.id)}/read`, {
 			method: "POST",

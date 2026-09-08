@@ -187,6 +187,138 @@ test("releasing the final permitted claim moves the job to the DLQ", () => {
 	}
 });
 
+test("createRun rolls job, claim, and run record back at every crash boundary", () => {
+	for (const boundary of ["after_enqueue", "after_claim", "before_run_insert", "after_run_insert"]) {
+		const store = new PiboReliabilityStore(":memory:", {
+			onRunCreationBoundary(current) {
+				if (current === boundary) throw new Error(`crash:${boundary}`);
+			},
+		});
+		try {
+			assert.throws(() => store.createRun({
+				runId: `run_${boundary}`,
+				controllerPiboSessionId: "ps_parent",
+				toolName: "bash",
+				completionPolicy: "tracked",
+			}), new RegExp(`crash:${boundary}`));
+			assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM pibo_jobs").get().count, 0, boundary);
+			assert.equal(store.db.prepare("SELECT COUNT(*) AS count FROM pibo_runs").get().count, 0, boundary);
+		} finally {
+			store.close();
+		}
+	}
+
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const run = store.createRun({
+			runId: "run_atomic_success",
+			controllerPiboSessionId: "ps_parent",
+			toolName: "bash",
+			completionPolicy: "tracked",
+		});
+		const job = store.listJobs({ queue: "runs" });
+		assert.equal(job.length, 1);
+		assert.equal(job[0].jobId, run.jobId);
+		assert.equal(job[0].state, "running");
+		assert.equal(job[0].attempts, 1);
+	} finally {
+		store.close();
+	}
+});
+
+test("createRun remains claimable when the clock advances during enqueue", (t) => {
+	const store = new PiboReliabilityStore(":memory:");
+	const timestamp = Date.parse("2026-09-08T00:00:00Z");
+	t.mock.timers.enable({ apis: ["Date"], now: timestamp });
+	const enqueue = store.enqueue.bind(store);
+	t.mock.method(store, "enqueue", (input) => {
+		t.mock.timers.tick(10);
+		return enqueue(input);
+	});
+	try {
+		const run = store.createRun({ controllerPiboSessionId: "ps_parent", toolName: "bash", completionPolicy: "tracked" });
+		const [job] = store.listJobs({ queue: "runs" });
+		assert.equal(job.jobId, run.jobId);
+		assert.equal(job.state, "running");
+		assert.equal(job.runAt, new Date(timestamp).toISOString());
+	} finally {
+		store.close();
+	}
+});
+
+test("orphan run reconciliation is lease-safe, matching-run-safe, and idempotent", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const expiredOrphan = store.enqueue({ jobId: "job_expired_orphan", queue: "runs", payload: { runId: "run_missing" } });
+		store.claimJob(expiredOrphan.jobId, "old-worker", 1000);
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", expiredOrphan.jobId);
+
+		const liveOrphan = store.enqueue({ jobId: "job_live_orphan", queue: "runs", payload: { runId: "run_live_missing" } });
+		store.claimJob(liveOrphan.jobId, "live-worker", 60_000);
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2099-01-01T00:00:00.000Z", liveOrphan.jobId);
+
+		const valid = store.createRun({
+			runId: "run_valid_expired",
+			controllerPiboSessionId: "ps_parent",
+			toolName: "bash",
+			completionPolicy: "tracked",
+		});
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", valid.jobId);
+
+		const dryRun = store.reconcileOrphanRunJobs({ apply: false, now: new Date("2026-09-08T00:00:00.000Z") });
+		assert.deepEqual(dryRun.candidates.map((job) => job.jobId), [expiredOrphan.jobId]);
+		assert.equal(dryRun.candidates[0].claimExpired, true);
+		assert.equal(dryRun.candidates[0].missingRunRecord, true);
+		assert.equal(dryRun.candidates[0].effectiveLiveness, "expired_orphan");
+		assert.equal(dryRun.moved, 0);
+		assert.equal(store.hasLiveJob(expiredOrphan.jobId), true);
+
+		const applied = store.reconcileOrphanRunJobs({ apply: true, now: new Date("2026-09-08T00:00:00.000Z") });
+		assert.equal(applied.moved, 1);
+		assert.equal(store.hasLiveJob(expiredOrphan.jobId), false);
+		assert.equal(store.hasLiveJob(liveOrphan.jobId), true);
+		assert.equal(store.hasLiveJob(valid.jobId), true);
+		const dead = store.listDead({ queue: "runs" }).find((job) => job.jobId === expiredOrphan.jobId);
+		assert.equal(dead?.deadReason, "orphan_run_job");
+		assert.equal(dead?.lastError, "Expired runs job has no matching pibo_runs record.");
+
+		assert.deepEqual(store.reconcileOrphanRunJobs({ apply: true, now: new Date("2026-09-08T00:00:00.000Z") }), {
+			checkedAt: "2026-09-08T00:00:00.000Z",
+			apply: true,
+			candidates: [],
+			moved: 0,
+		});
+		assert.deepEqual(store.getRunJobReliabilityStatus(), {
+			status: "degraded",
+			expiredOrphanRunJobs: 0,
+			orphanRunDeadLetters: 1,
+		});
+	} finally {
+		store.close();
+	}
+});
+
+test("recoverInterruptedRuns reconciles expired orphan run jobs before run rows", () => {
+	const store = new PiboReliabilityStore(":memory:");
+	try {
+		const orphan = store.enqueue({ queue: "runs", payload: { runId: "run_missing" } });
+		store.claimJob(orphan.jobId, "run-registry:gone", 1000);
+		store.db.prepare("UPDATE pibo_jobs SET claim_expires_at = ? WHERE job_id = ?")
+			.run("2000-01-01T00:00:00.000Z", orphan.jobId);
+
+		assert.deepEqual(store.recoverInterruptedRuns("run-registry:new"), []);
+		assert.equal(store.hasLiveJob(orphan.jobId), false);
+		assert.equal(store.listDead({ queue: "runs" })[0].deadReason, "orphan_run_job");
+		assert.deepEqual(store.recoverInterruptedRuns("run-registry:new"), []);
+		assert.equal(store.listDead({ queue: "runs" }).length, 1);
+	} finally {
+		store.close();
+	}
+});
+
 test("recoverInterruptedRuns reconciles an unexpired claim owned by a previous runtime", () => {
 	const store = new PiboReliabilityStore(":memory:");
 	try {
