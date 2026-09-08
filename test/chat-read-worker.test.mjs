@@ -7,6 +7,47 @@ import {PiboDataStore} from '../dist/data/pibo-store.js';
 import {AsyncChatReadQueries} from '../dist/data/async-chat-reads.js';
 import {startWebOutboxProcessHost} from './fixtures/web-outbox-process-harness.mjs';
 
+test('navigation invalidates an index when the structure changes during indexing', async () => {
+ const directory=mkdtempSync(join(tmpdir(),'pibo-navigation-revision-'));let host,revision=0,indexCalls=0;
+ const {ChatSessionQueryService}=await import('../dist/apps/chat/data/session-query-service.js');
+ const original=ChatSessionQueryService.prototype.upsertSessionsIfChanged;
+ ChatSessionQueryService.prototype.upsertSessionsIfChanged=function(sessions){
+  indexCalls++;const result=original.call(this,sessions);revision++;return result;
+ };
+ try {
+  host=await startWebOutboxProcessHost({directory,piboSessionId:'ps_revision',structureRevision:()=>revision});
+  const url=host.baseURL+'/api/chat/navigation?piboSessionId=ps_revision',headers={'x-test-user':'user-1'};
+  const first=await fetch(url,{headers});assert.equal(first.status,200);await first.json();
+  const before=indexCalls;
+  const second=await fetch(url,{headers});assert.equal(second.status,200);await second.json();
+  assert.ok(indexCalls>before,'a revision newer than the indexed snapshot must trigger indexing');
+ } finally {ChatSessionQueryService.prototype.upsertSessionsIfChanged=original;await host?.channel.stop();await host?.app.dispose();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('room event pages stay within the IPC budget and page through large bodies without gaps', async () => {
+ const directory=mkdtempSync(join(tmpdir(),'pibo-room-event-budget-'));let host,store;
+ try {
+  host=await startWebOutboxProcessHost({directory,piboSessionId:'ps_room_budget'});
+  const headers={'x-test-user':'user-1'};
+  const navigation=await fetch(host.baseURL+'/api/chat/navigation?piboSessionId=ps_room_budget',{headers});
+  assert.equal(navigation.status,200);const {selectedRoomId:roomId}=await navigation.json();
+  store=new PiboDataStore(host.paths.dataStorePath,{payloadRootDir:host.paths.dataPayloadRootDir});
+  const body='b'.repeat(512*1024),ids=[];
+  const payload=store.payloads.writePayload({value:body,contentType:'text/plain',retentionClass:'product_history'});
+  for(let i=0;i<12;i++) ids.push(store.eventLog.appendEvent({sessionId:'ps_room_budget',sessionSequence:i+1,roomId,topic:'chat',type:'assistant_message',source:'agent',retentionClass:'chat_message',payloadRef:payload.id,previewText:'preview',attributes:{assistantIndex:i},createdAt:'2026-09-08T00:00:00Z'}).streamId);
+  const seen=[];let since='';
+  for(let page=0;page<20;page++) {
+   const response=await fetch(host.baseURL+`/api/chat/rooms/${roomId}/events?since=${since}`,{headers});
+   assert.equal(response.status,200);const {events}=await response.json();
+   if(!events.length)break;
+   assert.ok(Buffer.byteLength(JSON.stringify(events))<4*1024*1024);
+   for(const event of events){assert.equal(event.payload.text,body);seen.push(event.streamId);}
+   since=String(events.at(-1).streamId);
+  }
+  assert.deepEqual(seen,ids);
+ } finally {store?.close();await host?.channel.stop();await host?.app.dispose();rmSync(directory,{recursive:true,force:true});}
+});
+
 test('file history reads run on a separate worker and large bodies remain explicitly referenced',async()=>{
  const root=mkdtempSync(join(tmpdir(),'pibo-read-worker-'));const path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
  const store=new PiboDataStore(path,{payloadRootDir});const reader=new AsyncChatReadQueries(path,payloadRootDir);
