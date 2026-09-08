@@ -50,6 +50,7 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			return;
 		}
 		if(args[0]==="backup"){const {runStorageBackupCli}=await import("./storage-backup.js");await runStorageBackupCli(args.slice(1));return;}
+		if(args[0]==="message-queue"){await runDebugMessageQueue(args.slice(1));return;}
 		if (args[0] === "db") {
 			await runDebugDb(args.slice(1));
 			return;
@@ -138,6 +139,49 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
 	}
+}
+
+async function runDebugMessageQueue(args:string[]):Promise<void>{
+	if(!args.length||args[0]==="--help"||args[0]==="-h"){
+		console.log(`pibo debug message-queue - inspect and conservatively reconcile durable messages
+
+Commands:
+  inspect --session <ps_...> [--json]
+  reconcile <cmd_...> --mark-failed [--cancel-successors] [--dry-run|--apply] [--json]
+  reconcile <cmd_...> --confirm-completed [--confirm-without-evidence <cmd_...>] [--dry-run|--apply] [--json]
+
+Safety:
+  Dry-run is the default. --apply mutates the exact command transactionally.
+  Replay is unsupported: this command never executes a message or repeats side effects.
+  /clear only cancels unstarted runtime/queue work; it does not reconcile an interrupted durable predecessor.
+
+Next:
+  pibo debug message-queue inspect --session <pibo-session-id>`);return;
+	}
+	const command=args[0],json=args.includes("--json");
+	const value=(flag:string)=>{const index=args.indexOf(flag);if(index<0)return undefined;const result=args[index+1];if(!result||result.startsWith("--"))throw new Error(`${flag} requires a value`);return result;};
+	const {PiboDataStore}=await import("../data/pibo-store.js");const descriptor=resolveDebugStore("pibo-data");if(!descriptor.exists)throw new Error(`Pibo data store not found at ${descriptor.path}`);
+	const store=new PiboDataStore(descriptor.path);
+	try{
+		const module=await import("./message-queue.js");
+		if(command==="inspect"){
+			const sessionId=value("--session");if(!sessionId)throw new Error("message-queue inspect requires --session <pibo-session-id>");
+			const result=module.inspectMessageQueue(store,{sessionId});if(json)console.log(JSON.stringify(result,null,2));else console.log(module.formatMessageQueueInspection(result));return;
+		}
+		if(command==="reconcile"){
+			const commandId=args[1];if(!commandId||commandId.startsWith("--"))throw new Error("message-queue reconcile requires an exact <cmd_...> ID");
+			if(args.includes("--replay"))throw new Error("Replay is unsupported because provider and tool side effects cannot be proven idempotent. Choose --mark-failed or --confirm-completed.");
+			const decisions=[args.includes("--mark-failed")?"mark-failed":undefined,args.includes("--confirm-completed")?"confirm-completed":undefined].filter(Boolean) as Array<"mark-failed"|"confirm-completed">;
+			if(decisions.length!==1)throw new Error("Choose exactly one decision: --mark-failed or --confirm-completed");
+			if(args.includes("--apply")&&args.includes("--dry-run"))throw new Error("Choose either --dry-run or --apply");
+			const known=new Set(["--json","--mark-failed","--confirm-completed","--cancel-successors","--dry-run","--apply","--confirm-without-evidence","--cancel-successor"]);
+			for(let index=2;index<args.length;index++){const item=args[index];if(!item.startsWith("--"))continue;if(!known.has(item))throw new Error(`Unknown message-queue reconciliation option "${item}"`);if(item==="--confirm-without-evidence"||item==="--cancel-successor")index++;}
+			const cancelSuccessorIds:string[]=[];for(let index=0;index<args.length;index++)if(args[index]==="--cancel-successor"){const id=args[index+1];if(!id)throw new Error("--cancel-successor requires a command ID");cancelSuccessorIds.push(id);}
+			const result=module.reconcileMessageCommand(store,{commandId,decision:decisions[0]!,apply:args.includes("--apply"),confirmWithoutEvidence:value("--confirm-without-evidence"),cancelSuccessors:args.includes("--cancel-successors"),cancelSuccessorIds});
+			if(json)console.log(JSON.stringify({...result,nextCommands:[result.nextAction]},null,2));else console.log(module.formatMessageQueueReconciliation(result));return;
+		}
+		throw new Error(`Unknown pibo debug message-queue command "${command}". Run pibo debug message-queue --help.`);
+	}finally{store.close();}
 }
 
 async function runDebugIntegrity(args: string[]): Promise<void> {
@@ -1277,6 +1321,7 @@ function printDebugDiscovery(): void {
 
 Commands:
   backup   Create, verify or restore an explicit SQLite and payload snapshot
+  message-queue Inspect or reconcile interrupted durable message commands
   db       Inspect and query local SQLite stores
   session  Inspect one Pibo Session by id or Chat URL
   summary  Show compact session diagnosis and drill-down commands
