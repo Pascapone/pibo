@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { boundedMessageBytes } from "../../../data/bounded-worker-client.js";
 import type { ChatEventListInput, StoredChatEvent } from "../types/event-store.js";
 import type { ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
@@ -18,8 +19,17 @@ export class ChatTimelineQueryService {
 		if (input.afterStreamId !== undefined) { clauses.push("stream_id > ?"); values.push(input.afterStreamId); }
 		const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 		const limit = Math.max(1, Math.min(input.limit ?? 1000, 5000));
-		const rows = this.store.db.prepare(`SELECT * FROM event_log ${where} ORDER BY stream_id ASC LIMIT ?`).all(...values, limit) as EventLogRow[];
-		return rows.map((row) => storedChatEventFromV2Row(row, this.store.payloads, this.hydrationBytes));
+		const rows = this.store.db.prepare(`SELECT * FROM event_log ${where} ORDER BY stream_id ASC LIMIT ?`).iterate(...values, limit);
+		const events: StoredChatEvent[] = [];
+		let remainingBytes = 4 * 1024 * 1024 - 16;
+		for (const row of rows) {
+			const event = storedChatEventFromV2Row(row as EventLogRow, this.store.payloads, this.hydrationBytes);
+			// Stop hydration as soon as the page exceeds IPC capacity. Callers can retry a
+			// smaller page without first allocating every large body in the requested range.
+			remainingBytes -= boundedMessageBytes(event, remainingBytes - 32) + 32;
+			events.push(event);
+		}
+		return events;
 	}
 
 	listSessionEvents(piboSessionId: string, limit = 1000): ChatWebStoredPiboEvent[] {

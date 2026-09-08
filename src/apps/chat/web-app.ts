@@ -4926,6 +4926,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					requestedRoomId,
 				);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
+				const structuralRevision=context.channelContext.getSessionStructureRevision?.();
 				const ownedSessions = listSharedSessions(context);
 				const roomSessions = visibleSessionsInRoom({
 					state,
@@ -4937,11 +4938,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					includeArchived,
 				});
 				const defaultRoom = state.roomService.ensureDefaultRoom();
-				const structuralRevision=context.channelContext.getSessionStructureRevision?.();
-                const indexKey=()=>JSON.stringify([context.channelContext.getSessionStructureRevision?.(),selectedRoomId,includeArchived,selectedSession.id]);
-                if(structuralRevision===undefined||state.navigationIndexed?.context!==context.channelContext||state.navigationIndexed.key!==indexKey()){
+				const indexKey=JSON.stringify([structuralRevision,selectedRoomId,includeArchived,selectedSession.id]);
+                if(structuralRevision===undefined||state.navigationIndexed?.context!==context.channelContext||state.navigationIndexed.key!==indexKey){
                   indexSharedSessions(state.sessionQuery,roomSessions);
-                  if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey()};
+                  if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey};
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
 				const sessions = await buildSessionNodes(
@@ -4982,6 +4982,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					requestedRoomId,
 				);
 				const selectedRoomId = selectedRoomIdForSession(state, context, selectedSession);
+				const structuralRevision=context.channelContext.getSessionStructureRevision?.();
 				const ownedSessions = listSharedSessions(context);
 				const roomSessions = visibleSessionsInRoom({
 					state,
@@ -4996,11 +4997,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (markRead) {
 					markSessionsRead(state, sessionSubtree(ownedSessions, selectedSession.id));
 				}
-				const structuralRevision=context.channelContext.getSessionStructureRevision?.();
-                const indexKey=()=>JSON.stringify([context.channelContext.getSessionStructureRevision?.(),selectedRoomId,includeArchived,selectedSession.id]);
-                if(structuralRevision===undefined||state.navigationIndexed?.context!==context.channelContext||state.navigationIndexed.key!==indexKey()){
+				const indexKey=JSON.stringify([structuralRevision,selectedRoomId,includeArchived,selectedSession.id]);
+                if(structuralRevision===undefined||state.navigationIndexed?.context!==context.channelContext||state.navigationIndexed.key!==indexKey){
                   indexSharedSessions(state.sessionQuery,roomSessions);
-                  if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey()};
+                  if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey};
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
 				const [sessions, catalog] = await Promise.all([
@@ -5928,13 +5928,20 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				requireRoom(state, roomResource.roomId, webSession, "read");
 				const cursor = parseSseCursor(url.searchParams.get("since"));
-				return responseJson({
-					events: await (state.readQueries?.timeline ?? state.timelineQuery).listEvents({
+				let limit = 1000;
+				for (;;) {
+					try {
+						const events = await (state.readQueries?.timeline ?? state.timelineQuery).listEvents({
 						roomId: roomResource.roomId,
 						afterStreamId: cursor?.streamId,
-						limit: 1000,
-					}),
-				});
+						limit,
+						});
+						return responseJson({ events });
+					} catch (error) {
+						if (limit <= 1 || !error || typeof error !== "object" || !("code" in error) || error.code !== "storage_payload_limit") throw error;
+						limit = Math.max(1, Math.floor(limit / 2));
+					}
+				}
 			}
 
 			if (roomResource && roomResource.child === "messages" && request.method === "POST") {
