@@ -210,6 +210,12 @@ test("normal Pi router preserves protected resources and binding when rollout is
 	const beforeBinding = sessions.get(session.id).runtimeBinding;
 	assert.ok(beforeBinding.metadata.piboSessionPrefix);
 	assert.ok(beforeBinding.metadata.piboSessionPrefixResources);
+	const competitor = open(false);
+	try {
+		await assert.rejects(competitor.emitMessageAndWaitForReply({ type: "message", piboSessionId: session.id,
+			id: "concurrent-resume", source: "user", text: "must not race the active native runtime" }, 20000), /ownership|already held/);
+		assert.equal(api.requests.length, 2);
+	} finally { await competitor.disposeAll(); }
 	nativePath = beforeBinding.locator.value;
 	const nativeBefore = await readFile(nativePath, "utf8");
 	await router.disposeAll(); router = undefined;

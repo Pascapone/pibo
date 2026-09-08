@@ -4,6 +4,7 @@ import type { CacheInferenceEvidence } from "../shared/cache-diagnostics.js";
 import type { PiboJsonObject } from "../core/events.js";
 import type { RuntimeSessionBinding } from "./runtime-binding.js";
 import { readPrefixTransition, SESSION_PREFIX_TRANSITION_KEY, type PrefixTransition } from "./prefix-transition.js";
+import { PrefixSessionOwnership } from "./prefix-ownership.js";
 import { isAgentRuntimeBindingPersistence } from "./runtime-binding-persistence.js";
 import {
 	PrefixCapsuleStore, PrefixRecoveryRequiredError, readSessionPrefixBinding,
@@ -33,10 +34,31 @@ export class SessionPrefixController {
 	private readonly runtimeGeneration: string;
 	private inferenceSequence = 0;
 	private inferenceEvidence?: CacheInferenceEvidence;
+	private ownership?: PrefixSessionOwnership;
+
+	async acquireOwnership(): Promise<() => void> {
+		if (!this.ownership) {
+			const binding = this.options.getBinding();
+			if (!binding.nativeSessionId) throw new PrefixRecoveryRequiredError("native identity is required before protected ownership");
+			this.ownership = await PrefixSessionOwnership.acquire(this.store.root, [
+				JSON.stringify(["pibo", binding.piboSessionId]),
+				JSON.stringify(["native", binding.adapterId, binding.nativeSessionId]),
+			]);
+		}
+		const owned = this.ownership;
+		return () => {
+			owned.release();
+			if (this.ownership === owned) this.ownership = undefined;
+		};
+	}
 
 	constructor(private readonly options: SessionPrefixControllerOptions) {
 		if (!isAgentRuntimeBindingPersistence(options.persistence)) {
 			throw new PrefixRecoveryRequiredError("durable audited binding persistence is unavailable");
+		}
+		const metadata = options.getBinding().metadata;
+		if (readPrefixTransition(metadata) && !readSessionPrefixBinding(metadata)) {
+			throw new PrefixRecoveryRequiredError("native transition has lost its sealed prefix");
 		}
 		this.store = options.store ?? new PrefixCapsuleStore();
 		this.runtimeGeneration = options.runtimeGeneration ?? randomUUID();

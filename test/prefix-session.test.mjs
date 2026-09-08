@@ -24,6 +24,12 @@ for (const Store of [SqlitePiboSessionStore, PiboDataSessionStore]) {
 		});
 		const controller = makeController();
 		const competitor = makeController();
+		const releaseOld = await controller.acquireOwnership();
+		releaseOld();
+		const releaseCurrent = await controller.acquireOwnership();
+		releaseOld();
+		await assert.rejects(competitor.acquireOwnership(), /already held/);
+		releaseCurrent();
 		const input = { codec: "pi-v1", payload: "exact prefix\r\n", nativeSessionId: session.piSessionId, evidence: "adapter-inputs", hasHistoricalModelInput: false };
 		assert.equal(await controller.restore("pi-v1"), undefined);
 		const prefix = await controller.seal(input);

@@ -1,4 +1,5 @@
 import { SessionPrefixController } from "../sessions/prefix-session.js";
+import { readPrefixTransition } from "../sessions/prefix-transition.js";
 import { readSessionPrefixBinding, readSessionPrefixResourceReference, PrefixRecoveryRequiredError } from "../sessions/prefix-capsule.js";
 import { previouslyClearedMessages } from "./events.js";
 import { createProviderCapacityExtension } from "./provider-capacity.js";
@@ -1655,7 +1656,9 @@ export class PiboSessionRouter {
 			},
 		});
 
-		const protectedPrefix = readSessionPrefixBinding(binding.metadata) || readSessionPrefixResourceReference(binding.metadata);
+		const sealedPrefix = readSessionPrefixBinding(binding.metadata);
+		if (readPrefixTransition(binding.metadata) && !sealedPrefix) throw new PrefixRecoveryRequiredError("native transition has lost its sealed prefix");
+		const protectedPrefix = sealedPrefix || readSessionPrefixResourceReference(binding.metadata);
 		if (protectedPrefix && !runtimeAdapter.canInitializePrefix) {
 			throw new PrefixRecoveryRequiredError("configured adapter has no protected open contract");
 		}
@@ -1685,7 +1688,12 @@ export class PiboSessionRouter {
 		});
 		this.portableToolSessions.set(piboSession.id, portableTools);
 		let resources: PiboRuntimeResourceSession;
+		let releasePrefixOwnership: (() => void) | undefined;
 		try {
+			releasePrefixOwnership = await prefixController?.acquireOwnership();
+			if (prefixController && this.sessionStore.get(piboSession.id)?.runtimeBinding?.revision !== binding.revision) {
+				throw new PrefixRecoveryRequiredError("binding changed while acquiring ownership; reopen against current state");
+			}
 			resources = await this.runtimeResourceService.createSession({
 				piboSessionId: piboSession.id,
 				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
@@ -1700,6 +1708,7 @@ export class PiboSessionRouter {
 			});
 			this.runtimeResourceSessions.set(piboSession.id, resources);
 		} catch (error) {
+			releasePrefixOwnership?.();
 			portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
@@ -1751,6 +1760,7 @@ export class PiboSessionRouter {
 				},
 			});
 		} catch (error) {
+			releasePrefixOwnership?.();
 			portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			await resources.dispose();
@@ -1769,6 +1779,13 @@ export class PiboSessionRouter {
 				});
 			}
 			throw error;
+		}
+		if (prefixController) {
+			const disposeNative = runtimeSession.dispose.bind(runtimeSession);
+			runtimeSession.dispose = async () => {
+				await disposeNative();
+				releasePrefixOwnership?.();
+			};
 		}
 		try {
 			let openedBinding = runtimeSession.getBinding();

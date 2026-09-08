@@ -383,6 +383,24 @@ async function createSessionManager(
 }
 
 export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promise<AgentSessionRuntime> {
+	const releaseOwnership = await options.prefixController?.acquireOwnership();
+	try {
+		const runtime = await createPiboRuntimeWithOwnership(options);
+		if (options.prefixController) {
+			const dispose = runtime.dispose.bind(runtime);
+			runtime.dispose = async () => {
+				await dispose();
+				releaseOwnership?.();
+			};
+		}
+		return runtime;
+	} catch (error) {
+		releaseOwnership?.();
+		throw error;
+	}
+}
+
+async function createPiboRuntimeWithOwnership(options: PiboRuntimeOptions): Promise<AgentSessionRuntime> {
 	const cwd = options.cwd ?? getDefaultPiboWorkspace();
 	const profile = options.profile ?? createDefaultPiboProfile();
 	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController && !options.portableTools) {

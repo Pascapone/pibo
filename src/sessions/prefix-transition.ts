@@ -1,7 +1,7 @@
 import type { PiboJsonObject } from "../core/events.js";
-import { PrefixRecoveryRequiredError } from "./prefix-capsule.js";
+import { PrefixRecoveryRequiredError, SESSION_PREFIX_TRANSITION_KEY } from "./prefix-capsule.js";
 
-export const SESSION_PREFIX_TRANSITION_KEY = "piboSessionPrefixTransition";
+export { SESSION_PREFIX_TRANSITION_KEY } from "./prefix-capsule.js";
 /** One bounded durable receipt; older receipts remain in the binding audit. */
 export type PrefixTransition = {
 	format: 1;

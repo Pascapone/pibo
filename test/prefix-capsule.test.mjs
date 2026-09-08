@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile, rm, readdir, symlink } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { PrefixCapsuleStore, readSessionPrefixBinding } from "../dist/sessions/prefix-capsule.js";
+import { PrefixCapsuleStore, readSessionPrefixBinding, rejectUnsupportedPrefixRestore } from "../dist/sessions/prefix-capsule.js";
 import { createInitialRuntimeSessionBinding, nextRuntimeSessionBinding } from "../dist/sessions/runtime-binding.js";
 
 async function fixture(t) {
@@ -45,6 +45,7 @@ test("missing, corrupt, incompatible, and symlinked capsules fail closed", async
 });
 
 test("invalid protected metadata never becomes legacy absence", () => {
+	assert.throws(() => rejectUnsupportedPrefixRestore({ piboSessionPrefixTransition: null }), /recovery/);
 	assert.equal(readSessionPrefixBinding({}), undefined);
 	for (const value of [null, {}, { format: 2 }, "", false]) {
 		assert.throws(() => readSessionPrefixBinding({ piboSessionPrefix: value }), /recovery required/);
