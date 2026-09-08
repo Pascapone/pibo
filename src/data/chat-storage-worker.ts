@@ -3,6 +3,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../apps/chat/data/session-query-service.js";
 import { isPiboRoomArchived } from "../apps/chat/types/rooms.js";
+import type { PiboCompactionStats } from "../core/events.js";
 import type { PiboSession } from "../sessions/store.js";
 import { PiboDataStore } from "./pibo-store.js";
 import { ChatEventCommandService, chatClientTransactionKey } from "../apps/chat/data/event-command-service.js";
@@ -99,9 +100,13 @@ function execute(command: ChatStorageCommand): unknown {
 		case "ingestOutput": {
 			const result = ingest.ingestOutputEvent(command.input);
 			messageCommands.recordOutput(command.input.session.id,"eventId" in command.input.event ? command.input.event.eventId : undefined,command.input.event.type);
-			const row = store.db.prepare("SELECT created_at, event_id FROM event_log WHERE stream_id = ?").get(result.streamId) as { created_at: string; event_id: string | null } | undefined;
+			const row = store.db.prepare("SELECT created_at, event_id, attributes_json FROM event_log WHERE stream_id = ?").get(result.streamId) as { created_at: string; event_id: string | null; attributes_json: string } | undefined;
 			if (!row) throw new Error(`Missing output event ${result.streamId} after ingest.`);
-			return { ...result, stored: { createdAt: row.created_at, eventId: row.event_id ?? String(result.streamId) } };
+			const attributes = JSON.parse(row.attributes_json) as { compactionStats?: PiboCompactionStats };
+			const enrichment = command.input.event.type === "compaction_end" && attributes.compactionStats
+				? { compactionStats: attributes.compactionStats }
+				: undefined;
+			return { ...result, stored: { createdAt: row.created_at, eventId: row.event_id ?? String(result.streamId) }, enrichment };
 		}
 		case "status": return { operations, busyRetries, lastOperationMs, pid: process.pid, synchronous: store.db.prepare("PRAGMA synchronous").get(), journalMode: store.db.prepare("PRAGMA journal_mode").get() };
 	}

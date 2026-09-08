@@ -92,7 +92,14 @@ function storedPayloadReference(row: EventLogRow, attributes: PiboJsonObject, pa
 
 function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, persistedPayload?: PiboJsonValue | string): PiboOutputEvent | undefined {
 	const inlinePayload = attributes.inlinePayload ?? persistedPayload;
-	if (inlinePayload && typeof inlinePayload === "object" && !Array.isArray(inlinePayload) && typeof inlinePayload.type === "string") {
+	if (
+		inlinePayload
+		&& typeof inlinePayload === "object"
+		&& !Array.isArray(inlinePayload)
+		&& inlinePayload.type === row.type
+		&& typeof inlinePayload.piboSessionId === "string"
+		&& inlinePayload.piboSessionId === row.session_id
+	) {
 		return compactObject({
 			...inlinePayload,
 			renderSequence: numberAttribute(attributes, "renderSequence") ?? inlinePayload.renderSequence,
