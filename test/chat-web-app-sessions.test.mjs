@@ -86,8 +86,8 @@ function createHarness(options = {}) {
 		emitted,
 		request,
 		subscriptionCounts: () => ({ subscriptions, unsubscriptions }),
-		cleanup() {
-			app.dispose?.();
+		async cleanup() {
+			await app.dispose?.();
 			rmSync(storageDir, { recursive: true, force: true });
 		},
 	};
@@ -115,6 +115,9 @@ function assertNoRetiredPartitionPayloadFields(value, label) {
 }
 
 function ensureLegacyRoomCompatibility(db) {
+	// Fixture-only DDL may overlap the read worker's bounded projection maintenance.
+	// Wait for that transaction instead of failing an otherwise unrelated access test.
+	db.exec("PRAGMA busy_timeout = 1000");
 	const roomColumns = new Set(db.prepare("PRAGMA table_info(rooms)").all().map((column) => column.name));
 	if (!roomColumns.has(retiredStorageColumn)) db.exec(`ALTER TABLE rooms ADD COLUMN ${retiredStorageColumn} TEXT`);
 	db.exec(`
@@ -150,7 +153,7 @@ test("Chat Web disposal releases its channel event subscription", async () => {
 	const harness = createHarness();
 	await harness.request("/apps/chat");
 	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 0 });
-	harness.cleanup();
+	await harness.cleanup();
 	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 1 });
 });
 
@@ -208,7 +211,7 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without part
 		assert.equal(harness.emitted.at(-1).piboSessionId, userSession.id);
 		assert.equal(harness.emitted.at(-1).text, "continue historical session");
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -244,7 +247,7 @@ test("Chat Web forwards queue and steering delivery choices", async () => {
 			(error) => error?.statusCode === 400,
 		);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -272,7 +275,7 @@ test("Chat Web returns a conflict when the active turn cannot accept steering", 
 		);
 		assert.equal(harness.emitted.at(-1).delivery, "steer");
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -352,7 +355,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			assert.equal(harness.emitted.at(-1).text, `message for ${label}`);
 		}
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -418,7 +421,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		assert.ok(bootstrap.sessions.some((item) => item.piboSessionId === session.id), "navigation includes legacy room session");
 	} finally {
 		if (db) db.close();
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -487,7 +490,7 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 		assert.equal(db.prepare("SELECT COUNT(*) AS count FROM app_session_read_state WHERE session_id = ?").get(session.id).count, 1);
 	} finally {
 		if (db) db.close();
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -565,7 +568,7 @@ test("Chat Web mutates and routes historical account sessions by resource existe
 		assert.equal(harness.sessions.get(session.id), undefined);
 		assert.equal(harness.sessions.get(child.id), undefined);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -647,7 +650,7 @@ test("Chat Web persists pinning and manual room order without update-based movem
 		assert.equal(rename.status, 200);
 		assert.deepEqual(await roomIds(), beforeRename);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -745,7 +748,7 @@ test("Chat Web persists pinning and manual session order without activity-based 
 		assert.equal(rename.status, 200);
 		assert.deepEqual(rootIds(await bootstrap()), beforeActivityUpdate);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -766,5 +769,5 @@ test("Chat Web indexed retries preserve the duplicate response and bounded Serve
 		assert.deepEqual(duplicate.event, accepted.event);
 		assert.match(retry.headers.get('server-timing'), /^chat_lookup;dur=[\d.]+, chat_ack;dur=[\d.]+, json_serialize;dur=[\d.]+$/);
 		assert.equal(harness.emitted.filter(event => event.type === 'message').length, 1);
-	} finally { harness.cleanup(); }
+	} finally { await harness.cleanup(); }
 });
