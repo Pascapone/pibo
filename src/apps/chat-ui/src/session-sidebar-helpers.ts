@@ -1,7 +1,5 @@
 import type { PiboRoom, PiboWebSessionNode } from "./types";
 
-const RECENT_SESSION_ACTIVITY_SIGNAL_MS = 3_000;
-
 export function roomNodeTooltip(room: Pick<PiboRoom, "id" | "name">): string {
 	return `${room.name || "Untitled Room"}\n${room.id}`;
 }
@@ -14,40 +12,18 @@ export function sessionNodeTitle(node: PiboWebSessionNode): string {
 	return typeof node.title === "string" && node.title ? node.title : "Untitled Session";
 }
 
-export function sessionNodeSignal(node: PiboWebSessionNode, now: number): { className: string; title: string } {
+export function sessionNodeSignal(node: PiboWebSessionNode, _now: number): { className: string; title: string } {
 	const base = "session-signal h-2 w-2 rounded-full";
 	if (node.status === "error") {
-		return { className: `${base} session-signal-error`, title: (node.unreadCount ?? 0) > 0 ? "Run failed" : "Run failed (read)" };
+		return { className: `${base} session-signal-error`, title: "Run failed" };
 	}
 	if (node.status === "running") {
 		return { className: `${base} session-signal-running`, title: "Runtime is working" };
 	}
-	if ((node.unreadCount ?? 0) > 0 || sessionWasRecentlyActive(node, now)) {
+	if ((node.unreadCount ?? 0) > 0) {
 		return { className: `${base} session-signal-unread`, title: "New completed assistant message" };
 	}
 	return { className: `${base} session-signal-idle`, title: "Idle" };
-}
-
-function sessionWasRecentlyActive(node: PiboWebSessionNode, now: number): boolean {
-	if (!node.lastActivityAt) return false;
-	const timestamp = Date.parse(node.lastActivityAt);
-	return Number.isFinite(timestamp) && now - timestamp < RECENT_SESSION_ACTIVITY_SIGNAL_MS;
-}
-
-export function nextRecentSessionSignalExpiryMs(nodes: readonly PiboWebSessionNode[], now: number): number | undefined {
-	let nextMs: number | undefined;
-	const visit = (node: PiboWebSessionNode) => {
-		if (node.status !== "running" && node.status !== "error" && (node.unreadCount ?? 0) === 0 && node.lastActivityAt) {
-			const timestamp = Date.parse(node.lastActivityAt);
-			if (Number.isFinite(timestamp)) {
-				const remainingMs = RECENT_SESSION_ACTIVITY_SIGNAL_MS - (now - timestamp);
-				if (remainingMs > 0) nextMs = nextMs === undefined ? remainingMs : Math.min(nextMs, remainingMs);
-			}
-		}
-		for (const child of node.children) visit(child);
-	};
-	for (const node of nodes) visit(node);
-	return nextMs === undefined ? undefined : nextMs + 50;
 }
 
 function sessionTreeHasSession(nodes: PiboWebSessionNode[], piboSessionId: string): boolean {

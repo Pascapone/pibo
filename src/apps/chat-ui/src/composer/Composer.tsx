@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { Copy, LoaderCircle, Mic, SendHorizontal, Square, X } from "lucide-react";
 import { uploadChatFiles, type ChatUploadedFile } from "../api-chat-files";
+import { TerminalImageDialog } from "../session-views/compact-terminal/CompactTerminalSessionView";
 import { transcribeChatAudio } from "../api-transcription";
 import type { WebAnnotationMessageAttachment } from "../api-web-annotations";
 import { appendStoredComposerHistory, readStoredComposerHistory } from "../app-storage";
@@ -94,6 +95,7 @@ export function Composer({
 	const [cursorPos, setCursorPos] = useState(0);
 	const [dismissedSuggestionKeys, setDismissedSuggestionKeys] = useState<string[]>([]);
 	const [uploading, setUploading] = useState(false);
+	const [previewAttachment, setPreviewAttachment] = useState<UploadedChatAttachment | null>(null);
 	const [uploadStatus, setUploadStatus] = useState<{ message: string; copyText?: string; error: boolean } | null>(null);
 	const [pendingClipboardImage, setPendingClipboardImage] = useState<ClipboardImageUpload | null>(null);
 	const [recording, setRecording] = useState(false);
@@ -681,6 +683,14 @@ export function Composer({
 					))}
 				</div>
 			) : null}
+			{previewAttachment && sessionId ? (
+				<TerminalImageDialog
+					state={{ images: [{ id: previewAttachment.id, label: previewAttachment.name, path: previewAttachment.path }], index: 0 }}
+					piboSessionId={sessionId}
+					onClose={() => setPreviewAttachment(null)}
+					onIndexChange={() => {}}
+				/>
+			) : null}
 			{selectedUploadAttachments.length ? (
 				<div className="mb-2 rounded-sm border border-slate-800 bg-[#0e1116] px-2.5 py-1.5" data-pibo-debug="composer-upload-attachments" data-upload-attachment-count={selectedUploadAttachments.length}>
 					<div className="mb-1.5 flex items-center justify-between gap-2">
@@ -690,7 +700,9 @@ export function Composer({
 					<div className="flex flex-wrap gap-1.5">
 						{selectedUploadAttachments.map((attachment) => (
 							<div key={attachment.id} title={attachment.path} className="inline-flex max-w-80 items-center gap-1 rounded-sm border border-emerald-500/45 bg-emerald-500/10 px-2 py-1 text-left text-[11px] text-slate-200" data-pibo-debug="composer-upload-attachment-chip" data-upload-path={attachment.path}>
-								<span className="min-w-0 truncate">{boundedUiText(attachment.name || attachment.path, 100)}</span>
+								{sessionId && /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i.test(attachment.name || attachment.path) ? (
+									<button type="button" onClick={() => setPreviewAttachment(attachment)} className="min-w-0 truncate text-left hover:text-[#11a4d4]" aria-label={`Preview ${attachment.name}`}>{boundedUiText(attachment.name || attachment.path, 100)}</button>
+								) : <span className="min-w-0 truncate">{boundedUiText(attachment.name || attachment.path, 100)}</span>}
 								<button type="button" onClick={() => void copyTextToClipboard(attachment.path)} title="Copy uploaded file path" aria-label="Copy uploaded file path" className="shrink-0 rounded-sm p-0.5 text-emerald-300 hover:bg-slate-800 hover:text-[#11a4d4]">
 									<Copy size={11} />
 								</button>

@@ -45,33 +45,34 @@ test('history coverage and keyset pages use indexed edges and preserve page boun
  }finally{store.close();}
 });
 
- test('unread projection follows committed events and monotonic read markers without a polling history scan',()=>{
+ test('unread projection follows completed turns and monotonic read markers without a polling history scan',()=>{
   const store=new PiboDataStore(':memory:',{payloadRootDir:':memory:'});
   try{
    const reads=new ChatReadStateService(store);const ids=['session'];
    const event=(type,retentionClass='chat_message')=>store.eventLog.appendEvent({sessionId:'session',topic:'pibo.output',source:'test',type,retentionClass});
-   const first=event('assistant_message');event('assistant_message');event('tool_execution_finished','trace_event');
+   event('user.message.accepted');event('assistant_message');event('session_error','trace_event');event('tool_execution_finished','trace_event');
+   assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).size,0);
+   const first=event('message_finished');event('assistant_message');const second=event('message_finished');
    assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).get('session'),2);
    reads.markSessionRead('session',first.streamId);assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).get('session'),1);
-   const last=event('session_error','trace_event');assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).get('session'),2);
-   reads.markSessionRead('session',last.streamId);assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).size,0);
+   reads.markSessionRead('session',second.streamId);assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).size,0);
    reads.markSessionRead('session',first.streamId);assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).size,0);
-   const newEvent=event('assistant_message');assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).get('session'),1);
+   const newEvent=event('message_finished');assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).get('session'),1);
    store.db.prepare('DELETE FROM event_log WHERE stream_id=?').run(newEvent.streamId);assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:ids}).size,0);
    const prepare=store.db.prepare.bind(store.db);store.db.prepare=sql=>{assert.doesNotMatch(sql,/FROM event_log/);return prepare(sql);};
    reads.countUnreadMessagesBySession({piboSessionIds:ids});
   }finally{store.close();}
  });
- test('unread backfill resumes beside newer events and preserves read markers',()=>{
+ test('unread backfill resumes beside newer completed turns and preserves read markers',()=>{
   const store=new PiboDataStore(':memory:',{payloadRootDir:':memory:'});
   try{
    store.db.exec('DROP TRIGGER chat_unread_event_insert');
-   for(let i=0;i<75;i++)store.eventLog.appendEvent({sessionId:'session',topic:'pibo.output',source:'test',type:'assistant_message',retentionClass:'chat_message'});
+   for(let i=0;i<75;i++)store.eventLog.appendEvent({sessionId:'session',topic:'pibo.output',source:'test',type:'message_finished',retentionClass:'chat_message'});
    store.db.exec('UPDATE chat_read_backfill SET event_target=75,event_cursor=0');store.db.exec(CHAT_READ_PROJECTION_SCHEMA);
    const reads=new ChatReadStateService(store);reads.markSessionRead('session',50);const maintenance=new ChatReadProjectionStore(store.db);
    assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:['session']}).get('session'),25);
    maintenance.step(7,1000);maintenance.setPaused(true);assert.equal(maintenance.step().processed,0);maintenance.setPaused(false);
-   store.eventLog.appendEvent({sessionId:'session',topic:'pibo.output',source:'test',type:'assistant_message',retentionClass:'chat_message'});
+   store.eventLog.appendEvent({sessionId:'session',topic:'pibo.output',source:'test',type:'message_finished',retentionClass:'chat_message'});
    for(let i=0;i<30&&!maintenance.status().complete;i++)maintenance.step(7,1000);
    assert.equal(maintenance.status().complete,true);assert.equal(reads.countUnreadMessagesBySession({piboSessionIds:['session']}).get('session'),26);
   }finally{store.close();}

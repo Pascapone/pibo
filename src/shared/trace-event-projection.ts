@@ -720,19 +720,28 @@ function attachModelInferenceToLatestOutput(
 ): void {
 	const eventId = event.eventId;
 	const flattened = flattenTraceNodes(nodes);
-	const id = eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
+	const id = event.inferenceId
+		? `${eventId ?? storedEvent.piboSessionId}:inference:${event.inferenceId}`
+		: eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
 	const candidates = flattened
-		.filter((node) => node.eventId === eventId && traceNodeStartedBeforeInference(node, storedEvent) && (
+		.filter((node) => node.eventId === eventId && (event.inferenceTarget || traceNodeStartedBeforeInference(node, storedEvent)) && (
 			node.type === "assistant.message"
 			|| node.type === "model.reasoning"
 			|| node.type === "tool.call"
 			|| node.type === "agent.delegation"
 		))
 		.sort(compareTraceNodes);
-	// A late cumulative update belongs to the original inference owner, even if
-	// another Tool or Endturn appeared in the meantime.
-	const target = flattened.find(node => node.modelInferences?.some(item => item.id === id))
-		?? candidates.at(-1) ?? (eventId ? byId.get(messageTurnNodeId(eventId)) : undefined);
+	const anchor = event.inferenceTarget;
+	const turnNode = eventId ? byId.get(messageTurnNodeId(eventId)) : undefined;
+	const anchoredTarget = anchor
+		? (anchor.type === "tool"
+			? candidates.find((node) => node.toolCallId === anchor.toolCallId)
+			: anchor.type === "assistant"
+				? candidates.find((node) => node.stableKey === `assistant:${eventId}:assistant:${anchor.assistantIndex}`)
+				: turnNode) ?? turnNode
+		: candidates.at(-1) ?? turnNode;
+	// Repeated usage remains attached to its original inference owner.
+	const target = flattened.find(node => node.modelInferences?.some(item => item.id === id)) ?? anchoredTarget;
 	if (!target) return;
 	const existingRecord = target.modelInferences?.find(item => item.id === id);
 	const record: ModelInferenceRecord = {

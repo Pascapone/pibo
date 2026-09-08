@@ -772,24 +772,24 @@ export class RuntimeRoutedSession {
 		return false;
 	}
 
+	private readonly runtimeAssistantIndices = new Map<number, number>();
+
 	private handleRuntimeEvent(event: AgentRuntimeSemanticEvent): void {
 		switch (event.type) {
 			case "assistant_delta":
-				this.emit(this.withActiveMessage({
-					type: "assistant_delta",
+			case "assistant_message": {
+				const output = this.withActiveMessage({
+					type: event.type,
 					piboSessionId: this.piboSessionId,
 					text: event.text,
 					contentIndex: event.contentIndex,
-				}));
+				});
+				if ((output.type === "assistant_delta" || output.type === "assistant_message") && event.contentIndex !== undefined && output.assistantIndex !== undefined) {
+					this.runtimeAssistantIndices.set(event.contentIndex, output.assistantIndex);
+				}
+				this.emit(output);
 				return;
-			case "assistant_message":
-				this.emit(this.withActiveMessage({
-					type: "assistant_message",
-					piboSessionId: this.piboSessionId,
-					text: event.text,
-					contentIndex: event.contentIndex,
-				}));
-				return;
+			}
 			case "reasoning_started":
 				this.emit(this.withActiveMessage({
 					type: "thinking_started",
@@ -831,6 +831,12 @@ export class RuntimeRoutedSession {
 				this.emit(this.withActiveMessage({
 					type: "assistant_usage",
 					piboSessionId: this.piboSessionId,
+					...(event.inferenceId ? { inferenceId: event.inferenceId } : {}),
+					...(event.target ? { inferenceTarget: event.target.type === "assistant"
+						? (this.runtimeAssistantIndices.has(event.target.contentIndex)
+							? { type: "assistant" as const, assistantIndex: this.runtimeAssistantIndices.get(event.target.contentIndex)! }
+							: { type: "turn" as const })
+						: event.target } : {}),
 					inputTokens: event.usage.inputTokens,
 					outputTokens: event.usage.outputTokens,
 					cacheReadTokens: event.usage.cacheReadTokens,
@@ -1426,6 +1432,7 @@ export class RuntimeRoutedSession {
 
 	private resetContentIndices(): void {
 		this.closeActiveContentParts();
+		this.runtimeAssistantIndices.clear();
 		this.nextAssistantIndex = 0;
 		this.nextThinkingIndex = 0;
 	}

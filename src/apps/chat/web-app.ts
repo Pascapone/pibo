@@ -428,6 +428,7 @@ type ChatEventCommands = {
 
 type ChatReadState = {
 	markSessionRead(piboSessionId: string, lastReadStreamId: number): void;
+	hasUnreadErrorsBySession(input: { piboSessionIds: string[] }): Set<string>;
 	countUnreadMessagesBySession(input: { piboSessionIds: string[] }): Map<string, number>;
 };
 
@@ -3822,18 +3823,25 @@ async function buildSessionUnreadCounts(
 	});
 }
 
-function hasUnreadInSessionSubtree(sessions: readonly PiboSession[], sessionUnreadCounts: ReadonlyMap<string, number>, rootSessionId: string): boolean {
-	return sessionSubtree(sessions, rootSessionId).some((session) => (sessionUnreadCounts.get(session.id) ?? 0) > 0);
+function buildSessionUnreadErrors(
+	state: ChatWebAppState,
+	sessions: PiboSession[],
+): Set<string> {
+	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+	const visibleSessionIds = sessions
+		.filter((session) => !hasArchivedSessionInPath(session, sessionsById))
+		.map((session) => session.id);
+	return state.readState.hasUnreadErrorsBySession({ piboSessionIds: visibleSessionIds });
 }
 
 function sessionIdsWithUnreadInSubtree(
 	sessions: readonly PiboSession[],
-	sessionUnreadCounts: ReadonlyMap<string, number>,
+	unreadSessionIds: ReadonlySet<string>,
 ): ReadonlySet<string> {
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	const result = new Set<string>();
 	for (const session of sessions) {
-		if ((sessionUnreadCounts.get(session.id) ?? 0) <= 0) continue;
+		if (!unreadSessionIds.has(session.id)) continue;
 		let current: PiboSession | undefined = session;
 		const visited = new Set<string>();
 		while (current && !visited.has(current.id)) {
@@ -3846,16 +3854,11 @@ function sessionIdsWithUnreadInSubtree(
 }
 
 type SignalStatusOptions = {
-	sessions?: readonly PiboSession[];
-	sessionUnreadCounts?: ReadonlyMap<string, number>;
-	sessionIdsWithUnreadInSubtree?: ReadonlySet<string>;
+	sessionIdsWithUnreadErrorInSubtree?: ReadonlySet<string>;
 };
 
 function signalStatusHasUnreadError(options: SignalStatusOptions, piboSessionId: string): boolean {
-	if (options.sessionIdsWithUnreadInSubtree) return options.sessionIdsWithUnreadInSubtree.has(piboSessionId);
-	return options.sessions && options.sessionUnreadCounts
-		? hasUnreadInSessionSubtree(options.sessions, options.sessionUnreadCounts, piboSessionId)
-		: true;
+	return options.sessionIdsWithUnreadErrorInSubtree?.has(piboSessionId) ?? true;
 }
 
 function signalStatusFromSnapshot(
@@ -3887,19 +3890,19 @@ function sessionIndexItemsWithSignalState(
 	context: PiboWebAppContext,
 	sessions: readonly PiboSession[],
 	indexItems: readonly ChatWebSessionIndexItem[],
-	sessionUnreadCounts: ReadonlyMap<string, number> = new Map(),
+	sessionUnreadErrors: ReadonlySet<string> = new Set(),
 ): ChatWebSessionIndexItem[] {
 	const snapshotSignalStatuses = context.channelContext.snapshotSignalStatuses;
 	const signalStatuses = snapshotSignalStatuses?.().sessions;
 	const snapshotSignalSession = context.channelContext.snapshotSignalSession;
 	if (!signalStatuses && !snapshotSignalSession) return [...indexItems];
 	const bySessionId = new Map(indexItems.map((item) => [item.piboSessionId, item]));
-	const unreadSessionSubtreeIds = sessionIdsWithUnreadInSubtree(sessions, sessionUnreadCounts);
+	const unreadErrorSubtreeIds = sessionIdsWithUnreadInSubtree(sessions, sessionUnreadErrors);
 	for (const session of sessions) {
 		const existing = bySessionId.get(session.id);
 		const signal = signalStatuses
-			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadInSubtree: unreadSessionSubtreeIds })
-			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadInSubtree: unreadSessionSubtreeIds });
+			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds })
+			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds });
 		if (!signal?.status) continue;
 		if (signal.status === "idle" && existing?.status !== "running" && existing?.status !== "error") continue;
 		bySessionId.set(session.id, {
@@ -3930,7 +3933,7 @@ function buildRoomUnreadCounts(
 	const counts = new Map<string, number>();
 	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
 	for (const session of sessions) {
-		if (hasArchivedSessionInPath(session, sessionsById)) continue;
+		if (session.parentId || hasArchivedSessionInPath(session, sessionsById)) continue;
 		const unreadCount = sessionUnreadCounts.get(session.id) ?? 0;
 		if (unreadCount <= 0) continue;
 		let root = session;
@@ -4960,9 +4963,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
                   if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey};
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
+				const sessionUnreadErrors = buildSessionUnreadErrors(state, ownedSessions);
 				const sessions = await buildSessionNodes(
 					roomSessions,
-					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadCounts),
+					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
 					process.cwd(),
 					sessionUnreadCounts,
 					{ skipPiMetadataFallback: true },
@@ -5019,10 +5023,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
                   if(structuralRevision!==undefined)state.navigationIndexed={context:context.channelContext,key:indexKey};
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
+				const sessionUnreadErrors = buildSessionUnreadErrors(state, ownedSessions);
 				const [sessions, catalog] = await Promise.all([
 					buildSessionNodes(
 						roomSessions,
-						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadCounts),
+						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
 						process.cwd(),
 						sessionUnreadCounts,
 						sessionNodeHistoryOptions(context),

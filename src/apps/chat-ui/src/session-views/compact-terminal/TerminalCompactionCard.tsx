@@ -19,6 +19,7 @@ export function TerminalCompactionCard({ row }: { row: CompactTerminalRow }) {
 	const inlineMarkdown = row.compactionMarkdown;
 	const loadedMarkdown = summaryState.status === "loaded" ? summaryState.markdown : undefined;
 	const markdown = inlineMarkdown ?? loadedMarkdown;
+	const unavailableMessage = compactionTextUnavailableMessage(row);
 
 	const loadSummary = () => {
 		if (inlineMarkdown || !outputPayloadRef || summaryState.status !== "idle") return;
@@ -28,7 +29,7 @@ export function TerminalCompactionCard({ row }: { row: CompactTerminalRow }) {
 				const summary = compactionSummaryFromPayload(chunk.data);
 				setSummaryState(summary
 					? { status: "loaded", markdown: summary }
-					: { status: "error", message: "Compaction text is unavailable." });
+					: { status: "error", message: unavailableMessage });
 			})
 			.catch((error: unknown) => {
 				setSummaryState({ status: "error", message: error instanceof Error ? error.message : String(error) });
@@ -71,12 +72,23 @@ export function TerminalCompactionCard({ row }: { row: CompactTerminalRow }) {
 					) : summaryState.status === "loading" ? (
 						<div className="text-[11px] text-[#737373]" role="status">Loading compaction text…</div>
 					) : (
-						<div className="text-[11px] text-[#737373]">{summaryState.status === "error" ? summaryState.message : "Compaction text is unavailable."}</div>
+						<div className="text-[11px] text-[#737373]">{summaryState.status === "error" ? summaryState.message : unavailableMessage}</div>
 					)}
 				</div>
 			</details>
 		</div>
 	);
+}
+
+function compactionTextUnavailableMessage(row: CompactTerminalRow): string {
+	if (isRecord(row.input) && row.input.reason === "codex_context_compaction") {
+		return "Codex did not provide compaction text.";
+	}
+	return "Compaction text is unavailable.";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function CompactionMetric({ label, value }: { label: string; value: string }) {

@@ -1,6 +1,6 @@
 import { normalizeSessionErrorDetails, runtimeSessionErrorDetails } from "../../core/session-errors.js";
 import type { PiboJsonObject, PiboSessionErrorDetails } from "../../core/events.js";
-import type { AgentRuntimeSemanticEvent, AgentRuntimeUsage } from "../../agent-runtime/events.js";
+import type { AgentRuntimeSemanticEvent, AgentRuntimeUsage, AgentRuntimeUsageTarget } from "../../agent-runtime/events.js";
 import {
 	CodexAppServerClientError,
 	type CodexAppServerClient,
@@ -81,7 +81,9 @@ type PendingTurn = {
 	compactionEnded: boolean;
 	startedTools: Map<string, ToolDescriptor>;
 	completedTools: Set<string>;
-	usage?: AgentRuntimeUsage;
+	usageSnapshots: Set<string>;
+	usageItemOffset: number;
+	nextUsageIndex: number;
 	lastError?: { message: string; details: PiboSessionErrorDetails };
 };
 
@@ -313,6 +315,9 @@ function newPendingTurn(kind: PendingTurn["kind"] = "turn"): PendingTurn {
 		compactionEnded: false,
 		startedTools: new Map(),
 		completedTools: new Set(),
+		usageSnapshots: new Set(),
+		usageItemOffset: 0,
+		nextUsageIndex: 0,
 	};
 }
 
@@ -661,7 +666,27 @@ export class CodexNativeTurnController {
 	private handleUsage(value: unknown): void {
 		const params = this.scopedTurnParams(value, "thread token usage");
 		if (!params) return;
-		params.pending.usage = validateTokenUsage(params.record.tokenUsage as CodexAppServerThreadTokenUsage);
+		const snapshot = requiredRecord(params.record.tokenUsage, "thread token usage");
+		const usage = validateTokenUsage(snapshot as CodexAppServerThreadTokenUsage);
+		const total = tokenUsageBreakdown(snapshot.total, "cumulative thread usage");
+		const key = JSON.stringify(total);
+		const pending = params.pending;
+		// Codex repeats snapshots for quota/replay notifications. Equal last usage
+		// alone is not a duplicate: two real requests may use identical token counts.
+		if (pending.usageSnapshots.has(key)) return;
+		pending.usageSnapshots.add(key);
+		const newItems = pending.itemOrder.slice(pending.usageItemOffset);
+		pending.usageItemOffset = pending.itemOrder.length;
+		let target: AgentRuntimeUsageTarget = { type: "turn" };
+		// A usage update closes the observed output span. Only newly introduced
+		// items belong to it; late tool completions cannot steal another step's usage.
+		// Several tools in one response share one record, anchored at its last output.
+		for (const id of newItems) {
+			const item = pending.items.get(id)!;
+			if (TOOL_ITEM_TYPES.has(item.type)) target = { type: "tool", toolCallId: id };
+			else if (item.type === "agentMessage") target = { type: "assistant", contentIndex: this.assistantIndex(pending, id) };
+		}
+		this.emit({ type: "usage", usage, inferenceId: `${pending.turnId}:usage:${pending.nextUsageIndex++}`, target });
 	}
 
 	private handleThreadStatus(value: unknown): void {
@@ -894,7 +919,6 @@ export class CodexNativeTurnController {
 		this.ensureTurnStarted(pending, turn);
 		for (const item of turn.items) this.completeItem(pending, item);
 		this.finishIncompleteItems(pending, turn.status);
-		if (pending.usage) this.emit({ type: "usage", usage: pending.usage });
 		const persistedItems = pending.itemOrder
 			.map((itemId) => pending.items.get(itemId))
 			.filter((item): item is CodexAppServerThreadItem => item !== undefined);
