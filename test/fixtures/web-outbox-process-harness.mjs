@@ -14,14 +14,14 @@ export function webOutboxPaths(directory) {
 	};
 }
 
-export async function startWebOutboxProcessHost({ directory, piboSessionId, structureRevision }) {
+export async function startWebOutboxProcessHost({ directory, piboSessionId, structureRevision, onInput, host: bindHost, port = 0 }) {
 	mkdirSync(directory, { recursive: true });
 	const paths = webOutboxPaths(directory);
 	const sessions = new InMemoryPiboSessionStore();
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
 	const listeners = new Set();
 	const app = createChatWebApp(paths);
-	const channel = createWebHostChannel({ port: 0, announce: false });
+	const channel = createWebHostChannel({ host: bindHost, port, announce: false });
 	await channel.start({
 		auth: {
 			name: "process-fixture-auth",
@@ -36,6 +36,7 @@ export async function startWebOutboxProcessHost({ directory, piboSessionId, stru
 			},
 		},
 		emit(event) {
+			onInput?.(event, (output) => { for (const listener of listeners) listener(output); });
 			return Promise.resolve({
 				type: event.type === "message" ? "message_queued" : "execution_result",
 				piboSessionId: event.piboSessionId,

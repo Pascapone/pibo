@@ -11,7 +11,7 @@ export type ChatStreamReplayStatus = {
 	maxEvents: number;
 };
 
-export type ChatStreamEvent = { piboSessionId?: string; createdAt?: string; renderSequence?: number; toolInvocationOrdinal?: number } & (
+export type ChatStreamEvent = { storedPayloadRef?: import("../../shared/trace-types.js").TracePayloadRef; piboSessionId?: string; createdAt?: string; renderSequence?: number; toolInvocationOrdinal?: number } & (
 	| { type: "ready"; piboSessionId: string; liveReplay?: ChatStreamReplayStatus }
 	| { type: "RUN_STARTED"; runId: string; input?: { text?: string; source?: string } }
 	| { type: "RUN_FINISHED"; runId: string }

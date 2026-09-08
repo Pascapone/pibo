@@ -633,6 +633,11 @@ function TerminalRow({
 				</div>
 				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
+			{Object.values(row.payloadRefs ?? {}).some(Boolean) ? (
+				<button type="button" aria-expanded={expanded} onClick={onToggle} className="mt-2 border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8]">
+					{expanded ? "Hide full content" : "Show full content"}
+				</button>
+			) : null}
 			{expanded ? (
 				<TerminalDetails
 					row={row}

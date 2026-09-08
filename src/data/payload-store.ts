@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { gunzipSync, gzipSync } from "node:zlib";
-import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createGunzip, gunzipSync, gzipSync } from "node:zlib";
+import { createReadStream, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
@@ -175,6 +175,35 @@ export class PayloadStore {
 		if (payload.encoding === "gzip") return gunzipSync(bytes);
 		if (payload.encoding === "identity") return bytes;
 		throw new Error(`Unsupported payload encoding \"${payload.encoding}\"`);
+	}
+
+	/** Read a bounded uncompressed range without materializing the entire payload. */
+	async readPayloadRange(id: string, offset: number, limit: number): Promise<Buffer> {
+		if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 1) throw new RangeError("Invalid payload range");
+		const payload = this.getPayload(id);
+		if (!payload?.storagePath) throw new Error("Payload not found");
+		if (offset >= payload.byteSize) return Buffer.alloc(0);
+		const path = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
+		const end = Math.min(payload.byteSize, offset + limit);
+		const source = createReadStream(path, payload.encoding === "identity" ? { start: offset, end: end - 1 } : {});
+		if (payload.encoding !== "identity" && payload.encoding !== "gzip") { source.destroy(); throw new Error("Unsupported payload encoding"); }
+		const stream = payload.encoding === "gzip" ? source.pipe(createGunzip()) : source;
+		const forwardError = (error: Error) => stream.destroy(error);
+		if (stream !== source) source.on("error", forwardError);
+		let position = payload.encoding === "identity" ? offset : 0;
+		const parts: Buffer[] = [];
+		try {
+			for await (const value of stream) {
+				const bytes = Buffer.from(value);
+				const from = Math.max(0, offset - position), to = Math.min(bytes.length, end - position);
+				if (to > from) parts.push(Buffer.from(bytes.subarray(from, to)));
+				position += bytes.length;
+				if (position >= end) break;
+			}
+		} finally { stream.destroy(); source.destroy(); }
+		const result = Buffer.concat(parts);
+		if (result.length !== end - offset) throw new Error("Incomplete payload range");
+		return result;
 	}
 
 	readPayloadText(id: string): string {

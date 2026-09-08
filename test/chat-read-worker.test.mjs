@@ -58,7 +58,7 @@ test('file history reads run on a separate worker and large bodies remain explic
   assert.equal(entries[0].content,'preview');assert.equal(entries[0].metadata.payloadRef,payload.id);assert.equal(entries[0].metadata.contentTruncated,true);
   const {parseTracePayloadRef,readTracePayloadChunk}=await import('../dist/apps/chat/trace-v2.js');
   const fullRef=entries[0].metadata.tracePayloadRef;assert.equal(fullRef.byteLength,1024*1024);assert.equal(parseTracePayloadRef(fullRef.ref).payloadId,payload.id);
-  const chunk=readTracePayloadChunk({payloadStore:store.payloads,ref:fullRef.ref,offset:0,limit:1024});assert.ok(chunk);
+  const chunk=await readTracePayloadChunk({payloadStore:store.payloads,ref:fullRef.ref,offset:0,limit:1024});assert.ok(chunk);
   assert.equal(entries[0].metadata.contentBytes,1024*1024);
   const {traceNodesFromHistoryEntries}=await import('../dist/shared/trace-history.js');
   const nodes=traceNodesFromHistoryEntries('session',entries);const visit=list=>list.flatMap(node=>[node,...visit(node.children??[])]);

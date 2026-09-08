@@ -1212,7 +1212,13 @@ async function deliverWebOutputPersistenceState(
 				delivery.sideEffectsDelivered = true;
 				// The durable receipt is authoritative; the job can now finish without another payload rewrite.
 			} else if (!delivery.sideEffectsDelivered) {
-				const stored = storedChatEventForDelivery(persistenceState, delivery);
+				let stored = storedChatEventForDelivery(persistenceState, delivery);
+				try { boundedMessageBytes(stored.payload, 64 * 1024); }
+				catch {
+					const [persisted] = await (state.readQueries?.timeline ?? state.timelineQuery).listEvents({ piboSessionId: stored.piboSessionId, afterStreamId: stored.streamId - 1, limit: 1 });
+					if (!persisted || persisted.streamId !== stored.streamId) throw new Error("Persisted output unavailable for live delivery");
+					stored = persisted;
+				}
 				if (delivery.event.type === "assistant_message" || delivery.event.type === "message_finished" || delivery.event.type === "session_error") {
 					markActiveSessionRead(state, delivery.event.piboSessionId, stored.streamId);
 				}
@@ -4199,7 +4205,15 @@ function writeChatEventFrames(
 	const piboSessionId = event.piboSessionId ?? event.payload.piboSessionId;
 	const streamId = "streamId" in event ? event.streamId : undefined;
 	const createdAt = chatLiveEventCreatedAt(event);
-	const frames = chatStreamFramesFromOutputEvent(event.payload, state, {
+	const ref = "storedPayloadRef" in event ? event.storedPayloadRef : undefined;
+	let payload = event.payload;
+	if (ref && ref.byteLength > 64 * 1024) {
+		if (payload.type === "assistant_message" || payload.type === "thinking_finished") payload = { ...payload, text: ref.preview };
+		else if (payload.type === "tool_execution_finished") payload = { ...payload, result: null };
+		else if (payload.type === "tool_execution_updated") payload = { ...payload, partialResult: null };
+		else if (payload.type === "tool_call" || payload.type === "tool_execution_started") payload = { ...payload, args: {} };
+	}
+	const frames = chatStreamFramesFromOutputEvent(payload, state, {
 		includeRawEvent: streamId !== undefined && isPersistableOutputEvent(event.payload),
 	});
 	for (let index = 0; index < frames.length; index += 1) {
@@ -4207,6 +4221,7 @@ function writeChatEventFrames(
 		const frameId = streamId === undefined ? nextTransientChatStreamFrameId(state) : `${streamId}:${index}`;
 		writeSse(controller, "pibo", {
 			...frames[index],
+			...("storedPayloadRef" in event && event.storedPayloadRef ? { storedPayloadRef: event.storedPayloadRef } : {}),
 			piboSessionId,
 			...(createdAt ? { createdAt } : {}),
 			...(!("streamId" in event) && event.replaySequence !== undefined ? { liveReplayId: event.replaySequence } : {}),
@@ -6435,7 +6450,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				resolveRequestedSession(state, context, webSession, defaultProfile, parsed.piboSessionId);
 				const offset = parseNonNegativeIntSearchParam(url, "offset", 0, Number.MAX_SAFE_INTEGER);
 				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES, TRACE_V2_PAYLOAD_MAX_LIMIT_BYTES);
-				const chunk = readTracePayloadChunk({ payloadStore: state.dataStore.payloads, ref, offset, limit });
+				const chunk = await readTracePayloadChunk({ payloadStore: state.dataStore.payloads, ref, offset, limit });
 				if (!chunk) throw new PiboWebHttpError("Trace payload not found", 404);
 				return responseJson(chunk, { headers: { "cache-control": "no-store" } });
 			}

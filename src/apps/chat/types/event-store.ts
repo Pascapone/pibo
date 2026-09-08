@@ -18,6 +18,7 @@ export type ChatEventAppendInput = {
 };
 
 export type StoredChatEvent = {
+	storedPayloadRef?: import("../../../shared/trace-types.js").TracePayloadRef;
 	streamId: number;
 	roomId?: string;
 	piboSessionId?: string;

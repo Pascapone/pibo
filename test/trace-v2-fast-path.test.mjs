@@ -140,7 +140,7 @@ test("trace v2 timeline preserves incomplete integrity status", () => {
 	}
 });
 
-test("trace v2 timeline keeps large tool output behind payload refs", () => {
+test("trace v2 timeline keeps large tool output behind payload refs", async () => {
 	const store = tempStore();
 	try {
 		const output = "x".repeat(10 * 1024 * 1024);
@@ -159,7 +159,7 @@ test("trace v2 timeline keeps large tool output behind payload refs", () => {
 		assert.ok(page.nodes[0].payloadRefs.output);
 		assert.equal(page.nodes[0].payloadRefs.output.byteLength, output.length);
 
-		const chunk = readTracePayloadChunk({
+		const chunk = await readTracePayloadChunk({
 			payloadStore: store.payloads,
 			ref: page.nodes[0].payloadRefs.output.ref,
 			offset: 0,
@@ -644,4 +644,27 @@ test("large trace payloads are stored without synchronous gzip compression", () 
 	} finally {
 		store.close();
 	}
+});
+
+
+test("payload chunks reconstruct UTF-8 without full reads for identity and gzip", async () => {
+	const { store, dir } = tempStoreWithPaths();
+	try {
+		for (const repeat of [10000, 600000]) {
+			const original = "ä🙂漢字".repeat(repeat) + "END";
+			const payload = store.payloads.writePayload({ value: original, contentType: "text/plain", retentionClass: "trace_event" });
+			const ref = tracePayloadRefForStoredPayload({ payloadStore: store.payloads, piboSessionId: "ps_utf8", payloadId: payload.id, nodeId: "assistant:utf8", payloadKind: "output" });
+			store.payloads.readPayloadBytes = () => { throw new Error("Unbounded read forbidden"); };
+			let result = "", offset = 0;
+			do {
+				const chunk = await readTracePayloadChunk({ payloadStore: store.payloads, ref: ref.ref, offset, limit: 65536 });
+				assert.ok(chunk.byteLength <= 65539);
+				assert.equal(chunk.data.includes("�"), false);
+				result += chunk.data;
+				if (!chunk.hasMore) break;
+				assert.ok(chunk.nextOffset > offset); offset = chunk.nextOffset;
+			} while (true);
+			assert.equal(result, original);
+		}
+	} finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });

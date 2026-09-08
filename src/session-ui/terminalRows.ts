@@ -314,7 +314,7 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			intent: node.intent,
 			isToolCall,
 			toolCallReference: reference,
-			expandable: reference ? true : candidate.row.expandable,
+			expandable: reference || Object.values(node.payloadRefs ?? {}).some(Boolean) ? true : candidate.row.expandable,
 			toolMetrics: node.toolMetrics,
 			...debugFields(node),
 		},

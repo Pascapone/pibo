@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { JsonRenderer } from "../../tracing/JsonRenderer";
 import type { CompactTerminalRow, CompactTerminalToolCallReference } from "../../../../../session-ui/terminalRows.js";
@@ -134,6 +134,10 @@ function PayloadRefs({ refs }: { refs?: CompactTerminalRow["payloadRefs"] }) {
 }
 
 function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePayloadRef }) {
+	const generation = useRef(0);
+	const pending = useRef(false);
+	const [loadingMore, setLoadingMore] = useState(false);
+	const [loadError, setLoadError] = useState<string>();
 	const [state, setState] = useState<
 		| { status: "loading" }
 		| { status: "loaded"; data: string; hasMore: boolean; nextOffset?: number }
@@ -142,6 +146,10 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 
 	useEffect(() => {
 		let cancelled = false;
+		generation.current++;
+		pending.current = false;
+		setLoadingMore(false);
+		setLoadError(undefined);
 		setState({ status: "loading" });
 		getTracePayload(refInfo.ref, { offset: 0, limit: 65536 })
 			.then((chunk) => {
@@ -154,8 +162,24 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 			});
 		return () => {
 			cancelled = true;
+			generation.current++;
 		};
 	}, [refInfo.ref]);
+
+	async function loadMore() {
+		if (pending.current || state.status !== "loaded" || state.nextOffset === undefined) return;
+		pending.current = true; setLoadingMore(true); setLoadError(undefined);
+		const current = generation.current;
+		try {
+			const chunk = await getTracePayload(refInfo.ref, { offset: state.nextOffset, limit: 1024 * 1024 });
+			if (current !== generation.current) return;
+			setState({ status: "loaded", data: state.data + chunk.data, hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
+		} catch (error) {
+			if (current === generation.current) setLoadError(error instanceof Error ? error.message : String(error));
+		} finally {
+			if (current === generation.current) { pending.current = false; setLoadingMore(false); }
+		}
+	}
 
 	return (
 		<div className="space-y-1" data-shared-terminal-payload-ref={kind}>
@@ -168,11 +192,14 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#ef4444]">{state.message}</div>
 			) : (
 				<div className="space-y-1">
-					<pre className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
+					<pre onScroll={(event) => { const box = event.currentTarget; if (state.hasMore && box.scrollTop + box.clientHeight >= box.scrollHeight - 80) void loadMore(); }} className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
 						{state.data}
 					</pre>
+					{loadError ? <div role="alert" className="text-[12px] text-[#ef4444]">{loadError}</div> : null}
 					{state.hasMore ? (
-						<div className="text-[11px] text-[#737373]">Showing first chunk. More payload data is available on demand.</div>
+						<button type="button" disabled={loadingMore} onClick={() => void loadMore()} className="border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8] disabled:opacity-50">
+							{loadingMore ? "Loading…" : "Load more"}
+						</button>
 					) : null}
 				</div>
 			)}
