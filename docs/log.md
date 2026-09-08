@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-08
+
+- **Performance review corrections**: Added the [renewed A–H review](/reports/performance-scalability-review-2026-09-08.md), recording reproduced lifecycle, navigation, paging and maintenance defects, forward-propagated fixes and renewed validation. The report qualifies the earlier capacity-proof conclusion: integrated load, soak and successful real-provider acceptance remain open.
+
 ## 2026-09-07
 
 - **Chain review**: Added the [A–H chain review report](/reports/performance-scalability-chain-review-2026-09-07.md); records the critical review of all eight stacked performance pull requests against the plan budgets and existing contracts, the three confirmed defects corrected with deterministic regressions in packages B, F and G, the findings reported without a code change, the resulting re-acceptance requirement and the recommended merge order.

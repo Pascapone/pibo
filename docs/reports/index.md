@@ -54,6 +54,7 @@
 * [OMP RPC Server — JSON&#45;lines&#45;over&#45;stdio Protocol &#40;reference&#41;](omp-rpc-protocol.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Oh My Pi &#40;OMP&#41; as Pibo Runtime — Final Audit Report](omp-runtime-final-audit-2026-08-17.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [PRs &#35;523–&#35;530 independent merge&#45;readiness review](prs-523-530-merge-readiness-review-2026-08-21.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Performance PRs A–H: independent regression review and renewed acceptance](performance-scalability-review-2026-09-08.md) - Records reproduced lifecycle, pagination, navigation and maintenance defects, their corrections, renewed Docker and Pibo2 checks, and the remaining capacity and provider acceptance limits&#46;
 * [Pi Agent Runtime Parity with Pibo2&#45;Managed Authentication — 2026&#45;08&#45;15](pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pi Runtime Adapter Parity Validation](pi-runtime-adapter-parity-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo 1&#46;4&#46;6](release-1-4-6-notes.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;

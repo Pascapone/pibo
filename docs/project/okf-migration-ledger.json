@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/performance-scalability-review-2026-09-08.md",
+      "state": "conformant",
+      "classification": "performance chain regression review",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-storage-final-2026-09-07.md",
       "state": "conformant",
       "classification": "storage integration validation",
