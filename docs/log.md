@@ -2,6 +2,8 @@
 
 ## 2026-09-08
 
+- **Native hook-order evidence**: Added the [OMP request-hook ordering check and negative control](/reports/prefix-persistence-implementation-2026-09-08.md). Nine guarded native HTTP scenarios passed; extension reload and native subagent propagation remain explicit activation gaps.
+
 - **OMP ownership and shutdown**: Recorded authenticated startup ordering and the reproduced ignored-SIGTERM shutdown defect in the [prefix report](/reports/prefix-persistence-implementation-2026-09-08.md). Normal cleanup now awaits native exit; 55 focused tests passed. Full protected adapter activation remains open.
 
 - **Pi prefix serialization follow-up**: Extended the [prefix evidence report](/reports/prefix-persistence-implementation-2026-09-08.md) with plain Responses support, bounded embedded-instruction restore, model compatibility checks and opaque Reasoning restart coverage; 50 focused tests passed after system recovery. Complete rollout and acceptance remain open.

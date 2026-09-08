@@ -22,7 +22,7 @@ import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-b
 
 const bun = process.env.PIBO_OMP_PREFIX_BUN;
 const entry = process.env.PIBO_OMP_PREFIX_ENTRY;
-for (const scenario of ["unchanged", "native-switch-resume", "changed-context", "system-override-is-incomplete", "restored-provider-envelope", "hook-error-does-not-block", "changed-calendar-date", "durable-guard-date-restore", "durable-guard-storage-failure", "durable-guard-binding-conflict", "durable-guard-stalled-seal", "durable-guard-tool-roundtrip", "durable-guard-compaction", "durable-guard-compaction-recovery", "durable-guard-compaction-kill-before-native"]) test(`OMP 18.1.10 actual HTTP resume boundary: ${scenario}`, { skip: !bun || !entry, timeout: 60000 }, async t => {
+for (const scenario of ["unchanged", "native-switch-resume", "changed-context", "system-override-is-incomplete", "restored-provider-envelope", "hook-error-does-not-block", "changed-calendar-date", "durable-guard-date-restore", "durable-guard-late-handler", "durable-guard-storage-failure", "durable-guard-binding-conflict", "durable-guard-stalled-seal", "durable-guard-tool-roundtrip", "durable-guard-compaction", "durable-guard-compaction-recovery", "durable-guard-compaction-kill-before-native"]) test(`OMP 18.1.10 actual HTTP resume boundary: ${scenario}`, { skip: !bun || !entry, timeout: 60000 }, async t => {
 	assert.equal(execFileSync(bun, [entry, "--version"], { encoding: "utf8" }).trim(), "omp/18.1.10");
 	const root = await mkdtemp(join(tmpdir(), "pibo-omp-prefix-http-"));
 	const home = join(root, "agent"); await mkdir(home);
@@ -38,6 +38,8 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 	const toolRoundtrip = scenario === "durable-guard-tool-roundtrip";
 	const toolFile = join(root, "probe.txt");
 	if (toolRoundtrip) await writeFile(toolFile, "original native tool result");
+	const lateHandlerPath = scenario === "durable-guard-late-handler" ? join(root, "late-handler.mjs") : undefined;
+	if (lateHandlerPath) await writeFile(lateHandlerPath, 'export default pi => pi.on("before_provider_request", event => ({ ...event.payload, instructions: "changed after durable capture" }));');
 	const readyFile = join(root, "guard-ready.json");
 	let readyNonce = 0;
 	const requests = [];
@@ -122,6 +124,7 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 				...(frozenInstructions === undefined ? [] : ["--system-prompt", frozenInstructions]),
 				...(extensionPath ? ["--extension", extensionPath] : []),
 				...(guardPath ? ["--extension", guardPath] : []),
+				...(lateHandlerPath ? ["--extension", lateHandlerPath] : []),
 			];
 			const connecting = current.connect([bun, nativeEntry, ...(guarded ? [] : nativeArgs)], { cwd: root, env: { PATH: process.env.PATH, PI_CODING_AGENT_DIR: home, PI_NO_PTY: "1",
 				...(connection ? { PIBO_PREFIX_ENDPOINT: connection.endpoint, PIBO_PREFIX_TOKEN: connection.token,
@@ -161,13 +164,19 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 	if (guarded) {
 		const initial = (await client.request({ type: "get_state" }, "get_state")).data;
 		binding = sessions.updateRuntimeBinding(piboSession.id, { ...binding, state: "bound", nativeSessionId: initial.sessionId }, { expectedRevision: binding.revision });
-		if (["durable-guard-storage-failure", "durable-guard-binding-conflict", "durable-guard-stalled-seal"].includes(scenario)) {
+		if (["durable-guard-storage-failure", "durable-guard-binding-conflict", "durable-guard-stalled-seal", "durable-guard-late-handler"].includes(scenario)) {
 			if (scenario === "durable-guard-binding-conflict") sessions.updateRuntimeBinding(piboSession.id, {
 				...binding, metadata: { competingUpdate: true },
 			}, { expectedRevision: binding.revision });
 			const exited = once(client.process, "exit");
+			let phase;
+			const stopDiagnostics = client.subscribeDiagnostics(message => {
+				phase = /Pibo native prefix recovery required: ([a-z-]+)/.exec(message)?.[1] ?? phase;
+			});
 			await client.request({ type: "prompt", message: "must not dispatch" }, "prompt").catch(() => {});
 			assert.equal((await exited)[0], 78);
+			stopDiagnostics();
+			if (scenario === "durable-guard-late-handler") assert.equal(phase, "hook-order");
 			assert.equal(requests.length, 0);
 			assert.equal(sessions.get(piboSession.id).runtimeBinding.metadata.piboSessionPrefix, undefined);
 			return;

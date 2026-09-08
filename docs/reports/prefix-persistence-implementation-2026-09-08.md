@@ -108,6 +108,12 @@ The complete guard/bridge group passed 14 tests with zero failures or skips agai
 
 The actual no-tools native fixture closes and reopens both the child and parent session store, changes append context and calendar getters, and preserves old HTTP instructions/Tools/input/key. Native filesystem failure and binding conflict both exit with code 78 and zero provider requests. These are experimental conformance fixtures, not normal OMP activation. The initial guard rejected compaction, switch and branch operations; the compaction follow-up below adds a durable transition for the tested native path. Switch and branch remain rejected by the experimental guard. Native implicit resources, full Tools/Reasoning behavior, hook ordering across optional extensions and independent child ownership remain open. No all-runtime guarantee follows from this fixture.
 
+# OMP request-hook ordering
+
+Read-only inspection of native OMP 18.1.10 `sdk.ts:771` shows configured extension paths follow CLI paths; `extensibility/extensions/loader.ts:451` binds the resulting order, and `runner.ts:1665` executes request handlers in that order. A last CLI guard is therefore not necessarily the final request handler. The experimental guard now checks the pinned runner's effective handler inventory before capture/dispatch and exits with bounded `hook-order` diagnostics if another request handler follows it. It also detects removal from an already observed protected runner. The bounded inventory walk does not inspect message history.
+
+All nine guarded actual-native HTTP scenarios passed, including a late handler that would replace instructions: zero provider requests and no sealed capsule. Earlier restart, Tool, persistence-failure and compaction fixtures remain green. This is fail-closed coverage, not support for arbitrary extension reloads, new runner replacement or native subagent extension propagation. Those native lifecycle contracts must be completed before normal protected OMP activation.
+
 # OMP compaction transition follow-up
 
 The private IPC now carries bounded compaction preparation/completion receipts in addition to first-use capture. The native extension durably marks the old native head before summarization, flushes and syncs the resulting native history, and completes the existing binding CAS while retaining the base capsule. Native summarization uses OMP's side stream, separate from the main agent's provider-payload hook; its summary prompt is not replaced by the frozen conversation envelope.

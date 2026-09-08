@@ -101,7 +101,7 @@ export default async function(pi) {
     let calendar = snapshot?.calendar;
     phase = "calendar-codec";
     const { DateCwdReminderInjector } = await import(${JSON.stringify(dateReminderModuleUrl)});
-    const { EXTENSION_HANDLER_TIMEOUT_MS } = await import(${JSON.stringify(new URL('../extensibility/extensions/runner.ts', dateReminderModuleUrl).href)});
+    const { EXTENSION_HANDLER_TIMEOUT_MS, ExtensionRunner } = await import(${JSON.stringify(new URL('../extensibility/extensions/runner.ts', dateReminderModuleUrl).href)});
     if (EXTENSION_HANDLER_TIMEOUT_MS !== 30000) return fatal();
     const transform = DateCwdReminderInjector.prototype.transform;
     DateCwdReminderInjector.prototype.transform = function(context, date, cwd) {
@@ -129,7 +129,7 @@ export default async function(pi) {
     if (snapshot && Object.keys(snapshot.providerStatic).some(key => !providerFields.has(key))) return fatal();
     if (snapshot) validateTools(snapshot.providerStatic.tools);
     let validated = false;
-    pi.on("before_provider_request", async (event, ctx) => {
+    const providerGuard = async (event, ctx) => {
       // The pinned runner swallows errors and has a 30s handler deadline. Its
       // scoped context does not expose that deadline's signal, so our shorter
       // 5s deadline must terminate the child before native fallthrough.
@@ -181,7 +181,28 @@ export default async function(pi) {
         return { ...snapshot.providerStatic, input: event.payload.input };
       } catch { return fatal(); }
       finally { clearTimeout(timeout); signal?.removeEventListener("abort", fatal); }
-    });
+    };
+    pi.on("before_provider_request", providerGuard);
+    // Configured extensions can follow CLI extensions. Verify the pinned
+    // runner's effective handler order before any capture or HTTP request.
+    // This bounded extension inventory check never touches native history.
+    const emitBeforeProviderRequest = ExtensionRunner.prototype.emitBeforeProviderRequest;
+    if (typeof emitBeforeProviderRequest !== "function") return fatal();
+    const protectedRunners = new WeakSet();
+    ExtensionRunner.prototype.emitBeforeProviderRequest = async function(...args) {
+      let seen = false;
+      let count = 0;
+      if (!Array.isArray(this.extensions) || this.extensions.length > 256) { phase = "hook-order"; return fatal(); }
+      for (const extension of this.extensions) {
+        for (const handler of extension.handlers.get("before_provider_request") ?? []) {
+          if (seen || ++count > 2048) { phase = "hook-order"; return fatal(); }
+          if (handler === providerGuard) seen = true;
+        }
+      }
+      if (seen) protectedRunners.add(this);
+      else if (protectedRunners.has(this)) { phase = "hook-order"; return fatal(); }
+      return emitBeforeProviderRequest.apply(this, args);
+    };
     // Native summarization uses the side stream, separate from the main agent's
     // before_provider_request hook. Do not replace its summarization envelope.
     const recoverBeforeInput = lifecycle(async (_event, ctx) => {
