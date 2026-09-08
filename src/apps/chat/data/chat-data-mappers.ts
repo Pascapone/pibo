@@ -59,12 +59,28 @@ export type RoomRow = {
 	updated_at: string;
 };
 
-export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): ChatWebStoredPiboEvent | undefined {
+export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader, hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES): ChatWebStoredPiboEvent | undefined {
+    if(typeof hydrationBytes!=="number"||!Number.isFinite(hydrationBytes))hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES;
 	const attributes = parseJsonObject(row.attributes_json);
-	const payload = outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore));
+    if(hydrationBytes<MAX_TRACE_EVENT_HYDRATION_BYTES&&typeof attributes.inlineText==="string"&&Buffer.byteLength(attributes.inlineText)>hydrationBytes)attributes.inlineText=row.preview_text??"";
+	const payload = outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore, hydrationBytes));
 	if (!payload) return undefined;
+	const storedPayloadRef = storedPayloadReference(row, attributes, payloadStore);
+	const renderSequence = numberAttribute(attributes, "renderSequence") ?? payload.renderSequence;
+	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, renderSequence, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
+}
+
+export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader, hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES): StoredChatEvent {
+    if(typeof hydrationBytes!=="number"||!Number.isFinite(hydrationBytes))hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES;
+	const attributes = parseJsonObject(row.attributes_json);
+    if(hydrationBytes<MAX_TRACE_EVENT_HYDRATION_BYTES&&typeof attributes.inlineText==="string"&&Buffer.byteLength(attributes.inlineText)>hydrationBytes)attributes.inlineText=row.preview_text??"";
+	const storedPayloadRef = storedPayloadReference(row, attributes, payloadStore);
+	return { storedPayloadRef, streamId: row.stream_id, roomId: row.room_id ?? undefined, piboSessionId: row.session_id ?? undefined, eventId: row.event_id ?? `evt_${row.stream_id}`, eventType: row.type, actorType: actorTypeValue(row.actor_type), actorId: row.actor_id ?? undefined, clientTxnId: typeof attributes.clientTxnId === "string" ? attributes.clientTxnId : undefined, createdAt: row.created_at, retentionClass: retentionClassValue(row.retention_class), payload: (outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore, hydrationBytes)) ?? null) as PiboJsonValue };
+}
+
+function storedPayloadReference(row: EventLogRow, attributes: PiboJsonObject, payloadStore?: PiboPayloadReader) {
 	const payloadIdentity = tracePayloadIdentityForEvent(row, attributes);
-	const storedPayloadRef = row.payload_ref && row.session_id && payloadStore && payloadIdentity
+	return row.payload_ref && row.session_id && payloadStore && payloadIdentity
 		? tracePayloadRefForStoredPayload({
 			payloadStore,
 			piboSessionId: row.session_id,
@@ -72,13 +88,6 @@ export function storedPiboEventFromV2Row(row: EventLogRow, payloadStore?: PiboPa
 			...payloadIdentity,
 		})
 		: undefined;
-	const renderSequence = numberAttribute(attributes, "renderSequence") ?? payload.renderSequence;
-	return { id: String(row.stream_id), piboSessionId: row.session_id ?? undefined, eventSequence: row.session_sequence ?? undefined, renderSequence, eventId: row.event_id ?? undefined, streamId: row.stream_id, storedPayloadRef, type: row.type, createdAt: row.created_at, payload };
-}
-
-export function storedChatEventFromV2Row(row: EventLogRow, payloadStore?: PiboPayloadReader): StoredChatEvent {
-	const attributes = parseJsonObject(row.attributes_json);
-	return { streamId: row.stream_id, roomId: row.room_id ?? undefined, piboSessionId: row.session_id ?? undefined, eventId: row.event_id ?? `evt_${row.stream_id}`, eventType: row.type, actorType: actorTypeValue(row.actor_type), actorId: row.actor_id ?? undefined, clientTxnId: typeof attributes.clientTxnId === "string" ? attributes.clientTxnId : undefined, createdAt: row.created_at, retentionClass: retentionClassValue(row.retention_class), payload: (outputPayloadFromV2Row(row, attributes, readPersistedPayload(row, payloadStore)) ?? null) as PiboJsonValue };
 }
 
 function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, persistedPayload?: PiboJsonValue | string): PiboOutputEvent | undefined {
@@ -156,7 +165,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	}
 	if (row.type === "execution_result") return { ...base, type: "execution_result", action: row.preview_text ?? stringAttribute(attributes, "action") ?? "execution", result: inlinePayload ?? null };
 	if (row.type === "compaction_start") return { ...base, type: "compaction_start", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown" } as PiboOutputEvent;
-	if (row.type === "compaction_end") return { ...base, type: "compaction_end", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown", result: inlinePayload, aborted: booleanAttribute(attributes, "aborted") ?? false, errorMessage: stringAttribute(attributes, "errorMessage") } as PiboOutputEvent;
+	if (row.type === "compaction_end") return { ...base, type: "compaction_end", compactionIndex: numberAttribute(attributes, "compactionIndex"), reason: stringAttribute(attributes, "reason") ?? row.preview_text ?? "unknown", result: inlinePayload, aborted: booleanAttribute(attributes, "aborted") ?? false, errorMessage: stringAttribute(attributes, "errorMessage"), compactionStats: isRecord(attributes.compactionStats) ? attributes.compactionStats : undefined } as PiboOutputEvent;
 	if (row.type === "session_error") {
 		const error = stringAttribute(attributes, "error") ?? row.preview_text ?? "Error";
 		return { ...base, type: "session_error", error, errorDetails: normalizeSessionErrorDetails(error, isRecord(attributes.errorDetails) ? attributes.errorDetails : undefined) } as PiboOutputEvent;
@@ -165,12 +174,12 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 	return { ...base, type: row.type } as PiboOutputEvent;
 }
 
-function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader | undefined): PiboJsonValue | string | undefined {
+function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader | undefined, hydrationBytes=MAX_TRACE_EVENT_HYDRATION_BYTES): PiboJsonValue | string | undefined {
 	if (!row.payload_ref || !payloadStore) return undefined;
 	try {
 		const metadata = payloadStore.getPayload(row.payload_ref);
-		if (!metadata || metadata.byteSize > MAX_TRACE_EVENT_HYDRATION_BYTES) return undefined;
-		const text = Buffer.from(payloadStore.readPayloadBytesBounded(row.payload_ref, MAX_TRACE_EVENT_HYDRATION_BYTES)).toString("utf8");
+		if (!metadata || metadata.byteSize > hydrationBytes) return undefined;
+		const text = Buffer.from(payloadStore.readPayloadBytesBounded(row.payload_ref, hydrationBytes)).toString("utf8");
 		return metadata.contentType.includes("json") ? JSON.parse(text) as PiboJsonValue : text;
 	} catch {
 		return undefined;
@@ -180,7 +189,14 @@ function readPersistedPayload(row: EventLogRow, payloadStore: PiboPayloadReader 
 function tracePayloadIdentityForEvent(
 	row: EventLogRow,
 	attributes: PiboJsonObject,
-): { nodeId: string; payloadKind: "input" | "output" } | undefined {
+): { nodeId: string; payloadKind: "input" | "output" | "reasoning" } | undefined {
+	const semanticId = stringAttribute(attributes, "semanticEventId") ?? row.event_id;
+	if (semanticId && (row.type === "assistant_message" || row.type === "thinking_finished")) {
+		const thinking = row.type === "thinking_finished";
+		const index = numberAttribute(attributes, thinking ? "thinkingIndex" : "assistantIndex") ?? numberAttribute(attributes, "contentIndex");
+		const identity = index === undefined ? semanticId : `${semanticId}:${thinking ? "thinking" : "assistant"}:${index}`;
+		return { nodeId: `${thinking ? "reasoning" : "assistant"}:${identity}`, payloadKind: thinking ? "reasoning" : "output" };
+	}
 	const toolCallId = stringAttribute(attributes, "toolCallId");
 	if (!toolCallId) return undefined;
 	const eventId = stringAttribute(attributes, "semanticEventId") ?? row.event_id;

@@ -89,7 +89,8 @@ export function isPiboOutputEvent(value: unknown): value is PiboOutputEvent {
 			return typeof value.reason === "string"
 				&& typeof value.aborted === "boolean"
 				&& isOptionalNonNegativeSafeInteger(value.compactionIndex)
-				&& isOptionalString(value.errorMessage);
+				&& isOptionalString(value.errorMessage)
+				&& (value.compactionStats === undefined || isCompactionStats(value.compactionStats));
 		case "approval_requested":
 			return isApprovalRequest(value.request);
 		case "approval_resolved":
@@ -126,6 +127,12 @@ function isOptionalFiniteNumber(value: unknown): boolean {
 
 function isOptionalString(value: unknown): boolean {
 	return value === undefined || typeof value === "string";
+}
+
+function isCompactionStats(value: unknown): boolean {
+	if (!isRecord(value) || !isNonNegativeSafeInteger(value.toolCallCount)) return false;
+	if (!isOptionalFiniteNumber(value.maxToolOutputTokens) || !isOptionalFiniteNumber(value.compactionTokens)) return false;
+	return value.maxToolOutputTokenBasis === undefined || typeof value.maxToolOutputTokenBasis === "string";
 }
 
 function isOptionalNonNegativeSafeInteger(value: unknown): boolean {

@@ -1,0 +1,135 @@
+{
+  "at": "2026-09-08T04:01:06.038Z",
+  "commit": "f508c1cc",
+  "sha256": "4d5700983126bbf9f07d339cff12f54fc42f61c205b2590f8334e71ce271e9a9",
+  "lease": "lease_e68eec75669a78e45a",
+  "url": "https://slot-01.pool.pibo2.neuralnexus.me",
+  "requests": [
+    {
+      "path": "/api/chat/bootstrap",
+      "status": 200,
+      "ms": 422.20626500000003,
+      "serverTiming": "json_serialize;dur=4.7"
+    },
+    {
+      "path": "/api/chat/sessions",
+      "status": 200,
+      "ms": 40.72273000000001,
+      "serverTiming": "json_serialize;dur=0.1, response_compress;dur=1.0"
+    },
+    {
+      "path": "/api/chat/sessions",
+      "status": 201,
+      "ms": 19.486972000000037,
+      "serverTiming": "json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 28.95067000000006,
+      "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=16.01, chat_ingest;dur=0.00, chat_ack;dur=20.12, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 60.339766000000054,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=28.91, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 88.73918900000001,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=49.59, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 119.657016,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=74.30, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 138.39786200000003,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=85.96, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 142.36482999999998,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=54.00, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 146.82031800000004,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=26.15, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 153.00398399999995,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=11.50, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 166.93532400000004,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=18.08, json_serialize;dur=0.0, response_compress;dur=0.2"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 165.79882199999997,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=14.56, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 202,
+      "ms": 165.82297600000004,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=3.27, json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 409,
+      "ms": 49.05179899999996,
+      "serverTiming": "json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/trace?piboSessionId=ps_9d269cfb-db7a-490b-8943-e3816f4ffe1a",
+      "status": 200,
+      "ms": 43.95433200000002,
+      "serverTiming": "trace;dur=34.7, trace_history;dur=0.0, trace_events;desc=\"3\", trace_cache;desc=\"miss\", json_serialize;dur=0.0, response_compress;dur=0.1"
+    },
+    {
+      "path": "/api/chat/rooms/room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d/events",
+      "status": 200,
+      "ms": 274.799702,
+      "serverTiming": "json_serialize;dur=7.0"
+    }
+  ],
+  "sessionId": "ps_9d269cfb-db7a-490b-8943-e3816f4ffe1a",
+  "roomId": "room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d",
+  "admission": {
+    "status": 202,
+    "eventId": "ce_670a4d0b-f2e9-48d8-bce6-bc6157e80655",
+    "streamId": 987973,
+    "receipt": {
+      "id": "cmd_aa78c940-cafd-46be-8ec1-681c338ef14c",
+      "sessionId": "ps_9d269cfb-db7a-490b-8943-e3816f4ffe1a",
+      "roomId": "room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d",
+      "eventId": "perf-review-f508c1cc-1788840066521",
+      "streamId": 987973,
+      "state": "accepted",
+      "createdAt": 1788840066544,
+      "updatedAt": 1788840066544
+    }
+  },
+  "duplicates": {
+    "count": 10,
+    "streamId": 987973
+  },
+  "traceStatus": 200,
+  "eventPageCount": 1000,
+  "ok": true
+}

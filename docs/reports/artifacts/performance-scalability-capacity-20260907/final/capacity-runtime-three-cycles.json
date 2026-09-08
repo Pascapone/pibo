@@ -1,0 +1,1299 @@
+{
+  "at": "2026-09-07T10:15:30.998Z",
+  "node": "v24.15.0",
+  "scope": "Real Pi SDK activation with empty native histories, no provider calls, sequential Session rotation and no forced GC. This is not a concurrent streaming or full-history memory profile.",
+  "sessionsPerCycle": 20,
+  "cycles": 3,
+  "limit": 8,
+  "elapsedMs": 1866.2170860000006,
+  "samples": [
+    {
+      "cycle": 0,
+      "index": 0,
+      "initializationMs": 123.61687799999982,
+      "rssBytes": 251244544,
+      "heapUsedBytes": 83879976,
+      "activeRuntimes": 1
+    },
+    {
+      "cycle": 0,
+      "index": 1,
+      "initializationMs": 40.13371599999982,
+      "rssBytes": 251375616,
+      "heapUsedBytes": 98982672,
+      "activeRuntimes": 2
+    },
+    {
+      "cycle": 0,
+      "index": 2,
+      "initializationMs": 37.745798999999806,
+      "rssBytes": 251637760,
+      "heapUsedBytes": 88074120,
+      "activeRuntimes": 3
+    },
+    {
+      "cycle": 0,
+      "index": 3,
+      "initializationMs": 27.473375000000033,
+      "rssBytes": 251768832,
+      "heapUsedBytes": 102707016,
+      "activeRuntimes": 4
+    },
+    {
+      "cycle": 0,
+      "index": 4,
+      "initializationMs": 34.923983000000135,
+      "rssBytes": 254390272,
+      "heapUsedBytes": 92652128,
+      "activeRuntimes": 5
+    },
+    {
+      "cycle": 0,
+      "index": 5,
+      "initializationMs": 27.928874000000178,
+      "rssBytes": 254390272,
+      "heapUsedBytes": 106865504,
+      "activeRuntimes": 6
+    },
+    {
+      "cycle": 0,
+      "index": 6,
+      "initializationMs": 28.96533700000009,
+      "rssBytes": 254390272,
+      "heapUsedBytes": 94550400,
+      "activeRuntimes": 7
+    },
+    {
+      "cycle": 0,
+      "index": 7,
+      "initializationMs": 28.14949999999999,
+      "rssBytes": 254652416,
+      "heapUsedBytes": 108838840,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 8,
+      "initializationMs": 37.28033199999982,
+      "rssBytes": 257142784,
+      "heapUsedBytes": 97431840,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 9,
+      "initializationMs": 30.32601999999997,
+      "rssBytes": 257273856,
+      "heapUsedBytes": 111647032,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 10,
+      "initializationMs": 28.311013999999886,
+      "rssBytes": 257273856,
+      "heapUsedBytes": 99162376,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 11,
+      "initializationMs": 27.522469,
+      "rssBytes": 257273856,
+      "heapUsedBytes": 113035736,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 12,
+      "initializationMs": 28.57357899999988,
+      "rssBytes": 257536000,
+      "heapUsedBytes": 100939664,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 13,
+      "initializationMs": 25.70870100000002,
+      "rssBytes": 257798144,
+      "heapUsedBytes": 114644720,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 14,
+      "initializationMs": 30.86584700000003,
+      "rssBytes": 258846720,
+      "heapUsedBytes": 102826184,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 15,
+      "initializationMs": 29.424823000000288,
+      "rssBytes": 259108864,
+      "heapUsedBytes": 116403128,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 16,
+      "initializationMs": 30.089524999999867,
+      "rssBytes": 260157440,
+      "heapUsedBytes": 104797552,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 17,
+      "initializationMs": 26.584292000000005,
+      "rssBytes": 260419584,
+      "heapUsedBytes": 118363216,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 18,
+      "initializationMs": 27.995150000000194,
+      "rssBytes": 261599232,
+      "heapUsedBytes": 106625064,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 0,
+      "index": 19,
+      "initializationMs": 25.07030900000018,
+      "rssBytes": 261861376,
+      "heapUsedBytes": 120149112,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 0,
+      "initializationMs": 27.831199999999626,
+      "rssBytes": 263041024,
+      "heapUsedBytes": 108523976,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 1,
+      "initializationMs": 25.688853999999992,
+      "rssBytes": 264089600,
+      "heapUsedBytes": 122073248,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 2,
+      "initializationMs": 28.360678000000007,
+      "rssBytes": 265269248,
+      "heapUsedBytes": 110440544,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 3,
+      "initializationMs": 56.86409499999991,
+      "rssBytes": 265662464,
+      "heapUsedBytes": 123998056,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 4,
+      "initializationMs": 44.91924199999994,
+      "rssBytes": 266711040,
+      "heapUsedBytes": 112381832,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 5,
+      "initializationMs": 25.566453999999794,
+      "rssBytes": 267104256,
+      "heapUsedBytes": 125950808,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 6,
+      "initializationMs": 27.003541999999925,
+      "rssBytes": 268414976,
+      "heapUsedBytes": 114136688,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 7,
+      "initializationMs": 24.464026999999987,
+      "rssBytes": 268808192,
+      "heapUsedBytes": 127287648,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 8,
+      "initializationMs": 28.047447999999804,
+      "rssBytes": 270249984,
+      "heapUsedBytes": 116018712,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 9,
+      "initializationMs": 23.97101900000007,
+      "rssBytes": 270643200,
+      "heapUsedBytes": 129154728,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 10,
+      "initializationMs": 26.22717899999998,
+      "rssBytes": 272084992,
+      "heapUsedBytes": 117884264,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 11,
+      "initializationMs": 28.34145099999978,
+      "rssBytes": 272478208,
+      "heapUsedBytes": 131022592,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 12,
+      "initializationMs": 26.813113000000158,
+      "rssBytes": 274182144,
+      "heapUsedBytes": 119790016,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 13,
+      "initializationMs": 26.38461600000028,
+      "rssBytes": 274444288,
+      "heapUsedBytes": 132912832,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 14,
+      "initializationMs": 27.62487199999987,
+      "rssBytes": 276017152,
+      "heapUsedBytes": 121645920,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 15,
+      "initializationMs": 26.120126000000255,
+      "rssBytes": 276279296,
+      "heapUsedBytes": 134780280,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 16,
+      "initializationMs": 27.33219999999983,
+      "rssBytes": 277852160,
+      "heapUsedBytes": 123501296,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 17,
+      "initializationMs": 26.237016999999923,
+      "rssBytes": 278114304,
+      "heapUsedBytes": 136670384,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 18,
+      "initializationMs": 29.63305500000024,
+      "rssBytes": 279818240,
+      "heapUsedBytes": 125448440,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 1,
+      "index": 19,
+      "initializationMs": 29.263688999999886,
+      "rssBytes": 280080384,
+      "heapUsedBytes": 138600312,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 0,
+      "initializationMs": 28.267481999999745,
+      "rssBytes": 281522176,
+      "heapUsedBytes": 127289488,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 1,
+      "initializationMs": 31.650885000000017,
+      "rssBytes": 281915392,
+      "heapUsedBytes": 140458000,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 2,
+      "initializationMs": 31.92944000000034,
+      "rssBytes": 283488256,
+      "heapUsedBytes": 129232256,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 3,
+      "initializationMs": 23.813582000000224,
+      "rssBytes": 284012544,
+      "heapUsedBytes": 142396968,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 4,
+      "initializationMs": 26.288544999999885,
+      "rssBytes": 285323264,
+      "heapUsedBytes": 131094968,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 5,
+      "initializationMs": 24.313884000000144,
+      "rssBytes": 285716480,
+      "heapUsedBytes": 144216488,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 6,
+      "initializationMs": 27.111835000000156,
+      "rssBytes": 287420416,
+      "heapUsedBytes": 132956208,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 7,
+      "initializationMs": 27.404075999999804,
+      "rssBytes": 287682560,
+      "heapUsedBytes": 146082928,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 8,
+      "initializationMs": 27.028959000000214,
+      "rssBytes": 289124352,
+      "heapUsedBytes": 134810456,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 9,
+      "initializationMs": 23.394762000000355,
+      "rssBytes": 289517568,
+      "heapUsedBytes": 147926312,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 10,
+      "initializationMs": 27.98366699999997,
+      "rssBytes": 290959360,
+      "heapUsedBytes": 136638224,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 11,
+      "initializationMs": 24.109619999999722,
+      "rssBytes": 291352576,
+      "heapUsedBytes": 149773424,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 12,
+      "initializationMs": 28.916024000000107,
+      "rssBytes": 292794368,
+      "heapUsedBytes": 138513096,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 13,
+      "initializationMs": 33.036407000000054,
+      "rssBytes": 293318656,
+      "heapUsedBytes": 151647608,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 14,
+      "initializationMs": 39.74657699999989,
+      "rssBytes": 293318656,
+      "heapUsedBytes": 115821408,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 15,
+      "initializationMs": 24.227802999999767,
+      "rssBytes": 293318656,
+      "heapUsedBytes": 128945816,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 16,
+      "initializationMs": 30.447909999999865,
+      "rssBytes": 297644032,
+      "heapUsedBytes": 110294536,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 17,
+      "initializationMs": 24.705983000000742,
+      "rssBytes": 297644032,
+      "heapUsedBytes": 123432288,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 18,
+      "initializationMs": 25.937761999999566,
+      "rssBytes": 297644032,
+      "heapUsedBytes": 111005272,
+      "activeRuntimes": 8
+    },
+    {
+      "cycle": 2,
+      "index": 19,
+      "initializationMs": 24.61787700000059,
+      "rssBytes": 297644032,
+      "heapUsedBytes": 124129792,
+      "activeRuntimes": 8
+    }
+  ],
+  "eventLoopMs": {
+    "p99": 30.097407,
+    "max": 36.601855
+  },
+  "capacity": {
+    "coldStarts": {
+      "active": 0,
+      "waiting": 0,
+      "limit": 2,
+      "perRoom": 1,
+      "reserved": 0,
+      "maxWaiting": 64,
+      "maxWaitMs": 60000,
+      "oldestWaitMs": 0
+    },
+    "maxRuntimes": 8,
+    "providers": [],
+    "activeRuntimes": 8,
+    "initializingRuntimes": 0,
+    "recentInitializations": [
+      {
+        "sessionId": "ps_f87512e0-e66f-4b13-86fd-978d117a03b6",
+        "waitMs": 0.04758099999980914,
+        "totalMs": 27.734558000000106,
+        "phases": {
+          "bindingAndProfileMs": 0.6462579999997615,
+          "portableHistoryMs": 0.00045100000033926335,
+          "resourcesAndToolsMs": 16.754301999999825,
+          "adapterOpenAndBindingMs": 9.87991299999976
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_aaf79ae8-6155-4e57-a48b-2317464f966a",
+        "waitMs": 0.04722899999978836,
+        "totalMs": 23.72440400000005,
+        "phases": {
+          "bindingAndProfileMs": 0.620578999999907,
+          "portableHistoryMs": 0.0003609999998843705,
+          "resourcesAndToolsMs": 12.820312000000285,
+          "adapterOpenAndBindingMs": 9.915790000000015
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_47b1a85d-64b4-4a6a-91b0-99382c98b526",
+        "waitMs": 0.03664900000012494,
+        "totalMs": 26.002856000000065,
+        "phases": {
+          "bindingAndProfileMs": 0.5774370000003728,
+          "portableHistoryMs": 0.0003700000002027082,
+          "resourcesAndToolsMs": 15.832857000000331,
+          "adapterOpenAndBindingMs": 9.291653999999653
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_c6c8cd7d-9ca8-4a73-b356-9d2a272bf074",
+        "waitMs": 0.034364000000095984,
+        "totalMs": 28.027270000000044,
+        "phases": {
+          "bindingAndProfileMs": 0.517254000000321,
+          "portableHistoryMs": 0.08443800000031843,
+          "resourcesAndToolsMs": 13.467932999999903,
+          "adapterOpenAndBindingMs": 13.652198000000226
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_59bc5d72-a5a8-4acf-8749-46601863d6b8",
+        "waitMs": 0.04202799999984563,
+        "totalMs": 26.500575000000026,
+        "phases": {
+          "bindingAndProfileMs": 0.6735400000002301,
+          "portableHistoryMs": 0.00044100000013713725,
+          "resourcesAndToolsMs": 15.387458000000152,
+          "adapterOpenAndBindingMs": 9.984229000000141
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_bd60c282-79d3-4afe-969d-c48741b58546",
+        "waitMs": 0.03619800000024043,
+        "totalMs": 26.084629999999834,
+        "phases": {
+          "bindingAndProfileMs": 0.7881040000002031,
+          "portableHistoryMs": 0.0007909999999355932,
+          "resourcesAndToolsMs": 14.880372999999963,
+          "adapterOpenAndBindingMs": 10.037279000000126
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_f27f1b6d-dfcd-4de9-88fd-0813a4224015",
+        "waitMs": 0.03785100000004604,
+        "totalMs": 27.386512999999923,
+        "phases": {
+          "bindingAndProfileMs": 0.6332529999999679,
+          "portableHistoryMs": 0.0003310000001874869,
+          "resourcesAndToolsMs": 15.855760000000373,
+          "adapterOpenAndBindingMs": 10.527522999999746
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_68c16131-67d3-4830-b478-5f928b09f4f7",
+        "waitMs": 0.05917199999976219,
+        "totalMs": 25.843285000000378,
+        "phases": {
+          "bindingAndProfileMs": 0.6843199999998433,
+          "portableHistoryMs": 0.000450999999884516,
+          "resourcesAndToolsMs": 14.343551999999818,
+          "adapterOpenAndBindingMs": 10.374975000000177
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_4ca52da2-3cb6-4b1f-b200-89e40b774e1c",
+        "waitMs": 0.038140999999995984,
+        "totalMs": 27.10196700000006,
+        "phases": {
+          "bindingAndProfileMs": 0.710156999999981,
+          "portableHistoryMs": 0.0005109999997330306,
+          "resourcesAndToolsMs": 15.457409999999982,
+          "adapterOpenAndBindingMs": 10.472368999999617
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_528d499c-3c62-41d4-8ede-a0959175236e",
+        "waitMs": 0.07236700000021301,
+        "totalMs": 25.95140999999967,
+        "phases": {
+          "bindingAndProfileMs": 0.6076150000003508,
+          "portableHistoryMs": 0.0003600000000005821,
+          "resourcesAndToolsMs": 15.14465999999993,
+          "adapterOpenAndBindingMs": 9.824429000000237
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_32b6d4be-33d8-49f0-a343-b604c69c6968",
+        "waitMs": 0.036270000000058644,
+        "totalMs": 29.351322999999866,
+        "phases": {
+          "bindingAndProfileMs": 0.5928369999996903,
+          "portableHistoryMs": 0.00035100000013699173,
+          "resourcesAndToolsMs": 16.552603999999974,
+          "adapterOpenAndBindingMs": 11.856886000000031
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_ead13ca9-375d-440f-af9a-cd4360b7db2c",
+        "waitMs": 0.07211599999982354,
+        "totalMs": 28.933727999999974,
+        "phases": {
+          "bindingAndProfileMs": 0.7060900000001311,
+          "portableHistoryMs": 0.0005009999999856518,
+          "resourcesAndToolsMs": 15.549273000000085,
+          "adapterOpenAndBindingMs": 12.29149499999994
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_35c067e1-3b57-4076-8105-6e9e1ecdfb80",
+        "waitMs": 0.05435200000010809,
+        "totalMs": 28.007682999999815,
+        "phases": {
+          "bindingAndProfileMs": 0.6175029999999424,
+          "portableHistoryMs": 0.0004210000001876324,
+          "resourcesAndToolsMs": 16.708436999999776,
+          "adapterOpenAndBindingMs": 10.329420000000027
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_7a9a872b-be1b-4758-ad7a-84c139e3be66",
+        "waitMs": 0.04815000000007785,
+        "totalMs": 31.36506899999995,
+        "phases": {
+          "bindingAndProfileMs": 0.7819930000000568,
+          "portableHistoryMs": 0.0003710000000864966,
+          "resourcesAndToolsMs": 17.831261999999697,
+          "adapterOpenAndBindingMs": 12.374591999999666
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_19032671-68ec-4c18-806b-033b213768be",
+        "waitMs": 0.037409999999908905,
+        "totalMs": 31.648682000000008,
+        "phases": {
+          "bindingAndProfileMs": 0.5821369999998751,
+          "portableHistoryMs": 0.0007209999998849526,
+          "resourcesAndToolsMs": 16.227100000000064,
+          "adapterOpenAndBindingMs": 14.477043000000322
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_dc916e62-0b0e-4e66-8eff-0ec784095c38",
+        "waitMs": 0.04907199999979639,
+        "totalMs": 23.566667000000052,
+        "phases": {
+          "bindingAndProfileMs": 0.5537930000000415,
+          "portableHistoryMs": 0.00039100000003600144,
+          "resourcesAndToolsMs": 13.36632099999997,
+          "adapterOpenAndBindingMs": 9.254413999999997
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_5f30016f-3749-40d0-a94e-a55c7aab6881",
+        "waitMs": 0.039464999999836436,
+        "totalMs": 25.999209000000064,
+        "phases": {
+          "bindingAndProfileMs": 0.5519200000003366,
+          "portableHistoryMs": 0.0003710000000864966,
+          "resourcesAndToolsMs": 15.08084000000008,
+          "adapterOpenAndBindingMs": 10.033762000000024
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_0bc325d5-95b1-4c43-8c42-8233d93165f4",
+        "waitMs": 0.04421300000012707,
+        "totalMs": 24.018678999999793,
+        "phases": {
+          "bindingAndProfileMs": 0.7218699999998535,
+          "portableHistoryMs": 0.0007319999999708671,
+          "resourcesAndToolsMs": 13.432394999999815,
+          "adapterOpenAndBindingMs": 9.520986999999877
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_cb207bc8-684a-43d5-8c1b-00921a06d174",
+        "waitMs": 0.042089000000032684,
+        "totalMs": 26.849400999999943,
+        "phases": {
+          "bindingAndProfileMs": 0.637800999999854,
+          "portableHistoryMs": 0.0003600000000005821,
+          "resourcesAndToolsMs": 15.545826999999917,
+          "adapterOpenAndBindingMs": 10.320192000000134
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_4ebc7ba1-9d21-40c9-80e4-78deaab8fc64",
+        "waitMs": 0.03790099999969243,
+        "totalMs": 27.10509200000024,
+        "phases": {
+          "bindingAndProfileMs": 0.6376909999999043,
+          "portableHistoryMs": 0.00040100000023812754,
+          "resourcesAndToolsMs": 15.256460999999945,
+          "adapterOpenAndBindingMs": 10.831003999999666
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_3f819a6f-d726-475b-a37a-507c8142de5d",
+        "waitMs": 0.03920400000015434,
+        "totalMs": 26.800387999999657,
+        "phases": {
+          "bindingAndProfileMs": 0.6660850000002938,
+          "portableHistoryMs": 0.00048100000003614696,
+          "resourcesAndToolsMs": 16.786474,
+          "adapterOpenAndBindingMs": 8.978423999999904
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_c55779af-7bce-4766-8a32-9c22387ccb4e",
+        "waitMs": 0.06362899999976435,
+        "totalMs": 23.09761299999991,
+        "phases": {
+          "bindingAndProfileMs": 0.6587199999999029,
+          "portableHistoryMs": 0.00045100000033926335,
+          "resourcesAndToolsMs": 13.152166999999736,
+          "adapterOpenAndBindingMs": 8.974186999999802
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_0a0a646d-ac44-4e14-951a-a59080422369",
+        "waitMs": 0.045525999999881606,
+        "totalMs": 27.747212000000218,
+        "phases": {
+          "bindingAndProfileMs": 0.5798429999999826,
+          "portableHistoryMs": 0.00038099999983387534,
+          "resourcesAndToolsMs": 16.819175000000087,
+          "adapterOpenAndBindingMs": 10.022681000000375
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_f2602689-50de-4a99-a7f3-f455d1e4ce70",
+        "waitMs": 0.036528999999973166,
+        "totalMs": 23.8257550000003,
+        "phases": {
+          "bindingAndProfileMs": 0.689679999999953,
+          "portableHistoryMs": 0.0003600000000005821,
+          "resourcesAndToolsMs": 13.009498000000349,
+          "adapterOpenAndBindingMs": 9.82051999999976
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_05795a58-4e08-4c99-a428-0a81094ce2b4",
+        "waitMs": 0.044073000000025786,
+        "totalMs": 28.636417999999594,
+        "phases": {
+          "bindingAndProfileMs": 0.5649229999999079,
+          "portableHistoryMs": 0.00034099999993486563,
+          "resourcesAndToolsMs": 14.925828999999794,
+          "adapterOpenAndBindingMs": 12.77384499999971
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_62435134-f370-4d16-9121-5643fbbdcb79",
+        "waitMs": 0.08707400000002963,
+        "totalMs": 32.562613999999485,
+        "phases": {
+          "bindingAndProfileMs": 0.6166419999999562,
+          "portableHistoryMs": 0.0008519999996678962,
+          "resourcesAndToolsMs": 17.511349000000337,
+          "adapterOpenAndBindingMs": 14.097748999999567
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_8efc76d0-d493-47f2-9432-f6e908b3fbe9",
+        "waitMs": 0.09405700000024808,
+        "totalMs": 39.36895599999934,
+        "phases": {
+          "bindingAndProfileMs": 0.8222180000002481,
+          "portableHistoryMs": 0.00036100000033911783,
+          "resourcesAndToolsMs": 21.47712000000047,
+          "adapterOpenAndBindingMs": 16.6102120000005
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_e4e6aa3d-4ca2-459c-83c3-e2accbd0a764",
+        "waitMs": 0.037981000000399945,
+        "totalMs": 23.986226999999417,
+        "phases": {
+          "bindingAndProfileMs": 0.617232999999942,
+          "portableHistoryMs": 0.0004510000007940107,
+          "resourcesAndToolsMs": 13.233439999999973,
+          "adapterOpenAndBindingMs": 9.816153000000668
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_2d18612c-cd73-43ab-986e-1f8107f02a4b",
+        "waitMs": 0.035517000000254484,
+        "totalMs": 30.089022999999543,
+        "phases": {
+          "bindingAndProfileMs": 0.544184999999743,
+          "portableHistoryMs": 0.00032000000010157237,
+          "resourcesAndToolsMs": 19.79572300000018,
+          "adapterOpenAndBindingMs": 9.458799999999428
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_5a565ba2-4be2-4653-9a57-2e311e8ae6d4",
+        "waitMs": 0.04971399999976711,
+        "totalMs": 24.445332999999664,
+        "phases": {
+          "bindingAndProfileMs": 0.7112010000000737,
+          "portableHistoryMs": 0.0006210000001374283,
+          "resourcesAndToolsMs": 13.794036000000233,
+          "adapterOpenAndBindingMs": 9.516097000000627
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_a0b3a6ec-c5e5-4c23-b842-24fd8dc34442",
+        "waitMs": 0.04119700000046578,
+        "totalMs": 25.486131999999998,
+        "phases": {
+          "bindingAndProfileMs": 0.5372219999999288,
+          "portableHistoryMs": 0.0009119999995164108,
+          "resourcesAndToolsMs": 14.676769000000604,
+          "adapterOpenAndBindingMs": 9.883730000000469
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_3441f1b7-7873-4665-9dc8-fb4b5e25adc4",
+        "waitMs": 0.04912200000035227,
+        "totalMs": 24.368155999999544,
+        "phases": {
+          "bindingAndProfileMs": 0.5750120000002426,
+          "portableHistoryMs": 0.0005010000004403992,
+          "resourcesAndToolsMs": 13.586655000000064,
+          "adapterOpenAndBindingMs": 9.788499999999658
+        },
+        "outcome": "ready"
+      }
+    ]
+  },
+  "afterDispose": {
+    "coldStarts": {
+      "active": 0,
+      "waiting": 0,
+      "limit": 2,
+      "perRoom": 1,
+      "reserved": 0,
+      "maxWaiting": 64,
+      "maxWaitMs": 60000,
+      "oldestWaitMs": 0
+    },
+    "maxRuntimes": 8,
+    "providers": [],
+    "activeRuntimes": 0,
+    "initializingRuntimes": 0,
+    "recentInitializations": [
+      {
+        "sessionId": "ps_f87512e0-e66f-4b13-86fd-978d117a03b6",
+        "waitMs": 0.04758099999980914,
+        "totalMs": 27.734558000000106,
+        "phases": {
+          "bindingAndProfileMs": 0.6462579999997615,
+          "portableHistoryMs": 0.00045100000033926335,
+          "resourcesAndToolsMs": 16.754301999999825,
+          "adapterOpenAndBindingMs": 9.87991299999976
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_aaf79ae8-6155-4e57-a48b-2317464f966a",
+        "waitMs": 0.04722899999978836,
+        "totalMs": 23.72440400000005,
+        "phases": {
+          "bindingAndProfileMs": 0.620578999999907,
+          "portableHistoryMs": 0.0003609999998843705,
+          "resourcesAndToolsMs": 12.820312000000285,
+          "adapterOpenAndBindingMs": 9.915790000000015
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_47b1a85d-64b4-4a6a-91b0-99382c98b526",
+        "waitMs": 0.03664900000012494,
+        "totalMs": 26.002856000000065,
+        "phases": {
+          "bindingAndProfileMs": 0.5774370000003728,
+          "portableHistoryMs": 0.0003700000002027082,
+          "resourcesAndToolsMs": 15.832857000000331,
+          "adapterOpenAndBindingMs": 9.291653999999653
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_c6c8cd7d-9ca8-4a73-b356-9d2a272bf074",
+        "waitMs": 0.034364000000095984,
+        "totalMs": 28.027270000000044,
+        "phases": {
+          "bindingAndProfileMs": 0.517254000000321,
+          "portableHistoryMs": 0.08443800000031843,
+          "resourcesAndToolsMs": 13.467932999999903,
+          "adapterOpenAndBindingMs": 13.652198000000226
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_59bc5d72-a5a8-4acf-8749-46601863d6b8",
+        "waitMs": 0.04202799999984563,
+        "totalMs": 26.500575000000026,
+        "phases": {
+          "bindingAndProfileMs": 0.6735400000002301,
+          "portableHistoryMs": 0.00044100000013713725,
+          "resourcesAndToolsMs": 15.387458000000152,
+          "adapterOpenAndBindingMs": 9.984229000000141
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_bd60c282-79d3-4afe-969d-c48741b58546",
+        "waitMs": 0.03619800000024043,
+        "totalMs": 26.084629999999834,
+        "phases": {
+          "bindingAndProfileMs": 0.7881040000002031,
+          "portableHistoryMs": 0.0007909999999355932,
+          "resourcesAndToolsMs": 14.880372999999963,
+          "adapterOpenAndBindingMs": 10.037279000000126
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_f27f1b6d-dfcd-4de9-88fd-0813a4224015",
+        "waitMs": 0.03785100000004604,
+        "totalMs": 27.386512999999923,
+        "phases": {
+          "bindingAndProfileMs": 0.6332529999999679,
+          "portableHistoryMs": 0.0003310000001874869,
+          "resourcesAndToolsMs": 15.855760000000373,
+          "adapterOpenAndBindingMs": 10.527522999999746
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_68c16131-67d3-4830-b478-5f928b09f4f7",
+        "waitMs": 0.05917199999976219,
+        "totalMs": 25.843285000000378,
+        "phases": {
+          "bindingAndProfileMs": 0.6843199999998433,
+          "portableHistoryMs": 0.000450999999884516,
+          "resourcesAndToolsMs": 14.343551999999818,
+          "adapterOpenAndBindingMs": 10.374975000000177
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_4ca52da2-3cb6-4b1f-b200-89e40b774e1c",
+        "waitMs": 0.038140999999995984,
+        "totalMs": 27.10196700000006,
+        "phases": {
+          "bindingAndProfileMs": 0.710156999999981,
+          "portableHistoryMs": 0.0005109999997330306,
+          "resourcesAndToolsMs": 15.457409999999982,
+          "adapterOpenAndBindingMs": 10.472368999999617
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_528d499c-3c62-41d4-8ede-a0959175236e",
+        "waitMs": 0.07236700000021301,
+        "totalMs": 25.95140999999967,
+        "phases": {
+          "bindingAndProfileMs": 0.6076150000003508,
+          "portableHistoryMs": 0.0003600000000005821,
+          "resourcesAndToolsMs": 15.14465999999993,
+          "adapterOpenAndBindingMs": 9.824429000000237
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_32b6d4be-33d8-49f0-a343-b604c69c6968",
+        "waitMs": 0.036270000000058644,
+        "totalMs": 29.351322999999866,
+        "phases": {
+          "bindingAndProfileMs": 0.5928369999996903,
+          "portableHistoryMs": 0.00035100000013699173,
+          "resourcesAndToolsMs": 16.552603999999974,
+          "adapterOpenAndBindingMs": 11.856886000000031
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_ead13ca9-375d-440f-af9a-cd4360b7db2c",
+        "waitMs": 0.07211599999982354,
+        "totalMs": 28.933727999999974,
+        "phases": {
+          "bindingAndProfileMs": 0.7060900000001311,
+          "portableHistoryMs": 0.0005009999999856518,
+          "resourcesAndToolsMs": 15.549273000000085,
+          "adapterOpenAndBindingMs": 12.29149499999994
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_35c067e1-3b57-4076-8105-6e9e1ecdfb80",
+        "waitMs": 0.05435200000010809,
+        "totalMs": 28.007682999999815,
+        "phases": {
+          "bindingAndProfileMs": 0.6175029999999424,
+          "portableHistoryMs": 0.0004210000001876324,
+          "resourcesAndToolsMs": 16.708436999999776,
+          "adapterOpenAndBindingMs": 10.329420000000027
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_7a9a872b-be1b-4758-ad7a-84c139e3be66",
+        "waitMs": 0.04815000000007785,
+        "totalMs": 31.36506899999995,
+        "phases": {
+          "bindingAndProfileMs": 0.7819930000000568,
+          "portableHistoryMs": 0.0003710000000864966,
+          "resourcesAndToolsMs": 17.831261999999697,
+          "adapterOpenAndBindingMs": 12.374591999999666
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_19032671-68ec-4c18-806b-033b213768be",
+        "waitMs": 0.037409999999908905,
+        "totalMs": 31.648682000000008,
+        "phases": {
+          "bindingAndProfileMs": 0.5821369999998751,
+          "portableHistoryMs": 0.0007209999998849526,
+          "resourcesAndToolsMs": 16.227100000000064,
+          "adapterOpenAndBindingMs": 14.477043000000322
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_dc916e62-0b0e-4e66-8eff-0ec784095c38",
+        "waitMs": 0.04907199999979639,
+        "totalMs": 23.566667000000052,
+        "phases": {
+          "bindingAndProfileMs": 0.5537930000000415,
+          "portableHistoryMs": 0.00039100000003600144,
+          "resourcesAndToolsMs": 13.36632099999997,
+          "adapterOpenAndBindingMs": 9.254413999999997
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_5f30016f-3749-40d0-a94e-a55c7aab6881",
+        "waitMs": 0.039464999999836436,
+        "totalMs": 25.999209000000064,
+        "phases": {
+          "bindingAndProfileMs": 0.5519200000003366,
+          "portableHistoryMs": 0.0003710000000864966,
+          "resourcesAndToolsMs": 15.08084000000008,
+          "adapterOpenAndBindingMs": 10.033762000000024
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_0bc325d5-95b1-4c43-8c42-8233d93165f4",
+        "waitMs": 0.04421300000012707,
+        "totalMs": 24.018678999999793,
+        "phases": {
+          "bindingAndProfileMs": 0.7218699999998535,
+          "portableHistoryMs": 0.0007319999999708671,
+          "resourcesAndToolsMs": 13.432394999999815,
+          "adapterOpenAndBindingMs": 9.520986999999877
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_cb207bc8-684a-43d5-8c1b-00921a06d174",
+        "waitMs": 0.042089000000032684,
+        "totalMs": 26.849400999999943,
+        "phases": {
+          "bindingAndProfileMs": 0.637800999999854,
+          "portableHistoryMs": 0.0003600000000005821,
+          "resourcesAndToolsMs": 15.545826999999917,
+          "adapterOpenAndBindingMs": 10.320192000000134
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_4ebc7ba1-9d21-40c9-80e4-78deaab8fc64",
+        "waitMs": 0.03790099999969243,
+        "totalMs": 27.10509200000024,
+        "phases": {
+          "bindingAndProfileMs": 0.6376909999999043,
+          "portableHistoryMs": 0.00040100000023812754,
+          "resourcesAndToolsMs": 15.256460999999945,
+          "adapterOpenAndBindingMs": 10.831003999999666
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_3f819a6f-d726-475b-a37a-507c8142de5d",
+        "waitMs": 0.03920400000015434,
+        "totalMs": 26.800387999999657,
+        "phases": {
+          "bindingAndProfileMs": 0.6660850000002938,
+          "portableHistoryMs": 0.00048100000003614696,
+          "resourcesAndToolsMs": 16.786474,
+          "adapterOpenAndBindingMs": 8.978423999999904
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_c55779af-7bce-4766-8a32-9c22387ccb4e",
+        "waitMs": 0.06362899999976435,
+        "totalMs": 23.09761299999991,
+        "phases": {
+          "bindingAndProfileMs": 0.6587199999999029,
+          "portableHistoryMs": 0.00045100000033926335,
+          "resourcesAndToolsMs": 13.152166999999736,
+          "adapterOpenAndBindingMs": 8.974186999999802
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_0a0a646d-ac44-4e14-951a-a59080422369",
+        "waitMs": 0.045525999999881606,
+        "totalMs": 27.747212000000218,
+        "phases": {
+          "bindingAndProfileMs": 0.5798429999999826,
+          "portableHistoryMs": 0.00038099999983387534,
+          "resourcesAndToolsMs": 16.819175000000087,
+          "adapterOpenAndBindingMs": 10.022681000000375
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_f2602689-50de-4a99-a7f3-f455d1e4ce70",
+        "waitMs": 0.036528999999973166,
+        "totalMs": 23.8257550000003,
+        "phases": {
+          "bindingAndProfileMs": 0.689679999999953,
+          "portableHistoryMs": 0.0003600000000005821,
+          "resourcesAndToolsMs": 13.009498000000349,
+          "adapterOpenAndBindingMs": 9.82051999999976
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_05795a58-4e08-4c99-a428-0a81094ce2b4",
+        "waitMs": 0.044073000000025786,
+        "totalMs": 28.636417999999594,
+        "phases": {
+          "bindingAndProfileMs": 0.5649229999999079,
+          "portableHistoryMs": 0.00034099999993486563,
+          "resourcesAndToolsMs": 14.925828999999794,
+          "adapterOpenAndBindingMs": 12.77384499999971
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_62435134-f370-4d16-9121-5643fbbdcb79",
+        "waitMs": 0.08707400000002963,
+        "totalMs": 32.562613999999485,
+        "phases": {
+          "bindingAndProfileMs": 0.6166419999999562,
+          "portableHistoryMs": 0.0008519999996678962,
+          "resourcesAndToolsMs": 17.511349000000337,
+          "adapterOpenAndBindingMs": 14.097748999999567
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_8efc76d0-d493-47f2-9432-f6e908b3fbe9",
+        "waitMs": 0.09405700000024808,
+        "totalMs": 39.36895599999934,
+        "phases": {
+          "bindingAndProfileMs": 0.8222180000002481,
+          "portableHistoryMs": 0.00036100000033911783,
+          "resourcesAndToolsMs": 21.47712000000047,
+          "adapterOpenAndBindingMs": 16.6102120000005
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_e4e6aa3d-4ca2-459c-83c3-e2accbd0a764",
+        "waitMs": 0.037981000000399945,
+        "totalMs": 23.986226999999417,
+        "phases": {
+          "bindingAndProfileMs": 0.617232999999942,
+          "portableHistoryMs": 0.0004510000007940107,
+          "resourcesAndToolsMs": 13.233439999999973,
+          "adapterOpenAndBindingMs": 9.816153000000668
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_2d18612c-cd73-43ab-986e-1f8107f02a4b",
+        "waitMs": 0.035517000000254484,
+        "totalMs": 30.089022999999543,
+        "phases": {
+          "bindingAndProfileMs": 0.544184999999743,
+          "portableHistoryMs": 0.00032000000010157237,
+          "resourcesAndToolsMs": 19.79572300000018,
+          "adapterOpenAndBindingMs": 9.458799999999428
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_5a565ba2-4be2-4653-9a57-2e311e8ae6d4",
+        "waitMs": 0.04971399999976711,
+        "totalMs": 24.445332999999664,
+        "phases": {
+          "bindingAndProfileMs": 0.7112010000000737,
+          "portableHistoryMs": 0.0006210000001374283,
+          "resourcesAndToolsMs": 13.794036000000233,
+          "adapterOpenAndBindingMs": 9.516097000000627
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_a0b3a6ec-c5e5-4c23-b842-24fd8dc34442",
+        "waitMs": 0.04119700000046578,
+        "totalMs": 25.486131999999998,
+        "phases": {
+          "bindingAndProfileMs": 0.5372219999999288,
+          "portableHistoryMs": 0.0009119999995164108,
+          "resourcesAndToolsMs": 14.676769000000604,
+          "adapterOpenAndBindingMs": 9.883730000000469
+        },
+        "outcome": "ready"
+      },
+      {
+        "sessionId": "ps_3441f1b7-7873-4665-9dc8-fb4b5e25adc4",
+        "waitMs": 0.04912200000035227,
+        "totalMs": 24.368155999999544,
+        "phases": {
+          "bindingAndProfileMs": 0.5750120000002426,
+          "portableHistoryMs": 0.0005010000004403992,
+          "resourcesAndToolsMs": 13.586655000000064,
+          "adapterOpenAndBindingMs": 9.788499999999658
+        },
+        "outcome": "ready"
+      }
+    ]
+  }
+}

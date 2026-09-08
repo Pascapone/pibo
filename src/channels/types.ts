@@ -1,3 +1,4 @@
+import type { RuntimeCapacityStatus } from "../core/runtime-capacity.js";
 import type { PiboEventListener, PiboForkCandidate, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
 import type { PiboRunSnapshot } from "../runs/registry.js";
 import type { PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
@@ -65,6 +66,7 @@ export type PiboChannelContext = {
 	deleteSession?(id: string): boolean | Promise<boolean>;
 	findSessions(input: FindPiboSessionsInput): PiboSession[];
 	listSessions?(): PiboSession[];
+	getSessionStructureRevision?(): number | undefined;
 	getSessionRuntimeBinding?(piboSessionId: string): RuntimeSessionBinding | undefined;
 	getSessionRuntimeProfile?(piboSessionId: string): InitialSessionContext;
 	inspectSessionRuntimeHistory?(piboSessionId: string): Promise<AgentRuntimeHistoryInspection>;
@@ -74,6 +76,7 @@ export type PiboChannelContext = {
 	getSessionStatusSnapshot?(piboSessionId: string, options?: { activate?: boolean }): Promise<PiboSessionStatus | undefined>;
 	getSessionForkCandidates?(piboSessionId: string): Promise<PiboForkCandidate[]>;
 	listSessionRuntimeStatuses?(): PiboSessionStatus[];
+	getRuntimeCapacityStatus?(): RuntimeCapacityStatus;
 	listRuns?(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboRunSnapshot[];
 	snapshotSignalSession?(piboSessionId: string): PiboSignalSnapshot;
 	snapshotSignalTree?(rootPiboSessionId: string): PiboSignalSnapshot;

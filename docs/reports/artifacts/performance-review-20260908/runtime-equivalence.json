@@ -1,0 +1,68 @@
+{
+  "B": {
+    "acceptedCommit": "c49b4f69d3b511801b01f2eab32ee6b0bf55d0c0",
+    "finalCommit": "06d3ee26b83e1e6ad1be8e7de69531d9d2cb7bb8",
+    "runtimeInputs": {
+      "src": {
+        "accepted": "ab1f1c9d0460e18a0334afbc095cb102933bde20",
+        "final": "ab1f1c9d0460e18a0334afbc095cb102933bde20"
+      },
+      "scripts": {
+        "accepted": "140d30a8d278363afeb0fd590a081f10882015a9",
+        "final": "140d30a8d278363afeb0fd590a081f10882015a9"
+      },
+      "package.json": {
+        "accepted": "61f6f5ed3fea024136461dc767e9507106437ce1",
+        "final": "61f6f5ed3fea024136461dc767e9507106437ce1"
+      },
+      "package-lock.json": {
+        "accepted": "b4d9c61fcc6e546b75e0b503d55e95de47c0b914",
+        "final": "b4d9c61fcc6e546b75e0b503d55e95de47c0b914"
+      }
+    }
+  },
+  "F": {
+    "acceptedCommit": "f508c1cc3ad363a5645f859c942c09fbc148c7d4",
+    "finalCommit": "de72aacbc0809b8883c5c987bd5689140284a8c9",
+    "runtimeInputs": {
+      "src": {
+        "accepted": "1503621cc3c5816a53b3ce96804477fbe0d78327",
+        "final": "1503621cc3c5816a53b3ce96804477fbe0d78327"
+      },
+      "scripts": {
+        "accepted": "98903439c8605cef2f996038f72ef7b394802910",
+        "final": "98903439c8605cef2f996038f72ef7b394802910"
+      },
+      "package.json": {
+        "accepted": "61f6f5ed3fea024136461dc767e9507106437ce1",
+        "final": "61f6f5ed3fea024136461dc767e9507106437ce1"
+      },
+      "package-lock.json": {
+        "accepted": "b4d9c61fcc6e546b75e0b503d55e95de47c0b914",
+        "final": "b4d9c61fcc6e546b75e0b503d55e95de47c0b914"
+      }
+    }
+  },
+  "G": {
+    "acceptedCommit": "d24e3efd84240bada438ee17f60217e47c348e8e",
+    "finalCommit": "37129bfa431d90225f8ce237cb58864b988cfe06",
+    "runtimeInputs": {
+      "src": {
+        "accepted": "f8f5629cc588908fd3d0960e89a0d81f20ca7b32",
+        "final": "f8f5629cc588908fd3d0960e89a0d81f20ca7b32"
+      },
+      "scripts": {
+        "accepted": "98903439c8605cef2f996038f72ef7b394802910",
+        "final": "98903439c8605cef2f996038f72ef7b394802910"
+      },
+      "package.json": {
+        "accepted": "61f6f5ed3fea024136461dc767e9507106437ce1",
+        "final": "61f6f5ed3fea024136461dc767e9507106437ce1"
+      },
+      "package-lock.json": {
+        "accepted": "b4d9c61fcc6e546b75e0b503d55e95de47c0b914",
+        "final": "b4d9c61fcc6e546b75e0b503d55e95de47c0b914"
+      }
+    }
+  }
+}

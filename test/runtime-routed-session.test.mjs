@@ -28,15 +28,15 @@ function deferred() {
 	return { promise, resolve };
 }
 
-function createFakeRuntimeFixture(routerOptions = {}) {
+function createFakeRuntimeFixture(routerOptions = {}, script) {
 	const fakeDriver = createFakeAgentRuntimeDriver({
 		adapterId: "router-fake",
-		script: (input) => ({
+		script: script ?? ((input) => ({
 			events: [
 				{ type: "assistant_delta", text: `${input.text}:delta` },
 				{ type: "assistant_message", text: `${input.text}:final` },
 			],
-		}),
+		})),
 	});
 	const registry = PiboPluginRegistry.create({
 		plugins: [
@@ -955,4 +955,92 @@ test("runtime login and model menus use the active adapter's real auth status wi
 	} finally {
 		await router.disposeAll();
 	}
+});
+
+
+test("cold-start ramps remain bounded across rooms and do not activate historical sessions", async()=>{
+ for(const size of [1,2,5,10,20]) {
+  const fixture=createFakeRuntimeFixture();
+  const adapter=fixture.registry.requireAgentRuntimeAdapter("router-fake");
+  const original=adapter.openSession.bind(adapter);const gates=[];let peak=0;let active=0;
+  adapter.openSession=async input=>{active++;peak=Math.max(peak,active);const gate=deferred();gates.push(gate);try{await gate.promise;return await original(input);}finally{active--;}};
+  const ids=Array.from({length:size},(_,i)=>`ps_capacity_${i}`);
+  for(const [i,id] of ids.entries()) fixture.store.create({id,channel:"test",kind:"chat",profile:"router-fake-profile",workspace:process.cwd(),runtimeBinding:{runtimeInstanceId:"router-fake",adapterId:"router-fake",state:"unbound"},metadata:{chatRoomId:`room_${i%2}`}});
+  const outputs=[];fixture.router.subscribe(event=>outputs.push(event));
+  try {
+   const pending=ids.map((id,i)=>fixture.router.emit({type:"message",piboSessionId:id,id:`m${i}`,text:"test"}));
+   for(let opened=0;opened<size;) {
+    await waitFor(()=>gates.length>0);
+    const wave=gates.splice(0);opened+=wave.length;
+    assert.ok(active<=2);for(const gate of wave)gate.resolve();
+   }
+   await Promise.all(pending);await waitFor(()=>outputs.filter(e=>e.type==="message_finished").length===size);
+   assert.ok(peak<=2);assert.equal(adapter.openInputs.length,size);
+   assert.equal(adapter.openInputs.some(input=>input.piboSession.id==="ps_router_fake"),false);
+   assert.equal(fixture.router.getRuntimeCapacityStatus().coldStarts.waiting,0);
+  } finally {for(const gate of gates)gate.resolve();await fixture.router.disposeAll();}
+ }
+});
+
+test("bounded active runtime pool evicts idle generations and can reopen their durable sessions",async()=>{
+ const fixture=createFakeRuntimeFixture({runtimeCapacity:{maxRuntimes:1}});
+ fixture.store.create({id:"ps_capacity_second",channel:"test",kind:"chat",profile:"router-fake-profile",workspace:process.cwd(),runtimeBinding:{runtimeInstanceId:"router-fake",adapterId:"router-fake",state:"unbound"}});
+ try {
+  for(const id of ["ps_router_fake","ps_capacity_second","ps_router_fake"]){
+   await fixture.router.emit({type:"execution",piboSessionId:id,action:"status"});
+   assert.equal(fixture.router.getRuntimeCapacityStatus().activeRuntimes,1);
+   assert.ok(fixture.store.get("ps_router_fake"));assert.ok(fixture.store.get("ps_capacity_second"));
+  }
+  assert.equal(fixture.registry.requireAgentRuntimeAdapter("router-fake").openInputs.length,3);
+ } finally {await fixture.router.disposeAll();}
+});
+
+
+test("abort cancels a provider capacity wait without entering the provider or borrowing its active slot",async()=>{
+ const fixture=createFakeRuntimeFixture({runtimeCapacity:{providerTurns:1,providerTurnsPerRoom:1}},{waitForAbort:true});
+ fixture.store.create({id:"ps_provider_wait",channel:"test",kind:"chat",profile:"router-fake-profile",workspace:process.cwd(),runtimeBinding:{runtimeInstanceId:"router-fake",adapterId:"router-fake",state:"unbound"}});
+ const events=[];fixture.router.subscribe(e=>events.push(e));
+ try {
+  await fixture.router.emit({type:"message",piboSessionId:"ps_router_fake",id:"first-provider",text:"first"});
+  await waitFor(()=>events.some(e=>e.type==="message_started"&&e.eventId==="first-provider"));
+  await fixture.router.emit({type:"message",piboSessionId:"ps_provider_wait",id:"waiting-provider",text:"second"});
+  await waitFor(()=>fixture.router.getRuntimeCapacityStatus().providers[0]?.waiting===1);
+  assert.equal(events.some(e=>e.type==="message_started"&&e.eventId==="waiting-provider"),false);
+  await fixture.router.emit({type:"execution",piboSessionId:"ps_provider_wait",action:"abort"});
+  assert.equal(fixture.router.getRuntimeCapacityStatus().providers[0].waiting,0);
+  assert.equal(fixture.router.getRuntimeCapacityStatus().providers[0].active,1);
+  assert.equal(fixture.registry.requireAgentRuntimeAdapter("router-fake").sessions[1].prompts.length,0);
+  await fixture.router.emit({type:"execution",piboSessionId:"ps_router_fake",action:"abort"});
+  await waitFor(()=>fixture.router.getRuntimeCapacityStatus().providers.length===0);
+ } finally {await fixture.router.disposeAll();}
+});
+
+
+test("abort acknowledges a blocked cold start before adapter initialization settles",async()=>{
+ const fixture=createFakeRuntimeFixture();const adapter=fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ const original=adapter.openSession.bind(adapter);const gate=deferred();let opened=false;
+ adapter.openSession=async input=>{opened=true;await gate.promise;return await original(input);};
+ try {
+  const pending=fixture.router.emit({type:"message",piboSessionId:"ps_router_fake",id:"cold-abort",text:"never prompt"});
+  const rejected=assert.rejects(pending,{code:"runtime_start_cancelled"});
+  await waitFor(()=>opened);
+  const result=await fixture.router.emit({type:"execution",piboSessionId:"ps_router_fake",action:"abort"});
+  assert.equal(result.result.aborted,true);
+  assert.equal(adapter.sessions.length,0);
+  gate.resolve();await rejected;
+  assert.equal(adapter.sessions[0].prompts.length,0);assert.equal(adapter.sessions[0].disposeCalls,1);
+  assert.equal(fixture.router.getRuntimeCapacityStatus().activeRuntimes,0);
+ } finally {gate.resolve();await fixture.router.disposeAll();}
+});
+
+
+test("queue clear persists the same ingress-plus-runtime count that its caller receives",async()=>{
+ const fixture=createFakeRuntimeFixture();const events=[];fixture.router.subscribe(e=>events.push(e));
+ try {
+  for(const active of [false,true]){
+   if(active)await fixture.router.emit({type:"execution",piboSessionId:"ps_router_fake",action:"status"});
+   const id=`clear-${active}`;const result=await fixture.router.emit({type:"execution",piboSessionId:"ps_router_fake",id,action:"clear_queue",clearedBeforeRuntime:3});
+   assert.equal(result.result.cleared,3);assert.equal(events.find(e=>e.type==="execution_result"&&e.eventId===id).result.cleared,3);
+  }
+ }finally{await fixture.router.disposeAll();}
 });

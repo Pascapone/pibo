@@ -1,3 +1,5 @@
+import { ChatSessionQueryService } from "./session-query-service.js";
+import { ChatReadProjectionStore } from "../../../data/chat-read-projections.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 
 export class ChatReadStateService {
@@ -15,10 +17,20 @@ export class ChatReadStateService {
 		`).run(piboSessionId, lastReadStreamId, now, now);
 	}
 
+	sessionIndexPage(input:{roomId:string;afterId?:string;limit?:number}) {return new ChatSessionQueryService(this.store).listSessionIndexPage(input);}
+
+	unreadCountsPage(input:{piboSessionIds:string[]}):Array<[string,number]> {return [...this.countUnreadMessagesBySession(input)];}
+
 	countUnreadMessagesBySession(input: { piboSessionIds: string[] }): Map<string, number> {
 		const counts = new Map<string, number>();
 		const uniqueIds = [...new Set(input.piboSessionIds)];
 		if (!uniqueIds.length) return counts;
+        if(new ChatReadProjectionStore(this.store.db).status().unreadComplete){
+          for(let offset=0;offset<uniqueIds.length;offset+=400){const ids=uniqueIds.slice(offset,offset+400);
+            const rows=this.store.db.prepare(`SELECT session_id,unread_count FROM chat_unread_counts WHERE session_id IN (${ids.map(()=>"?").join(",")}) AND unread_count>0`).all(...ids) as Array<{session_id:string;unread_count:number}>;
+            for(const row of rows)counts.set(row.session_id,row.unread_count);
+          }return counts;
+        }
 		for (let offset = 0; offset < uniqueIds.length; offset += 400) {
 			const ids = uniqueIds.slice(offset, offset + 400);
 			const requested = ids.map(() => "(?)").join(", ");

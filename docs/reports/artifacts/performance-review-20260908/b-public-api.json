@@ -1,0 +1,119 @@
+{
+  "at": "2026-09-08T03:52:27.443Z",
+  "commit": "c49b4f69",
+  "sha256": "cc7dc553123ad860b55dc01a2fa1859497d137203f0d83632ee34c471a4ca8a7",
+  "lease": "lease_1e72869a1a841427c1",
+  "url": "https://slot-01.pool.pibo2.neuralnexus.me",
+  "requests": [
+    {
+      "path": "/api/chat/bootstrap",
+      "status": 200,
+      "ms": 327.73839799999996,
+      "serverTiming": "json_serialize;dur=4.4"
+    },
+    {
+      "path": "/api/chat/sessions",
+      "status": 200,
+      "ms": 52.60449599999998,
+      "serverTiming": "json_serialize;dur=0.1, response_compress;dur=0.3"
+    },
+    {
+      "path": "/api/chat/sessions",
+      "status": 201,
+      "ms": 22.304326000000003,
+      "serverTiming": "json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 237.289489,
+      "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=67.51, chat_ingest;dur=0.00, chat_emit;dur=140.58, chat_ack;dur=214.83, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 84.77236700000003,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=6.09, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 87.87711000000002,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=6.39, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 98.07324999999992,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=13.05, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 102.73074999999994,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=5.49, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 106.92781100000002,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=4.95, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 109.62875399999996,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=5.43, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 127.40708800000004,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=20.56, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 129.31341300000008,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=5.55, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 132.93708400000003,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=5.55, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/message",
+      "status": 200,
+      "ms": 133.44624299999998,
+      "serverTiming": "chat_lookup;dur=0.00, chat_ack;dur=2.25, json_serialize;dur=0.0"
+    },
+    {
+      "path": "/api/chat/trace?piboSessionId=ps_3f8f429d-c106-4835-94ae-e3a8e58504ac",
+      "status": 200,
+      "ms": 29.151475000000005,
+      "serverTiming": "trace;dur=22.1, trace_history;dur=0.0, trace_events;desc=\"3\", trace_cache;desc=\"miss\", json_serialize;dur=0.0, response_compress;dur=0.2"
+    },
+    {
+      "path": "/api/chat/rooms/room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d/events",
+      "status": 200,
+      "ms": 100.63294599999995,
+      "serverTiming": "json_serialize;dur=8.0"
+    }
+  ],
+  "sessionId": "ps_3f8f429d-c106-4835-94ae-e3a8e58504ac",
+  "roomId": "room_cddb8f73-eb59-4532-bf09-4a409fd6bd2d",
+  "admission": {
+    "status": 200,
+    "eventId": "ce_bfc5071d-6781-4a03-9ad0-1cf84fee36ad",
+    "streamId": 987973
+  },
+  "duplicates": {
+    "count": 10,
+    "streamId": 987973
+  },
+  "traceStatus": 200,
+  "eventPageCount": 1000,
+  "ok": true
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, CircleX, Hammer, Images, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, CircleX, Hammer, Images, MessageSquare, Minimize2 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { chatImagePreviewUrls } from "../../api-chat-files";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
@@ -11,10 +11,13 @@ import { PendingUserMessageDelivery } from "../../components/PendingUserMessageD
 import { useStickyVirtuoso } from "../../components/useStickyVirtuoso";
 import { useSessionActivity } from "../../hooks/useSessionActivity";
 import { SessionGoalIndicator, formatSessionGoalTokenUsage, sessionGoalIndicatorStatus } from "../../session-goal-indicator";
+import { findToolCallReferenceRowIndex } from "../../tool-call-reference";
 import { MarkdownRenderer } from "../../tracing/MarkdownRenderer";
 import { collectTerminalRows, isTraceSnapshotCollectionEnabled } from "../../tracing/snapshotCollector";
 import type { ChatSessionViewProps } from "../types";
 import { TerminalToolMetrics } from "./TerminalToolMetrics";
+import { TerminalModelInferenceMetrics } from "./TerminalModelInferenceMetrics";
+import { TerminalCompactionCard } from "./TerminalCompactionCard";
 import { TerminalDetails } from "./TerminalDetails";
 import { TerminalLine } from "./TerminalLine";
 import { TerminalLoginCard } from "./TerminalLoginCard";
@@ -31,7 +34,7 @@ const OLDER_TRACE_PREFETCH_ROW_THRESHOLD = 20;
 const VIRTUOSO_VIEWPORT = { top: 2_400, bottom: 2_400 } as const;
 const DEFAULT_ROW_HEIGHT_PX = 84;
 const COLLAPSED_EXPLORING_PREVIEW_LINES = 6;
-type TerminalNavigationKind = "system" | "tool" | "user";
+type TerminalNavigationKind = "compaction" | "system" | "tool" | "user";
 type TerminalImageDialogState = {
 	images: readonly CompactTerminalImagePreview[];
 	index: number;
@@ -39,10 +42,12 @@ type TerminalImageDialogState = {
 
 export function CompactTerminalSessionView({
 	traceView,
+	targetToolCallNodeId,
 	isLoading,
 	terminalFullscreen,
 	showThinking,
 	debugMode = false,
+	debugFeatures,
 	toolMetricThresholds,
 	expandThinking,
 	toolDisplayMode,
@@ -67,14 +72,19 @@ export function CompactTerminalSessionView({
 	onThinkingLevelChange,
 	onModelChanged,
 }: ChatSessionViewProps) {
+	const effectiveToolDisplayMode = targetToolCallNodeId ? "default" : toolDisplayMode;
 	const rows = useMemo(
-		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode, debugMode }),
-		[showThinking, toolDisplayMode, debugMode, traceView],
+		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode: effectiveToolDisplayMode, debugMode, debugFeatures }),
+		[showThinking, effectiveToolDisplayMode, debugMode, debugFeatures, traceView],
 	);
+	const showToolDebugMetrics = debugMode && (debugFeatures?.toolMetrics ?? true);
+	const showModelInferenceMetrics = debugMode && (debugFeatures?.modelInferenceMetrics ?? true);
 	const rowKeys = useMemo(() => rows.map((row) => row.id), [rows]);
 	const piboSessionId = traceView?.piboSessionId ?? "";
 	const [reloadReadingPosition, setReloadReadingPosition] = useState<TerminalReadingPosition | undefined>();
 	const requestedRestorePageRef = useRef<string | undefined>(undefined);
+	const requestedToolCallPageRef = useRef<string | undefined>(undefined);
+	const resolvedToolCallTargetRef = useRef<string | undefined>(undefined);
 	const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 	const [imageDialog, setImageDialog] = useState<TerminalImageDialogState | null>(null);
 	const renderedContentKey = useMemo(() => [rows, expandedRows] as const, [expandedRows, rows]);
@@ -87,6 +97,7 @@ export function CompactTerminalSessionView({
 	const scrollbarDragDeferredLoadRef = useRef(false);
 	const prepareOlderTracePrependRef = useRef<() => void>(() => undefined);
 	const userMessageCount = rows.filter((row) => isNavigableTerminalRow(row, "user")).length;
+	const compactionCount = rows.filter((row) => isNavigableTerminalRow(row, "compaction")).length;
 	const toolErrorCount = rows.filter((row) => isNavigableTerminalRow(row, "tool")).length;
 	const errorCount = rows.filter((row) => isNavigableTerminalRow(row, "system")).length;
 	const traceTurnStartedAt = useMemo(() => findActiveTurnStartedAt(traceView), [traceView]);
@@ -175,15 +186,42 @@ export function CompactTerminalSessionView({
 
 	useEffect(() => {
 		requestedRestorePageRef.current = undefined;
+		requestedToolCallPageRef.current = undefined;
+		resolvedToolCallTargetRef.current = undefined;
 		olderTraceRequestPendingRef.current = false;
 		scrollbarDragActiveRef.current = false;
 		scrollbarDragDeferredLoadRef.current = false;
 		setReloadReadingPosition(piboSessionId ? readTerminalReadingPosition(piboSessionId) : undefined);
 		setImageDialog(null);
-	}, [piboSessionId]);
+	}, [piboSessionId, targetToolCallNodeId]);
 
 	useEffect(() => {
-		if (!piboSessionId || !reloadReadingPosition) return undefined;
+		if (!piboSessionId || !targetToolCallNodeId) return undefined;
+		const targetRowIndex = findToolCallReferenceRowIndex(rows, targetToolCallNodeId);
+		if (targetRowIndex >= 0) {
+			const targetRow = rows[targetRowIndex]!;
+			const targetKey = `${piboSessionId}:${targetToolCallNodeId}`;
+			setExpandedRows((current) => current.has(targetRow.id) ? current : new Set(current).add(targetRow.id));
+			setFocusedNavigationRowId(targetRow.id);
+			if (resolvedToolCallTargetRef.current === targetKey) return undefined;
+			resolvedToolCallTargetRef.current = targetKey;
+			const frame = requestAnimationFrame(() => {
+				stickyView.scrollToIndex(targetRowIndex, "center", "auto");
+				focusToolCallReferenceAfterScroll(targetRow.id, targetToolCallNodeId);
+			});
+			return () => cancelAnimationFrame(frame);
+		}
+		if (!hasOlderTraceEvents || isFetchingOlderTracePage) return undefined;
+		const cursor = String(traceView?.nextBeforeCursor ?? traceView?.nextBeforeSequence ?? rows.length);
+		const requestKey = `${piboSessionId}:${targetToolCallNodeId}:${cursor}`;
+		if (requestedToolCallPageRef.current === requestKey) return undefined;
+		requestedToolCallPageRef.current = requestKey;
+		onLoadOlderTracePage?.();
+		return undefined;
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, rows, stickyView.scrollToIndex, targetToolCallNodeId, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+
+	useEffect(() => {
+		if (!piboSessionId || !reloadReadingPosition || targetToolCallNodeId) return undefined;
 		const rowIndex = rowKeys.indexOf(reloadReadingPosition.rowId);
 		if (rowIndex >= 0) {
 			const frame = requestAnimationFrame(() => {
@@ -205,7 +243,7 @@ export function CompactTerminalSessionView({
 		requestedRestorePageRef.current = requestKey;
 		onLoadOlderTracePage?.();
 		return undefined;
-	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, reloadReadingPosition, rowKeys, rows.length, stickyView.restoreAnchor, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
+	}, [hasOlderTraceEvents, isFetchingOlderTracePage, onLoadOlderTracePage, piboSessionId, reloadReadingPosition, rowKeys, rows.length, stickyView.restoreAnchor, targetToolCallNodeId, traceView?.nextBeforeCursor, traceView?.nextBeforeSequence]);
 
 	useEffect(() => {
 		if (!piboSessionId) return undefined;
@@ -239,7 +277,7 @@ export function CompactTerminalSessionView({
 	useEffect(() => {
 		const rowIds = new Set(rows.map((row) => row.id));
 		setFocusedNavigationRowId((current) => (current && rowIds.has(current) ? current : null));
-		for (const kind of ["system", "tool", "user"] as const) {
+		for (const kind of ["compaction", "system", "tool", "user"] as const) {
 			const current = navigationCursorRef.current[kind];
 			if (current && !rowIds.has(current)) delete navigationCursorRef.current[kind];
 		}
@@ -274,11 +312,13 @@ export function CompactTerminalSessionView({
 		<div className="px-4 @max-[420px]:px-2">
 			<TerminalRow
 				row={row}
-				debugMode={debugMode}
+				showToolDebugMetrics={showToolDebugMetrics}
+				showModelInferenceMetrics={showModelInferenceMetrics}
 				toolMetricThresholds={toolMetricThresholds}
 				expanded={expandedRows.has(row.id)}
 				focused={focusedNavigationRowId === row.id}
 				piboSessionId={traceView?.piboSessionId ?? ""}
+				targetToolCallNodeId={targetToolCallNodeId}
 				onToggle={() => toggleRow(row)}
 				onFork={onFork}
 				onOpenSession={onOpenSession}
@@ -288,7 +328,7 @@ export function CompactTerminalSessionView({
 				signals={signals}
 			/>
 		</div>
-	), [debugMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, signals, toolMetricThresholds, traceView?.piboSessionId]);
+	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, showModelInferenceMetrics, showToolDebugMetrics, signals, targetToolCallNodeId, toolMetricThresholds, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -308,6 +348,7 @@ export function CompactTerminalSessionView({
 		>
 			{terminalFullscreen ? null : (
 				<TerminalHeader
+					compactionCount={compactionCount}
 					errorCount={errorCount}
 					toolErrorCount={toolErrorCount}
 					userMessageCount={userMessageCount}
@@ -394,6 +435,7 @@ export function CompactTerminalSessionView({
 }
 
 function TerminalHeader({
+	compactionCount,
 	errorCount,
 	toolErrorCount,
 	userMessageCount,
@@ -406,6 +448,7 @@ function TerminalHeader({
 	derivedSessions,
 	onOpenSession,
 }: {
+	compactionCount: number;
 	errorCount: number;
 	toolErrorCount: number;
 	userMessageCount: number;
@@ -434,6 +477,11 @@ function TerminalHeader({
 				{userMessageCount > 0 ? (
 					<TerminalBadge tone="cyan" label={`${userMessageCount} user messages · jump to previous user message`} onClick={() => onNavigate("user")}>
 						{userMessageCount}<MessageSquare size={12} />
+					</TerminalBadge>
+				) : null}
+				{compactionCount > 0 ? (
+					<TerminalBadge tone="cyan" label={`${compactionCount} compactions · jump to previous compaction`} onClick={() => onNavigate("compaction")}>
+						{compactionCount}<Minimize2 size={12} />
 					</TerminalBadge>
 				) : null}
 				{errorCount > 0 ? (
@@ -483,11 +531,13 @@ function SessionLinkButton({ children, onClick }: { children: ReactNode; onClick
 
 function TerminalRow({
 	row,
-	debugMode,
+	showToolDebugMetrics,
+	showModelInferenceMetrics,
 	toolMetricThresholds,
 	expanded,
 	focused,
 	piboSessionId,
+	targetToolCallNodeId,
 	onToggle,
 	onFork,
 	onOpenSession,
@@ -497,11 +547,13 @@ function TerminalRow({
 	signals,
 }: {
 	row: CompactTerminalRow;
-	debugMode: boolean;
+	showToolDebugMetrics: boolean;
+	showModelInferenceMetrics: boolean;
 	toolMetricThresholds: ChatSessionViewProps["toolMetricThresholds"];
 	expanded: boolean;
 	focused: boolean;
 	piboSessionId: string;
+	targetToolCallNodeId?: string;
 	onToggle: () => void;
 	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
@@ -557,7 +609,8 @@ function TerminalRow({
 					signals={signals}
 					onOpenSession={onOpenSession}
 				/>
-				{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+				{showToolDebugMetrics && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+				{showModelInferenceMetrics ? <ModelInferenceMetricsList records={row.modelInferences} /> : null}
 			</div>
 		);
 	}
@@ -598,10 +651,28 @@ function TerminalRow({
 				</div>
 				<TerminalRowActions row={row} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 			</div>
-			{expanded ? <TerminalDetails row={row} onOpenSession={onOpenSession} /> : null}
-			{debugMode && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+			{Object.values(row.payloadRefs ?? {}).some(Boolean) ? (
+				<button type="button" aria-expanded={expanded} onClick={onToggle} className="mt-2 border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8]">
+					{expanded ? "Hide full content" : "Show full content"}
+				</button>
+			) : null}
+			{expanded ? (
+				<TerminalDetails
+					row={row}
+					piboSessionId={piboSessionId}
+					targetToolCallNodeId={targetToolCallNodeId}
+					onOpenSession={onOpenSession}
+				/>
+			) : null}
+			{showToolDebugMetrics && row.isToolCall ? <TerminalToolMetrics metrics={row.toolMetrics} thresholds={toolMetricThresholds} /> : null}
+			{showModelInferenceMetrics ? <ModelInferenceMetricsList records={row.modelInferences} /> : null}
 		</div>
 	);
+}
+
+function ModelInferenceMetricsList({ records }: { records: CompactTerminalRow["modelInferences"] }) {
+	if (!records?.length) return null;
+	return <>{records.map((record) => <TerminalModelInferenceMetrics key={record.id} metrics={record.metrics} />)}</>;
 }
 
 function TerminalRowContent({
@@ -643,7 +714,7 @@ function TerminalRowContent({
 			<>
 				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				{row.pendingMessageDelivery ? (
-					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} className="ml-[1.9rem] mt-2" />
+					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-[1.9rem] mt-2" />
 				) : null}
 				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>
@@ -653,7 +724,10 @@ function TerminalRowContent({
 	if (row.kind === "tool.thinking") return <TerminalThinkingCard row={row} onLevelSelect={onThinkingLevelChange} />;
 	if (row.kind === "tool.login") return <TerminalLoginCard row={row} piboSessionId={piboSessionId} />;
 	if (row.kind === "tool.model") return <TerminalModelCard row={row} piboSessionId={piboSessionId} onModelChanged={onModelChanged} />;
-	if (row.kind === "execution.compaction" && row.status === "running") return <TerminalCompactionLine />;
+	if (row.kind === "execution.compaction") {
+		if (row.status === "running") return <TerminalCompactionLine />;
+		if (row.status === "done") return <TerminalCompactionCard row={row} />;
+	}
 	if (row.kind === "reasoning" && row.markdown) {
 		return (
 			<>
@@ -866,6 +940,7 @@ function retainExistingExpandedRows(
 
 function isNavigableTerminalRow(row: CompactTerminalRow, kind: TerminalNavigationKind): boolean {
 	if (kind === "user") return row.kind === "message.user";
+	if (kind === "compaction") return row.kind === "execution.compaction";
 	if (row.status !== "error") return false;
 	return kind === "tool" ? row.errorKind === "tool" : row.errorKind !== "tool";
 }
@@ -899,6 +974,24 @@ function focusTerminalRowAfterScroll(rowId: string): void {
 		if (attempts < 8) requestAnimationFrame(focusRow);
 	};
 	requestAnimationFrame(() => requestAnimationFrame(focusRow));
+}
+
+function focusToolCallReferenceAfterScroll(rowId: string, traceNodeId: string): void {
+	let attempts = 0;
+	const focusReference = () => {
+		const reference = Array.from(document.querySelectorAll<HTMLElement>("[data-pibo-tool-call-reference]"))
+			.find((element) => element.dataset.piboToolCallReference === traceNodeId);
+		const row = Array.from(document.querySelectorAll<HTMLElement>('[data-pibo-component="TerminalRow"]'))
+			.find((element) => element.dataset.rowId === rowId);
+		if (reference && row) {
+			reference.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" });
+			row.focus({ preventScroll: true });
+			return;
+		}
+		attempts += 1;
+		if (attempts < 8) requestAnimationFrame(focusReference);
+	};
+	requestAnimationFrame(() => requestAnimationFrame(focusReference));
 }
 
 function collapsedToolCallPreviewLines(row: { kind: string; lines: CompactTerminalLine[] }) {

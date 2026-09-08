@@ -1,0 +1,1 @@
+[{"status":202,"ms":15.599999904632568,"startTime":120802.2000002861,"serverTiming":[{"name":"chat_lookup","duration":0},{"name":"chat_append","duration":5.72},{"name":"chat_ingest","duration":0},{"name":"chat_ack","duration":8},{"name":"json_serialize","duration":0},{"name":"response_compress","duration":0.1}]}]

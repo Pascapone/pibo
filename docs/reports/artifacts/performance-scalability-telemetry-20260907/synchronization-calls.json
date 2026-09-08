@@ -1,0 +1,22 @@
+{
+  "before": {
+    "message_started": 12,
+    "assistant_delta": 2,
+    "assistant_message": 12,
+    "tool_call": 12,
+    "tool_execution_started": 12,
+    "tool_execution_updated": 1,
+    "tool_execution_finished": 12,
+    "message_finished": 12
+  },
+  "after": {
+    "message_started": 10,
+    "assistant_delta": 2,
+    "assistant_message": 10,
+    "tool_call": 10,
+    "tool_execution_started": 10,
+    "tool_execution_updated": 1,
+    "tool_execution_finished": 10,
+    "message_finished": 10
+  }
+}

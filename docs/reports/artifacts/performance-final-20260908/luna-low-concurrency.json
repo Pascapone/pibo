@@ -1,0 +1,211 @@
+{
+  "at": "2026-09-08T05:59:32.522Z",
+  "model": {
+    "provider": "openai-codex",
+    "id": "gpt-5.6-luna"
+  },
+  "reasoning": "low",
+  "sessions": [
+    {
+      "sid": "ps_d9b0354f-6cf7-49bf-bcfa-c821c1784cd9",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_0",
+      "sentAt": "2026-09-08T05:59:36.321Z",
+      "admissionStatus": 202,
+      "admissionMs": 68.83471800000007,
+      "completedAt": "2026-09-08T05:59:39.184Z"
+    },
+    {
+      "sid": "ps_572fbe82-3112-443a-b59b-24d6a89b99cd",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_1",
+      "sentAt": "2026-09-08T05:59:36.325Z",
+      "admissionStatus": 202,
+      "admissionMs": 70.0138320000001,
+      "completedAt": "2026-09-08T05:59:39.188Z"
+    },
+    {
+      "sid": "ps_210d4278-cd7b-4994-843c-2bd67c8b2241",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_2",
+      "sentAt": "2026-09-08T05:59:36.328Z",
+      "admissionStatus": 202,
+      "admissionMs": 72.10655499999984,
+      "completedAt": "2026-09-08T05:59:39.193Z"
+    },
+    {
+      "sid": "ps_51a6a496-43ee-48c4-8eef-f6b23a1b48f8",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_3",
+      "sentAt": "2026-09-08T05:59:36.184Z",
+      "admissionStatus": 202,
+      "admissionMs": 198.6143030000003,
+      "completedAt": "2026-09-08T05:59:39.198Z"
+    },
+    {
+      "sid": "ps_6b328372-3939-42e3-b139-56df70544ce2",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_4",
+      "sentAt": "2026-09-08T05:59:36.341Z",
+      "admissionStatus": 202,
+      "admissionMs": 75.3180699999998,
+      "completedAt": "2026-09-08T05:59:42.650Z"
+    },
+    {
+      "sid": "ps_560c0381-84b6-4bb6-b054-fce515a88136",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_5",
+      "sentAt": "2026-09-08T05:59:36.345Z",
+      "admissionStatus": 202,
+      "admissionMs": 77.79669200000035,
+      "completedAt": "2026-09-08T05:59:40.304Z"
+    },
+    {
+      "sid": "ps_1ffb33e1-9d01-4e61-8a48-5b3f1d066fa8",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_6",
+      "sentAt": "2026-09-08T05:59:36.335Z",
+      "admissionStatus": 202,
+      "admissionMs": 70.2625009999997,
+      "completedAt": "2026-09-08T05:59:40.309Z"
+    },
+    {
+      "sid": "ps_777ab7ee-a829-4668-9302-962a2df0c9a9",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_7",
+      "sentAt": "2026-09-08T05:59:36.340Z",
+      "admissionStatus": 202,
+      "admissionMs": 70.10320899999988,
+      "completedAt": "2026-09-08T05:59:40.314Z"
+    },
+    {
+      "sid": "ps_ba169fc3-9e8d-4cbb-8e6b-5618a424ff31",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_8",
+      "sentAt": "2026-09-08T05:59:36.348Z",
+      "admissionStatus": 202,
+      "admissionMs": 80.11272800000006,
+      "completedAt": "2026-09-08T05:59:42.665Z"
+    },
+    {
+      "sid": "ps_5b9bd587-44eb-46fe-9c1d-561cf1de6e1f",
+      "verifiedModel": {
+        "provider": "openai-codex",
+        "id": "gpt-5.6-luna"
+      },
+      "verifiedReasoning": "low",
+      "marker": "LUNA_LOW_OK_9",
+      "sentAt": "2026-09-08T05:59:36.352Z",
+      "admissionStatus": 202,
+      "admissionMs": 81.26871800000026,
+      "completedAt": "2026-09-08T05:59:42.669Z"
+    }
+  ],
+  "reads": [
+    {
+      "ms": 287.39786600000025,
+      "status": 200
+    },
+    {
+      "ms": 209.41610500000024,
+      "status": 200
+    },
+    {
+      "ms": 74.94282299999941,
+      "status": 200
+    },
+    {
+      "ms": 86.25866500000029,
+      "status": 200
+    },
+    {
+      "ms": 73.64677000000029,
+      "status": 200
+    },
+    {
+      "ms": 196.2090879999996,
+      "status": 200
+    },
+    {
+      "ms": 174.46306499999992,
+      "status": 200
+    },
+    {
+      "ms": 234.6447820000003,
+      "status": 200
+    },
+    {
+      "ms": 80.17175800000041,
+      "status": 200
+    },
+    {
+      "ms": 82.00918399999955,
+      "status": 200
+    },
+    {
+      "ms": 171.97091699999964,
+      "status": 200
+    },
+    {
+      "ms": 190.00104600000031,
+      "status": 200
+    },
+    {
+      "ms": 69.65593600000102,
+      "status": 200
+    },
+    {
+      "ms": 72.5015510000012,
+      "status": 200
+    },
+    {
+      "ms": 322.0594149999997,
+      "status": 200
+    },
+    {
+      "ms": 313.64696600000025,
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "roomId": "room_564eb93a-a8fb-42e7-b7f7-a2602ae05ffa",
+  "maxConcurrentTurns": 5,
+  "sseFrames": 180,
+  "finishedAt": "2026-09-08T05:59:42.686Z"
+}

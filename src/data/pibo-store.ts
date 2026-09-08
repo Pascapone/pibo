@@ -14,6 +14,8 @@ import { SessionStore } from "./session-store.js";
 
 export type PiboDataStoreOptions = {
 	payloadRootDir?: string;
+	/** Query workers use an existing schema without DDL, migration or file mutation. */
+	readOnly?: boolean;
 };
 
 export class PiboDataStore {
@@ -29,21 +31,22 @@ export class PiboDataStore {
 
 	constructor(path = piboHomePath("pibo.sqlite"), options: PiboDataStoreOptions = {}) {
 		this.path = path === ":memory:" ? path : resolve(path);
-		const insidePiboHome = ensurePrivatePiboHomeForPath(this.path);
-		if (this.path !== ":memory:") mkdirSync(dirname(this.path), { recursive: true });
-		this.db = new DatabaseSync(this.path);
+		const insidePiboHome = !options.readOnly && ensurePrivatePiboHomeForPath(this.path);
+		if (!options.readOnly && this.path !== ":memory:") mkdirSync(dirname(this.path), { recursive: true });
+		this.db = new DatabaseSync(this.path, { readOnly: options.readOnly === true });
+		// Connection-only configuration also protects the initial schema read.
+		this.db.exec("PRAGMA busy_timeout = 5000");
 		try {
 			assertSupportedPiboDataSchemaVersion(this.db);
 		} catch (error) {
 			this.db.close();
 			throw error;
 		}
-		if (insidePiboHome) protectPrivateFileSync(this.path);
-		this.db.exec("PRAGMA busy_timeout = 5000");
+		if (!options.readOnly && insidePiboHome) protectPrivateFileSync(this.path);
 		this.db.exec("PRAGMA foreign_keys = ON");
-		if (this.path !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
-		applyPiboDataSchema(this.db);
-		this.payloads = new PayloadStore(this.db, options.payloadRootDir ?? piboHomePath("payloads"));
+		if (!options.readOnly && this.path !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
+		if (!options.readOnly) applyPiboDataSchema(this.db);
+		this.payloads = new PayloadStore(this.db, options.payloadRootDir ?? piboHomePath("payloads"), options.readOnly);
 		this.eventLog = new PiboEventLogStore(this.db);
 		this.messages = new MessageStore(this.db);
 		this.observations = new ObservationStore(this.db);

@@ -18,15 +18,90 @@
   },
   "records": [
     {
+      "path": "docs/reports/performance-scalability-final-acceptance-2026-09-08.md",
+      "state": "conformant",
+      "classification": "integrated performance and full-content acceptance",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-review-2026-09-08.md",
+      "state": "conformant",
+      "classification": "performance chain regression review",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-storage-final-2026-09-07.md",
+      "state": "conformant",
+      "classification": "storage integration validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-handoff-2026-09-07.md",
+      "state": "conformant",
+      "classification": "implementation handoff",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 14673,
+      "file_sha256": "354842b46d6a718a67d28049e5f55b89a6551e8e017c922c74e8b1d483f1dde9",
+      "body_sha256": "18ce9d29283991191573c1a33f4e568a2d48a49c22ecaf124b5f119d6ef212e1",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-fgh-handoff-2026-09-07.md",
+      "state": "conformant",
+      "classification": "implementation handoff",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 14997,
+      "file_sha256": "4a68abf77b3f7f476f2b198e731b853e9e01ff2eaafee09f9b66fff484fc1f4a",
+      "body_sha256": "756084251c0e8d7a7515cf3ceafa16128ebe984151438dcdcb27af0344a0c975",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-p0-2026-09-06.md",
+      "state": "conformant",
+      "classification": "performance validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 4010,
+      "file_sha256": "9225273e1b72d1dacf836af42702b9cd8614bee119ed2bd0d18c4a91fb4db29a",
+      "body_sha256": "3781dc1a3932de3439fe5bd2f5508be3511c40bc05afcd92a8997cc297c2d475",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/performance-scalability-storage-isolation-2026-09-06.md",
+      "state": "conformant",
+      "classification": "performance validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "file_bytes": 6143,
+      "file_sha256": "0e92d0f980196950765daf01822fe58c821134fb29a25bccff83d852838e8e9a",
+      "body_sha256": "3fda04f9e928e3c51ce0fee50f8b4179e06527664bfa5e24379801a1e3fd2ea0",
+      "lineage": null
+    },
+    {
       "path": "docs/plans/pibo-performance-and-scalability.md",
       "state": "conformant",
       "classification": "performance implementation plan",
       "type": "Plan",
       "authority": "directive",
       "status": "draft",
-      "file_bytes": 42554,
-      "file_sha256": "1413badc0ecb22d27805f0be649e028095483fe2980e027b2db23c82d16465f7",
-      "body_sha256": "86ca3f679b89ab66c27a54a823eb74f0a570f8a99878e4e972f4c304b9e0169d",
+      "file_bytes": 43646,
+      "file_sha256": "a5882a2dceabe19b458ffb79ab1a6a62b95523d7fe400463f42ab3b288d0b1ff",
+      "body_sha256": "47868ec9f2dd824f221f17d8c4947ca583f8c2e2b1f2780004c7e067a2965a23",
       "lineage": null
     },
     {
@@ -12411,9 +12486,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 14783,
-      "file_sha256": "906beb1cf32ac1fe12fa51ffbd5f2e5c0ec619d09054e99080a337348b27880e",
-      "body_sha256": "3dc00b11f4eafdb590d8065b8a894cf47c763a31ac4a31134dda34513c3d6747",
+      "file_bytes": 15449,
+      "file_sha256": "797586e19744d66506709bae2fbafd99a810727ddbdd8f519532d670034608d5",
+      "body_sha256": "cc92de35fbfedf039c11a94995dcbf8a97e98b54ec9eadd9cf8e56af4bb0e5c6",
       "lineage": null
     },
     {
@@ -12447,9 +12522,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 13402,
-      "file_sha256": "834c75e06c480d0bd5a814555cc7c0c9379b63b41c040bb082901d72364121ba",
-      "body_sha256": "bbf12ad251fe85ad7564e187a41fd3113ffdd59110724129570f26fd64b00372",
+      "file_bytes": 17111,
+      "file_sha256": "88937016f7545d3e9647d9e35447c472345a20f410f9b2716e99688575847ad5",
+      "body_sha256": "bdb096b394a4b24245a312a66efa49896f0589e22b19a14b369fc8f797b03819",
       "lineage": null
     },
     {
@@ -13722,6 +13797,102 @@
       "file_bytes": 11022,
       "file_sha256": "037de3a9cc10a968087e53dbeb39826d76ff78095dd5d178720009b96194c56e",
       "body_sha256": "f78f9ca04c8273eaca23c75ab3f827f15b5831d7f61efc605a1fd2fd91a2f700"
+    },
+    {
+      "path": "docs/reports/performance-scalability-commands-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 8085,
+      "file_sha256": "080ae9eb897e3c591b48b1219fbd5d10a856559e13627b0448d6f390ca7973f1",
+      "body_sha256": "0fcd9ca8dc9207b2ff936b5f122820779019911705399a2fd1d8711a01be3cab"
+    },
+    {
+      "path": "docs/specs/runtime/capacity-and-scheduling.md",
+      "state": "conformant",
+      "classification": "current implemented contract",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 11482,
+      "file_sha256": "576365a36477f84d16ede47fd85ff12229b0cd4de281e95f3e2ae67c5b111d56",
+      "body_sha256": "aa51fa7d01dcf3035918f6cf6721a462586c9b011206903b387bff9fe43032ed"
+    },
+    {
+      "path": "docs/reports/performance-scalability-capacity-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 8107,
+      "file_sha256": "3f6cec696dc0fd33e3c429b1dc5f0e7111315c9c6f6acc18fea87b1bec0d5bc5",
+      "body_sha256": "fb973ca5c2ce5ad2b5f6ba64d77af2d4069d8b0b71d741adff69b68d335f3c7b"
+    },
+    {
+      "path": "docs/reports/performance-scalability-telemetry-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 7378,
+      "file_sha256": "8310140b70c1eef07ff09b0fc29b745c2190cace8662c97f4e740c7021d4bd6e",
+      "body_sha256": "290dcc443861e4cd7a9a033cc0d1edfc41a29893bfb40b6a233ac9282d2e9913"
+    },
+    {
+      "path": "docs/reports/performance-scalability-reads-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 10037,
+      "file_sha256": "68debaf262783c1375b7e7784ab3fde9b99b632a227690abb5527ae49d393efe",
+      "body_sha256": "170d66e00f9e6f0ec134ced19ce164583b1446046d1ee9435f4c6c2b4e301a7b"
+    },
+    {
+      "path": "docs/reports/performance-scalability-maintenance-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 6353,
+      "file_sha256": "e0e6f6edb9d0672d7c48b72effc082b0545239857f315c998f397d4f070df35a",
+      "body_sha256": "7f0dcf06028c9e4d409a6e62d3ec639d0af558c448c8486b68d526680cb4b070"
+    },
+    {
+      "path": "docs/reports/performance-scalability-runtime-isolation-decision-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 5305,
+      "file_sha256": "97e5f383757c3b1c1b6432e3282fea20fdf725ae86f99ac452b41457ca25a00d",
+      "body_sha256": "4eb57880bd7a49b1866a23b61534f0daa2afdc884c83a5e8e8a8f07ff1461f1f"
+    },
+    {
+      "path": "docs/reports/performance-scalability-chain-review-2026-09-07.md",
+      "state": "conformant",
+      "classification": "validation evidence",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 16257,
+      "file_sha256": "b5404ab4449ca7da87f7a967553464bed3de2a796a9ed25be504ca963d988fa0",
+      "body_sha256": "dd027ccf08c84846b9990ed9101e098ef549e96fcb3a2c3301284617495a75b5"
     }
   ]
 }

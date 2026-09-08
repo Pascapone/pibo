@@ -1,0 +1,80 @@
+{
+  "at": "2026-09-07T09:35:08.484Z",
+  "node": "v24.15.0",
+  "fixture": {
+    "events": 1000000,
+    "sessions": 2,
+    "payloadBytes": 1024,
+    "requestedSamples": 10000
+  },
+  "scope": "Synthetic worker admission plus fenced immediate dispatch completion. No real provider, HTTP, browser, sustained-rate or full integrated SLO claim. Warm fixture; cache residency unverified.",
+  "elapsedMs": 138790.41163699998,
+  "accepted": 10000,
+  "rejected": 0,
+  "completed": 10100,
+  "admissionMs": {
+    "samples": 10000,
+    "p50": 4.93734399999812,
+    "p95": 8.944596999994246,
+    "p99": 14.304398000007495,
+    "max": 59.359476999990875
+  },
+  "quietMs": {
+    "samples": 5000,
+    "p50": 5.958018000004813,
+    "p95": 10.833085000005667,
+    "p99": 18.835396999988006,
+    "max": 59.359476999990875
+  },
+  "quietBaselineMs": {
+    "samples": 100,
+    "p50": 3.266225999999733,
+    "p95": 4.501382999998896,
+    "p99": 6.358413000001747,
+    "max": 11.677617000001192
+  },
+  "quietP95Ratio": 2.4066125899547592,
+  "peakPendingBytes": 7540,
+  "rssBytes": {
+    "first": 124125184,
+    "last": 211566592,
+    "max": 211566592,
+    "samples": 500
+  },
+  "callerEventLoopMs": {
+    "p99": 17.580031,
+    "max": 26.984447
+  },
+  "storage": {
+    "ready": true,
+    "closed": false,
+    "writer": {
+      "ready": true,
+      "closed": false,
+      "queued": 0,
+      "inFlight": false,
+      "pendingBytes": 0,
+      "oldestAgeMs": 0,
+      "lastResponseAgeMs": 8.970045000023674,
+      "completed": 35401,
+      "rejected": 0,
+      "worker": {
+        "pid": 2052,
+        "operations": 35401,
+        "busyRetries": 0,
+        "lastOperationMs": 0.19450599999981932,
+        "busyTimeoutMs": 10
+      },
+      "limits": {
+        "maxPending": 128,
+        "reservedControlRequests": 8,
+        "reservedControlBytes": 262144,
+        "maxPendingBytes": 8388608,
+        "maxMessageBytes": 4194304,
+        "maxAgeMs": 2000,
+        "agingMs": 100,
+        "startupTimeoutMs": 10000
+      }
+    }
+  }
+}

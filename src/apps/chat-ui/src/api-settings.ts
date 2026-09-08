@@ -53,6 +53,7 @@ export type TelemetryRetentionRunResult = {
 	days: number;
 	applied: boolean;
 	rowsDeleted: number;
+ completed?:boolean;
 	bytesMatched: number;
 	results: Array<{
 		retentionClass: string;

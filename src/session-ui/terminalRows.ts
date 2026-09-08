@@ -1,6 +1,7 @@
 import { compareTraceNodes } from "../shared/trace-nodes.js";
 import type { PiboSessionTraceView, PiboTraceNode, TracePayloadRef } from "../shared/trace-types.js";
 import { parseTraceToolNodeIdentity } from "../shared/trace-tool-identity.js";
+import type { DebugFeatureSettings } from "../shared/debug-features.js";
 import { terminalTextValue } from "./terminalValue.js";
 
 export type CompactTerminalRowStatus = "running" | "done" | "error" | "neutral";
@@ -64,6 +65,13 @@ export type CompactTerminalImagePreview = {
 	mimeType?: string;
 };
 
+export type CompactTerminalToolCallReference = {
+	traceNodeId: string;
+	toolCallId: string;
+	eventId?: string;
+	invocationOrdinal?: number;
+};
+
 export type CompactTerminalDetailItem = {
 	id: string;
 	label: string;
@@ -72,6 +80,7 @@ export type CompactTerminalDetailItem = {
 	output?: unknown;
 	error?: string;
 	linkedPiboSessionId?: string;
+	toolCallReference?: CompactTerminalToolCallReference;
 	payloadRefs?: Partial<Record<"input" | "output" | "reasoning" | "error" | "raw", TracePayloadRef>>;
 	previewOmission?: CompactTerminalPreviewOmission;
 	imagePreviews?: readonly CompactTerminalImagePreview[];
@@ -79,7 +88,11 @@ export type CompactTerminalDetailItem = {
 
 export type CompactTerminalRow = {
 	toolMetrics?: import("../shared/tool-call-metrics.js").ToolCallMetrics;
+	modelInferences?: import("../shared/model-inference-metrics.js").ModelInferenceRecord[];
+	compactionStats?: import("../core/events.js").PiboCompactionStats;
+	compactionMarkdown?: string;
 	isToolCall?: boolean;
+	toolCallReference?: CompactTerminalToolCallReference;
 	id: string;
 	kind: CompactTerminalRowKind;
 	status: CompactTerminalRowStatus;
@@ -97,6 +110,7 @@ export type CompactTerminalRow = {
 	linkedPiboSessionId?: string;
 	forkEntryId?: string;
 	pendingMessageDelivery?: "queue" | "steer";
+	messageDeliveryState?: PiboTraceNode["messageDeliveryState"];
 	startedAt?: string;
 	completedAt?: string;
 	durationMs?: number;
@@ -117,6 +131,7 @@ export type ToolDisplayMode = "default" | "hide" | "slim" | "intent";
 export type BuildTerminalRowsOptions = {
 	showThinking: boolean;
 	debugMode?: boolean;
+	debugFeatures?: DebugFeatureSettings;
 	toolDisplayMode?: ToolDisplayMode;
 };
 
@@ -151,13 +166,14 @@ export function buildCompactTerminalRows(
 ): CompactTerminalRow[] {
 	if (!traceView) return [];
 	const turnById = mapTurnNodes(traceView.nodes);
+	const showToolDebugMetrics = Boolean(options.debugMode && (options.debugFeatures?.toolMetrics ?? true));
 	const flatNodes = flattenTraceNodes(traceView.nodes)
 		.sort((left, right) => compareTraceNodes(left.node, right.node))
 		.filter((item) => item.node.type !== "agent.turn" && (options.showThinking || item.node.type !== "model.reasoning"));
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
 	const reconciled = reconcileConceptualRowCandidates(candidates);
-	const rows = !options.debugMode && (options.toolDisplayMode ?? "default") === "default"
+	const rows = !showToolDebugMetrics && (options.toolDisplayMode ?? "default") === "default"
 		? groupRelatedToolCandidates(reconciled).map((candidate) => candidate.row)
 		: reconciled.map((candidate) => candidate.row);
 	return applyToolDisplayMode(rows, options.toolDisplayMode ?? "default");
@@ -294,16 +310,32 @@ function createRowCandidate(node: PiboTraceNode, turnId?: string): RowCandidate 
 			};
 			break;
 	}
+	const isToolCall = node.type === "tool.call" || node.type === "tool.result" || (node.type === "agent.delegation" && Boolean(node.toolCallId));
+	const reference = isToolCall ? toolCallReference(node) : undefined;
 	return {
 		...candidate,
 		row: {
 			...candidate.row,
 			id: compactTerminalRowIdentity(node),
 			intent: node.intent,
-			isToolCall: node.type === "tool.call" || node.type === "tool.result" || (node.type === "agent.delegation" && Boolean(node.toolCallId)),
+			isToolCall,
+			toolCallReference: reference,
+			expandable: reference || Object.values(node.payloadRefs ?? {}).some(Boolean) ? true : candidate.row.expandable,
 			toolMetrics: node.toolMetrics,
+			modelInferences: node.modelInferences,
 			...debugFields(node),
 		},
+	};
+}
+
+function toolCallReference(node: PiboTraceNode): CompactTerminalToolCallReference | undefined {
+	if (!node.toolCallId) return undefined;
+	const parsed = parseTraceToolNodeIdentity(node.id);
+	return {
+		traceNodeId: node.id,
+		toolCallId: node.toolCallId,
+		eventId: node.eventId ?? parsed?.qualifier?.eventId,
+		invocationOrdinal: node.toolInvocationOrdinal ?? parsed?.qualifier?.invocationOrdinal,
 	};
 }
 
@@ -361,6 +393,7 @@ function reconcileConceptualRowCandidates(candidates: readonly RowCandidate[]): 
 				output: candidate.row.output ?? existing.row.output,
 				error: candidate.row.error ?? existing.row.error,
 				payloadRefs: { ...existing.row.payloadRefs, ...candidate.row.payloadRefs },
+				modelInferences: mergeModelInferences(existing.row.modelInferences, candidate.row.modelInferences),
 				imagePreviews: mergeImagePreviews(existing.row.imagePreviews, candidate.row.imagePreviews),
 			},
 		};
@@ -449,6 +482,17 @@ function assistantPartIndex(rowId: string): number | undefined {
 	return Number.isSafeInteger(index) ? index : undefined;
 }
 
+function mergeModelInferences(
+	existing: CompactTerminalRow["modelInferences"],
+	candidate: CompactTerminalRow["modelInferences"],
+): CompactTerminalRow["modelInferences"] {
+	if (!existing?.length) return candidate;
+	if (!candidate?.length) return existing;
+	const merged = new Map(existing.map((record) => [record.id, record]));
+	for (const record of candidate) merged.set(record.id, record);
+	return [...merged.values()];
+}
+
 function mergeImagePreviews(
 	existing: readonly CompactTerminalImagePreview[] | undefined,
 	candidate: readonly CompactTerminalImagePreview[] | undefined,
@@ -471,6 +515,9 @@ function applyCompletedTurnTiming(
 		if (!turn.completedAt) continue;
 		const turnCandidates = candidates.filter((candidate) => candidate.turnId === turn.id);
 		const finalCandidate = turnCandidates.at(-1);
+		if (finalCandidate && turn.modelInferences?.length) {
+			finalCandidate.row.modelInferences = mergeModelInferences(finalCandidate.row.modelInferences, turn.modelInferences);
+		}
 		if (finalCandidate?.row.kind !== "message.assistant" || finalCandidate.row.status === "running") continue;
 		finalCandidate.row.startedAt = turn.startedAt;
 		finalCandidate.row.completedAt = turn.completedAt;
@@ -508,7 +555,8 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		lines: [{ prefix: "prompt", tokens: [token(text)] }],
 		sourceNodeIds: [node.id],
 		forkEntryId: node.entryId,
-		pendingMessageDelivery: pendingUserMessageDelivery(node),
+		pendingMessageDelivery: pendingUserMessageDelivery(node) ?? (node.status === "running" && node.messageDeliveryState ? "queue" : undefined),
+		messageDeliveryState: node.messageDeliveryState,
 		startedAt: node.startedAt,
 		output: text,
 		payloadRefs: node.payloadRefs,
@@ -813,8 +861,15 @@ function createCompactionRow(node: PiboTraceNode): CompactTerminalRow {
 		input: node.input,
 		output: node.output,
 		error: node.error,
-		expandable: node.input !== undefined || node.output !== undefined || Boolean(node.error),
+		compactionStats: node.compactionStats,
+		compactionMarkdown: compactionMarkdown(node.output),
+		expandable: node.status === "error" && (node.input !== undefined || node.output !== undefined || Boolean(node.error)),
 	};
+}
+
+function compactionMarkdown(value: unknown): string | undefined {
+	if (!isRecord(value)) return undefined;
+	return stringValue(value.summary);
 }
 
 function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {
@@ -1136,13 +1191,17 @@ function createExploringGroup(candidates: readonly RowCandidate[]): CompactTermi
 			}] : []),
 		],
 		sourceNodeIds: candidates.flatMap((candidate) => candidate.row.sourceNodeIds),
+		modelInferences: candidates.reduce<CompactTerminalRow["modelInferences"]>(
+			(records, candidate) => mergeModelInferences(records, candidate.row.modelInferences),
+			undefined,
+		),
 		eventId: firstRow?.eventId,
 		runId: firstRow?.runId,
 		orderSource: firstRow?.orderSource,
 		orderStreamId: firstRow?.orderStreamId,
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
-		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		expandable: detailItems.some((item) => item.toolCallReference || item.input !== undefined || item.output !== undefined || Boolean(item.error)),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
 			visibleLineCount: visibleDetailItems.length,
@@ -1186,13 +1245,17 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 			}] : []),
 		],
 		sourceNodeIds: candidates.flatMap((candidate) => candidate.row.sourceNodeIds),
+		modelInferences: candidates.reduce<CompactTerminalRow["modelInferences"]>(
+			(records, candidate) => mergeModelInferences(records, candidate.row.modelInferences),
+			undefined,
+		),
 		eventId: firstRow?.eventId,
 		runId: firstRow?.runId,
 		orderSource: firstRow?.orderSource,
 		orderStreamId: firstRow?.orderStreamId,
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
-		expandable: detailItems.some((item) => item.input !== undefined || item.output !== undefined || Boolean(item.error)),
+		expandable: detailItems.some((item) => item.toolCallReference || item.input !== undefined || item.output !== undefined || Boolean(item.error)),
 		imagePreviews: detailItems.flatMap((item) => item.imagePreviews ?? []).slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
@@ -1216,6 +1279,7 @@ function detailItemsForGroup(candidates: readonly RowCandidate[], kind: "explori
 			error: candidate.row.error,
 			payloadRefs: candidate.row.payloadRefs,
 			linkedPiboSessionId: candidate.row.linkedPiboSessionId,
+			toolCallReference: candidate.row.toolCallReference,
 			previewOmission: candidate.row.previewOmission,
 			imagePreviews: candidate.row.imagePreviews,
 		};

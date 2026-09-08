@@ -1,0 +1,98 @@
+{
+  "at": "2026-09-08T06:17:48.639Z",
+  "sid": "ps_5d0501d3-bb0a-4550-8257-876b4e114b14",
+  "roomId": "room_e687354d-b59c-49e4-b684-819b24604c8b",
+  "expected": [
+    {
+      "index": 0,
+      "streamId": 1900060,
+      "byteLength": 1048625,
+      "hash": "d873cb7f94eee04bfef15ff6ea64b2b80595152645aaad252a71d8975d7ac941",
+      "marker": "LARGE_CONTENT_COMPLETE_0"
+    },
+    {
+      "index": 1,
+      "streamId": 1900061,
+      "byteLength": 10485809,
+      "hash": "9691dd4f3e8c65d0cc095dcc572b8711d7444c77c340eaedd15ef0b3e73f6099",
+      "marker": "LARGE_CONTENT_COMPLETE_1"
+    }
+  ],
+  "chunks": [
+    {
+      "ms": 38.817739999999986,
+      "bytes": 1048576
+    },
+    {
+      "ms": 12.349923000000018,
+      "bytes": 49
+    },
+    {
+      "ms": 34.195299000000006,
+      "bytes": 1048576
+    },
+    {
+      "ms": 35.65029000000001,
+      "bytes": 1048578
+    },
+    {
+      "ms": 29.074929999999995,
+      "bytes": 1048578
+    },
+    {
+      "ms": 30.810600000000022,
+      "bytes": 1048578
+    },
+    {
+      "ms": 28.879210999999998,
+      "bytes": 1048578
+    },
+    {
+      "ms": 32.81340499999999,
+      "bytes": 1048578
+    },
+    {
+      "ms": 34.01896599999998,
+      "bytes": 1048578
+    },
+    {
+      "ms": 41.836027,
+      "bytes": 1048578
+    },
+    {
+      "ms": 46.71485999999999,
+      "bytes": 1048578
+    },
+    {
+      "ms": 44.09999400000004,
+      "bytes": 1048578
+    },
+    {
+      "ms": 8.349784,
+      "bytes": 31
+    }
+  ],
+  "reconstructed": [
+    {
+      "bytes": 1048625,
+      "hash": "d873cb7f94eee04bfef15ff6ea64b2b80595152645aaad252a71d8975d7ac941"
+    },
+    {
+      "bytes": 10485809,
+      "hash": "9691dd4f3e8c65d0cc095dcc572b8711d7444c77c340eaedd15ef0b3e73f6099"
+    }
+  ],
+  "downloads": [
+    {
+      "bytes": 1048625,
+      "hash": "d873cb7f94eee04bfef15ff6ea64b2b80595152645aaad252a71d8975d7ac941",
+      "attachment": true
+    },
+    {
+      "bytes": 10485809,
+      "hash": "9691dd4f3e8c65d0cc095dcc572b8711d7444c77c340eaedd15ef0b3e73f6099",
+      "attachment": true
+    }
+  ],
+  "replayedReferences": 2
+}

@@ -1,0 +1,16 @@
+{
+  "id": "lease_5e618753e7164cd56d",
+  "slotId": "slot-01",
+  "holder": "ps_87cdcbbc-3dde-4266-889f-a87fb5a6a786",
+  "seedMode": "full",
+  "artifactSha256": "b34af424f0a7c919d1dd71f10f6d07b190a22002bb19b6cb1b0cee19d6a5c54c",
+  "artifactRuntimePath": "/opt/pibo-candidates/performance-commands/cf81614f/runtime",
+  "packageVersion": "1.7.2",
+  "commit": "cf81614fef17fd32ccf48427e2a2065ba8845cf7",
+  "containerName": "pibo-pool-slot-01",
+  "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+  "status": "released",
+  "createdAt": "2026-09-07T08:37:47.914Z",
+  "expiresAt": "2026-09-07T09:37:47.914Z",
+  "releasedAt": "2026-09-07T08:57:46.211Z"
+}

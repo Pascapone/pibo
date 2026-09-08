@@ -1,0 +1,104 @@
+{
+  "at": "2026-09-07T10:37:27.741Z",
+  "scope": "Synthetic storage-worker/telemetry contention. Diagnostic SQL statement executions classify UPSERT by its leading INSERT verb; these are not physical row-insert counts. WAL size is observed file length, not fsync count or cumulative WAL writes. No provider, browser, output retry orchestration or full integrated capacity claim.",
+  "requestedSeconds": 30,
+  "elapsedMs": 30036.707972,
+  "payloadBytes": 65536,
+  "sessions": 10,
+  "generated": {
+    "deltas": 14991,
+    "outputs": 2998,
+    "admissions": 149
+  },
+  "completedCommands": 149,
+  "simulatedImmediateCommandCompletion": true,
+  "admissionMs": {
+    "count": 149,
+    "p95": 8.315730999999971,
+    "p99": 10.540323000000171,
+    "max": 11.128962000002502
+  },
+  "outputMs": {
+    "count": 2998,
+    "p95": 14.818025999999918,
+    "p99": 18.615062000000762,
+    "max": 32.24654999999984
+  },
+  "failures": {},
+  "producerRefused": 0,
+  "peakPending": 6,
+  "peakTelemetryBytes": 77694,
+  "telemetry": {
+    "mode": "worker",
+    "closed": false,
+    "queued": 0,
+    "inFlight": 0,
+    "pendingBytes": 0,
+    "oldestAgeMs": 0,
+    "accepted": 15011,
+    "completed": 15011,
+    "rejected": 0,
+    "failed": 0,
+    "expired": 0,
+    "batches": 1328,
+    "maxBatchMs": 10.847943000000669,
+    "worker": {
+      "pid": 1417,
+      "threadId": 1,
+      "transactions": 1307,
+      "operations": 15011,
+      "busy": 21,
+      "rssBytes": 258674688,
+      "heapUsedBytes": 11209232,
+      "synchronous": "FULL",
+      "measurements": {
+        "message_started": {
+          "operations": 10,
+          "sql": {
+            "select": 60,
+            "insert": 20
+          },
+          "executionMs": 9.040677000000017
+        },
+        "assistant_delta": {
+          "operations": 14991,
+          "sql": {
+            "select": 18641,
+            "insert": 910
+          },
+          "executionMs": 1669.5053609998226
+        },
+        "message_finished": {
+          "operations": 10,
+          "sql": {
+            "select": 160,
+            "insert": 40
+          },
+          "executionMs": 13.496083999998518
+        }
+      },
+      "walBytes": 4255992
+    },
+    "transport": {
+      "ready": true,
+      "closed": false
+    },
+    "limits": {
+      "count": 1024,
+      "bytes": 4194304,
+      "ageMs": 2000,
+      "batchCount": 64,
+      "batchBytes": 262144,
+      "batchTimeMs": 8
+    }
+  },
+  "loopMs": {
+    "p99": 11.853823,
+    "max": 13.377535
+  },
+  "rssBytes": {
+    "first": 90046464,
+    "last": 258543616,
+    "max": 258543616
+  }
+}

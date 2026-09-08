@@ -1,0 +1,11 @@
+{
+  "scanned": 167886,
+  "accepted": 349,
+  "withClientTxn": 339,
+  "emptyClientTxn": 0,
+  "missingScope": 0,
+  "canonical": 339,
+  "noncanonical": 0,
+  "lastStreamId": 987972,
+  "compatible": true
+}

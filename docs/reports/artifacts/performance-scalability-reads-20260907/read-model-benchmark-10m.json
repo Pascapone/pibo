@@ -1,0 +1,150 @@
+{
+  "at": "2026-09-07T18:42:21.036Z",
+  "scope": "Synthetic worker reads and concurrent durable admission with immediate fenced completion; no HTTP, browser, provider, sustained-rate or cold-cache claim.",
+  "fixture": {
+    "events": 10000000,
+    "sessions": 10000,
+    "samples": 500
+  },
+  "startupMs": 311.05115499999374,
+  "elapsedMs": 24719.00908799999,
+  "accepted": 500,
+  "completed": 500,
+  "errors": {},
+  "timings": {
+    "trace": {
+      "samples": 500,
+      "p95": 6.004002999980003,
+      "p99": 7.440148999972735,
+      "max": 87.29019299999345
+    },
+    "admission": {
+      "samples": 500,
+      "p95": 12.32414099999005,
+      "p99": 16.513214999984484,
+      "max": 114.50881199998548
+    },
+    "history": {
+      "samples": 500,
+      "p95": 22.685993999999482,
+      "p99": 28.64881799998693,
+      "max": 163.49566499999491
+    },
+    "unread": {
+      "samples": 50,
+      "p95": 46.82669000001624,
+      "p99": 178.92079900001409,
+      "max": 178.92079900001409
+    },
+    "coverage": {
+      "samples": 500,
+      "p95": 36.3070669999579,
+      "p99": 45.91185599996243,
+      "max": 179.92974099999992
+    },
+    "timings": {
+      "samples": 500,
+      "p95": 53.094599000003655,
+      "p99": 67.41146400000434,
+      "max": 265.54317199997604
+    },
+    "navigationAllPages": {
+      "samples": 50,
+      "p95": 375.1044070000062,
+      "p99": 574.6051270000171,
+      "max": 574.6051270000171
+    }
+  },
+  "maximumJsonBytes": {
+    "trace": 35824,
+    "admission": 16,
+    "history": 18490,
+    "unread": 511,
+    "coverage": 186,
+    "timings": 30,
+    "navigationAllPages": 4420001
+  },
+  "callerEventLoopMs": {
+    "p99": 17.399807,
+    "max": 30.064639
+  },
+  "rssBytes": {
+    "start": 316493824,
+    "end": 419315712
+  },
+  "reader": {
+    "ready": true,
+    "closed": false,
+    "exited": false,
+    "queued": 0,
+    "inFlight": false,
+    "pendingBytes": 0,
+    "oldestAgeMs": 0,
+    "lastResponseAgeMs": 7.175770999980159,
+    "completed": 3101,
+    "rejected": 0,
+    "worker": {
+      "pid": 6631,
+      "threadId": 1,
+      "operations": 3101,
+      "readOnly": true,
+      "maintenance": {
+        "cursor": 0,
+        "target": 0,
+        "event_cursor": 0,
+        "event_target": 0,
+        "paused": false,
+        "historyComplete": true,
+        "unreadComplete": true,
+        "complete": true,
+        "failures": 0
+      }
+    },
+    "limits": {
+      "maxPending": 64,
+      "admissionWindowMs": 0,
+      "reservedControlRequests": 2,
+      "reservedControlBytes": 16384,
+      "maxPendingBytes": 1048576,
+      "maxMessageBytes": 4194304,
+      "maxAgeMs": 2000,
+      "agingMs": 100,
+      "startupTimeoutMs": 10000
+    },
+    "restarts": 0
+  },
+  "writer": {
+    "ready": true,
+    "closed": false,
+    "writer": {
+      "ready": true,
+      "closed": false,
+      "exited": false,
+      "queued": 0,
+      "inFlight": false,
+      "pendingBytes": 0,
+      "oldestAgeMs": 0,
+      "lastResponseAgeMs": 1.5634459999855608,
+      "completed": 2001,
+      "rejected": 0,
+      "worker": {
+        "pid": 6631,
+        "operations": 2001,
+        "busyRetries": 0,
+        "lastOperationMs": 0.17388899996876717,
+        "busyTimeoutMs": 10
+      },
+      "limits": {
+        "maxPending": 128,
+        "admissionWindowMs": 1,
+        "reservedControlRequests": 8,
+        "reservedControlBytes": 262144,
+        "maxPendingBytes": 8388608,
+        "maxMessageBytes": 4194304,
+        "maxAgeMs": 2000,
+        "agingMs": 100,
+        "startupTimeoutMs": 10000
+      }
+    }
+  }
+}

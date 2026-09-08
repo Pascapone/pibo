@@ -9,6 +9,7 @@ import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatTimelineQueryService } from "../dist/apps/chat/data/timeline-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
+import { ChatReadProjectionStore } from "../dist/data/chat-read-projections.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { qualifiedHistoryToolNodeId } from "../dist/shared/trace-tool-identity.js";
 
@@ -545,7 +546,7 @@ test("V2-native chat services cover rooms, sessions, timeline, commands, and rea
 	store.close();
 });
 
-test("unread counts drive the partial index from read cursors across deduplicated batches", () => {
+test("unread counts serve the maintained projection and keep the indexed fallback until backfill completes", () => {
 	const store = tempStore("pibo-chat-v2-unread-range-");
 	try {
 		const commands = new ChatEventCommandService(store);
@@ -574,28 +575,50 @@ test("unread counts drive the partial index from read cursors across deduplicate
 
 		const fillerIds = Array.from({ length: 399 }, (_, index) => `ps_unread_range_filler_${index}`);
 		const uniqueIds = [targetSessionId, ...fillerIds, missingReadStateSessionId];
-		let unreadSql;
-		const originalPrepare = store.db.prepare.bind(store.db);
-		store.db.prepare = (sql) => {
-			if (!unreadSql && sql.includes("WITH requested(session_id)")) unreadSql = sql;
-			return originalPrepare(sql);
-		};
-		const counts = readState.countUnreadMessagesBySession({
-			piboSessionIds: [...uniqueIds, targetSessionId, missingReadStateSessionId],
-		});
-		store.db.prepare = originalPrepare;
-
-		assert.deepEqual([...counts.entries()].sort(), [
+		const requestedIds = [...uniqueIds, targetSessionId, missingReadStateSessionId];
+		const expectedCounts = [
 			[missingReadStateSessionId, 1],
 			[targetSessionId, 3],
-		]);
-		assert.ok(unreadSql, "expected the unread-count query to be captured");
-		const details = originalPrepare(`EXPLAIN QUERY PLAN ${unreadSql}`)
+		];
+		const captureUnreadSql = () => {
+			let unreadSql;
+			const originalPrepare = store.db.prepare.bind(store.db);
+			store.db.prepare = (sql) => {
+				if (!unreadSql && sql.includes("WITH requested(session_id)")) unreadSql = sql;
+				return originalPrepare(sql);
+			};
+			try {
+				const counts = readState.countUnreadMessagesBySession({ piboSessionIds: requestedIds });
+				return { counts, unreadSql };
+			} finally {
+				store.db.prepare = originalPrepare;
+			}
+		};
+
+		// The maintained projection is the default read path once its backfill is complete.
+		const projected = captureUnreadSql();
+		assert.deepEqual([...projected.counts.entries()].sort(), expectedCounts);
+		assert.equal(projected.unreadSql, undefined, "completed unread projection must not scan event history");
+
+		// An interrupted backfill falls back to the indexed range scan over the read cursors.
+		store.db.exec("UPDATE chat_read_backfill SET event_cursor=0, event_target=(SELECT COALESCE(MAX(stream_id), 0) FROM event_log)");
+		const fallback = captureUnreadSql();
+		assert.deepEqual([...fallback.counts.entries()].sort(), expectedCounts);
+		assert.ok(fallback.unreadSql, "expected the unread-count fallback query to be captured");
+		const details = store.db.prepare(`EXPLAIN QUERY PLAN ${fallback.unreadSql}`)
 			.all(...uniqueIds.slice(0, 400))
 			.map((row) => String(row.detail));
 		assert.ok(details.some((detail) =>
 			detail.includes("idx_event_log_unread_session_stream")
 			&& /session_id=\?.*stream_id>\?/i.test(detail)), details.join("\n"));
+
+		// The resumable backfill restores the projection path with identical counts.
+		const projections = new ChatReadProjectionStore(store.db);
+		for (let step = 0; step < 100 && !projections.status().unreadComplete; step++) projections.step(128, 20);
+		assert.equal(projections.status().unreadComplete, true);
+		const resumed = captureUnreadSql();
+		assert.deepEqual([...resumed.counts.entries()].sort(), expectedCounts);
+		assert.equal(resumed.unreadSql, undefined, "resumed unread projection must not scan event history");
 	} finally {
 		store.close();
 	}

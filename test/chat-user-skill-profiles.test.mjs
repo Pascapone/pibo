@@ -45,9 +45,10 @@ test("web gateway registers user skills before custom agent profiles are used", 
 
 	const warnings = [];
 	const originalWarn = console.warn;
+	let registry;
 	try {
 		console.warn = (...args) => warnings.push(args.join(" "));
-		const registry = createWebPiboPluginRegistry({
+		registry = createWebPiboPluginRegistry({
 			authMode: "local",
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
@@ -63,6 +64,7 @@ test("web gateway registers user skills before custom agent profiles are used", 
 		assert.deepEqual(warnings, []);
 	} finally {
 		console.warn = originalWarn;
+		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
 		await rm(dir, { recursive: true, force: true }).catch((error) => {
 			if (error?.code !== "EBUSY") throw error;
 		});
@@ -79,9 +81,10 @@ test("web gateway startup survives a malformed user skill store", async () => {
 	createSkill(new UserSkillManager(workspaceRoot, "workspace"), "workspace-helper");
 	const warnings = [];
 	const originalWarn = console.warn;
+	let registry;
 	try {
 		console.warn = (...args) => warnings.push(args.join(" "));
-		const registry = createWebPiboPluginRegistry({
+		registry = createWebPiboPluginRegistry({
 			authMode: "local",
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
@@ -92,6 +95,7 @@ test("web gateway startup survives a malformed user skill store", async () => {
 		assert.match(warnings[0], /Unsupported user skills store/);
 	} finally {
 		console.warn = originalWarn;
+		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
 		await rm(dir, { recursive: true, force: true }).catch((error) => {
 			if (error?.code !== "EBUSY") throw error;
 		});

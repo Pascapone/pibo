@@ -200,13 +200,16 @@ export function resolveSessionTraceModelBadge(input: {
 		? findSessionNode(input.bootstrap.sessions, input.selectedPiboSessionId)
 		: undefined;
 	const traceThinkingState = resolveTraceThinkingState(input.currentTraceView);
+	const selectedRuntimeStatus = input.bootstrap.runtimeStatus?.piboSessionId === input.selectedPiboSessionId
+		? input.bootstrap.runtimeStatus
+		: undefined;
 	return formatSessionModelBadge(
 		input.selectedSessionActiveModel,
-		input.bootstrap.runtimeStatus?.thinkingLevel
+		selectedRuntimeStatus?.thinkingLevel
 			?? traceThinkingState.level
 			?? selectedSessionNode?.initialThinkingLevel
 			?? resolveSessionThinkingLevel(input.bootstrap, input.selectedSessionProfile, Boolean(selectedSessionNode?.parentId)),
-		input.bootstrap.runtimeStatus?.fastMode
+		selectedRuntimeStatus?.fastMode
 			?? traceThinkingState.fast
 			?? resolveSessionFastMode(input.bootstrap, input.selectedSessionProfile, Boolean(selectedSessionNode?.parentId))
 			?? false,
@@ -218,6 +221,7 @@ export function createSessionTraceViewProps(input: {
 	isLoading: boolean;
 	showThinking: boolean;
 	debugMode?: boolean;
+	debugFeatures?: ChatSessionViewProps["debugFeatures"];
 	toolMetricThresholds?: ChatSessionViewProps["toolMetricThresholds"];
 	expandThinking: boolean;
 	toolDisplayMode: ChatSessionViewProps["toolDisplayMode"];
@@ -229,6 +233,7 @@ export function createSessionTraceViewProps(input: {
 	signals?: PiboSignalSnapshot;
 	sessionGoal?: PiboLoopJob | null;
 	selectedPiboSessionId: string | null;
+	targetToolCallNodeId?: string;
 	workflowSessionLinked: boolean;
 	sessionNodes: readonly PiboWebSessionNode[];
 	sessionLinks: SessionTraceViewLinks;
@@ -253,6 +258,7 @@ export function createSessionTraceViewProps(input: {
 		isLoading: input.isLoading,
 		showThinking: input.showThinking,
 		debugMode: input.debugMode,
+		debugFeatures: input.debugFeatures,
 		toolMetricThresholds: input.toolMetricThresholds,
 		expandThinking: input.expandThinking,
 		toolDisplayMode: input.toolDisplayMode,
@@ -264,6 +270,7 @@ export function createSessionTraceViewProps(input: {
 		signals: input.signals,
 		sessionGoal: input.sessionGoal,
 		selectedPiboSessionId: input.selectedPiboSessionId,
+		targetToolCallNodeId: input.targetToolCallNodeId,
 		workflowSessionLinked: input.workflowSessionLinked,
 		sessionNodes: input.sessionNodes,
 		sessionBreadcrumbs: input.sessionLinks.sessionBreadcrumbs,

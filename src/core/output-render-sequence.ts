@@ -451,6 +451,7 @@ function validOutputPartIndex(value: unknown): value is number {
 export function outputIdentityFingerprint(event: PiboOutputEvent): string {
 	const payload = { ...event } as Record<string, unknown>;
 	delete payload.renderSequence;
+	delete payload.compactionStats;
 	return createHash("sha256").update(stableJson(payload)).digest("hex");
 }
 
@@ -462,6 +463,7 @@ export function outputPartFingerprint(event: PiboOutputEvent): string {
 	delete payload.usageIndex;
 	delete payload.compactionIndex;
 	delete payload.contentIndex;
+	delete payload.compactionStats;
 	return createHash("sha256").update(stableJson(payload)).digest("hex");
 }
 

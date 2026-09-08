@@ -1082,7 +1082,6 @@ export class RoutedSession {
 			const assistantMessageFailed = assistantMessageEnded && normalized?.type === "session_error";
 			if (assistantMessageEnded && !assistantMessageFailed) this.flushPendingProviderWebSearchFinishes();
 			const usageEvent = assistantMessageEnded ? normalizeAssistantUsageEvent(this.piboSessionId, candidate?.message as AssistantErrorMessage) : undefined;
-			if (usageEvent) this.emit(this.withActiveMessage(usageEvent));
 			// Pi gets the first chance to recover through its short retry/compaction loop.
 			// Keep the final error pending so the routed turn can continue durable recovery.
 			if (assistantMessageEnded && normalized?.type === "session_error") {
@@ -1104,6 +1103,7 @@ export class RoutedSession {
 					this.emit(this.withActiveMessage(normalized));
 				}
 			}
+			if (usageEvent) this.emit(this.withActiveMessage(usageEvent));
 			if (this.forwardPiEvents) {
 				this.emit({ type: "pi_event", piboSessionId: this.piboSessionId, event });
 			}

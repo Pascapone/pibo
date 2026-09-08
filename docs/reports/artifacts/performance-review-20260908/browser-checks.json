@@ -1,0 +1,23 @@
+{
+  "at": "2026-09-08T04:12:00Z",
+  "browser": "remote headed Chrome through Browser Use and loopback CDP",
+  "B": {
+    "selectedSessionReloaded": true,
+    "composerPresent": true,
+    "persistedPromptPresent": true,
+    "providerError": "refresh_token_reused"
+  },
+  "F": {
+    "selectedSessionReloaded": true,
+    "composerPresent": true,
+    "persistedPromptPresent": true,
+    "providerError": "refresh_token_reused"
+  },
+  "limitation": "No successful provider output; screenshots retained privately because the seed sidebar contains unrelated session titles.",
+  "G": {
+    "selectedSessionReloaded": true,
+    "composerPresent": true,
+    "persistedPromptPresent": true,
+    "providerError": "refresh_token_reused"
+  }
+}

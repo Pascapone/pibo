@@ -31,7 +31,7 @@ import { workflowSessionKindFromMetadata, type PiboWorkflowSessionKind } from ".
 
 export type PiboWebSessionStatus = "idle" | "running" | "error";
 
-export const TRACE_PROJECTION_VERSION = "runtime-history-v2-incomplete-status";
+export const TRACE_PROJECTION_VERSION = "runtime-history-v2-debug-metrics";
 
 export type PiboWebDerivedSessionNode = {
 	piboSessionId: string;

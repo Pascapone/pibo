@@ -39,4 +39,18 @@ test("runtime output validator accepts every declared variant and requires each 
 	}
 	assert.equal(isPiboOutputEvent({ ...base, type: "text_message", text: "legacy" }), false);
 	assert.equal(isPiboOutputEvent({ ...base, type: "assistant_message" }), false);
+	assert.equal(isPiboOutputEvent({
+		...base,
+		type: "compaction_end",
+		reason: "limit",
+		aborted: false,
+		compactionStats: { toolCallCount: 3, maxToolOutputTokens: 10, maxToolOutputTokenBasis: "chars/4", compactionTokens: 90_000 },
+	}), true);
+	assert.equal(isPiboOutputEvent({
+		...base,
+		type: "compaction_end",
+		reason: "limit",
+		aborted: false,
+		compactionStats: { toolCallCount: -1 },
+	}), false);
 });

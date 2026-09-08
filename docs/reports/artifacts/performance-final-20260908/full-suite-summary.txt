@@ -1,0 +1,9 @@
+﹣ lifetime pressure monitoring terminates the isolated workload as resource_limited (0.289615ms) # SKIP
+ℹ tests 2905
+ℹ suites 13
+ℹ pass 2895
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 10
+ℹ todo 0
+ℹ duration_ms 582074.200393

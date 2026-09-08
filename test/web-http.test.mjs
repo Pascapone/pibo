@@ -1,3 +1,5 @@
+import {EventEmitter} from "node:events";
+import {setTimeout as delay} from "node:timers/promises";
 import assert from "node:assert/strict";
 import { gunzipSync } from "node:zlib";
 import { createServer, request as httpRequest } from "node:http";
@@ -236,3 +238,26 @@ test("nodeRequestToWebRequest rejects oversized request bodies", async () => {
 		(error) => error instanceof PiboWebHttpError && error.statusCode === 413,
 	);
 });
+
+ test('streaming HTTP waits for socket drain before pulling another frame and splits large writes',async()=>{
+  class SocketResponse extends EventEmitter {
+   writableEnded=false;destroyed=false;allow=false;writes=[];
+   writeHead(){}
+   write(bytes){this.writes.push(bytes.length);return this.allow;}
+   end(){this.writableEnded=true;}
+   destroy(){this.destroyed=true;this.emit('close');}
+  }
+  const response=new SocketResponse();let pulls=0;
+  const body=new ReadableStream({pull(c){if(++pulls<=2)c.enqueue(new Uint8Array(128*1024));else c.close();}},{highWaterMark:0});
+  const sending=sendWebResponse(response,new Response(body,{headers:{'content-type':'text/event-stream'}}));
+  await delay(20);assert.equal(pulls,1);assert.deepEqual(response.writes,[64*1024]);
+  response.allow=true;response.emit('drain');await sending;
+  assert.deepEqual(response.writes,[64*1024,64*1024,64*1024,64*1024]);assert.equal(response.writableEnded,true);
+ });
+ test('aborting a backpressured HTTP stream cancels its reader without waiting for socket drain',async()=>{
+  class SocketResponse extends EventEmitter {writableEnded=false;destroyed=false;writeHead(){}write(){return false;}end(){this.writableEnded=true;}destroy(){this.destroyed=true;this.emit('close');}}
+  const response=new SocketResponse();let canceled=false;const abort=new AbortController();
+  const body=new ReadableStream({pull(c){c.enqueue(new Uint8Array(1));},cancel(){canceled=true;}},{highWaterMark:0});
+  const sending=sendWebResponse(response,new Response(body,{headers:{'content-type':'text/event-stream'}}),{signal:abort.signal});
+  await delay(10);abort.abort();await sending;assert.equal(canceled,true);assert.equal(response.destroyed,true);
+ });
