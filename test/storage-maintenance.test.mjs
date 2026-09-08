@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -22,31 +22,63 @@ test("bounded storage status and verification report positive, partial, and WAL-
 		assert.equal(status.readOnly, true); assert.equal(status.health, "degraded"); assert.equal(status.wal.pressure, true);
 		assert.ok(status.rows.find((row) => row.name === "generated_large_store").boundedCount >= 64);
 		const partialStarted = Date.now();
-		const partial = await verifyStorage({ path: f.path, mode: "full", timeoutMs: 1 });
-		assert.equal(partial.status, "partial"); assert.equal(partial.healthy, false); assert.ok(Date.now() - partialStarted < 1000);
+		const partial = await verifyStorage({ path: f.path, mode: "full", timeoutMs: 20, testNativeLongRunning: true });
+		assert.equal(partial.status, "partial"); assert.equal(partial.healthy, false); assert.equal(partial.reason, "timeout");
+		assert.ok(partial.progress.some((item) => item.stage === "integrity_check"));
+		assert.ok(partial.progress.some((item) => item.stage === "terminated"));
+		assert.ok(Date.now() - partialStarted < 2000);
 		f.store.db.prepare("INSERT INTO generated_large_store VALUES(zeroblob(16))").run();
 		const complete = await verifyStorage({ path: f.path, mode: "quick", timeoutMs: 10_000 });
 		assert.equal(complete.status, "complete"); assert.equal(complete.healthy, true); assert.ok(complete.progress.length >= 2);
 	} finally { f.store.close(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-test("checkpoint and retention are dry-run by default; apply is bounded and reconciles only newly released payloads", async () => {
+test("checkpoint and retention are dry-run by default; apply is bounded, audited, and retains orphan payloads", async () => {
 	const f = fixture();
 	try {
 		const payload = f.store.payloads.writePayload({ value: "live payload ".repeat(2000), contentType: "text/plain", retentionClass: "live_delta" });
 		f.store.eventLog.appendEvent({ sessionId: "ps_storage", sessionSequence: 1, topic: "pibo.output", type: "assistant_delta", source: "test", retentionClass: "live_delta", payloadRef: payload.id, createdAt: "2025-01-01T00:00:00Z" });
 		f.store.eventLog.appendEvent({ sessionId: "ps_storage", sessionSequence: 2, topic: "pibo.output", type: "assistant_message", source: "test", idempotencyKey: "keep-idempotency", retentionClass: "chat_message", attributes: { inlinePayload: "keep" }, createdAt: "2025-01-01T00:00:00Z" });
+		f.store.eventLog.appendEvent({ sessionId: "ps_storage", sessionSequence: 3, topic: "pibo.output", type: "assistant_delta", source: "test", idempotencyKey: "keep-live-delta-evidence", retentionClass: "live_delta", createdAt: "2025-01-01T00:00:00Z" });
 		const plan = await maintainStorageRetention({ path: f.path, before: "2026-01-01T00:00:00Z", limit: 1, payloadRoot: f.payloadRoot });
 		assert.equal(plan.mode, "dry-run"); assert.equal(plan.eligible, 1);
 		assert.equal(plan.plan.find((item) => item.retentionClass === "trace_event").disposition, "deferred_requires_policy");
-		assert.equal(f.store.eventLog.listEvents({ sessionId: "ps_storage" }).length, 2);
+		assert.equal(f.store.eventLog.listEvents({ sessionId: "ps_storage" }).length, 3);
 		const checkpointPlan = checkpointStorage({ path: f.path }); assert.equal(checkpointPlan.mutation, false);
 		const applied = await maintainStorageRetention({ path: f.path, before: "2026-01-01T00:00:00Z", limit: 1, apply: true, payloadRoot: f.payloadRoot });
-		assert.equal(applied.deleted, 1); assert.equal(applied.payloads.removedMetadata, 1);
+		assert.equal(applied.deleted, 1); assert.equal(applied.payloads.action, "report_only");
+		assert.equal(applied.payloads.unreferencedCandidates, 1); assert.equal(f.store.payloads.readPayloadText(payload.id), "live payload ".repeat(2000));
 		assert.ok(f.store.eventLog.findByIdempotencyKey("keep-idempotency"));
+		assert.ok(f.store.eventLog.findByIdempotencyKey("keep-live-delta-evidence"));
+		const audit = f.store.db.prepare("SELECT status, details_json FROM storage_maintenance_audit WHERE id = ?").get(applied.auditId);
+		assert.equal(audit.status, "complete"); assert.equal(JSON.parse(audit.details_json).deleted, 1);
 		const checkpoint = checkpointStorage({ path: f.path, mode: "passive", apply: true }); assert.equal(checkpoint.mutation, true);
 		const status = inspectStorageStatus({ path: f.path }); assert.ok(status.last.retention); assert.ok(status.last.checkpoint);
 	} finally { f.store.close(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("payload-reference status scans are explicitly bounded", () => {
+	const f = fixture();
+	try {
+		const insert = f.store.db.prepare("INSERT INTO payloads (id, sha256, storage_kind, content_type, encoding, byte_size, retention_class, created_at) VALUES (?, ?, 'inline', 'text/plain', 'identity', 1, 'live_delta', '2025-01-01T00:00:00Z')");
+		f.store.db.exec("BEGIN");
+		try { for (let index = 0; index < 10_005; index += 1) insert.run(`sample-${index}`, `hash-${index}`); f.store.db.exec("COMMIT"); }
+		catch (error) { f.store.db.exec("ROLLBACK"); throw error; }
+		const started = Date.now(); const status = inspectStorageStatus({ path: f.path });
+		assert.equal(status.payloads.rows, 10_000); assert.equal(status.payloads.rowsComplete, false);
+		assert.equal(status.payloads.sampledRows, 1000); assert.equal(status.payloads.integrityComplete, false);
+		assert.equal(status.sizes.payloadStoreSampleComplete, false); assert.ok(Date.now() - started < 2000);
+	} finally { f.store.close(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+test("checkpoint refuses missing paths and invalid runtime modes", () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-storage-checkpoint-"));
+	try {
+		const missing = join(root, "missing.sqlite");
+		assert.throws(() => checkpointStorage({ path: missing, apply: true }), /does not exist/);
+		assert.equal(existsSync(missing), false);
+		const f = fixture(); try { assert.throws(() => checkpointStorage({ path: f.path, mode: "invalid", apply: true }), /mode must/); } finally { f.store.close(); rmSync(f.root, { recursive: true, force: true }); }
+	} finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("real temporary-store CLI exposes status, bounded verification, dry-run retention, and explicit checkpoint apply", async () => {
