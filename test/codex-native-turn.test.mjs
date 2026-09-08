@@ -132,6 +132,27 @@ test("Codex native turn sessions pass the reusable runtime-adapter contract", as
 	assert.equal(result.events.some((event) => event.type === "usage"), true);
 });
 
+test("Codex emits each model step once with a durable target, including equal usages and interrupted turns", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "step-usage");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "[usage-steps]", source: "rpc" });
+	const usages = events.filter((event) => event.type === "usage");
+	assert.equal(usages.length, 3);
+	assert.equal(new Set(usages.map((event) => event.inferenceId)).size, 3);
+	assert.deepEqual(usages.map((event) => event.usage.totalTokens), [20, 20, 20]);
+	assert.match(usages[0].target.toolCallId, /-parallel$/);
+	assert.match(usages[1].target.toolCallId, /-next$/);
+	assert.deepEqual(usages[2].target, { type: "assistant", contentIndex: 0 });
+	assert.ok(events.indexOf(usages[0]) < events.findIndex((event) => event.type === "tool_execution_finished"));
+	assert.ok(events.indexOf(usages[1]) < events.findIndex((event) => event.type === "assistant_message"));
+	events.length = 0;
+	await session.prompt({ text: "[usage-steps-interrupted]", source: "rpc" });
+	assert.equal(events.filter((event) => event.type === "usage").length, 2);
+	assert.ok(events.filter((event) => event.type === "usage").every((event) => !usages.some((old) => old.inferenceId === event.inferenceId)));
+});
+
 test("Codex native normalizes assistant, reasoning, usage, terminal ordering, and durable restart resume", async (t) => {
 	const root = await testRoot(t);
 	const { registry, instanceId } = createAdapter(root, "codex-native-streaming");
@@ -474,11 +495,20 @@ test("Codex native events flow through generic routed orchestration with correla
 		type: "message",
 		piboSessionId,
 		id: "codex-routed-message-2",
-		text: "restart-resumed",
+		text: "[usage-steps] restart-resumed",
 		source: "user",
 	});
 	await waitFor(() => secondEvents.some((event) => event.type === "message_finished"));
 	assert.equal(store.getRuntimeBinding(piboSessionId).nativeSessionId, firstBinding.nativeSessionId);
-	assert.deepEqual(secondEvents.filter((event) => event.type === "assistant_message").map((event) => event.text), ["Codex answer."]);
+	assert.deepEqual(secondEvents.filter((event) => event.type === "assistant_message").map((event) => event.text), ["Steps complete."]);
+	const stepUsages = secondEvents.filter((event) => event.type === "assistant_usage");
+	assert.equal(stepUsages.length, 3);
+	assert.equal(new Set(stepUsages.map((event) => event.inferenceId)).size, 3);
+	assert.deepEqual(stepUsages.map((event) => event.inferenceTarget.type), ["tool", "tool", "assistant"]);
+	assert.deepEqual(stepUsages[2].inferenceTarget, {
+		type: "assistant",
+		assistantIndex: secondEvents.find((event) => event.type === "assistant_message").assistantIndex,
+	});
+	assert.equal(stepUsages.every((event) => event.eventId === "codex-routed-message-2"), true);
 	await secondRouter.disposeAll();
 });

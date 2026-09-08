@@ -11,6 +11,12 @@ export type AgentRuntimeUsage = {
 	contextWindow?: number;
 };
 
+/** The output span observed in the model step, not the tool's own payload usage. */
+export type AgentRuntimeUsageTarget =
+	| { type: "tool"; toolCallId: string }
+	| { type: "assistant"; contentIndex: number }
+	| { type: "turn" };
+
 export type AgentRuntimeApprovalDecision = {
 	id: string;
 	label: string;
@@ -58,7 +64,7 @@ export type AgentRuntimeSemanticEvent =
 	| { type: "tool_execution_started"; toolCallId: string; toolName: string; args: unknown; intent?: string }
 	| { type: "tool_execution_updated"; toolCallId: string; toolName: string; args: unknown; partialResult: unknown; intent?: string }
 	| { type: "tool_execution_finished"; toolCallId: string; toolName: string; result: unknown; isError: boolean; intent?: string }
-	| { type: "usage"; usage: AgentRuntimeUsage }
+	| { type: "usage"; usage: AgentRuntimeUsage; inferenceId?: string; target?: AgentRuntimeUsageTarget }
 	| { type: "plan_updated"; plan: PiboJsonValue }
 	| { type: "diff_updated"; diff: PiboJsonValue }
 	| { type: "compaction_start"; reason: string }

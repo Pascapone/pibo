@@ -134,6 +134,8 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 			...base,
 			type: "assistant_usage",
 			usageIndex: numberAttribute(attributes, "usageIndex"),
+			inferenceId: stringAttribute(attributes, "inferenceId"),
+			inferenceTarget: attributes.inferenceTarget,
 			inputTokens: numberAttribute(attributes, "inputTokens"),
 			outputTokens: numberAttribute(attributes, "outputTokens"),
 			cacheReadTokens: numberAttribute(attributes, "cacheReadTokens"),

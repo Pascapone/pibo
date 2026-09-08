@@ -519,6 +519,8 @@ function specificAttributesForOutputEvent(event: PiboOutputEvent): Record<string
 	if (event.type === "assistant_message" || event.type === "assistant_delta") return { assistantIndex: event.assistantIndex, contentIndex: event.contentIndex };
 	if (event.type === "assistant_usage") return {
 		usageIndex: event.usageIndex,
+		inferenceId: event.inferenceId,
+		inferenceTarget: event.inferenceTarget,
 		inputTokens: event.inputTokens,
 		outputTokens: event.outputTokens,
 		cacheReadTokens: event.cacheReadTokens,
