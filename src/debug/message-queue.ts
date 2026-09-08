@@ -55,7 +55,7 @@ function projection(row:CommandRow,state:MessageCommandState,error?:string|null)
 export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOptions){
 	if(!/^cmd_[A-Za-z0-9-]+$/.test(options.commandId))throw new Error("Reconciliation requires one exact command ID (cmd_...).");
 	const now=options.now??Date.now(),commands=new MessageCommandStore(store);
-	return store.transaction(()=>{
+	const action=()=>{
 		const row=readCommand(store,options.commandId);if(!row)throw new Error(`Unknown durable message command "${options.commandId}".`);
 		const desired:MessageCommandState=options.decision==="mark-failed"?"failed":"completed";
 		if(row.state===desired){
@@ -83,7 +83,8 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 		const actor=(options.actor??process.env.USER??"operator").replace(/[^A-Za-z0-9_.@-]/g,"_").slice(0,100)||"operator";
 		const audit=store.eventLog.appendEvent({sessionId:row.session_id,roomId:row.room_id,topic:"pibo.audit",type:"durable_message_command.reconciled",source:"pibo-debug-cli",actorType:"operator",actorId:actor,eventId:`reconcile:${row.id}:${options.decision}`,idempotencyKey:`message-command-reconcile:${row.id}:${options.decision}`,retentionClass:"audit_event",previewText:`Durable command ${options.decision}`,attributes:{commandId:row.id,eventId:row.event_id,decision:options.decision,priorState:row.state,resultingState:desired,evidenceStreamIds:evidence.map(item=>item.streamId),affectedSuccessorIds:selected.map(item=>item.id),actor,source:"pibo-debug-cli",occurredAt:iso,replay:false}});
 		return {...plan,applied:true,auditEventId:audit.eventId,health:commands.health(now)};
-	});
+	};
+	return options.apply?store.transaction(action):action();
 }
 
 export function formatMessageQueueInspection(result:MessageQueueInspection):string{

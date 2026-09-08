@@ -135,15 +135,15 @@ export class MessageCommandStore {
 		 WHERE session_id=? AND event_id=? AND type IN ('message_finished','session_error','message_steered') ORDER BY stream_id LIMIT 8`).all(sessionId,eventId) as Array<{stream_id:number;type:MessageCommandTerminalEvidence["type"];state:MessageCommandTerminalEvidence["state"]}>)
 			.map(row=>({streamId:row.stream_id,type:row.type,state:row.state}));
 	}
+	assertAdmissionUnblocked(sessionId:string,delivery:"queue"|"steer",beforeStreamId=Number.MAX_SAFE_INTEGER):void{
+		if(delivery!=="queue")return;
+		const blocker=this.store.db.prepare("SELECT id,created_at FROM message_commands WHERE session_id=? AND state='interrupted' AND stream_id<? ORDER BY stream_id LIMIT 1").get(sessionId,beforeStreamId) as {id:string;created_at:number}|undefined;
+		if(blocker)throw domainError("command_reconciliation_required","A previous interrupted message requires operator review before this session can accept more messages.",{retryable:false,scope:"session",blockingCommandId:blocker.id,blockedSince:blocker.created_at,oldestWaitAgeMs:Math.max(0,Date.now()-blocker.created_at),nextAction:`pibo debug message-queue inspect --session ${sessionId}`});
+	}
 	insert(input: { key: string; fingerprint: string; payload: PreparedPayload; sessionId: string; roomId: string; eventId: string; streamId: number; delivery: "queue" | "steer" }): MessageReceipt {
 		const prior = this.find(input.key, input.fingerprint);
 		if (prior) return prior;
-		if(input.delivery==="queue"){
-			const blocker=this.store.db.prepare("SELECT id,created_at FROM message_commands WHERE session_id=? AND state='interrupted' AND stream_id<? ORDER BY stream_id LIMIT 1").get(input.sessionId,input.streamId) as {id:string;created_at:number}|undefined;
-			if(blocker) throw domainError("command_reconciliation_required","A previous interrupted message requires operator review before this session can accept more messages.",{
-				retryable:false,scope:"session",blockingCommandId:blocker.id,blockedSince:blocker.created_at,oldestWaitAgeMs:Math.max(0,Date.now()-blocker.created_at),nextAction:`pibo debug message-queue inspect --session ${input.sessionId}`,
-			});
-		}
+		this.assertAdmissionUnblocked(input.sessionId,input.delivery,input.streamId);
 		const limit = MESSAGE_COMMAND_LIMITS[input.delivery];
 		const rows = this.store.db.prepare(`SELECT c.session_id,c.room_id,c.payload_bytes,c.created_at,c.state,
 		 NOT EXISTS(SELECT 1 FROM message_commands p WHERE p.session_id=c.session_id AND p.state='interrupted' AND p.stream_id<c.stream_id) dispatchable

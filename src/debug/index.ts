@@ -161,7 +161,8 @@ Next:
 	const command=args[0],json=args.includes("--json");
 	const value=(flag:string)=>{const index=args.indexOf(flag);if(index<0)return undefined;const result=args[index+1];if(!result||result.startsWith("--"))throw new Error(`${flag} requires a value`);return result;};
 	const {PiboDataStore}=await import("../data/pibo-store.js");const descriptor=resolveDebugStore("pibo-data");if(!descriptor.exists)throw new Error(`Pibo data store not found at ${descriptor.path}`);
-	const store=new PiboDataStore(descriptor.path);
+	const mutating=command==="reconcile"&&args.includes("--apply");
+	const store=new PiboDataStore(descriptor.path,{readOnly:!mutating});
 	try{
 		const module=await import("./message-queue.js");
 		if(command==="inspect"){

@@ -2,7 +2,7 @@ import test from "node:test";
 import { spawnSync, execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import { promisify } from "node:util";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
@@ -259,12 +259,12 @@ test("one malformed reconciliation candidate cannot prevent an unrelated termina
 
 test("admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available",async()=>{
  const root=mkdtempSync(join(tmpdir(),"pibo-command-barrier-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const room=new ChatRoomService(store).ensureDefaultRoom();const sessions=new InMemoryPiboSessionStore();const blocked=sessions.create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const other=sessions.create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const storage=new AsyncChatStorage(store.path,join(root,"payloads"));
- const admit=(session,id,text="same")=>storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"actor",clientTxnId:id,retentionClass:"chat_message",payload:{type:"user.message.accepted",text,clientTxnId:id}},session,text,{eventId:id,delivery:"queue"});
+ const admit=(session,id,text="same".repeat(5000))=>storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"actor",clientTxnId:id,retentionClass:"chat_message",payload:{type:"user.message.accepted",text,clientTxnId:id}},session,text,{eventId:id,delivery:"queue"});
  try{
   const first=await admit(blocked,"first");store.db.prepare("UPDATE message_commands SET state='interrupted',error='ambiguous',created_at=? WHERE id=?").run(Date.now()-16*60*1000,first.receipt.id);
-  const duplicate=await admit(blocked,"first");assert.equal(duplicate.created,false);assert.equal(duplicate.receipt.id,first.receipt.id);
+  const duplicate=await admit(blocked,"first");assert.equal(duplicate.created,false);assert.equal(duplicate.receipt.id,first.receipt.id);const payloadsBefore=Number(store.db.prepare("SELECT count(*) n FROM payloads").get().n),payloadFilesBefore=readdirSync(join(root,"payloads"),{recursive:true}).length;
   for(const id of ["second","third"]){await assert.rejects(admit(blocked,id),error=>error.code==="command_reconciliation_required"&&error.retryable===false&&error.scope==="session"&&error.blockingCommandId===first.receipt.id);}
-  assert.equal(Number(store.db.prepare("SELECT count(*) n FROM message_commands").get().n),1);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE type='user.message.accepted'").get().n),1);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM payloads").get().n),1);
+  assert.equal(Number(store.db.prepare("SELECT count(*) n FROM message_commands").get().n),1);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE type='user.message.accepted'").get().n),1);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM payloads").get().n),payloadsBefore);assert.equal(readdirSync(join(root,"payloads"),{recursive:true}).length,payloadFilesBefore);
   const admitted=await admit(other,"unrelated");assert.equal(admitted.receipt.state,"accepted","an old blocked session must not become room/global wait-age overload");
  }finally{await storage.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
