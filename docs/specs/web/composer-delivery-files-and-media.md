@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-07T08:35:34.027058Z"
+  at: "2026-09-08T14:55:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -24,7 +24,7 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "e52bd62f86953da2fc316c22b6de55a0c70233a4"
+  commit: "ac5331fc094ba39fe9ed7ee8958eebdaeac4914d"
   requirements:
     - id: "WEB-COMPOSER-ADMISSION-006"
       status: "implemented"
@@ -376,6 +376,8 @@ upstream/dev refresh source and named-test inspection define the current contrac
 ### Requirement: WEB-COMPOSER-FILES-004
 
 Upload, attachment, download, and image-preview flows MUST enforce configured count/path/root/format/size bounds, retain per-Session attachment selection, and report delayed download progress before browser transfer.
+
+Image filenames in Attached uploads open the shared image-preview dialog for the selected Session. Copy-path and detach remain separate actions; non-image filenames remain plain text. Desktop and mobile use the same authenticated preview endpoint, loading/error states, Escape handling, and focus restoration.
 
 #### Current
 

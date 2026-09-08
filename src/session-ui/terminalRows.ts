@@ -173,8 +173,8 @@ export function buildCompactTerminalRows(
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
 	const reconciled = reconcileConceptualRowCandidates(candidates);
-	const rows = !showToolDebugMetrics && (options.toolDisplayMode ?? "default") === "default"
-		? groupRelatedToolCandidates(reconciled).map((candidate) => candidate.row)
+	const rows = (options.toolDisplayMode ?? "default") === "default"
+		? groupRelatedToolCandidates(reconciled, showToolDebugMetrics).map((candidate) => candidate.row)
 		: reconciled.map((candidate) => candidate.row);
 	return applyToolDisplayMode(rows, options.toolDisplayMode ?? "default");
 }
@@ -1127,12 +1127,12 @@ function isThinkingLevelSetOutput(value: unknown): boolean {
 	return isRecord(value) && value.action === "set_thinking_level";
 }
 
-function groupRelatedToolCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {
+function groupRelatedToolCandidates(candidates: readonly RowCandidate[], imagesOnly = false): RowCandidate[] {
 	const grouped: RowCandidate[] = [];
 	for (let index = 0; index < candidates.length; index += 1) {
 		const candidate = candidates[index];
 		const groupKind = candidateGroupKind(candidate);
-		if (!groupKind) {
+		if (!groupKind || (imagesOnly && groupKind !== "images")) {
 			grouped.push(candidate);
 			continue;
 		}
@@ -1218,7 +1218,6 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 	const omittedDetailCount = Math.max(0, detailItems.length - visibleDetailItems.length);
 	const firstRow = candidates[0]?.row;
 	const firstId = firstRow?.id ?? "images";
-	const lastId = candidates[candidates.length - 1]?.row.id ?? firstId;
 	const status = candidates.some((candidate) => candidate.row.status === "running")
 		? "running"
 		: candidates.some((candidate) => candidate.row.status === "error")
@@ -1226,14 +1225,14 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 			: "done";
 
 	return {
-		id: `group:images:${firstId}:${lastId}`,
+		id: firstId,
 		kind: "tool.group.images",
 		status,
 		errorKind: status === "error" ? "tool" : undefined,
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(status === "running" ? "Viewing images" : status === "error" ? "Image reads failed" : "Viewed images", toneForStatus(status), "semibold")],
+				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} ${detailItems.length === 1 ? "Image Viewed" : "Images Viewed"}`, toneForStatus(status), "semibold")],
 			},
 			...visibleDetailItems.map((item, index): CompactTerminalLine => ({
 				prefix: index === 0 ? "detail" : "continuation",
@@ -1256,7 +1255,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		orderStreamFrameIndex: firstRow?.orderStreamFrameIndex,
 		detailItems,
 		expandable: detailItems.some((item) => item.toolCallReference || item.input !== undefined || item.output !== undefined || Boolean(item.error)),
-		imagePreviews: detailItems.flatMap((item) => item.imagePreviews ?? []).slice(0, MAX_COMPACT_TERMINAL_IMAGE_PREVIEWS),
+		imagePreviews: detailItems.flatMap((item) => item.imagePreviews ?? []),
 		previewOmission: omittedDetailCount > 0 ? {
 			source: "details",
 			visibleLineCount: visibleDetailItems.length,
