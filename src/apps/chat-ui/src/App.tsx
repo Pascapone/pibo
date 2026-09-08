@@ -109,7 +109,6 @@ import {
 	isArchivedRoom,
 	resolveRoomContextLabel,
 	limitSessionNodesForSidebar,
-	nextRecentSessionSignalExpiryMs,
 	splitSessionNodesByArchive,
 } from "./session-sidebar-helpers";
 import {
@@ -630,13 +629,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 			unsubscribeSignalTree();
 		};
 	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
-
-	useEffect(() => {
-		const nextExpiryMs = bootstrap ? nextRecentSessionSignalExpiryMs(bootstrap.sessions, signalNow) : undefined;
-		if (nextExpiryMs === undefined) return;
-		const timer = setTimeout(() => setSignalNow(Date.now()), Math.max(50, nextExpiryMs));
-		return () => clearTimeout(timer);
-	}, [bootstrap, signalNow]);
 
 	useEffect(() => {
 		const check = async () => {
