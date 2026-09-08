@@ -4676,7 +4676,11 @@ async function sendChatMessage(input: {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
 		if (code === "command_conflict") return responseJson({ error:"Transaction conflicts with an existing message.",code }, { status:409 });
 		if (code === "command_too_large") return responseJson({ error:"Message exceeds the durable command limit.",code }, { status:413 });
-		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code }, { status:429,headers:{"retry-after":"1"} });
+		if (code === "command_reconciliation_required") {
+			const details=error as {retryable?:boolean;scope?:string;blockingCommandId?:string;blockedSince?:number;oldestWaitAgeMs?:number;nextAction?:string};
+			return responseJson({error:"A previous interrupted message requires review before this session can accept more messages.",code,retryable:false,scope:details.scope??"session",blockingCommandId:details.blockingCommandId,blockedSince:details.blockedSince,oldestWaitAgeMs:details.oldestWaitAgeMs,nextAction:details.nextAction},{status:409});
+		}
+		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code,retryable:true,scope:"capacity" }, { status:429,headers:{"retry-after":"1"} });
 		if (code === "room_not_found") throw new PiboWebHttpError("Room not found", 404);
 		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
 		if (code.startsWith("storage_")) return responseJson({ error: "Storage unavailable; retry with the same client transaction ID.", code, acceptanceUnknown: code === "storage_unknown" || code === "storage_operation_failed" }, { status: 503, headers: { "retry-after": "1" } });
@@ -4761,6 +4765,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			ensureCustomAgentProfiles(state,context);
 			ensureEventIndexing(state,context);
 			if (state.asyncStorage) state.commandDispatcher ??= new MessageCommandDispatcher(state.asyncStorage,context.channelContext);
+		},
+		async gatewayStatus() {
+			if(!state.asyncStorage)return {durableMessageQueue:{status:"ambiguous",storage:{available:false,error:"Durable message storage is not file-backed."},degradedReasons:["durable message storage unavailable"]}};
+			try{return {durableMessageQueue:await state.asyncStorage.durableQueueHealth()};}
+			catch(error){return {durableMessageQueue:{status:"ambiguous",storage:{available:false,error:error instanceof Error?error.message:"Storage unavailable"},degradedReasons:["durable message queue storage read failed"]}};}
 		},
 		async drain() {
 			await state.outputPersistenceRetries.drain();

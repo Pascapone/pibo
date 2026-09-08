@@ -1,5 +1,5 @@
 import type { PiboCompactionStats } from "../core/events.js";
-import type { MessageReceipt, MessageCommandClaim, MessageCommandState, MessageCommandStore } from "./message-command-store.js";
+import type { DurableMessageQueueHealth, MessageReceipt, MessageCommandClaim, MessageCommandState, MessageCommandStore } from "./message-command-store.js";
 import type { PiboRoom } from "../apps/chat/types/rooms.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatEventAppendInput, StoredChatEvent } from "../apps/chat/types/event-store.js";
@@ -91,6 +91,7 @@ export class AsyncChatStorage {
 	claimCommand(owner: string, leaseMs: number): Promise<MessageCommandClaim | undefined> { return this.writer.request({ type: "claimCommand", owner, leaseMs }, { priority: "background" }); }
 	transitionCommand(id: string, owner: string, token: number, state: MessageCommandState, error?: string): Promise<boolean> { return this.writer.request({ type: "transitionCommand", id, owner, token, state, error },{priority:"control"}); }
 	heartbeatCommand(id: string, owner: string, token: number, leaseMs: number): Promise<boolean> { return this.writer.request({ type: "heartbeatCommand", id, owner, token, leaseMs },{priority:"control"}); }
+	durableQueueHealth(): Promise<DurableMessageQueueHealth> { return this.writer.request({type:"durableQueueHealth"},{priority:"control",timeoutMs:500}); }
 	status() {
 		const writer = this.writer.status();
 		const reader = this.reader?.status();
