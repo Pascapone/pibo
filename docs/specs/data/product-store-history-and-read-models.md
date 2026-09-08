@@ -7,17 +7,17 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T19:25:00Z"
+  at: "2026-09-08T18:00:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 implementation:
   state: "current"
-  baseline_commit: "d30e0250fdce4017920c7f9c41c1e2067124d23b"
+  baseline_commit: "e5dada192a650482d7783540854090943fc5454c"
   source_evidence: "performed"
   test_execution: "focused schema, session-store, and delegated-observation tests passed in isolated Docker; broader 66-test selection passed 65 and hit one environment-only systemd isolation failure"
   build_and_typecheck_execution: "clean full typecheck passed"
 traceability:
-  commit: "d30e0250fdce4017920c7f9c41c1e2067124d23b"
+  commit: "e5dada192a650482d7783540854090943fc5454c"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -83,6 +83,10 @@ traceability:
           symbol: "OutputRenderSequencer"
         - path: "src/sessions/pibo-data-store.ts"
           symbol: "claimOutputRenderSequence"
+        - path: "src/debug/output-integrity.ts"
+          symbol: "inspectOutputIntegrity"
+        - path: "src/debug/output-collision-repair.ts"
+          symbol: "repairOutputCollision"
       tests:
         - path: "test/data-v2-ingest-service.test.mjs"
           name: "chat data ingest writes user messages idempotently"
@@ -98,6 +102,12 @@ traceability:
           name: "output render sequencer preserves supplied canonical output part indices"
         - path: "test/stream-render-block-review.test.mjs"
           name: "render sequence survives a durable store restart and wall-clock rollback"
+        - path: "test/output-identity-regression.test.mjs"
+          name: "different assistant finals in one turn receive distinct durable identities while exact replay reattaches"
+        - path: "test/output-identity-regression.test.mjs"
+          name: "equivalent assistant aliases fingerprint identically and compact queued/completed results do not collide"
+        - path: "test/output-identity-regression.test.mjs"
+          name: "collision diagnostics are redacted and dead-letter reconciliation is explicit, audited, and idempotent"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."
@@ -204,7 +214,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 - Persistence and models: `PIBO_DATA_SCHEMA_VERSION=9`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Schema version 9 also installs the Session-owned `session_agent_observation_auto_cursors` table defined by SPC-DATA-002; that shared physical migration does not transfer semantic ownership to this specification. Payload deduplication uses SHA-256, content type, and retention class as one indexed semantic identity, while different metadata variants retain isolated rows and files. Opening a supported legacy schema transactionally repairs retired required partition columns and migrates the former SHA-only payload uniqueness without rewriting existing payload files; future schemas fail before mutation.
 - Routes and protocols: No HTTP route is owned; Chat query services are consumed by Web routes.
-- State transitions: User acceptance and output ingestion append idempotent event facts, then project normalized messages and observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Output identity collisions fail visibly. Canonical render sequence, output-part index, and tool-invocation ordinal survive restart and clock rollback. Read cursors advance monotonically, and an idle started turn without a terminal projects an explicit bounded incomplete-integrity marker rather than a false running state.
+- State transitions: User acceptance and output ingestion append idempotent event facts, then project normalized messages and observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Equivalent output aliases canonicalize to one versioned fingerprint, while versionless persisted fingerprints are compared with the exact legacy algorithm. Later assistant finals within a turn receive a new output-part identity, and queued versus completed execution results have distinct phase identities with legacy final-key lookup compatibility. Conflicting reuse remains a permanent collision. Canonical render sequence, output-part index, and tool-invocation ordinal survive restart and clock rollback. Read cursors advance monotonically, and an idle started turn without a terminal projects an explicit bounded incomplete-integrity marker rather than a false running state.
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
 - Compatibility: Legacy Pi binding columns are backfilled and old-writer Pi updates are synchronized by migration triggers. Live deltas are excluded from durable timeline facts by default. Projections are rebuildable and do not replace event_log facts.
 - Product-data boundary: App Context identifies one authenticated product data space; it is not a tenant or per-user datastore boundary.
@@ -218,7 +228,7 @@ The specification SHALL define schema version 9, install the Session-owned autom
 
 ## Requirement: WP02-DATA-STORE-002
 
-Accepted user messages and normalized output SHALL be ingested idempotently; unkeyed repeated text remains distinct; identity collisions fail visibly; and durable render, part, and invocation identities remain monotonic across retries and restarts.
+Accepted user messages and normalized output SHALL be ingested idempotently; unkeyed repeated text remains distinct; equivalent delivery aliases SHALL fingerprint identically; versionless historic fingerprints and execution-result delivery keys SHALL remain replay-compatible without weakening conflict checks; semantically different assistant parts and execution-result phases SHALL use distinct identities; identity collisions SHALL remain non-retryable; and durable render, part, and invocation identities SHALL remain monotonic across retries and restarts. Collision diagnostics SHALL contain only bounded field names/change classes and redacted producer, projection, and phase provenance. Repair SHALL require an explicit keep-existing decision, report transcript/trace/navigation/command projection state, write an idempotent audit event, and never compare bodies or replay side effects.
 
 ## Requirement: WP02-DATA-STORE-003
 
@@ -268,6 +278,10 @@ Related ownership boundaries:
 - SPC-RUN-007 owns native runtime transcript compatibility; product history is primary.
 - SPC-WEB-004 and SPC-WEB-005 own browser overlays and trace rendering, not durable facts.
 - Workflow catalog and execution facts use `pibo-workflows.sqlite` and belong to SPC-ORCH-005/SPC-ORCH-006.
+
+# Producer-path diagnosis
+
+The compact `execution_result` reproduction is source-derived: `RoutedSession.enqueueCompactAction` emits a queued result and `processQueuedCompact` later emits completion for the same execution event. Phase-qualified identities now keep those semantically different outputs separate, while a literal pre-version legacy final key/fingerprint remains idempotent and conflicting legacy content remains guarded. The assistant reproduction is also source-derived: a runtime may emit multiple terminal assistant records in one turn while reusing producer index zero; `OutputRenderSequencer` now reattaches an exact closed-part replay but allocates a new index when the closed part fingerprint differs. Chat Web and Local CLI persistence attach their own live/replay provenance, so future diagnostics identify an existing/incoming pair. The issue's historical 3.5.0 evidence does not contain this new provenance, so the precise production producer pair for those old assistant dead letters remains unverified rather than inferred from message bodies.
 
 # Failure and security behavior
 

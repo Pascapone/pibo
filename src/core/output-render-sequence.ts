@@ -60,6 +60,7 @@ type ToolInvocationState = {
 type OutputPartState = {
 	index: number;
 	closed: boolean;
+	identityFingerprint: string;
 };
 
 type SessionSequenceState = {
@@ -180,9 +181,12 @@ export class OutputRenderSequencer {
 		const suppliedPart = transition.suppliedIndex === undefined
 			? undefined
 			: parts.find((part) => part.index === transition.suppliedIndex);
-		if (transition.suppliedIndex !== undefined && (transition.canonicalIndex || suppliedPart)) {
+		if (transition.suppliedIndex !== undefined && (
+			transition.canonicalIndex
+			|| (suppliedPart && (!suppliedPart.closed || suppliedPart.identityFingerprint === transition.identityFingerprint))
+		)) {
 			this.highWaterStore?.observeOutputPart?.({ ...transition, index: transition.suppliedIndex });
-			this.recordOutputPart(parts, transition.suppliedIndex, transition.terminal);
+			this.recordOutputPart(parts, transition.suppliedIndex, transition.terminal, transition.identityFingerprint);
 			this.trimOutputParts(state);
 			return event;
 		}
@@ -193,18 +197,21 @@ export class OutputRenderSequencer {
 		const index = latestOpen
 			? localIndex
 			: this.highWaterStore?.claimOrAttachOutputPart?.({ ...transition, proposedIndex: localIndex }) ?? localIndex;
-		this.recordOutputPart(parts, index, transition.terminal);
+		this.recordOutputPart(parts, index, transition.terminal, transition.identityFingerprint);
 		this.trimOutputParts(state);
 		return withOutputPartIndex(event, transition.kind, index);
 	}
 
-	private recordOutputPart(parts: OutputPartState[], index: number, terminal: boolean): void {
+	private recordOutputPart(parts: OutputPartState[], index: number, terminal: boolean, identityFingerprint: string): void {
 		let part = parts.find((candidate) => candidate.index === index);
 		if (!part) {
-			part = { index, closed: false };
+			part = { index, closed: false, identityFingerprint };
 			parts.push(part);
 		}
-		if (terminal) part.closed = true;
+		if (terminal) {
+			part.closed = true;
+			part.identityFingerprint = identityFingerprint;
+		}
 	}
 
 	private trimOutputParts(state: SessionSequenceState): void {
@@ -448,11 +455,69 @@ function validOutputPartIndex(value: unknown): value is number {
 	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+export const OUTPUT_IDENTITY_FINGERPRINT_VERSION = 2;
+
 export function outputIdentityFingerprint(event: PiboOutputEvent): string {
+	return createHash("sha256").update(stableJson(outputIdentityPayload(event))).digest("hex");
+}
+
+/** Exact v1 algorithm retained only for comparing pre-v2 persisted fingerprints. */
+export function legacyOutputIdentityFingerprint(event: PiboOutputEvent): string {
 	const payload = { ...event } as Record<string, unknown>;
 	delete payload.renderSequence;
 	delete payload.compactionStats;
 	return createHash("sha256").update(stableJson(payload)).digest("hex");
+}
+
+export function legacyOutputIdentityFingerprintCandidates(event: PiboOutputEvent): string[] {
+	const variants: Array<Record<string, unknown>> = [{ ...event }];
+	const assistant = event.type === "assistant_delta" || event.type === "assistant_message";
+	const thinking = event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished";
+	const index = assistant ? event.assistantIndex ?? event.contentIndex : thinking ? event.thinkingIndex ?? event.contentIndex : undefined;
+	if (index !== undefined && (assistant || thinking)) {
+		for (const attribute of assistant ? ["assistantIndex", "contentIndex"] : ["thinkingIndex", "contentIndex"]) {
+			const variant = { ...event } as Record<string, unknown>;
+			delete variant.assistantIndex;
+			delete variant.thinkingIndex;
+			delete variant.contentIndex;
+			variant[attribute] = index;
+			variants.push(variant);
+		}
+	}
+	for (const variant of [...variants]) {
+		if ("provenance" in variant) {
+			const withoutProvenance = { ...variant };
+			delete withoutProvenance.provenance;
+			variants.push(withoutProvenance);
+		}
+	}
+	return [...new Set(variants.map((variant) => legacyOutputIdentityFingerprint(variant as PiboOutputEvent)))];
+}
+
+/** Redacted, bounded evidence for diagnosing a fingerprint mismatch without retaining values. */
+export function outputIdentityFieldDigests(event: PiboOutputEvent): Record<string, string> {
+	return Object.fromEntries(Object.entries(outputIdentityPayload(event))
+		.slice(0, 64)
+		.map(([field, value]) => [field, createHash("sha256").update(stableJson(value)).digest("hex").slice(0, 16)]));
+}
+
+function outputIdentityPayload(event: PiboOutputEvent): Record<string, unknown> {
+	const payload = { ...event } as Record<string, unknown>;
+	delete payload.renderSequence;
+	delete payload.compactionStats;
+	// Delivery provenance describes how equivalent output reached persistence; it
+	// is diagnostic metadata rather than semantic message content.
+	delete payload.provenance;
+	if (event.type === "assistant_delta" || event.type === "assistant_message") {
+		delete payload.assistantIndex;
+		delete payload.contentIndex;
+		payload.outputPartIndex = event.assistantIndex ?? event.contentIndex ?? 0;
+	} else if (event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished") {
+		delete payload.thinkingIndex;
+		delete payload.contentIndex;
+		payload.outputPartIndex = event.thinkingIndex ?? event.contentIndex ?? 0;
+	}
+	return payload;
 }
 
 export function outputPartFingerprint(event: PiboOutputEvent): string {

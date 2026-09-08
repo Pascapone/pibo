@@ -128,7 +128,7 @@ import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
 import { ScopedUserSkillManager } from "../../user-skills/manager.js";
-import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
+import { ChatDataIngestService, legacyOutputIdempotencyKey, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
@@ -1174,6 +1174,11 @@ async function deliverWebOutputPersistenceState(
 					actorId: persistenceState.actorId ?? session.id,
 					event: delivery.event,
 					createdAt,
+					persistenceProvenance: {
+						producer: "chat-web" as const,
+						projection: "product-history" as const,
+						phase: retryContext.attempt > 1 ? "durable-replay" as const : "live" as const,
+					},
 				};
 				const asyncIngested = state.asyncStorage ? await state.asyncStorage.ingestOutput(ingestInput) : undefined;
 				const ingested = asyncIngested ?? state.ingestService.ingestOutputEvent(ingestInput);
@@ -1293,7 +1298,7 @@ function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersiste
 		const delivery = rawDelivery as Record<string, unknown>;
 		if (!isPiboOutputEvent(delivery.event) || !outputIdempotencyKey(delivery.event)) return undefined;
 		const deliveryId = outputPersistenceDeliveryKey(delivery.event);
-		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId) return undefined;
+		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId && delivery.deliveryId !== legacyOutputIdempotencyKey(delivery.event)) return undefined;
 		const v2 = delivery.v2;
 		if (v2 !== undefined && (
 			!v2 || typeof v2 !== "object" || Array.isArray(v2)
@@ -4671,7 +4676,11 @@ async function sendChatMessage(input: {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
 		if (code === "command_conflict") return responseJson({ error:"Transaction conflicts with an existing message.",code }, { status:409 });
 		if (code === "command_too_large") return responseJson({ error:"Message exceeds the durable command limit.",code }, { status:413 });
-		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code }, { status:429,headers:{"retry-after":"1"} });
+		if (code === "command_reconciliation_required") {
+			const details=error as {retryable?:boolean;scope?:string;blockingCommandId?:string;blockedSince?:number;oldestWaitAgeMs?:number;nextAction?:string};
+			return responseJson({error:"A previous interrupted message requires review before this session can accept more messages.",code,retryable:false,scope:details.scope??"session",blockingCommandId:details.blockingCommandId,blockedSince:details.blockedSince,oldestWaitAgeMs:details.oldestWaitAgeMs,nextAction:details.nextAction},{status:409});
+		}
+		if (code === "command_overloaded") return responseJson({ error:"Message queue capacity reached.",code,retryable:true,scope:"capacity" }, { status:429,headers:{"retry-after":"1"} });
 		if (code === "room_not_found") throw new PiboWebHttpError("Room not found", 404);
 		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
 		if (code.startsWith("storage_")) return responseJson({ error: "Storage unavailable; retry with the same client transaction ID.", code, acceptanceUnknown: code === "storage_unknown" || code === "storage_operation_failed" }, { status: 503, headers: { "retry-after": "1" } });
@@ -4756,6 +4765,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			ensureCustomAgentProfiles(state,context);
 			ensureEventIndexing(state,context);
 			if (state.asyncStorage) state.commandDispatcher ??= new MessageCommandDispatcher(state.asyncStorage,context.channelContext);
+		},
+		async gatewayStatus() {
+			if(!state.asyncStorage)return {durableMessageQueue:{status:"ambiguous",storage:{available:false,error:"Durable message storage is not file-backed."},degradedReasons:["durable message storage unavailable"]}};
+			try{return {durableMessageQueue:await state.asyncStorage.durableQueueHealth()};}
+			catch(error){return {durableMessageQueue:{status:"ambiguous",storage:{available:false,error:error instanceof Error?error.message:"Storage unavailable"},degradedReasons:["durable message queue storage read failed"]}};}
 		},
 		async drain() {
 			await state.outputPersistenceRetries.drain();

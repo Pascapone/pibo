@@ -9,7 +9,7 @@ generated: { by: "openai/gpt-5.6-sol", at: "2026-09-08T19:46:13Z" }
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "75fccac5617c51ae936ccc8cb95c86be71dcbcee"
+  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
   requirements:
     - id: "RUN-CAP-001"
       status: "implemented"
@@ -78,6 +78,25 @@ traceability:
     - id: "RUN-CAP-005"
       status: "implemented"
       sources:
+        - path: "src/data/message-command-store.ts"
+          symbol: "MessageCommandStore.health"
+        - path: "src/data/chat-storage-worker.ts"
+          symbol: "startupReconciliation"
+      tests:
+        - path: "test/message-command-store.test.mjs"
+          name: "bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors"
+        - path: "test/message-command-store.test.mjs"
+          name: "byte and wait-age limits reject new work while preserving duplicate receipts and steering"
+        - path: "test/message-command-store.test.mjs"
+          name: "health summaries remain operationally bounded across large terminal history"
+      public: ["durableMessageQueue", "command_reconciliation_required"]
+      failures:
+        - "Blocked successors do not contribute wait age, but still consume count and byte capacity until bounded startup policy terminalizes them."
+        - "Health storage failure is ambiguous/degraded rather than healthy."
+      confidence: "high"
+    - id: "RUN-CAP-006"
+      status: "implemented"
+      sources:
         - path: "src/agent-runtime/routed-session.ts"
           symbol: "RuntimeRoutedSession.enqueueMessage"
         - path: "src/core/session-router.ts"
@@ -144,7 +163,15 @@ The gateway status response includes active and initializing runtime counts, cap
 
 The authenticated Session receipt page includes queue count, bytes, oldest unstarted wait and Session limits. It preserves up to 70 active/uncertain receipts alongside 64 recent terminal receipts, so terminal Steering traffic cannot hide an older running Turn. Receipt contents stay compact and do not include message payloads.
 
-## Requirement: RUN-CAP-005
+## Requirement: RUN-CAP-005: FIFO barriers are explicit and isolated from wait-age overload
+
+An interrupted normal predecessor is an explicit Session-scoped reconciliation barrier. New normal admission checks that barrier before committing and fails non-retryably. Existing unstarted normal successors are terminalized as failed/not-dispatched by bounded startup recovery while live owned claims are left untouched. Neither action weakens per-Session FIFO or executes an ambiguous command.
+
+Global and Room oldest-wait calculations count only dispatchable accepted or waiting-slot commands. A successor blocked by an interrupted predecessor therefore cannot age into Room-wide or database-wide overload for unrelated Sessions. Genuine count, byte, and dispatchable wait-age exhaustion remains `command_overloaded` and retryable. Blocked rows continue to consume count and bytes until the explicit terminalization policy runs; this avoids hiding retained durable storage.
+
+Durable queue health uses trigger-maintained state/delivery totals and bounded indexed operational reads. It separately reports interrupted predecessors, FIFO-blocked successors, dispatchable and blocked wait age, expired owned leases, global/Room/Session admission reasons, storage availability, affected command/Session/Room identities, and truncation metadata. It never reads message payload bodies or scans event history. Healthy dispatchable backlog remains distinct from a barrier. Storage timeout or unavailability is ambiguous/degraded.
+
+## Requirement: RUN-CAP-006
 
 One controller Session and runtime generation has at most one effective queued run-reminder delivery. A new run transition atomically removes the still-queued prior delivery, releases only its notification reservation, and creates a current snapshot. Replacement, deferral, and delivery do not consume or acknowledge tracked runs; completed, failed, timed-out, and still-running states remain eligible until the agent explicitly reads or acknowledges them.
 
