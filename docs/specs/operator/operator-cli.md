@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T17:55:23Z"
+  at: "2026-09-08T18:25:04Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -22,7 +22,7 @@ implementation:
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "800bb6ec5dd0b13b64c6333719ac1a88239d1462"
+  commit: "e6a0957d288ac37b0f9c5077ae742a8001bb6a74"
   requirements:
     - id: "OP-CLI-001"
       status: "implemented"
@@ -152,6 +152,12 @@ traceability:
           name: "recovery refuses live leases, changed snapshots and ambiguous completion"
         - path: "test/message-queue-recovery.test.mjs"
           name: "authoritative completion needs no override and partial failure rolls back"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "selected successors with fresh ownership refuse dry-run and atomically refuse apply"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "historical receipt recovery does not overwrite newer completed or live Session projection"
+        - path: "test/message-queue-recovery.test.mjs"
+          name: "inspection prioritizes active barriers over deep terminal history and exposes bounded pages"
       public:
         - "pibo debug message-queue inspect"
         - "pibo debug message-queue reconcile"
@@ -290,11 +296,11 @@ The upstream/dev refresh implementation and named tests provide the current sour
 
 ### Requirement: OP-CLI-006: Interrupted durable messages have an audited recovery workflow
 
-`pibo debug message-queue` progressively exposes `inspect` and `reconcile`. Inspection is read-only and bounded; it shows FIFO order, state, event identity, owner and lease freshness, blockers/successors, and matching terminal event references without message bodies. JSON and human output point to the next command.
+`pibo debug message-queue` progressively exposes `inspect` and `reconcile`. Inspection is read-only and bounded. It always selects active/uncertain commands independently from up to 20 recent terminal context rows, so deep completed history cannot hide a blocker. It shows canonical stream order, exact previous/next command IDs, state, event identity, owner and lease freshness, blockers/successors, and matching terminal event references without message bodies. Active and terminal-context pagination expose independent cursors and truncation; JSON and human output point to the next page or recovery command.
 
-Reconciliation requires one exact `cmd_...` identity and defaults to dry-run. `--apply` rereads and compares state/token/update identity inside the same immediate transaction, refuses a fresh owner lease, preserves command and payload rows, and appends a body-free audit event with actor/source/time, prior/result state, decision, evidence stream references, affected successor IDs, and `replay: false`. A repeated successful apply is idempotent and does not duplicate the audit event. Any command or selected-successor race, or audit failure, rolls back all state changes.
+Reconciliation requires one exact `cmd_...` identity and defaults to dry-run. Dry-run and apply both refuse cancellation when any selected successor has a fresh owner lease. `--apply` rereads and compares predecessor and successor state/token/update identity inside the same immediate transaction, refuses a fresh predecessor lease, preserves command and payload rows, and appends a body-free audit event with actor/source/time, prior/result state, decision, evidence stream references, affected successor IDs, and `replay: false`. A repeated successful apply is idempotent and does not duplicate the audit event. Any command or selected-successor race, or audit failure, rolls back all state changes.
 
-`--mark-failed` settles the interrupted predecessor without replay. `--cancel-successors` cancels every bounded unstarted successor selected by the dry-run; repeated `--cancel-successor <cmd_...>` selects exact successors. `--confirm-completed` requires unambiguous matching completed evidence, unless the operator supplies the high-friction exact `--confirm-without-evidence <same-command-id>` acknowledgement. Replay is explicitly unsupported because provider/tool side effects cannot generally be proven idempotent. `/clear` is distinct: it cancels unstarted queue/runtime work and does not reconcile an interrupted predecessor.
+`--mark-failed` settles the interrupted predecessor without replay. `--cancel-successors` cancels every bounded unstarted successor selected by the dry-run; repeated `--cancel-successor <cmd_...>` selects exact successors. `--confirm-completed` requires unambiguous matching completed evidence, unless the operator supplies the high-friction exact `--confirm-without-evidence <same-command-id>` acknowledgement. Replay is explicitly unsupported because provider/tool side effects cannot generally be proven idempotent. Reconciling a historical receipt does not rewrite Session or navigation status; newer completed turns and live Steering remain authoritative for those projections. `/clear` is distinct: it cancels unstarted queue/runtime work and does not reconcile an interrupted predecessor.
 
 The production procedure is in [Agent Runtime Operations](/project/agent-runtime-operations.md#recover-an-interrupted-durable-message-queue).
 

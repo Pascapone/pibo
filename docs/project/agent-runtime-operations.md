@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "2f28143b5f39e8053f7f9ffa832248f17e935d0e72363d74bf11a9285366c0b5"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T17:55:23Z"
+  at: "2026-09-08T18:25:04Z"
 ---
 # Agent Runtime Operations
 
@@ -167,7 +167,7 @@ Use this workflow when status or Chat Web reports that a previous interrupted me
    pibo debug message-queue inspect --session <ps_...>
    ```
 
-   Record the exact blocking `cmd_...`, event identity, lease freshness, terminal evidence, and listed successors. Output contains identities and states, never message bodies.
+   Record the exact blocking `cmd_...`, event identity, lease freshness, terminal evidence, and listed successors. Inspection always shows active/uncertain work plus bounded recent terminal context; follow its `--after-stream` or `--before-terminal-stream` next command when output is truncated. Output contains identities and states, never message bodies.
 
 2. If the command has a fresh owner lease, stop. Do not reconcile live ownership. Reinspect after the owner finishes or its lease expires.
 
@@ -175,7 +175,7 @@ Use this workflow when status or Chat Web reports that a previous interrupted me
 
    - If durable `message_finished` or `message_steered` evidence matches, preview completion with `pibo debug message-queue reconcile <cmd_...> --confirm-completed --dry-run`.
    - If side effects are uncertain, preview failure without replay using `pibo debug message-queue reconcile <cmd_...> --mark-failed --dry-run`.
-   - Use `--cancel-successors` to cancel all listed unstarted successors, or repeated `--cancel-successor <cmd_...>` for exact selected successors. Without cancellation, genuinely unstarted successors become dispatchable after the barrier settles.
+   - Use `--cancel-successors` to cancel all listed unstarted successors, or repeated `--cancel-successor <cmd_...>` for exact selected successors. Dry-run and apply both refuse the entire operation if a selected successor has a fresh owner lease. Without cancellation, genuinely unstarted successors become dispatchable after the barrier settles.
    - Completion without durable evidence requires the exact high-friction acknowledgement `--confirm-without-evidence <same-cmd-id>`. Obtain operator confirmation that provider/tool side effects already completed before using it.
    - Replay is unsupported. Do not resubmit the old payload as a recovery shortcut.
 
@@ -196,7 +196,7 @@ Use this workflow when status or Chat Web reports that a previous interrupted me
    pibo debug trace <ps_...> --check
    ```
 
-   A resolved barrier is terminal, selected successors are explicitly failed, and no command is replayed by reconciliation. `doctor` should return healthy unless another durable inconsistency or capacity limit remains.
+   A resolved barrier is terminal, selected successors are explicitly failed, and no command is replayed by reconciliation. Historical receipt recovery does not rewrite Session/navigation status, so verify that newer completed or live work remains authoritative. `doctor` should return healthy unless another durable inconsistency or capacity limit remains.
 
 `/clear` and durable reconciliation are different operations. `/clear` cancels unstarted commands and runtime queue work; it cannot decide the outcome of an interrupted predecessor. Preserve the command, payload reference, terminal evidence, and reconciliation audit event for incident review.
 
