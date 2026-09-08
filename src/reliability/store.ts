@@ -1065,6 +1065,7 @@ export class PiboReliabilityStore {
 		return this.inImmediateTransaction(() => {
 			const job = this.enqueue({
 				queue: "runs",
+				runAt: timestamp,
 				payload: {
 					runId,
 					controllerPiboSessionId: input.controllerPiboSessionId,

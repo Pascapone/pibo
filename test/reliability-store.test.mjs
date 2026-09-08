@@ -226,6 +226,26 @@ test("createRun rolls job, claim, and run record back at every crash boundary", 
 	}
 });
 
+test("createRun remains claimable when the clock advances during enqueue", (t) => {
+	const store = new PiboReliabilityStore(":memory:");
+	const timestamp = Date.parse("2026-09-08T00:00:00Z");
+	t.mock.timers.enable({ apis: ["Date"], now: timestamp });
+	const enqueue = store.enqueue.bind(store);
+	t.mock.method(store, "enqueue", (input) => {
+		t.mock.timers.tick(10);
+		return enqueue(input);
+	});
+	try {
+		const run = store.createRun({ controllerPiboSessionId: "ps_parent", toolName: "bash", completionPolicy: "tracked" });
+		const [job] = store.listJobs({ queue: "runs" });
+		assert.equal(job.jobId, run.jobId);
+		assert.equal(job.state, "running");
+		assert.equal(job.runAt, new Date(timestamp).toISOString());
+	} finally {
+		store.close();
+	}
+});
+
 test("orphan run reconciliation is lease-safe, matching-run-safe, and idempotent", () => {
 	const store = new PiboReliabilityStore(":memory:");
 	try {
