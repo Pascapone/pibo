@@ -1,5 +1,6 @@
 import type { PiboJsonObject } from "../core/events.js";
 import { DEFAULT_AGENT_RUNTIME_INSTANCE_ID } from "../core/profiles.js";
+import { readSessionPrefixBinding } from "./prefix-capsule.js";
 
 export type AgentRuntimeAdapterId = string;
 export type AgentRuntimeInstanceId = string;
@@ -102,6 +103,10 @@ export function createInitialRuntimeSessionBinding(
 	if ((input.state === "bound" || input.state === "missing") && !nativeSessionId) {
 		throw new RuntimeSessionBindingTransitionError(piboSessionId, `${input.state} state requires a native session id`);
 	}
+	const prefix = readSessionPrefixBinding(input.metadata);
+	if (prefix && (prefix.capsule.adapterId !== input.adapterId || prefix.nativeSessionId !== nativeSessionId)) {
+		throw new RuntimeSessionBindingTransitionError(piboSessionId, "prefix and native runtime binding disagree");
+	}
 	return {
 		piboSessionId,
 		runtimeInstanceId: input.runtimeInstanceId,
@@ -164,6 +169,23 @@ export function assertRuntimeSessionBindingTransition(
 	options: RuntimeSessionBindingUpdateOptions = {},
 ): void {
 	const mode = options.mode ?? "normal";
+	const previousPrefix = readSessionPrefixBinding(current.metadata);
+	const nextPrefix = readSessionPrefixBinding(next.metadata);
+	if (previousPrefix) {
+		if (!nextPrefix) {
+			throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "a sealed prefix cannot be silently discarded");
+		}
+		if (nextPrefix.epoch === previousPrefix.epoch) {
+			if (JSON.stringify(previousPrefix) !== JSON.stringify(nextPrefix)) {
+				throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "a sealed prefix is immutable within its epoch");
+			}
+		} else if (nextPrefix.epoch !== previousPrefix.epoch + 1 || nextPrefix.reason === "initial") {
+			throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "prefix transitions require the next epoch and an explicit reason");
+		}
+	}
+	if (nextPrefix && (nextPrefix.capsule.adapterId !== next.adapterId || nextPrefix.nativeSessionId !== next.nativeSessionId)) {
+		throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "prefix and native runtime binding disagree");
+	}
 	if (!next.runtimeInstanceId.trim()) {
 		throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "runtime instance id is required");
 	}

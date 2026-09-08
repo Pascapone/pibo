@@ -10,6 +10,8 @@ import {
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
+import { diagnoseCacheInference } from "./cache-diagnostics.js";
+import type { ModelInferenceRecord } from "./model-inference-metrics.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -717,7 +719,9 @@ function attachModelInferenceToLatestOutput(
 	storedEvent: ChatWebStoredEvent,
 ): void {
 	const eventId = event.eventId;
-	const candidates = flattenTraceNodes(nodes)
+	const flattened = flattenTraceNodes(nodes);
+	const id = eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
+	const candidates = flattened
 		.filter((node) => node.eventId === eventId && traceNodeStartedBeforeInference(node, storedEvent) && (
 			node.type === "assistant.message"
 			|| node.type === "model.reasoning"
@@ -725,12 +729,16 @@ function attachModelInferenceToLatestOutput(
 			|| node.type === "agent.delegation"
 		))
 		.sort(compareTraceNodes);
-	const target = candidates.at(-1) ?? (eventId ? byId.get(messageTurnNodeId(eventId)) : undefined);
+	// A late cumulative update belongs to the original inference owner, even if
+	// another Tool or Endturn appeared in the meantime.
+	const target = flattened.find(node => node.modelInferences?.some(item => item.id === id))
+		?? candidates.at(-1) ?? (eventId ? byId.get(messageTurnNodeId(eventId)) : undefined);
 	if (!target) return;
-	const id = eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
-	const record = {
+	const existingRecord = target.modelInferences?.find(item => item.id === id);
+	const record: ModelInferenceRecord = {
 		id,
-		completedAt: storedEvent.createdAt,
+		completedAt: existingRecord?.completedAt ?? storedEvent.createdAt,
+		...(event.cacheEvidence ? { cacheEvidence: event.cacheEvidence } : {}),
 		metrics: {
 			...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
 			...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
@@ -741,6 +749,27 @@ function attachModelInferenceToLatestOutput(
 			...(event.costUsd === undefined ? {} : { costUsd: event.costUsd }),
 		},
 	};
+	const currentAt = Date.parse(record.completedAt!);
+	let previous: ModelInferenceRecord | undefined;
+	let previousAt = -Infinity;
+	for (const node of flattened) {
+		for (const item of node.modelInferences ?? []) {
+			const at = Date.parse(item.completedAt ?? "");
+			if (item.id !== id && at <= currentAt && at >= previousAt) { previous = item; previousAt = at; }
+		}
+	}
+	if (previous) {
+		const compacted = flattened.some(node => node.type === "execution.compaction"
+			&& Date.parse(node.startedAt ?? node.completedAt ?? "") > previousAt
+			&& Date.parse(node.startedAt ?? node.completedAt ?? "") <= currentAt);
+		record.cacheObservation = diagnoseCacheInference({
+			metrics: record.metrics,
+			evidence: { ...record.cacheEvidence, id, atMs: currentAt, ...(compacted ? { boundary: "compaction" as const } : {}) },
+		}, {
+			metrics: previous.metrics,
+			evidence: { ...previous.cacheEvidence, id: previous.id, atMs: previousAt },
+		});
+	}
 	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record];
 }
 

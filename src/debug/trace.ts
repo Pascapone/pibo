@@ -18,6 +18,8 @@ import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
 import { resolveDebugTraceSessionStatus, summarizeDebugTraceStatus, type DebugTraceStatusSource } from "./trace-status.js";
+import { cacheWarningText } from "../shared/cache-diagnostics.js";
+import type { ModelInferenceRecord } from "../shared/model-inference-metrics.js";
 
 type SessionRow = {
 	id: string;
@@ -70,6 +72,7 @@ export type DebugTraceNodeRow = {
 	startedAt?: string;
 	completedAt?: string;
 	childrenCount?: number;
+	modelInferences?: ModelInferenceRecord[];
 	depth: number;
 };
 
@@ -247,6 +250,10 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 			order: node.order,
 		};
 		lines.push(columns.map((column) => values[column] ?? "").join("\t"));
+		for (const inference of node.modelInferences ?? []) {
+			const warning = inference.cacheObservation && cacheWarningText(inference.cacheObservation);
+			if (warning) lines.push(`cache-warning\t${inference.id}\t${warning}`);
+		}
 	}
 	lines.push(`nodes: ${result.nodes.length}${result.nodes.length !== result.rawNodeCount ? ` of ${result.rawNodeCount}` : ""}`);
 	if (result.checks) {
@@ -279,6 +286,7 @@ export function formatDebugTraceNode(result: DebugTraceNodeResult): string {
 	if (node.linkedPiboSessionId) lines.push(`linkedPiboSessionId: ${node.linkedPiboSessionId}`);
 	if (node.runId) lines.push(`runId: ${node.runId}`);
 	if (node.toolCallId) lines.push(`toolCallId: ${node.toolCallId}`);
+	for (const inference of node.modelInferences ?? []) lines.push(`modelInference: ${JSON.stringify(inference)}`);
 	lines.push(...formatNextCommands(result.nextCommands));
 	return lines.join("\n");
 }
@@ -300,6 +308,7 @@ function flattenTraceNodes(nodes: PiboTraceNode[], depth = 0): DebugTraceNodeRow
 			startedAt: node.startedAt,
 			completedAt: node.completedAt,
 			childrenCount: node.children.length,
+			...(node.modelInferences?.length ? { modelInferences: node.modelInferences } : {}),
 			depth,
 		},
 		...flattenTraceNodes(node.children, depth + 1),

@@ -1,3 +1,4 @@
+import { rejectUnsupportedPrefixRestore } from "../../sessions/prefix-capsule.js";
 import { randomUUID } from "node:crypto";
 import {
 	unsupportedAgentRuntimeCapability,
@@ -535,6 +536,7 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		rejectUnsupportedPrefixRestore(input.binding?.metadata);
 		const binding = validateOpenBinding(input, this.instanceId);
 		if (binding.state === "bound" && !binding.nativeSessionId) {
 			throw new AgentRuntimeUnavailableError(this.instanceId, "The persisted OMP binding has no native session id.");

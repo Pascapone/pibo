@@ -1,3 +1,4 @@
+import { rejectUnsupportedPrefixRestore } from "../../sessions/prefix-capsule.js";
 import { randomUUID } from "node:crypto";
 import {
 	unsupportedAgentRuntimeCapability,
@@ -1217,6 +1218,7 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		rejectUnsupportedPrefixRestore(input.binding?.metadata);
 		const binding = validateOpenBinding(input, this.instanceId);
 		const activeFirstMessage = input.productContext.getActiveMessage?.();
 		const messageStartsLazyFirstUse = binding.state === "unbound"

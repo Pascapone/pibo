@@ -1,3 +1,4 @@
+import { rejectUnsupportedPrefixRestore } from "../../sessions/prefix-capsule.js";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
@@ -778,6 +779,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		rejectUnsupportedPrefixRestore(input.binding?.metadata);
 		if (input.historyHandoff?.mode === "import" && input.binding?.state === "bound") {
 			throw new Error("Pi portable history import requires a new native session.");
 		}

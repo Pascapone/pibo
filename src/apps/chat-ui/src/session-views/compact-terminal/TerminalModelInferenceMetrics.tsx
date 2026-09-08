@@ -4,6 +4,7 @@ import {
 	modelInferenceUncachedInputTokens,
 	type ModelInferenceMetrics,
 } from "../../../../../shared/model-inference-metrics.js";
+import { cacheWarningText, type CacheObservation } from "../../../../../shared/cache-diagnostics.js";
 
 const tokenFormatter = new Intl.NumberFormat("en-US");
 
@@ -21,8 +22,10 @@ function Metric({ label, value, description, tone }: { label: string; value: num
 	);
 }
 
-export function TerminalModelInferenceMetrics({ metrics }: { metrics?: ModelInferenceMetrics }) {
+export function TerminalModelInferenceMetrics({ metrics, cacheObservation }: { metrics?: ModelInferenceMetrics; cacheObservation?: CacheObservation }) {
+	const warning = cacheObservation && cacheWarningText(cacheObservation);
 	return (
+		<>
 		<div
 			data-pibo-debug="model-inference-metrics"
 			aria-label="Model inference metrics"
@@ -40,13 +43,13 @@ export function TerminalModelInferenceMetrics({ metrics }: { metrics?: ModelInfe
 			<Metric
 				label="Cached"
 				value={modelInferenceCachedInputTokens(metrics)}
-				description="Provider-reported input tokens attributed to cache reads or cache writes"
+				description="Provider-reported input tokens read from cache; cache writes are not hits"
 				tone="border-[#c084fc] bg-[#c084fc]/15 text-[#e9d5ff]"
 			/>
 			<Metric
 				label="Uncached"
 				value={modelInferenceUncachedInputTokens(metrics)}
-				description="Input tokens not attributed to cache reads or cache writes"
+				description="Input tokens not read from cache, including cache writes; unknown when cache-read usage is missing"
 				tone="border-[#ffe600] bg-[#ffe600]/15 text-[#fff36b]"
 			/>
 			<Metric
@@ -55,6 +58,18 @@ export function TerminalModelInferenceMetrics({ metrics }: { metrics?: ModelInfe
 				description="Provider-reported model output tokens"
 				tone="border-[#a3ff12] bg-[#a3ff12]/15 text-[#c7ff6b]"
 			/>
+			{metrics?.cacheWriteTokens ? <Metric label="Cache write" value={metrics.cacheWriteTokens} description="Tokens written to cache during this request; not cache hits" tone="border-slate-500 text-slate-300" /> : null}
 		</div>
+		{warning && cacheObservation ? <details data-pibo-debug="cache-collapse" className="ml-[1.9rem] border-l-2 border-[#ff6b00] bg-[#ff6b00]/10 px-2 py-1 font-mono text-[11px] text-[#fdba74]">
+			<summary className="cursor-pointer focus-visible:outline focus-visible:outline-[#11a4d4]">{cacheObservation.warning === "cache-collapse" ? "Cache strongly decreased" : "Possible cache collapse"}: {tokens(cacheObservation.uncachedTokens)} / {tokens(cacheObservation.inputTokens)} input tokens not read from cache</summary>
+			<div className="mt-1 break-words text-slate-300">
+				<div>Previous cache: {cacheObservation.previousCacheRatio === undefined ? "unknown" : `${(cacheObservation.previousCacheRatio * 100).toFixed(1)}%`} · Current: {cacheObservation.cacheRatio === undefined ? "unknown" : `${(cacheObservation.cacheRatio * 100).toFixed(1)}%`}</div>
+				<div>Previous inference: {cacheObservation.previousInferenceId ?? "unknown"}</div>
+				<div>Elapsed: {cacheObservation.elapsedMs === undefined ? "unknown" : `${(cacheObservation.elapsedMs / 1000).toFixed(1)}s`} · Epoch: {cacheObservation.epoch ?? "unverified"}</div>
+				<div>Runtime restart: {cacheObservation.runtimeRestarted === undefined ? "unknown" : cacheObservation.runtimeRestarted ? "observed (correlation only)" : "not observed"}</div>
+				<div>Evidence: {cacheObservation.causes.join(", ")}. Provider eviction cause remains unknown.</div>
+			</div>
+		</details> : null}
+		</>
 	);
 }

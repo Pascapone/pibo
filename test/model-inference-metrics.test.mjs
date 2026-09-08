@@ -194,8 +194,9 @@ test("model and Tool diagnostics can be enabled independently under the global D
 
 test("inference metrics distinguish total input, cache hits, fresh input and output", () => {
 	assert.equal(modelInferenceInputTokens(metrics), 94_197);
-	assert.equal(modelInferenceCachedInputTokens(metrics), 91_800);
-	assert.equal(modelInferenceUncachedInputTokens(metrics), 2_397);
+	assert.equal(modelInferenceCachedInputTokens(metrics), 91_776);
+	assert.equal(modelInferenceUncachedInputTokens(metrics), 2_421);
+	assert.equal(modelInferenceUncachedInputTokens({ totalTokens: 20000, outputTokens: 0 }), undefined);
 	execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
 		import assert from "node:assert/strict";
 		import React from "react";
@@ -208,10 +209,51 @@ test("inference metrics distinguish total input, cache hits, fresh input and out
 		assert.match(markup, />In</);
 		assert.match(markup, />94,197</);
 		assert.match(markup, />Cached</);
-		assert.match(markup, />91,800</);
+		assert.match(markup, />91,776</);
 		assert.match(markup, />Uncached</);
-		assert.match(markup, />2,397</);
+		assert.match(markup, />2,421</);
 		assert.match(markup, />Out</);
 		assert.match(markup, />300</);
 	`], { cwd: process.cwd(), stdio: "pipe" });
+});
+
+test("cache collapse comparison survives trace replay and incremental reconstruction without duplicate tool costs", () => {
+	const scenario = [
+		{ type: "message_started", text: "First", source: "user", eventId: "one" },
+		{ type: "assistant_message", text: "Warm", assistantIndex: 0, eventId: "one" },
+		{ type: "assistant_usage", usageIndex: 0, eventId: "one", totalTokens: 154514, outputTokens: 259, inputTokens: 154255, cacheReadTokens: 150272 },
+		{ type: "message_started", text: "Continue", source: "user", eventId: "two" },
+		{ type: "tool_call", toolCallId: "a", toolName: "read", args: {}, argsComplete: true, eventId: "two" },
+		{ type: "tool_call", toolCallId: "b", toolName: "read", args: {}, argsComplete: true, eventId: "two" },
+		{ type: "assistant_usage", usageIndex: 0, eventId: "two", totalTokens: 154514, outputTokens: 259, inputTokens: 154255, cacheReadTokens: 3712 },
+		{ type: "assistant_message", text: "Finished", assistantIndex: 0, eventId: "two" },
+		{ type: "assistant_usage", usageIndex: 1, eventId: "two", totalTokens: 156210, outputTokens: 273, inputTokens: 155937, cacheReadTokens: 153984 },
+		// A delayed repeat must not move the Tool inference onto the Endturn.
+		{ type: "assistant_usage", usageIndex: 0, eventId: "two", totalTokens: 154514, outputTokens: 259, inputTokens: 154255, cacheReadTokens: 3712 },
+	].map((event, index) => ({ id: `cache-${index}`, eventSequence: index + 1, piboSessionId: "ps_model_metrics", type: event.type, createdAt: new Date(1788840000000 + index * 1000).toISOString(), payload: { ...event, piboSessionId: "ps_model_metrics" } }));
+	for (const trace of [view(scenario), patchTraceViewWithEvents(view(scenario.slice(0, 6)), scenario.slice(6), "idle")]) {
+		const records = flatten(trace.nodes).flatMap(node => node.modelInferences ?? []);
+		assert.equal(records.length, 3);
+		const cold = records.find(record => record.id === "two:usage:0");
+		assert.equal(cold.cacheObservation.warning, "possible-cache-collapse");
+		assert.equal(cold.cacheObservation.uncachedTokens, 150543);
+		assert.equal(cold.cacheObservation.previousInferenceId, "one:usage:0");
+		assert.equal(flatten(trace.nodes).find(node => node.modelInferences?.some(record => record.id === cold.id)).type, "tool.call");
+		assert.equal(records.find(record => record.id === "two:usage:1").cacheObservation.warning, "none");
+	}
+});
+
+test("cache comparison observes compaction boundaries during replay", () => {
+	const scenario = [
+		{ type: "message_started", text: "First", source: "user" },
+		{ type: "assistant_message", text: "Warm", assistantIndex: 0 },
+		{ type: "assistant_usage", usageIndex: 0, totalTokens: 20100, outputTokens: 100, cacheReadTokens: 18000 },
+		{ type: "compaction_start", reason: "manual", compactionIndex: 0 },
+		{ type: "compaction_end", reason: "manual", compactionIndex: 0, result: { summary: "Summary" } },
+		{ type: "assistant_message", text: "New context", assistantIndex: 1 },
+		{ type: "assistant_usage", usageIndex: 1, totalTokens: 20100, outputTokens: 100, cacheReadTokens: 0 },
+	].map((event, index) => ({ id: `compact-${index}`, eventSequence: index + 1, piboSessionId: "ps_model_metrics", type: event.type, createdAt: new Date(1788840000000 + index * 1000).toISOString(), payload: { ...event, piboSessionId: "ps_model_metrics", eventId: "turn" } }));
+	const record = flatten(view(scenario).nodes).flatMap(node => node.modelInferences ?? []).find(record => record.id === "turn:usage:1");
+	assert.equal(record.cacheObservation.warning, "none");
+	assert.deepEqual(record.cacheObservation.causes, ["expected-epoch-change"]);
 });

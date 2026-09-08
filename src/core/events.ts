@@ -349,6 +349,7 @@ export type PiboAssistantUsageEvent = {
 	piboSessionId: string;
 	eventId?: string;
 	usageIndex?: number;
+	cacheEvidence?: import("../shared/cache-diagnostics.js").CacheInferenceEvidence;
 	inputTokens?: number;
 	outputTokens?: number;
 	cacheReadTokens?: number;

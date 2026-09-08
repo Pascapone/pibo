@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/prefix-persistence-implementation-2026-09-08.md",
+      "state": "conformant",
+      "classification": "partial prefix persistence implementation checkpoint",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-final-acceptance-2026-09-08.md",
       "state": "conformant",
       "classification": "integrated performance and full-content acceptance",

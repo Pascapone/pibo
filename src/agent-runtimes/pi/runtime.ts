@@ -73,6 +73,8 @@ import {
 } from "../../tools/contract.js";
 import { compilePiboToolForPi } from "./tool-compiler.js";
 import { installPiIntentTracing, piIntentTracingEnabled } from "./intent-tracing.js";
+import { installPiCodexPrefixCodec } from "./prefix-codec.js";
+import type { SessionPrefixController } from "../../sessions/prefix-session.js";
 import type { PiboPortableToolSession } from "../../tools/session-service.js";
 import type {
 	AgentRuntimeDeliveryReport,
@@ -116,6 +118,8 @@ export function applyPiboRuntimeRetryDefaults(
 }
 
 export type PiboRuntimeOptions = {
+	/** Explicit adapter-input capture. Full resource/native-history conformance is a separate gate. */
+	prefixController?: SessionPrefixController;
 	cwd?: string;
 	/** Workspace containing the Pi package catalog selected by product configuration. */
 	piPackageStoreCwd?: string;
@@ -551,6 +555,10 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			void codexBrowserController?.dispose();
 			originalDispose();
 		};
+		if (options.prefixController) {
+			try { await installPiCodexPrefixCodec(created.session, options.prefixController); }
+			catch (error) { created.session.dispose(); throw error; }
+		}
 
 		return {
 			...created,
