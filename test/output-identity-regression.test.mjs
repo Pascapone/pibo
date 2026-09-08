@@ -70,6 +70,9 @@ test("equivalent assistant aliases fingerprint identically and compact queued/co
 		const legacyEquivalent = { ...completed, eventId: "legacy-compact" };
 		f.data.eventLog.appendEvent({ sessionId: f.session.id, sessionSequence: 4, topic: "pibo.output", type: "execution_result", source: "actor", eventId: legacyEquivalent.eventId, idempotencyKey: legacyOutputIdempotencyKey(legacyEquivalent), retentionClass: "trace_event", attributes: { identityFingerprint: "e4c9969cb6a881b186cc55fbc2ddb5ca6ed7a17e172dc64d69dd06ee34c81ec3", inlinePayload: legacyEquivalent.result, action: "compact" }, createdAt: "2026-09-08T00:00:00Z" });
 		assert.equal(ingest.ingestOutputEvent({ session: f.session, event: legacyEquivalent }).duplicate, true);
+		const legacyQueuedPhase = { ...legacyEquivalent, result: { queued: true, queuedMessages: 1 } };
+		assert.equal(ingest.ingestOutputEvent({ session: f.session, event: legacyQueuedPhase }).duplicate, false);
+		assert.equal(outputPersistenceDeliveryKey(legacyQueuedPhase).endsWith(":compact:queued"), true);
 		assert.throws(() => ingest.ingestOutputEvent({ session: f.session, event: { ...legacyEquivalent, result: { compacted: false } } }), { code: "pibo_output_identity_collision" });
 	} finally { f.close(); }
 });
