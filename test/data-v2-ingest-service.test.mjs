@@ -717,3 +717,29 @@ test("product history reconstructs full routed messages without native transcrip
 		store.close();
 	}
 });
+
+test("cache evidence survives durable usage replay without arbitrary diagnostic fields", () => {
+	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-cache-evidence-")) });
+	try {
+		const ingest = new ChatDataIngestService(store);
+		const session = makeSession({ id: "ps_cache_evidence" });
+		const evidence = { id: "generation:1", atMs: 1000, epoch: "2", runtimeGeneration: "generation",
+			prefixDigest: "a".repeat(64), configurationDigest: "b".repeat(64), cacheKeyDigest: "c".repeat(64), historyContinuity: "unknown" };
+		ingest.ingestOutputEvent({ session, roomId: "room_cache", event: { type: "assistant_usage", piboSessionId: session.id,
+			eventId: "turn", usageIndex: 0, inputTokens: 20000, outputTokens: 1, cacheReadTokens: 1000, totalTokens: 20001,
+			cacheEvidence: { ...evidence, authorization: "must-not-be-persisted" } } });
+		const row = store.eventLog.listEvents({ sessionId: session.id })[0];
+		assert.deepEqual(row.attributes.cacheEvidence, evidence);
+		const mapped = storedPiboEventFromV2Row(eventRow(1, "assistant_usage", row.attributes));
+		assert.deepEqual(mapped.payload.cacheEvidence, evidence);
+		assert.equal(JSON.stringify(row.attributes).includes("must-not-be-persisted"), false);
+		const untrusted = storedPiboEventFromV2Row(eventRow(2, "assistant_usage", {
+			...row.attributes, cacheEvidence: { ...evidence, authorization: "must-not-replay" },
+		}));
+		assert.deepEqual(untrusted.payload.cacheEvidence, evidence);
+		const invalid = storedPiboEventFromV2Row(eventRow(3, "assistant_usage", {
+			...row.attributes, cacheEvidence: { ...evidence, prefixDigest: "not-a-digest" },
+		}));
+		assert.equal(invalid.payload.cacheEvidence, undefined);
+	} finally { store.close(); }
+});

@@ -1,3 +1,4 @@
+import { boundedCacheEvidence } from "../shared/cache-diagnostics.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
 import { outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
@@ -521,6 +522,7 @@ function specificAttributesForOutputEvent(event: PiboOutputEvent): Record<string
 		usageIndex: event.usageIndex,
 		inferenceId: event.inferenceId,
 		inferenceTarget: event.inferenceTarget,
+		cacheEvidence: event.cacheEvidence ? boundedCacheEvidence(event.cacheEvidence) : undefined,
 		inputTokens: event.inputTokens,
 		outputTokens: event.outputTokens,
 		cacheReadTokens: event.cacheReadTokens,

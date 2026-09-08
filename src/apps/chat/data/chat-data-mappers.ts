@@ -1,3 +1,4 @@
+import { boundedCacheEvidence, type CacheInferenceEvidence } from "../../../shared/cache-diagnostics.js";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../../../core/events.js";
 import { normalizeSessionErrorDetails } from "../../../core/session-errors.js";
 import type { StoredChatEvent } from "../types/event-store.js";
@@ -143,6 +144,7 @@ function outputPayloadFromV2Row(row: EventLogRow, attributes: PiboJsonObject, pe
 			usageIndex: numberAttribute(attributes, "usageIndex"),
 			inferenceId: stringAttribute(attributes, "inferenceId"),
 			inferenceTarget: attributes.inferenceTarget,
+			cacheEvidence: attributes.cacheEvidence ? boundedCacheEvidence(attributes.cacheEvidence as CacheInferenceEvidence) : undefined,
 			inputTokens: numberAttribute(attributes, "inputTokens"),
 			outputTokens: numberAttribute(attributes, "outputTokens"),
 			cacheReadTokens: numberAttribute(attributes, "cacheReadTokens"),
