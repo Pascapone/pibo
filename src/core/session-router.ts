@@ -1264,6 +1264,14 @@ export class PiboSessionRouter {
 		return this.runRegistry.listAll(options);
 	}
 
+	getRunJobReliabilityStatus() {
+		return this.reliabilityStore?.getRunJobReliabilityStatus() ?? {
+			status: "ok" as const,
+			expiredOrphanRunJobs: 0,
+			orphanRunDeadLetters: 0,
+		};
+	}
+
 	getSignalRegistry(): PiboSignalRegistry {
 		return this.signalRegistry;
 	}

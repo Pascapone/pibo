@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, test } from 'node:test';
 import { checkActiveWork, RESTART_CONFIRMATION_TOKEN } from '../dist/gateway/cli.js';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createWebHostChannel } from '../dist/web/channel.js';
 
@@ -143,6 +143,27 @@ async function waitUntilReachable(port) {
 }
 
 describe('gateway status endpoint', () => {
+  it('reports degraded run-job reliability without counting orphan jobs as active runs', async () => {
+    const port = await freePort();
+    const channel = createWebHostChannel({ port, gatewayMode: 'prod', announce: false });
+    await channel.start({
+      listSessionRuntimeStatuses: () => [],
+      listRuns: () => [],
+      getRunJobReliabilityStatus: () => ({ status: 'degraded', expiredOrphanRunJobs: 0, orphanRunDeadLetters: 3 }),
+      getGatewayActions: () => [],
+      getWebApps: () => [],
+    });
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/gateway/status`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.deepEqual(body.activeRuns, []);
+      assert.deepEqual(body.reliability, { status: 'degraded', expiredOrphanRunJobs: 0, orphanRunDeadLetters: 3 });
+    } finally {
+      await channel.stop();
+    }
+  });
+
   it('uses direct run registry summaries instead of scanning stored session snapshots', async () => {
     const port = await freePort();
     const channel = createWebHostChannel({ port, gatewayMode: 'prod', announce: false });
@@ -167,6 +188,48 @@ describe('gateway status endpoint', () => {
       await channel.stop();
     }
   });
+});
+
+
+test('gateway doctor reports degraded run-job reliability without presenting it as active work', async () => {
+  const port = await freePort();
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({
+      status: 'ok',
+      mode: 'dev',
+      generation: 'test-generation',
+      runtimeStatuses: [],
+      activeRuns: [],
+      reliability: { status: 'degraded', expiredOrphanRunJobs: 0, orphanRunDeadLetters: 2 },
+    }));
+  });
+  await new Promise((resolve, reject) => {
+    server.listen(port, '127.0.0.1', resolve);
+    server.once('error', reject);
+  });
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['dist/bin/pibo.js', 'gateway', 'dev', 'doctor'], {
+        env: { ...process.env, PIBO_GATEWAY_DEV_PORT: String(port) },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8').on('data', (chunk) => { stdout += chunk; });
+      child.stderr.setEncoding('utf8').on('data', (chunk) => { stderr += chunk; });
+      child.once('error', reject);
+      child.once('close', (code) => resolve({ code, stdout, stderr }));
+    });
+    assert.equal(result.code, 1, `${result.stdout}\n${result.stderr}`);
+    assert.match(result.stdout, /active yielded runs: 0/);
+    assert.match(result.stdout, /run-job reliability: degraded/);
+    assert.match(result.stdout, /expired orphan jobs: 0/);
+    assert.match(result.stdout, /orphan DLQ records: 2/);
+    assert.doesNotMatch(result.stdout, /restart safety: blocked/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 
