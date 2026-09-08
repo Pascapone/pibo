@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-08T18:00:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "2700e24d3f9597cc1467af67e09804983a115325"
+  commit: "e5dada192a650482d7783540854090943fc5454c"
   requirements:
     - id: "WP02-DATA-REL-001"
       status: "implemented"
@@ -63,6 +63,8 @@ traceability:
           symbol: "deliverWebOutputPersistenceState"
         - path: "src/reliability/store.ts"
           symbol: "recordDeliveryReceipt"
+        - path: "src/debug/output-integrity.ts"
+          symbol: "inspectOutputIntegrity"
       tests:
         - path: "test/web-output-write-budget.test.mjs"
           name: "semantic output keeps its durable receipt with at most two full-envelope checkpoint rewrites"
@@ -76,6 +78,8 @@ traceability:
           name: "two processes renew slow claims and stale claim generations cannot destructively ack"
         - path: "test/stream-render-multiprocess-durability.test.mjs"
           name: "unknown, versionless, and malformed durable payloads quarantine while later jobs continue"
+        - path: "test/output-identity-regression.test.mjs"
+          name: "collision diagnostics are redacted and dead-letter reconciliation is explicit, audited, and idempotent"
       failures:
         - "Claims require exact worker ownership and unexpired leases for heartbeat/ack/retry/fail."
         - "Run lookup and mutation are scoped by controller Pibo Session ID."
@@ -195,7 +199,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 - Persistence and models: pibo_event_stream; pibo_event_consumers; pibo_jobs; pibo_dead_jobs; pibo_runs; inline payload_json/result_json; run states queued/running/completed/failed/timed_out/cancelled; tracked/detached completion policy.
 - Routes and protocols: No HTTP route or external wire protocol is owned.
 - State transitions: appendOnce deduplicates by event ID/idempotency key and stream IDs are monotonic. Consumer offsets advance by MAX and prune preserves rows needed by named consumers unless destructive behavior is explicit. Jobs move pending to generation-fenced leased running, then ack/retry/fail; per-job `maxAttempts` is enforced before another claim, exhausted work enters the dead-letter queue, and replay creates a new live job. Durable output delivery uses versioned envelopes, heartbeat renewal, idempotent projection receipts, bounded recovery batches, and sanitized quarantine for malformed payloads. Run terminal transitions are guarded; cancel wins over late complete; tracked terminal ack consumes notifications.
-- Failure and security: Claims require exact worker identity, generation, and unexpired lease for heartbeat/ack/retry/fail; stale owners cannot destructively settle work. Output identity collisions and permanent failures dead-letter after one attempt, while mixed retryable work remains recoverable. Run lookup and mutation are scoped by controller Pibo Session ID. Wait is bounded; cancellation tooling waits up to 15 seconds for execution settlement before committing cancellation.
+- Failure and security: Claims require exact worker identity, generation, and unexpired lease for heartbeat/ack/retry/fail; stale owners cannot destructively settle work. Output identity collisions and permanent failures dead-letter after one attempt, while mixed retryable work remains recoverable. A single collision degrades output-integrity health, preventing recurring collisions from remaining a count-only signal. Run lookup and mutation are scoped by controller Pibo Session ID. Wait is bounded; cancellation tooling waits up to 15 seconds for execution settlement before committing cancellation.
 - Compatibility: Tracked runs notify until consumed; detached runs remain inspectable without notifications. Pruning removes only detached terminal or consumed tracked runs after TTL.
 
 # Requirements and invariants
@@ -208,7 +212,7 @@ Reliability events SHALL append in monotonic order and deduplicate by event ID o
 
 Job claims SHALL be atomic and lease/worker/generation exact; retry backoff, per-job attempt exhaustion, dead-lettering, replay, delivery receipts, and versioned output-persistence recovery SHALL be durable and bounded.
 
-Web semantic output retains checkpoints after canonical V2 identity and reliability append. A reconstructible reliability payload does not require its own checkpoint. A committed delivery receipt is authoritative for completed side effects, so it does not require a further full-envelope rewrite before job acknowledgment. Existing replay, claim fencing and duplicate render identity remain unchanged.
+Web semantic output retains checkpoints after canonical V2 identity and reliability append. Any persisted or dead-lettered output identity collision SHALL produce a degraded integrity-health result at the threshold of one while preserving permanent one-attempt dead-letter classification. A reconstructible reliability payload does not require its own checkpoint. A committed delivery receipt is authoritative for completed side effects, so it does not require a further full-envelope rewrite before job acknowledgment. Existing replay, claim fencing and duplicate render identity remain unchanged.
 
 ## Requirement: WP02-DATA-REL-003
 
