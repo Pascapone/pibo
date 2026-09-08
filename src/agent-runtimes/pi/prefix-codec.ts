@@ -1,13 +1,14 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, Skill } from "@earendil-works/pi-coding-agent";
 import type { Context } from "@earendil-works/pi-ai";
 import { PrefixRecoveryRequiredError } from "../../sessions/prefix-capsule.js";
 import type { SessionPrefixController } from "../../sessions/prefix-session.js";
 
-export const PI_CODEX_PREFIX_CODEC = "pi-0.85.0/openai-codex-responses/v1";
+export const PI_CODEX_PREFIX_CODEC = "pi-0.85.0/openai-codex-responses/v2";
 
-type PiPrefixSnapshot = {
-	format: 1;
+export type PiPrefixSnapshot = {
+	format: 2;
 	systemPrompt: string;
+	skills: Skill[];
 	tools: NonNullable<Context["tools"]>;
 	providerStatic: Record<string, unknown>;
 };
@@ -24,7 +25,11 @@ function object(value: unknown): value is Record<string, unknown> {
 function decode(payload: string): PiPrefixSnapshot {
 	let value: unknown;
 	try { value = JSON.parse(payload); } catch { throw new PrefixRecoveryRequiredError("invalid Pi prefix payload"); }
-	if (!object(value) || value.format !== 1 || typeof value.systemPrompt !== "string"
+	if (!object(value) || value.format !== 2 || typeof value.systemPrompt !== "string"
+		|| !Array.isArray(value.skills) || value.skills.some(skill => !object(skill)
+			|| typeof skill.name !== "string" || typeof skill.description !== "string"
+			|| typeof skill.filePath !== "string" || typeof skill.baseDir !== "string"
+			|| !object(skill.sourceInfo) || typeof skill.disableModelInvocation !== "boolean")
 		|| !Array.isArray(value.tools) || !object(value.providerStatic)
 		|| value.tools.some(tool => !object(tool) || typeof tool.name !== "string" || typeof tool.description !== "string" || !object(tool.parameters))) {
 		throw new PrefixRecoveryRequiredError("unsupported Pi prefix payload");
@@ -51,6 +56,12 @@ function captureTools(tools: Context["tools"]): NonNullable<Context["tools"]> {
 	}));
 }
 
+/** Read before SDK resource discovery, not after live context was rebuilt. */
+export async function restorePiCodexPrefix(controller: SessionPrefixController): Promise<PiPrefixSnapshot | undefined> {
+	const restored = await controller.restore(PI_CODEX_PREFIX_CODEC);
+	return restored === undefined ? undefined : deepFreeze(decode(restored));
+}
+
 /**
  * Narrow codec at the SDK's final onPayload seam, after provider extensions.
  * This is an adapter-input proof, not a claim that mutable native history or
@@ -60,9 +71,9 @@ function captureTools(tools: Context["tools"]): NonNullable<Context["tools"]> {
 export async function installPiCodexPrefixCodec(
 	session: AgentSession,
 	controller: SessionPrefixController,
+	preparedSnapshot?: PiPrefixSnapshot,
 ): Promise<void> {
-	const restored = await controller.restore(PI_CODEX_PREFIX_CODEC);
-	let snapshot = restored === undefined ? undefined : deepFreeze(decode(restored));
+	let snapshot = preparedSnapshot ?? await restorePiCodexPrefix(controller);
 	const historical = session.sessionManager.getEntries().some(entry => entry.type === "message" && entry.message.role === "assistant");
 	if (!snapshot && historical) throw new PrefixRecoveryRequiredError("Pi history has no captured original prefix");
 	if (snapshot) {
@@ -74,6 +85,7 @@ export async function installPiCodexPrefixCodec(
 				throw new PrefixRecoveryRequiredError(`frozen Pi tool ${tool.name} is unavailable or incompatible`);
 			}
 		}
+		session.agent.state.systemPrompt = snapshot.systemPrompt;
 	}
 	const stream = session.agent.streamFunction;
 	session.agent.streamFunction = async (model, context, options) => {
@@ -81,6 +93,7 @@ export async function installPiCodexPrefixCodec(
 		if (session.isCompacting) return stream(model, context, options);
 		if (model.api !== "openai-codex-responses") throw new PrefixRecoveryRequiredError("Pi prefix codec does not support this provider API");
 		if (snapshot && snapshot.providerStatic.model !== model.id) throw new PrefixRecoveryRequiredError("model change requires an explicit prefix epoch transition");
+		if (snapshot) session.agent.state.systemPrompt = snapshot.systemPrompt;
 		const frozenContext: Context = snapshot
 			? { ...context, systemPrompt: snapshot.systemPrompt, tools: snapshot.tools }
 			: context;
@@ -97,7 +110,8 @@ export async function installPiCodexPrefixCodec(
 					const providerStatic: Record<string, unknown> = {};
 					for (const key of Object.keys(transformed)) if (key !== "input") providerStatic[key] = structuredClone(transformed[key]);
 					const captured: PiPrefixSnapshot = {
-						format: 1, systemPrompt: frozenContext.systemPrompt ?? "", tools: captureTools(frozenContext.tools), providerStatic,
+						format: 2, systemPrompt: frozenContext.systemPrompt ?? "", skills: structuredClone(session.resourceLoader.getSkills().skills),
+						tools: captureTools(frozenContext.tools), providerStatic,
 					};
 					await controller.seal({
 						codec: PI_CODEX_PREFIX_CODEC, payload: JSON.stringify(captured), nativeSessionId: session.sessionId,

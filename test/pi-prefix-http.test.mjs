@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
@@ -47,6 +49,8 @@ async function fakeProvider(t) {
 
 for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native tool history survive restart with ${repeatCount * 17} input characters`, { timeout: 60000 }, async t => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-prefix-http-"));
+	const contextPath = join(root, "selected-context.md");
+	await writeFile(contextPath, "Original selected context");
 	const sessions = new SqlitePiboSessionStore(join(root, "sessions.sqlite"));
 	const api = await fakeProvider(t);
 	let runtime;
@@ -64,7 +68,7 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	};
 	let hookText = "original provider suffix";
 	const open = async () => {
-		const profile = new InitialSessionContextBuilder("prefix-http").withBuiltinTools("disabled").withAutoContextFiles(false).createSession();
+		const profile = new InitialSessionContextBuilder("prefix-http").withBuiltinTools("disabled").withAutoContextFiles(false).addContextFile({ path: contextPath }).createSession();
 		profile.sessionId = session.piSessionId;
 		const result = await createPiboRuntime({
 			cwd: root, profile, persistSession: true, modelRuntime, modelDefaults: {}, prefixController: makeController(),
@@ -81,7 +85,7 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	await savePiboCustomBasePrompt("Original base prompt", root);
 	runtime = await open();
 	await runtime.session.prompt("historic content ".repeat(repeatCount));
-	assert.equal(api.requests.length, 2);
+	assert.equal(api.requests.length, 2, JSON.stringify(runtime.session.state.messages.filter(message => message.role === "assistant").map(message => ({ stopReason: message.stopReason, errorMessage: message.errorMessage }))));
 	assert.ok(api.requests[1].input.some(item => item.type === "function_call_output" && item.output.includes("persistent tool result")));
 	nativePath = runtime.session.sessionFile;
 	assert.ok(nativePath);
@@ -89,10 +93,20 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	await runtime.dispose(); runtime = undefined;
 	await savePiboCustomBasePrompt("Changed base prompt", root);
 	hookText = "changed provider suffix";
-	runtime = await open();
-	await runtime.session.prompt("new message");
+	await writeFile(contextPath, "Changed selected context");
+	const forbiddenSources = new Set([contextPath, join(root, ".pibo/base-prompt.json"), join(root, ".pibo/base-prompt.md")]);
+	const sourceReads = [];
+	const originalSyncRead = fs.readFileSync;
+	const originalAsyncRead = fs.promises.readFile;
+	fs.readFileSync = (path, ...args) => { if (forbiddenSources.has(path)) sourceReads.push(path); return originalSyncRead(path, ...args); };
+	fs.promises.readFile = (path, ...args) => { if (forbiddenSources.has(path)) sourceReads.push(path); return originalAsyncRead(path, ...args); };
+	syncBuiltinESMExports();
+	try { runtime = await open(); await runtime.session.prompt("new message"); }
+	finally { fs.readFileSync = originalSyncRead; fs.promises.readFile = originalAsyncRead; syncBuiltinESMExports(); }
+	assert.deepEqual(sourceReads, [], "protected resume must not reread current base or selected context files");
 	assert.equal(api.requests.length, 3);
 	const [, before, after] = api.requests;
+	assert.match(before.instructions, /Original selected context/);
 	assert.equal(after.instructions, before.instructions);
 	assert.deepEqual(after.tools, before.tools);
 	assert.equal(after.prompt_cache_key, before.prompt_cache_key);

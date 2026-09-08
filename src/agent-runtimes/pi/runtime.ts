@@ -73,7 +73,7 @@ import {
 } from "../../tools/contract.js";
 import { compilePiboToolForPi } from "./tool-compiler.js";
 import { installPiIntentTracing, piIntentTracingEnabled } from "./intent-tracing.js";
-import { installPiCodexPrefixCodec } from "./prefix-codec.js";
+import { installPiCodexPrefixCodec, restorePiCodexPrefix } from "./prefix-codec.js";
 import type { SessionPrefixController } from "../../sessions/prefix-session.js";
 import type { PiboPortableToolSession } from "../../tools/session-service.js";
 import type {
@@ -394,19 +394,20 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		sessionStartEvent,
 	}) => {
 		const contextGuardRecovery = createPiboAssistantContextGuardRecovery();
-		const resourceContextFiles = options.resources?.getContextContributions()
+		const restoredPrefix = options.prefixController ? await restorePiCodexPrefix(options.prefixController) : undefined;
+		const resourceContextFiles = restoredPrefix ? [] : options.resources?.getContextContributions()
 			.flatMap((contribution) => contribution.content === undefined || contribution.nativeDiscovered ? [] : [{
 				path: contribution.sourcePath ?? contribution.path ?? contribution.materializedPath ?? contribution.id,
 				content: contribution.content,
 			}]);
 		const contextFiles = resourceContextFiles ?? await loadContextFiles(runtimeCwd, profile.contextFiles);
-		const sessionContextFile = options.resources
+		const sessionContextFile = options.resources || restoredPrefix
 			? undefined
 			: createSessionContextFile({ piboSessionId: profile.sessionId, ...options.sessionContext });
-		const installedToolContextFile = options.resources ? undefined : getInstalledCliToolContextFile();
-		const mcpAgentContextFile = options.resources ? undefined : await getMcpAgentContextFile(profile.mcpServers);
-		const delegatedAgentContextFile = options.resources ? undefined : getDelegatedAgentContextFile(profile.subagents);
-		const skillPaths = options.resources
+		const installedToolContextFile = options.resources || restoredPrefix ? undefined : getInstalledCliToolContextFile();
+		const mcpAgentContextFile = options.resources || restoredPrefix ? undefined : await getMcpAgentContextFile(profile.mcpServers);
+		const delegatedAgentContextFile = options.resources || restoredPrefix ? undefined : getDelegatedAgentContextFile(profile.subagents);
+		const skillPaths = restoredPrefix ? [] : options.resources
 			? [...options.resources.getSkillPaths("source")]
 			: getEnabledSkillPaths(runtimeCwd, profile);
 		const piPackageOptions = getPiPackageRuntimeOptions(options.piPackageStoreCwd ?? runtimeCwd, profile);
@@ -428,11 +429,15 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				noSkills: true,
 				noPromptTemplates: true,
 				noThemes: true,
-				noContextFiles: profile.autoContextFiles === false,
-				systemPrompt: getActivePiboBasePromptPath(runtimeCwd),
+				noContextFiles: Boolean(restoredPrefix) || profile.autoContextFiles === false,
+				systemPrompt: restoredPrefix ? restoredPrefix.systemPrompt : getActivePiboBasePromptPath(runtimeCwd),
+				...(restoredPrefix ? {
+					appendSystemPrompt: [],
+					skillsOverride: () => ({ skills: structuredClone(restoredPrefix.skills), diagnostics: [] }),
+				} : {}),
 				agentsFilesOverride: (base) => ({
 					agentsFiles: mergeContextFiles(
-						base.agentsFiles,
+						restoredPrefix ? [] : base.agentsFiles,
 						[
 							...(sessionContextFile ? [sessionContextFile] : []),
 							...contextFiles,
@@ -556,7 +561,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			originalDispose();
 		};
 		if (options.prefixController) {
-			try { await installPiCodexPrefixCodec(created.session, options.prefixController); }
+			try { await installPiCodexPrefixCodec(created.session, options.prefixController, restoredPrefix); }
 			catch (error) { created.session.dispose(); throw error; }
 		}
 
