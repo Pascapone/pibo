@@ -303,7 +303,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 			`).all(input.piboSessionId, input.eventId, ...eventTypes) as Array<{ type: string; attributes_json: string }>;
 			let maximum = -1;
 			let turnCompleted = false;
-			const persistedParts: Array<{ index: number; attributes: PiboJsonObject }> = [];
+			const persistedParts: Array<{ index: number; type: string; attributes: PiboJsonObject }> = [];
 			for (const row of rows) {
 				if (row.type === "message_finished") {
 					turnCompleted = true;
@@ -313,22 +313,22 @@ export class PiboDataSessionStore implements PiboSessionStore {
 				const index = attributes[indexAttribute];
 				if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) continue;
 				maximum = Math.max(maximum, index);
-				persistedParts.push({ index, attributes });
+				persistedParts.push({ index, type: row.type, attributes });
 			}
-			// An unfinished durable part may still belong to another process. Only a
-			// completed turn provides enough evidence to reattach an exact replay.
-			if (turnCompleted) {
-				const matchesReplay = ({ attributes }: { attributes: PiboJsonObject }) =>
-					attributes.outputPartFingerprint === input.fingerprint
-					|| attributes.identityFingerprint === input.identityFingerprint;
-				const replay = (input.suppliedIndex === undefined
-					? undefined
-					: persistedParts.find((part) => part.index === input.suppliedIndex && matchesReplay(part)))
-					?? persistedParts.find(matchesReplay);
-				if (replay) {
-					this.observeOutputPartIndex(input, replay.index);
-					return replay.index;
-				}
+			// A completed turn or an exact terminal-part fingerprint is durable
+			// evidence for replay. Nonterminal parts remain unattached while the turn
+			// is open because another producer may still own them.
+			const matchesReplay = ({ type, attributes }: { type: string; attributes: PiboJsonObject }) =>
+				(turnCompleted || outputPartEventIsTerminal(type))
+				&& (attributes.outputPartFingerprint === input.fingerprint
+					|| attributes.identityFingerprint === input.identityFingerprint);
+			const replay = (input.suppliedIndex === undefined
+				? undefined
+				: persistedParts.find((part) => part.index === input.suppliedIndex && matchesReplay(part)))
+				?? (turnCompleted ? persistedParts.find(matchesReplay) : undefined);
+			if (replay) {
+				this.observeOutputPartIndex(input, replay.index);
+				return replay.index;
 			}
 			const minimum = Math.max(input.proposedIndex, maximum + 1);
 			const row = this.db.prepare(`
@@ -662,6 +662,7 @@ export class PiboDataSessionStore implements PiboSessionStore {
 					actorId: session.id,
 					event,
 					createdAt: at,
+					persistenceProvenance: { producer: "runtime-recovery", projection: "product-history", phase: "startup-recovery" },
 				});
 				results.push({
 					turnId: recovered.turn.turnId,
@@ -895,6 +896,10 @@ function outputPartEventTypes(kind: OutputPartTransition["kind"]): string[] {
 		case "usage": return ["assistant_usage"];
 		case "compaction": return ["compaction_start", "compaction_end"];
 	}
+}
+
+function outputPartEventIsTerminal(type: string): boolean {
+	return type === "assistant_message" || type === "thinking_finished" || type === "assistant_usage" || type === "compaction_end";
 }
 
 function parseJsonObject(json: string | null | undefined): PiboJsonObject {

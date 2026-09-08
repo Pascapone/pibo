@@ -297,6 +297,25 @@ async function runDebugRepair(args: string[]): Promise<void> {
 		printDebugRepairDiscovery();
 		return;
 	}
+	if (args[0] === "output-collision") {
+		if (args[1] === "--help" || args[1] === "-h") { printDebugRepairDiscovery(); return; }
+		const jobIndex = args.indexOf("--job");
+		const jobId = jobIndex >= 0 ? args[jobIndex + 1] : undefined;
+		if (!jobId || jobId.startsWith("-")) throw new Error("pibo debug repair output-collision requires --job <dead-job-id>");
+		const allowed = new Set(["--job", jobId, "--json", "--dry-run", "--apply", "--keep-existing"]);
+		const unknown = args.slice(1).find((arg) => !allowed.has(arg));
+		if (unknown) throw new Error(`Unknown output collision repair option "${unknown}"`);
+		if (args.includes("--apply") && args.includes("--dry-run")) throw new Error("Choose either --dry-run or --apply");
+		const { repairOutputCollision } = await import("./output-collision-repair.js");
+		const result = repairOutputCollision({ dataStore: resolveDebugStore("pibo-data"), reliabilityStore: resolveDebugStore("reliability"), jobId, apply: args.includes("--apply"), keepExisting: args.includes("--keep-existing") });
+		console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : [
+			"pibo debug repair output-collision", `mode\t${result.mode}`, `job\t${result.jobId}`, `decision\t${result.decision}`,
+			`applied\t${result.applied}`, `idempotent\t${result.idempotent}`, `transcript\t${result.projections.transcript}`,
+			`trace\t${result.projections.trace}`, `navigation\t${result.projections.navigation}`, `command\t${result.projections.command}`,
+			...(result.auditStreamId ? [`audit\t${result.auditStreamId}`] : []), "", ...result.warnings.map((warning) => `warning\t${warning}`),
+		].join("\n"));
+		return;
+	}
 	if (args[0] !== "output") {
 		throw new Error(`Unknown pibo debug repair command "${args[0]}". Run pibo debug repair --help.`);
 	}
@@ -1450,6 +1469,8 @@ function printDebugRepairDiscovery(): void {
 Usage:
   pibo debug repair output <pibo-session-id> <event-id> [--dry-run|--apply] [--json]
   pibo debug repair output --session <pibo-session-id> [--since <iso-date>] [--before <iso-date>] [--limit n] [--dry-run|--apply] [--json]
+  pibo debug repair output-collision --job <dead-job-id> [--dry-run] [--json]
+  pibo debug repair output-collision --job <dead-job-id> --apply --keep-existing [--json]
 
 Behavior:
   Dry-run is the default. --apply is required for every mutation.
@@ -1458,6 +1479,8 @@ Behavior:
   Repair never invents assistant content. Without an exact Reliability terminal, only a completed assistant record can justify message_finished.
   Every applied terminal writes a pibo.output.repair_applied audit event in the same transaction.
   Repair does not delete or replay pending or dead output-persistence jobs.
+  Collision dry-run reports transcript, trace, navigation, and command projection state.
+  Collision apply requires --keep-existing, records an idempotent audit, and never compares or replays conflicting bodies or side effects.
 
 Next:
   pibo debug repair output ps_... <event-id> --dry-run --json

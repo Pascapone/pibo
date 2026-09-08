@@ -827,7 +827,7 @@ export class LocalCliSessionSource implements CliSessionSource {
     for (const delivery of persistenceState.deliveries) {
       if (delivery.persisted) continue;
       try {
-        this.ingestOutputEvent(session, delivery.event);
+        this.ingestOutputEvent(session, delivery.event, retryContext.attempt > 1 ? "durable-replay" : "live");
       } catch (error) {
         errors.push(error instanceof Error ? error : new Error(String(error)));
         continue;
@@ -963,6 +963,7 @@ export class LocalCliSessionSource implements CliSessionSource {
   private ingestOutputEvent(
     session: PiboSession,
     event: PiboOutputEvent,
+    phase: "live" | "durable-replay",
   ): void {
     if (!this.ingestService) return;
     this.ingestService.ingestOutputEvent({
@@ -971,6 +972,7 @@ export class LocalCliSessionSource implements CliSessionSource {
       actorId: session.profile,
       event,
       createdAt: this.now(),
+      persistenceProvenance: { producer: "local-cli", projection: "product-history", phase },
     });
   }
 
