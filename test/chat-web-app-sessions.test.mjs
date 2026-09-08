@@ -450,7 +450,7 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 			session.id,
 			room.id,
 			"pibo.output",
-			"assistant_message",
+			"message_finished",
 			"test",
 			"assistant",
 			"assistant",
