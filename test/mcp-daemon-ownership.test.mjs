@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -11,10 +13,14 @@ const daemonModuleUrl = pathToFileURL(resolve("dist/mcp/daemon.js")).href;
 const clientModuleUrl = pathToFileURL(resolve("dist/mcp/daemon-client.js")).href;
 
 async function runProbe(source, env = {}) {
-	return execFileAsync(process.execPath, ["--input-type=module", "--eval", source], {
-		env: { ...process.env, MCP_DAEMON_REQUEST_TIMEOUT: "1", ...env },
-		maxBuffer: 4 * 1024 * 1024,
-	});
+	// Other MCP suites also reap dead fixture PIDs; never share their socket directory.
+	const directory = await mkdtemp(join(tmpdir(), "mcp-own-"));
+	try {
+		return await execFileAsync(process.execPath, ["--input-type=module", "--eval", source], {
+			env: { ...process.env, MCP_DAEMON_REQUEST_TIMEOUT: "1", ...env, TMPDIR: directory, TMP: directory, TEMP: directory },
+			maxBuffer: 4 * 1024 * 1024,
+		});
+	} finally { await rm(directory, { recursive: true, force: true }); }
 }
 
 test("stale PID metadata never signals an unrelated reused process", async () => {

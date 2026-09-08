@@ -665,6 +665,9 @@ test("payload chunks reconstruct UTF-8 without full reads for identity and gzip"
 				assert.ok(chunk.nextOffset > offset); offset = chunk.nextOffset;
 			} while (true);
 			assert.equal(result, original);
+			const streamed = [];
+			for await (const chunk of store.payloads.openPayloadStream(payload.id)) streamed.push(chunk);
+			assert.equal(Buffer.concat(streamed).toString("utf8"), original);
 		}
 	} finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });

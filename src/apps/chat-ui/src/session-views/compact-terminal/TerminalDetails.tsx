@@ -140,7 +140,7 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 	const [loadError, setLoadError] = useState<string>();
 	const [state, setState] = useState<
 		| { status: "loading" }
-		| { status: "loaded"; data: string; hasMore: boolean; nextOffset?: number }
+		| { status: "loaded"; data: string; offset: number; previous: number[]; hasMore: boolean; nextOffset?: number }
 		| { status: "error"; message: string }
 	>({ status: "loading" });
 
@@ -154,7 +154,7 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 		getTracePayload(refInfo.ref, { offset: 0, limit: 65536 })
 			.then((chunk) => {
 				if (cancelled) return;
-				setState({ status: "loaded", data: chunk.data, hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
+				setState({ status: "loaded", data: chunk.data, offset: 0, previous: [], hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
 			})
 			.catch((error: unknown) => {
 				if (cancelled) return;
@@ -166,14 +166,16 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 		};
 	}, [refInfo.ref]);
 
-	async function loadMore() {
-		if (pending.current || state.status !== "loaded" || state.nextOffset === undefined) return;
+	async function loadSection(back = false) {
+		if (pending.current || state.status !== "loaded") return;
+		const offset = back ? state.previous.at(-1) : state.nextOffset;
+		if (offset === undefined) return;
 		pending.current = true; setLoadingMore(true); setLoadError(undefined);
 		const current = generation.current;
 		try {
-			const chunk = await getTracePayload(refInfo.ref, { offset: state.nextOffset, limit: 1024 * 1024 });
+			const chunk = await getTracePayload(refInfo.ref, { offset, limit: 65536 });
 			if (current !== generation.current) return;
-			setState({ status: "loaded", data: state.data + chunk.data, hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
+			setState({ status: "loaded", data: chunk.data, offset, previous: back ? state.previous.slice(0, -1) : [...state.previous, state.offset], hasMore: chunk.hasMore, nextOffset: chunk.nextOffset });
 		} catch (error) {
 			if (current === generation.current) setLoadError(error instanceof Error ? error.message : String(error));
 		} finally {
@@ -192,13 +194,18 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#ef4444]">{state.message}</div>
 			) : (
 				<div className="space-y-1">
-					<pre onScroll={(event) => { const box = event.currentTarget; if (state.hasMore && box.scrollTop + box.clientHeight >= box.scrollHeight - 80) void loadMore(); }} className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
+					<pre key={state.offset} className="m-0 max-h-[520px] overflow-auto whitespace-pre-wrap break-words border border-[#2a2a2a] bg-[#0b0b0b] p-2 font-mono text-[12px] leading-[1.45] text-[#d4d4d4]">
 						{state.data}
 					</pre>
 					{loadError ? <div role="alert" className="text-[12px] text-[#ef4444]">{loadError}</div> : null}
+					<div className="flex items-center gap-2 text-[12px]">
+						<span>Section {state.previous.length + 1}</span>
+						<button type="button" disabled={loadingMore || !state.previous.length} onClick={() => void loadSection(true)} className="border border-[#2a2a2a] px-2 py-1 text-[#38bdf8] disabled:opacity-50">Previous section</button>
+						<a href={`/api/chat/trace/payload/${encodeURIComponent(refInfo.ref)}?download=1`} download className="text-[#38bdf8] underline">Download full content</a>
+					</div>
 					{state.hasMore ? (
-						<button type="button" disabled={loadingMore} onClick={() => void loadMore()} className="border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8] disabled:opacity-50">
-							{loadingMore ? "Loading…" : "Load more"}
+						<button type="button" disabled={loadingMore} onClick={() => void loadSection()} className="border border-[#2a2a2a] px-2 py-1 text-[12px] text-[#38bdf8] disabled:opacity-50">
+							{loadingMore ? "Loading…" : "Next section"}
 						</button>
 					) : null}
 				</div>

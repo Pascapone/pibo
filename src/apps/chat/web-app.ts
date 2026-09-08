@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import { BoundedEventStream } from "./bounded-event-stream.js";
 import { boundedMessageBytes } from "../../data/bounded-worker-client.js";
 import { TraceResponseCache } from "./trace-response-cache.js";
@@ -6448,6 +6449,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const parsed = parseTracePayloadRef(ref);
 				if (!parsed) throw new PiboWebHttpError("Invalid trace payload ref", 400);
 				resolveRequestedSession(state, context, webSession, defaultProfile, parsed.piboSessionId);
+				if (url.searchParams.get("download") === "1") {
+					const payload = state.dataStore.payloads.getPayload(parsed.payloadId);
+					if (!payload) throw new PiboWebHttpError("Trace payload not found", 404);
+					const body = Readable.toWeb(state.dataStore.payloads.openPayloadStream(parsed.payloadId));
+					return new Response(body as ReadableStream<Uint8Array>, { headers: {
+						"content-type": "application/octet-stream", "content-disposition": 'attachment; filename="message-content.txt"',
+						"content-length": String(payload.byteSize), "cache-control": "no-store", "x-content-type-options": "nosniff",
+					} });
+				}
 				const offset = parseNonNegativeIntSearchParam(url, "offset", 0, Number.MAX_SAFE_INTEGER);
 				const limit = parsePositiveIntSearchParam(url, "limit", TRACE_V2_PAYLOAD_DEFAULT_LIMIT_BYTES, TRACE_V2_PAYLOAD_MAX_LIMIT_BYTES);
 				const chunk = await readTracePayloadChunk({ payloadStore: state.dataStore.payloads, ref, offset, limit });

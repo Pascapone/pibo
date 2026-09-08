@@ -43,6 +43,11 @@ test('large live outputs retain full references across SSE replay and timeline',
    let restored='',offset=0;
    for(;;){const res=await get('/api/chat/trace/payload/'+encodeURIComponent(frame.storedPayloadRef.ref)+`?offset=${offset}&limit=65536`);assert.equal(res.status,200);const chunk=await res.json();restored+=chunk.data;if(!chunk.hasMore)break;assert.ok(chunk.nextOffset>offset);offset=chunk.nextOffset;}
    assert.equal(type==='assistant_message'?restored:JSON.parse(restored),text);
+   const downloadPath='/api/chat/trace/payload/'+encodeURIComponent(frame.storedPayloadRef.ref)+'?download=1';
+   const download=await get(downloadPath);assert.equal(download.status,200);assert.match(download.headers.get('content-disposition'),/attachment/);
+   const downloaded=await download.text();assert.equal(downloaded,restored);
+   const unauthorized=await fetch(host.baseURL+downloadPath);assert.notEqual(unauthorized.status,200);
+
    const timeline=await (await get('/api/chat/trace/timeline?piboSessionId=ps_large_replay')).json();
    const refs=timeline.nodes.flatMap(n=>Object.values(n.payloadRefs??{}));
    assert.ok(refs.some(r=>r.hash===frame.storedPayloadRef.hash && r.byteLength===frame.storedPayloadRef.byteLength),'timeline must reference the same complete content');

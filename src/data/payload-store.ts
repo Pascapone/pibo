@@ -1,3 +1,4 @@
+import { Readable, pipeline } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { createGunzip, gunzipSync, gzipSync } from "node:zlib";
 import { createReadStream, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -175,6 +176,17 @@ export class PayloadStore {
 		if (payload.encoding === "gzip") return gunzipSync(bytes);
 		if (payload.encoding === "identity") return bytes;
 		throw new Error(`Unsupported payload encoding \"${payload.encoding}\"`);
+	}
+
+	openPayloadStream(id: string): Readable {
+		const payload = this.getPayload(id);
+		if (!payload?.storagePath) throw new Error("Payload not found");
+		if (payload.encoding !== "identity" && payload.encoding !== "gzip") throw new Error("Unsupported payload encoding");
+		const source = createReadStream(this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath));
+		if (payload.encoding === "identity") return source;
+		const decoded = createGunzip();
+		pipeline(source, decoded, () => {}); // Pipeline closes both ends on cancellation or read failure.
+		return decoded;
 	}
 
 	/** Read a bounded uncompressed range without materializing the entire payload. */
