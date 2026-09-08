@@ -34,7 +34,7 @@ async function fakeProvider(t) {
 		const item = { type: "message", id, role: "assistant", content: [{ type: "output_text", text: "ok", annotations: [] }], status: "completed" };
 		res.writeHead(200, { "content-type": "text/event-stream", connection: "close" });
 		const tool = { type: "function_call", id: "fc_prefix", call_id: "call_prefix", name: "prefix_probe", arguments: "{}", status: "completed" };
-		const events = requests.length === 1 ? [
+		let events = requests.length === 1 ? [
 			{ type: "response.output_item.added", output_index: 0, item: { ...tool, arguments: "", status: "in_progress" } },
 			{ type: "response.function_call_arguments.delta", delta: "{}" },
 			{ type: "response.output_item.done", output_index: 0, item: tool },
@@ -46,6 +46,17 @@ async function fakeProvider(t) {
 			{ type: "response.output_item.done", output_index: 0, item },
 			{ type: "response.completed", response: { id: `response-${id}`, status: "completed", output: [item], usage: { input_tokens: 10, output_tokens: 1, total_tokens: 11, input_tokens_details: { cached_tokens: 0 } } } },
 		 ];
+		if (requests.length === 1) {
+			const reasoning = { type: "reasoning", id: "rs_prefix", summary: [{ type: "summary_text", text: "Fixture reasoning summary." }], encrypted_content: "opaque-fixture-reasoning" };
+			events = [
+				{ type: "response.output_item.added", output_index: 0, item: { ...reasoning, summary: [], encrypted_content: undefined } },
+				{ type: "response.reasoning_summary_part.added", item_id: reasoning.id, output_index: 0, summary_index: 0, part: { type: "summary_text", text: "" } },
+				{ type: "response.reasoning_summary_text.delta", item_id: reasoning.id, output_index: 0, summary_index: 0, delta: "Fixture reasoning summary." },
+				{ type: "response.output_item.done", output_index: 0, item: reasoning },
+				...events.map(event => typeof event.output_index === "number" ? { ...event, output_index: event.output_index + 1 } : event),
+			];
+			events.at(-1).response.output.unshift(reasoning);
+		}
 		res.end(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(""));
 	});
 	await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -53,7 +64,8 @@ async function fakeProvider(t) {
 	return { requests, baseUrl: `http://127.0.0.1:${server.address().port}` };
 }
 
-for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native tool history survive restart with ${repeatCount * 17} input characters`, { timeout: 60000 }, async t => {
+for (const providerApi of ["openai-codex-responses", "openai-responses"])
+for (const repeatCount of [250, 25000, 50000]) test(`Pi ${providerApi} HTTP prefix and native tool history survive restart with ${repeatCount * 17} input characters`, { timeout: 60000 }, async t => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-prefix-http-"));
 	const contextPath = join(root, "selected-context.md");
 	await writeFile(contextPath, "Original selected context");
@@ -78,7 +90,8 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	sessions.updateRuntimeBinding(session.id, { ...session.runtimeBinding, state: "bound" }, { expectedRevision: 1 });
 	const credentials = new InMemoryCredentialStore();
 	const claim = Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-only" } })).toString("base64url");
-	await credentials.modify("openai-codex", async () => ({ type: "oauth", access: `test.${claim}.test`, refresh: "test-only", expires: Date.now() + 3600000 }));
+	if (providerApi === "openai-codex-responses") await credentials.modify("openai-codex", async () => ({ type: "oauth", access: `test.${claim}.test`, refresh: "test-only", expires: Date.now() + 3600000 }));
+	else await credentials.modify("openai", async () => ({ type: "api_key", key: "test-only-openai-key" }));
 	const modelRuntime = await ModelRuntime.create({ credentials, allowModelNetwork: false });
 	const makeController = () => {
 		let binding = sessions.get(session.id).runtimeBinding;
@@ -89,6 +102,8 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	let searchFilters;
 	let externalWebAccess;
 	let providerExtras;
+	let invalidCacheOptions;
+	let prependInstruction = false;
 	const open = async () => {
 		const profile = new InitialSessionContextBuilder("prefix-http").withBuiltinTools("disabled").withAutoContextFiles(false).addContextFile({ path: contextPath }).addSkill({ name: "prefix-skill", path: join(skillDir, "SKILL.md") }).createSession();
 		profile.sessionId = session.piSessionId;
@@ -99,13 +114,19 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 			cwd: root, profile, persistSession: true, modelRuntime, modelDefaults: {}, prefixController, resources,
 			extensionFactories: [pi => {
 				pi.registerTool({ name: "prefix_probe", label: "Prefix probe", description: "Read the deterministic fixture value", parameters: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "persistent tool result" }], details: {} }) });
-				pi.on("before_provider_request", event => ({ ...event.payload, instructions: `${event.payload.instructions}\n${hookText}`, tools: [...(event.payload.tools ?? []), ...(providerSearchEnabled ? [{ type: "web_search", search_context_size: hookText === "original provider suffix" ? "low" : "high", ...(searchFilters ? { filters: searchFilters } : {}), ...(externalWebAccess === undefined ? {} : { external_web_access: externalWebAccess }), ...providerExtras }] : [])] }));
+				pi.on("before_provider_request", event => {
+					if (providerApi === "openai-responses") {
+						event.payload.input[0] = { ...event.payload.input[0], content: `${event.payload.input[0].content}\n${hookText}` };
+						if (prependInstruction) event.payload.input.unshift({ role: "developer", content: "new prefix shape requires an epoch" });
+					}
+					return { ...event.payload, ...(invalidCacheOptions ? { prompt_cache_options: invalidCacheOptions } : {}), instructions: `${event.payload.instructions}\n${hookText}`, tools: [...(event.payload.tools ?? []), ...(providerSearchEnabled ? [{ type: "web_search", search_context_size: hookText === "original provider suffix" ? "low" : "high", ...(searchFilters ? { filters: searchFilters } : {}), ...(externalWebAccess === undefined ? {} : { external_web_access: externalWebAccess }), ...providerExtras }] : [])] };
+				});
 			}],
 		});
 		result.session.agent.transport = "sse";
 		result.session.settingsManager.setTransport("sse");
 		result.session.settingsManager.setCompactionEnabled(false);
-		result.session.state.model = { api: "openai-codex-responses", provider: "openai-codex", id: "gpt-5.5", name: "test", baseUrl: api.baseUrl, reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 500000, maxTokens: 1024 };
+		result.session.state.model = { api: providerApi, provider: providerApi === "openai-responses" ? "openai" : "openai-codex", id: "gpt-5.5", name: "test", baseUrl: api.baseUrl, reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 500000, maxTokens: 1024 };
 		result.session.setThinkingLevel("high");
 		return result;
 	};
@@ -118,10 +139,17 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 		assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix, undefined);
 		assert.ok(!JSON.stringify(runtime.session.state.messages).includes("execution-only-secret"));
 		providerExtras = undefined;
+		invalidCacheOptions = { mode: "explicit", authorization: "execution-only-secret" };
+		await runtime.session.prompt("reject unsupported cache option fields");
+		assert.equal(api.requests.length, 0);
+		assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix, undefined);
+		assert.ok(!JSON.stringify(runtime.session.state.messages).includes("execution-only-secret"));
+		invalidCacheOptions = undefined;
 	}
 	await runtime.session.prompt("historic content ".repeat(repeatCount));
 	assert.equal(api.requests.length, 2, JSON.stringify(runtime.session.state.messages.filter(message => message.role === "assistant").map(message => ({ stopReason: message.stopReason, errorMessage: message.errorMessage }))));
 	assert.ok(api.requests[1].input.some(item => item.type === "function_call_output" && item.output.includes("persistent tool result")));
+	assert.ok(api.requests[1].input.some(item => item.type === "reasoning" && item.encrypted_content === "opaque-fixture-reasoning"), "opaque native reasoning must survive the Tool roundtrip and subsequent resume");
 	nativePath = runtime.session.sessionFile;
 	assert.ok(nativePath);
 	const nativeBefore = await readFile(nativePath, "utf8");
@@ -145,7 +173,7 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	const skills = runtime.session.resourceLoader.getSkills().skills;
 	assert.equal(skills.length, 1);
 	assert.match(await readFile(skills[0].filePath, "utf8"), /Original Skill body/);
-	assert.match(before.instructions, /Original selected context/);
+	assert.match(providerApi === "openai-responses" ? before.input[0].content : before.instructions, /Original selected context/);
 	assert.equal(after.instructions, before.instructions);
 	assert.deepEqual(after.tools, before.tools);
 	assert.equal(after.prompt_cache_key, before.prompt_cache_key);
@@ -153,20 +181,42 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	assert.ok((await readFile(nativePath, "utf8")).startsWith(nativeBefore), "native history is append-only in this fixture");
 	assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix.evidence, "adapter-inputs");
 	if (repeatCount === 250) {
+		const originalModel = runtime.session.state.model;
+		runtime.session.state.model = { ...originalModel, compat: { supportsStrictMode: providerApi === "openai-codex-responses" } };
+		await runtime.session.prompt("equivalent explicit compatibility defaults");
+		assert.equal(api.requests.length, 4);
+		const baselineCount = api.requests.length;
 		providerSearchEnabled = false;
 		await runtime.session.prompt("provider tool permission revoked");
-		assert.equal(api.requests.length, 3, "revoked provider tools must not execute under frozen definitions");
+		assert.equal(api.requests.length, baselineCount, "revoked provider tools must not execute under frozen definitions");
 		assert.match(runtime.session.state.messages.at(-1).errorMessage, /current authorization/);
 		providerSearchEnabled = true;
 		searchFilters = { allowed_domains: ["example.test"] };
 		await runtime.session.prompt("provider domain authorization narrowed");
-		assert.equal(api.requests.length, 3);
+		assert.equal(api.requests.length, baselineCount);
 		assert.match(runtime.session.state.messages.at(-1).errorMessage, /authorization filters changed/);
 		searchFilters = undefined;
 		externalWebAccess = false;
 		await runtime.session.prompt("external network access revoked");
-		assert.equal(api.requests.length, 3);
+		assert.equal(api.requests.length, baselineCount);
 		assert.match(runtime.session.state.messages.at(-1).errorMessage, /authorization filters changed/);
+		if (providerApi === "openai-responses") {
+			externalWebAccess = undefined;
+			prependInstruction = true;
+			await runtime.session.prompt("reject a new static prefix layout");
+			assert.equal(api.requests.length, baselineCount);
+			assert.match(runtime.session.state.messages.at(-1).errorMessage, /input prefix layout changed/);
+		}
+		externalWebAccess = undefined;
+		prependInstruction = false;
+		runtime.session.state.model = { ...originalModel, compat: { supportsToolSearch: true } };
+		await runtime.session.prompt("changed native history serialization compatibility");
+		assert.equal(api.requests.length, baselineCount);
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /model input configuration changed/);
+		runtime.session.state.model = { ...originalModel, api: providerApi === "openai-responses" ? "openai-codex-responses" : "openai-responses" };
+		await runtime.session.prompt("changed provider API");
+		assert.equal(api.requests.length, baselineCount);
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /provider API change/);
 	}
 	if (repeatCount === 50000) {
 		const prefixBefore = sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix;
