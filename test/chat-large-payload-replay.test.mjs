@@ -4,6 +4,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {startWebOutboxProcessHost} from './fixtures/web-outbox-process-harness.mjs';
+import {buildTraceViewFromEvents} from '../dist/shared/trace-engine.js';
 import {applyTraceLiveEvents} from '../dist/shared/trace-live-reducer.js';
 
 async function readRef(reader, type) {
@@ -32,6 +33,9 @@ test('large live outputs retain full references across SSE replay and timeline',
    host.emitOutput(event);await host.app.drain();
    const frame=await live;assert.ok(frame.storedPayloadRef.byteLength>1024*1024);assert.ok(JSON.stringify(frame).length<65536);
    let seq=0;const reduced=applyTraceLiveEvents({currentEvents:[],streamEvents:[frame],piboSessionId:'ps_large_replay',nextSequence:()=>++seq});assert.equal(reduced[0].storedPayloadRef.ref,frame.storedPayloadRef.ref);
+   const projected=buildTraceViewFromEvents({session:{id:'ps_large_replay',piSessionId:''},events:reduced});
+   const flatten=nodes=>nodes.flatMap(n=>[n,...flatten(n.children??[])]);
+   assert.ok(flatten(projected.nodes).some(n=>Object.values(n.payloadRefs??{}).some(r=>r.ref===frame.storedPayloadRef.ref)), 'live projection must expose referenced content');
    ctrl.abort();
    const reconnect=new AbortController();controllers.push(reconnect);
    const replay=await fetch(host.baseURL+'/api/chat/events?piboSessionId=ps_large_replay&since=0',{headers,signal:reconnect.signal});

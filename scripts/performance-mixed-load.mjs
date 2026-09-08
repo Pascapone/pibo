@@ -47,6 +47,10 @@ try{
   assert.equal(metrics.completed,(round+1)*10);
  }
  await Promise.all(tasks);await host.app.drain();stop=true;await reads;
+ const persisted=await request(`/api/chat/rooms/${room.id}/events`);
+ metrics.persistedAnswers=persisted.data.events.filter(e=>e.payload?.type==='assistant_message').length;
+ metrics.persistedToolResults=persisted.data.events.filter(e=>e.payload?.type==='tool_execution_finished').length;
+ assert.equal(metrics.persistedAnswers,30);assert.equal(metrics.persistedToolResults,600);
  for(const c of controllers)c.abort();await Promise.all(streams.map(s=>s.run));
  assert.equal(errors.length,0,errors.join('\n'));assert.equal(metrics.maxConcurrent,10);assert.equal(metrics.completed,30);assert.ok(metrics.sseFrames>3000);assert.ok(metrics.reads>20);
  const percentile=(values,p)=>[...values].sort((a,b)=>a-b)[Math.min(values.length-1,Math.floor(values.length*p))];
