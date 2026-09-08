@@ -11,6 +11,7 @@ import { test } from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { OmpThreadController } from "../dist/agent-runtimes/omp/thread.js";
 import { OmpRpcClient } from "../dist/agent-runtimes/omp/client.js";
+import { createOmpPrefixBootstrapSource } from "../dist/agent-runtimes/omp/prefix-bootstrap.js";
 import { createOmpPrefixGuardSource, OMP_PREFIX_CODEC } from "../dist/agent-runtimes/omp/prefix-guard.js";
 import { NativePrefixBridge } from "../dist/sessions/native-prefix-bridge.js";
 import { SessionPrefixController } from "../dist/sessions/prefix-session.js";
@@ -20,7 +21,7 @@ import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-b
 
 const bun = process.env.PIBO_OMP_PREFIX_BUN;
 const entry = process.env.PIBO_OMP_PREFIX_ENTRY;
-for (const scenario of ["unchanged", "native-switch-resume", "changed-context", "system-override-is-incomplete", "restored-provider-envelope", "hook-error-does-not-block", "changed-calendar-date", "durable-guard-date-restore", "durable-guard-storage-failure", "durable-guard-binding-conflict", "durable-guard-stalled-seal", "durable-guard-tool-roundtrip"]) test(`OMP 18.1.10 actual HTTP resume boundary: ${scenario}`, { skip: !bun || !entry, timeout: 60000 }, async t => {
+for (const scenario of ["unchanged", "native-switch-resume", "changed-context", "system-override-is-incomplete", "restored-provider-envelope", "hook-error-does-not-block", "changed-calendar-date", "durable-guard-date-restore", "durable-guard-storage-failure", "durable-guard-binding-conflict", "durable-guard-stalled-seal", "durable-guard-tool-roundtrip", "durable-guard-compaction", "durable-guard-compaction-recovery", "durable-guard-compaction-kill-before-native"]) test(`OMP 18.1.10 actual HTTP resume boundary: ${scenario}`, { skip: !bun || !entry, timeout: 60000 }, async t => {
 	assert.equal(execFileSync(bun, [entry, "--version"], { encoding: "utf8" }).trim(), "omp/18.1.10");
 	const root = await mkdtemp(join(tmpdir(), "pibo-omp-prefix-http-"));
 	const home = join(root, "agent"); await mkdir(home);
@@ -28,6 +29,11 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 	const connectionTokens = [];
 	let bridge, sessions, binding, connection, guardPath, piboSession;
 	const guarded = scenario.startsWith("durable-guard-");
+	const compaction = scenario.startsWith("durable-guard-compaction");
+	const compactionRecovery = scenario === "durable-guard-compaction-recovery";
+	const killBeforeNative = scenario === "durable-guard-compaction-kill-before-native";
+	let injectNativeKill = killBeforeNative;
+	let failCompletion = compactionRecovery;
 	const toolRoundtrip = scenario === "durable-guard-tool-roundtrip";
 	const toolFile = join(root, "probe.txt");
 	if (toolRoundtrip) await writeFile(toolFile, "original native tool result");
@@ -70,6 +76,15 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 		if (scenario === "durable-guard-stalled-seal") store.put = () => new Promise(() => {});
 		const controller = new SessionPrefixController({ store, getBinding: () => binding,
 			persistence: createAgentRuntimeBindingPersistence(sessions, { piboSessionId: piboSession.id, onPersisted: next => { binding = next; } }) });
+		if (injectNativeKill) {
+			const begin = controller.beginCompaction.bind(controller);
+			controller.beginCompaction = async head => {
+				await begin(head); injectNativeKill = false;
+				client.process.kill("SIGKILL");
+				throw new Error("native process killed after durable preparation");
+			};
+		}
+		if (failCompletion) controller.finishCompaction = async () => { failCompletion = false; throw new Error("injected completion persistence failure"); };
 		bridge = new NativePrefixBridge(controller, OMP_PREFIX_CODEC);
 		connection = await bridge.start();
 		connectionTokens.push(connection.token);
@@ -89,8 +104,16 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 	const open = async (nativePath, frozenInstructions, extensionPath) => {
 		const current = new OmpRpcClient({ startupTimeoutMs: 20000, requestTimeoutMs: 30000 });
 		const nonce = String(++readyNonce);
+		let nativeEntry = entry;
+		if (guarded) {
+			nativeEntry = join(root, `bootstrap-${nonce}.mjs`);
+			await writeFile(nativeEntry, createOmpPrefixBootstrapSource({ entryModuleUrl: pathToFileURL(entry).href,
+				nativeSessionId: nativePath ? binding.nativeSessionId : undefined,
+				prefixRoot: join(root, "ownership-root"), identities: [JSON.stringify(["pibo", piboSession.id]),
+					...(nativePath ? [JSON.stringify(["native", "orp", binding.nativeSessionId])] : [])] }));
+		}
 		try {
-			await current.connect([bun, entry, "--mode", "rpc", "--model", "fixture/prefix-fixture", ...(toolRoundtrip ? ["--tools=read"] : ["--no-tools"]), "--no-lsp", "--no-skills", "--no-rules", "--no-extensions", "--no-title", "--thinking", "off",
+			await current.connect([bun, nativeEntry, "--mode", "rpc", "--model", "fixture/prefix-fixture", ...(toolRoundtrip ? ["--tools=read"] : ["--no-tools"]), "--no-lsp", "--no-skills", "--no-rules", "--no-extensions", "--no-title", "--thinking", "off",
 				"--append-system-prompt", nativePath && ["changed-context", "system-override-is-incomplete", "restored-provider-envelope", "durable-guard-date-restore", "durable-guard-tool-roundtrip"].includes(scenario) ? "Changed appended context" : "Original appended context",
 				...(nativePath ? ["--resume", nativePath] : []),
 				...(frozenInstructions === undefined ? [] : ["--system-prompt", frozenInstructions]),
@@ -144,6 +167,24 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 	if (toolRoundtrip) assert.ok(requests[1]?.input.some(item => item.type === "function_call_output" && JSON.stringify(item.output).includes("original native tool result")), JSON.stringify({ requests: requests.length,
 		assistant: firstTurn.messages?.filter(message => message.role === "assistant").map(message => ({ stopReason: message.stopReason, errorMessage: message.errorMessage, contentTypes: message.content?.map(part => part.type) })) }));
 	const state = (await client.request({ type: "get_state" }, "get_state")).data;
+	if (compaction) {
+		await turn("second turn before compaction ".repeat(4000));
+		const prefixBefore = sessions.get(piboSession.id).runtimeBinding.metadata.piboSessionPrefix;
+		if (compactionRecovery || killBeforeNative) {
+			const exited = once(client.process, "exit");
+			await assert.rejects(client.request({ type: "compact" }, "compact"));
+			const [code, signal] = await exited;
+			if (killBeforeNative) assert.equal(signal, "SIGKILL");
+			else assert.equal(code, 78);
+		} else {
+			const compacted = await client.request({ type: "compact" }, "compact");
+			assert.equal(compacted.success, true);
+		}
+		const metadata = sessions.get(piboSession.id).runtimeBinding.metadata;
+		assert.equal(metadata.piboSessionPrefixTransition.state, (compactionRecovery || killBeforeNative) ? "pending" : "completed");
+		assert.equal(metadata.piboSessionPrefix.epoch, prefixBefore.epoch + Number(!compactionRecovery && !killBeforeNative));
+		assert.equal(metadata.piboSessionPrefix.capsule.digest, prefixBefore.capsule.digest);
+	}
 	assert.ok(state.sessionFile);
 	await client.close();
 	if (toolRoundtrip) await writeFile(toolFile, "current native tool result");
@@ -182,10 +223,17 @@ for (const scenario of ["unchanged", "native-switch-resume", "changed-context", 
 		assert.equal(threads.current.sessionId, state.sessionId);
 	}
 	await turn("new message");
-	assert.equal(requests.length, toolRoundtrip ? 4 : 2);
+	if (compaction) {
+		assert.ok(requests.length >= (killBeforeNative ? 3 : 4));
+		const metadata = sessions.get(piboSession.id).runtimeBinding.metadata;
+		assert.equal(metadata.piboSessionPrefixTransition.state, killBeforeNative ? "aborted" : "completed");
+		assert.equal(metadata.piboSessionPrefix.epoch, killBeforeNative ? 1 : 2, "native completion recovery advances exactly once");
+	}
+	else assert.equal(requests.length, toolRoundtrip ? 4 : 2);
 	const before = requests[toolRoundtrip ? 1 : 0], after = requests.at(-1);
 	if (toolRoundtrip) assert.ok(after.input.some(item => item.type === "function_call_output" && JSON.stringify(item.output).includes("current native tool result")));
-	if (scenario === "changed-calendar-date") assert.ok(!isDeepStrictEqual(after.input.slice(0, before.input.length), before.input), "native calendar reminder rewrites historical model input");
+	if (compaction && !killBeforeNative) assert.notDeepEqual(after.input.slice(0, before.input.length), before.input);
+	else if (scenario === "changed-calendar-date") assert.ok(!isDeepStrictEqual(after.input.slice(0, before.input.length), before.input), "native calendar reminder rewrites historical model input");
 	else assert.deepEqual(after.input.slice(0, before.input.length), before.input);
 	assert.equal(after.prompt_cache_key, before.prompt_cache_key);
 	if (guarded) {

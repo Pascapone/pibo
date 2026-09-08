@@ -44,31 +44,56 @@ export class NativePrefixBridge {
 		if (this.active) { response.writeHead(409).end(); request.resume(); return; }
 		this.active = true;
 		try {
+			if (request.method === "GET" && request.url === "/transition") {
+				await this.controller.restore(this.codec);
+				response.setHeader("content-type", "application/json");
+				response.writeHead(200).end(JSON.stringify(this.controller.transition ?? null));
+				return;
+			}
 			if (request.method === "GET" && request.url === "/snapshot") {
 				const snapshot = await this.controller.restore(this.codec);
 				response.setHeader("content-type", "application/octet-stream");
 				response.writeHead(snapshot === undefined ? 404 : 200).end(snapshot);
 				return;
 			}
-			if (request.method !== "POST" || request.url !== "/seal") { response.writeHead(404).end(); request.resume(); return; }
+			const transitionOperation = request.url === "/compaction/begin" || request.url === "/compaction/finish";
+			if (request.method !== "POST" || request.url !== "/seal" && !transitionOperation) { response.writeHead(404).end(); request.resume(); return; }
+			const maximum = transitionOperation ? 4096 : MAX_PREFIX_CAPSULE_BYTES;
 			const declared = request.headers["content-length"];
-			if (declared !== undefined && (!/^\d+$/.test(declared) || Number(declared) > MAX_PREFIX_CAPSULE_BYTES)) {
+			if (declared !== undefined && (!/^\d+$/.test(declared) || Number(declared) > maximum)) {
 				response.writeHead(413).end(); request.resume(); return;
 			}
 			const nativeSessionId = request.headers["x-native-session-id"];
 			const historical = request.headers["x-native-has-history"];
-			if (typeof nativeSessionId !== "string" || nativeSessionId.length > 1024 || !["true", "false"].includes(String(historical))) {
+			if (!transitionOperation && (typeof nativeSessionId !== "string" || nativeSessionId.length > 1024 || !["true", "false"].includes(String(historical)))) {
 				response.writeHead(400).end(); request.resume(); return;
 			}
 			let bytes = 0;
 			const chunks: Buffer[] = [];
 			for await (const chunk of request) {
 				bytes += chunk.length;
-				if (bytes > MAX_PREFIX_CAPSULE_BYTES) { response.writeHead(413).end(); request.destroy(); return; }
+				if (bytes > maximum) { response.writeHead(413).end(); request.destroy(); return; }
 				chunks.push(chunk);
 			}
 			const payload = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks, bytes));
-			const prefix = await this.controller.seal({ codec: this.codec, payload, nativeSessionId,
+			if (transitionOperation) {
+				if (await this.controller.restore(this.codec) === undefined) throw new Error("No sealed prefix");
+				const operation = JSON.parse(payload) as Record<string, unknown>;
+				if (!operation || typeof operation !== "object" || Array.isArray(operation)) throw new Error("Invalid transition");
+				if (request.url === "/compaction/begin") {
+					if (Object.keys(operation).some(key => key !== "sourceHead") || operation.sourceHead !== null &&
+						(typeof operation.sourceHead !== "string" || !operation.sourceHead || operation.sourceHead.length > 1024 || /[\x00-\x1f\x7f]/.test(operation.sourceHead))) throw new Error("Invalid native head");
+					await this.controller.beginCompaction(operation.sourceHead as string | null);
+				} else {
+					if (Object.keys(operation).some(key => key !== "id" && key !== "changed") || typeof operation.id !== "string"
+						|| operation.id.length > 128 || typeof operation.changed !== "boolean") throw new Error("Invalid transition completion");
+					await this.controller.finishCompaction(operation.id, operation.changed);
+				}
+				response.setHeader("content-type", "application/json");
+				response.writeHead(200).end(JSON.stringify(this.controller.transition));
+				return;
+			}
+			const prefix = await this.controller.seal({ codec: this.codec, payload, nativeSessionId: nativeSessionId as string,
 				evidence: "adapter-inputs", hasHistoricalModelInput: historical === "true" });
 			// Ack is deliberately after artifact publication AND the audited binding CAS.
 			response.setHeader("content-type", "application/json");

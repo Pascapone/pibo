@@ -7,7 +7,7 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T17:56:00Z"
+  at: "2026-09-08T19:07:34Z"
 sources:
   - id: "implementation-plan"
     resource: "scope: docs/prefix-persistence-plan commit e3720d03, docs/plans/persistent-session-prefix-and-cache-diagnostics.md"
@@ -106,7 +106,21 @@ The experimental `createOmpPrefixGuardSource` extension uses the installed nativ
 
 The complete guard/bridge group passed 14 tests with zero failures or skips against the actual native binary. This includes a stalled seal: the guard's five-second fatal deadline precedes the native runner's swallowed 30-second handler timeout. A real native `read` Tool roundtrip before and after restart preserves the original Tool result in historical input while a later execution reads the changed file. Freezing native-owned Tool schemas initially broke the second inference; capture now clones those objects once before freezing the stored copy. Capture connection credentials are removed from the child environment after startup and are absent from recorded model requests. Nested provider-managed remote Tool definitions remain rejected until a compatible codec can separate execution credentials from model-visible state.
 
-The actual no-tools native fixture closes and reopens both the child and parent session store, changes append context and calendar getters, and preserves old HTTP instructions/Tools/input/key. Native filesystem failure and binding conflict both exit with code 78 and zero provider requests. These are experimental conformance fixtures, not normal OMP activation. The guard currently rejects compaction, switch and branch operations until durable lifecycle handling is connected. Native implicit resources, full Tools/Reasoning behavior, hook ordering across optional extensions and independent child ownership remain open. No all-runtime guarantee follows from this fixture.
+The actual no-tools native fixture closes and reopens both the child and parent session store, changes append context and calendar getters, and preserves old HTTP instructions/Tools/input/key. Native filesystem failure and binding conflict both exit with code 78 and zero provider requests. These are experimental conformance fixtures, not normal OMP activation. The initial guard rejected compaction, switch and branch operations; the compaction follow-up below adds a durable transition for the tested native path. Switch and branch remain rejected by the experimental guard. Native implicit resources, full Tools/Reasoning behavior, hook ordering across optional extensions and independent child ownership remain open. No all-runtime guarantee follows from this fixture.
+
+# OMP compaction transition follow-up
+
+The private IPC now carries bounded compaction preparation/completion receipts in addition to first-use capture. The native extension durably marks the old native head before summarization, flushes and syncs the resulting native history, and completes the existing binding CAS while retaining the base capsule. Native summarization uses OMP's side stream, separate from the main agent's provider-payload hook; its summary prompt is not replaced by the frozen conversation envelope.
+
+Recovery walks bounded native ancestry and accepts only the original head or a descendant containing a compaction entry. An unchanged head aborts without advancing; a completed native compaction advances once. Missing or unrelated ancestry remains a recovery error. The SIGKILL test initially exposed incorrect timing: resolving only at the next provider dispatch sees the already appended next user message. Recovery now also runs at native session start and input acceptance, before that append.
+
+The actual OMP fixtures pass native manual compaction/restart, a rejected parent completion after the native file is persisted, and SIGKILL after durable preparation but before native mutation. Reopening the parent store and child either completes the pending epoch once or aborts it without rewriting the old HTTP input. The combined native HTTP/bridge suite passed 19 tests without failures or skips before the subsequent ownership bootstrap integration. This does not prove automatic/overlapping compaction, shake, remote/snapcompact modes or the complete normal adapter lifecycle.
+
+# Native child ownership bootstrap follow-up
+
+The experimental OMP path now imports the existing ownership implementation inside Bun before importing the native CLI. The child retains its Pibo-identity and known native-identity SQLite locks for its own lifetime. The initial native identity is claimed at native session start, before its first input. A private one-use bootstrap callback connects that claim to the guard; a missing bootstrap blocks guard initialization. Resume claims the known native identity before loading history. This reuses the same lock-file protocol as Node/Pi, with no heartbeat or per-turn lock writes.
+
+A process fixture kills the Node parent with SIGKILL while its Bun child stays alive. Both a Node claimant and a competing Bun bootstrap remain excluded; the competing bootstrap exits before entering the simulated native history loader. Killing the original child releases the lock and permits immediate recovery. The actual OMP date-restore and three compaction/recovery scenarios also passed with this bootstrap: five focused tests, zero failures or skips. The final combined actual-native HTTP, bridge and child-ownership suite passed 20 tests with zero failures or skips. Backend TypeScript and strict OKF validation passed. The complete normal-adapter startup/resource ordering and other native entry distributions remain unproven; these fixtures do not establish production rollout or Codex ownership.
 
 # OMP bound-resume recovery follow-up
 

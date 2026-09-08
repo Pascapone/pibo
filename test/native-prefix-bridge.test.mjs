@@ -54,6 +54,26 @@ test("native capture IPC never acknowledges failed snapshot persistence", async 
 	assert.equal(f.sessions.get(f.session.id).runtimeBinding.metadata.piboSessionPrefix, undefined);
 });
 
+test("native transition IPC commits bounded receipts before acknowledging compaction", async t => {
+	const f = await fixture(t);
+	const send = (path, body) => fetch(f.connection.endpoint + path, { method: "POST", headers: f.headers, body: JSON.stringify(body) });
+	assert.equal((await send("/compaction/begin", { sourceHead: "head" })).status, 409);
+	assert.equal((await fetch(f.connection.endpoint + "/seal", { method: "POST", headers: f.headers, body: "original" })).status, 200);
+	assert.equal((await send("/compaction/begin", { sourceHead: "head", unexpected: true })).status, 409);
+	assert.equal((await send("/compaction/begin", { sourceHead: "x".repeat(5000) })).status, 413);
+	const pending = await (await send("/compaction/begin", { sourceHead: "head" })).json();
+	assert.equal(pending.state, "pending");
+	assert.deepEqual(f.sessions.get(f.session.id).runtimeBinding.metadata.piboSessionPrefixTransition, pending);
+	assert.equal((await send("/compaction/finish", { id: "wrong", changed: true })).status, 409);
+	assert.equal((await send("/compaction/finish", { id: pending.id, changed: "true" })).status, 409);
+	assert.equal((await send("/compaction/finish", { id: pending.id, changed: true })).status, 200);
+	assert.equal(f.controller.binding.epoch, 2);
+	assert.equal(await f.controller.restore("native-fixture/v1"), "original");
+	assert.equal((await send("/compaction/finish", { id: pending.id, changed: true })).status, 409);
+	const receipt = await (await fetch(f.connection.endpoint + "/transition", { headers: f.headers })).json();
+	assert.equal(receipt.state, "completed");
+});
+
 test("native capture IPC refuses dispatch when publication succeeds but the binding CAS loses", async t => {
 	const f = await fixture(t);
 	const current = f.sessions.get(f.session.id).runtimeBinding;
