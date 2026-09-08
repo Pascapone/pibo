@@ -80,6 +80,7 @@ async function startSignalWebHost(options = {}) {
 		baseURL: `http://${address.host}:${address.port}`,
 		sessions,
 		signals,
+		drainOutput: () => app.drain?.(),
 		emitOutput(event) {
 			signals.project({ type: "pibo_output", event, session: sessions.get(event.piboSessionId) });
 			for (const listener of listeners) listener(event);
@@ -431,7 +432,7 @@ test("chat navigation clears stale indexed running status from settled signal st
 });
 
 test("chat navigation treats session errors as acknowledged after marked read", async () => {
-	const { channel, baseURL, sessions, signals, emitOutput } = await startSignalWebHost();
+	const { channel, baseURL, sessions, signals, emitOutput, drainOutput } = await startSignalWebHost();
 	try {
 		const selected = createSession(sessions, "ps_navigation_error_selected");
 		const failed = createSession(sessions, "ps_navigation_error_failed");
@@ -441,6 +442,8 @@ test("chat navigation treats session errors as acknowledged after marked read", 
 		assert.equal(initial.status, 200);
 
 		emitOutput({ type: "session_error", piboSessionId: failed.id, eventId: "err1", error: "boom" });
+		// Acknowledgement concerns the durable event, not the earlier live signal.
+		await drainOutput();
 
 		const unreadResponse = await fetch(`${baseURL}/api/chat/navigation?piboSessionId=${selected.id}`, { headers: { "x-test-user": "user-1" } });
 		assert.equal(unreadResponse.status, 200);
