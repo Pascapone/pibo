@@ -249,7 +249,7 @@ test("chat data ingest preserves post-compaction output and repeated lifecycle e
 			{ type: "compaction_start", piboSessionId: session.id, eventId: "turn-1", compactionIndex: 0, reason: "context_guard" },
 			{ type: "compaction_end", piboSessionId: session.id, eventId: "turn-1", compactionIndex: 0, reason: "context_guard", result: { summary: "compact" }, aborted: false },
 			{ type: "assistant_message", piboSessionId: session.id, eventId: "turn-1", assistantIndex: 1, text: "final answer" },
-			{ type: "assistant_usage", piboSessionId: session.id, eventId: "turn-1", usageIndex: 1, inputTokens: 6, outputTokens: 3, totalTokens: 9 },
+			{ type: "assistant_usage", piboSessionId: session.id, eventId: "turn-1", usageIndex: 1, inferenceId: "native-turn:usage:1", inferenceTarget: { type: "assistant", assistantIndex: 1 }, inputTokens: 6, outputTokens: 3, totalTokens: 9 },
 			{ type: "message_finished", piboSessionId: session.id, eventId: "turn-1" },
 		];
 
@@ -287,6 +287,8 @@ test("chat data ingest preserves post-compaction output and repeated lifecycle e
 			attributes_json: JSON.stringify({ ...rows[3].attributes, inlinePayload: { summary: "compact" } }),
 		});
 		assert.equal(mappedUsage.payload.usageIndex, 1);
+		assert.equal(mappedUsage.payload.inferenceId, "native-turn:usage:1");
+		assert.deepEqual(mappedUsage.payload.inferenceTarget, { type: "assistant", assistantIndex: 1 });
 		assert.equal(mappedCompaction.payload.compactionIndex, 0);
 		assert.equal(mappedCompaction.payload.result.summary, "compact");
 	} finally {

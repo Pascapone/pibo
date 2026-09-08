@@ -413,6 +413,7 @@ if (args[0] === "--version") {
 			turnId: active.turnId,
 			tokenUsage,
 		});
+		return tokenUsage;
 	};
 	const requestClient = (active, method, params, onResponse) => {
 		const id = `server-request-${nextServerRequest++}`;
@@ -641,6 +642,30 @@ if (args[0] === "--version") {
 			return;
 		}
 		if (active.mode.includes("hold") || active.mode.includes("steer")) return;
+		if (active.mode.includes("usage-steps")) {
+			const tool = (suffix) => ({ id: `${active.turnId}-${suffix}`, type: "commandExecution", command: "printf ok", cwd: active.cwd, status: "inProgress", commandActions: [], source: "agent" });
+			const first = tool("first");
+			const parallel = tool("parallel");
+			itemStarted(active, first);
+			itemStarted(active, parallel);
+			const firstUsage = emitUsage(active);
+			notify("thread/tokenUsage/updated", { threadId: active.threadId, turnId: active.turnId, tokenUsage: firstUsage });
+			itemCompleted(active, { ...first, status: "completed" });
+			const next = tool("next");
+			itemStarted(active, next);
+			// A late result from the previous response must not become this step's owner.
+			itemCompleted(active, { ...parallel, status: "completed" });
+			emitUsage(active);
+			itemCompleted(active, { ...next, status: "completed" });
+			if (active.mode.includes("interrupted")) {
+				completeActive(active, "interrupted");
+				return;
+			}
+			const finalAssistant = emitAssistant(active, "Steps complete.");
+			emitUsage(active);
+			completeActive(active, "completed", finalAssistant);
+			return;
+		}
 		if (active.mode.includes("failure")) {
 			notify("error", {
 				threadId: active.threadId,
