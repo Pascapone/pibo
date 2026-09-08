@@ -42,6 +42,12 @@ type ActiveRunSummary = {
 	piboSessionId?: string;
 };
 
+type RunJobReliabilitySummary = {
+	status: "ok" | "degraded";
+	expiredOrphanRunJobs: number;
+	orphanRunDeadLetters: number;
+};
+
 export type GatewaySafetyStatus = {
 	reachable: boolean;
 	generation?: string;
@@ -49,6 +55,7 @@ export type GatewaySafetyStatus = {
 	health?: unknown;
 	runtimeStatuses: RuntimeStatus[];
 	activeRuns: ActiveRunSummary[];
+	reliability?: RunJobReliabilitySummary;
 	ambiguous?: boolean;
 	error?: string;
 };
@@ -274,14 +281,28 @@ function activeRun(value: unknown): ActiveRunSummary | undefined {
 	};
 }
 
+function runJobReliability(value: unknown): RunJobReliabilitySummary | undefined {
+	const obj = objectValue(value);
+	if (!obj || (obj.status !== "ok" && obj.status !== "degraded")
+		|| !Number.isInteger(obj.expiredOrphanRunJobs) || Number(obj.expiredOrphanRunJobs) < 0
+		|| !Number.isInteger(obj.orphanRunDeadLetters) || Number(obj.orphanRunDeadLetters) < 0) return undefined;
+	return {
+		status: obj.status,
+		expiredOrphanRunJobs: Number(obj.expiredOrphanRunJobs),
+		orphanRunDeadLetters: Number(obj.orphanRunDeadLetters),
+	};
+}
+
 function parseGatewaySafetyPayload(payload: unknown, reachable: boolean): GatewaySafetyStatus {
 	const obj = objectValue(payload);
 	const mode = obj && (obj.mode === "dev" || obj.mode === "prod" || obj.mode === "fallback") ? obj.mode : "unknown";
 	const runtimeStatuses = Array.isArray(obj?.runtimeStatuses) ? obj.runtimeStatuses.map(runtimeStatus).filter((item): item is RuntimeStatus => Boolean(item)) : [];
 	const activeRuns = Array.isArray(obj?.activeRuns) ? obj.activeRuns.map(activeRun).filter((item): item is ActiveRunSummary => Boolean(item)) : [];
+	const reliability = obj?.reliability === undefined ? undefined : runJobReliability(obj.reliability);
 	const incomplete = !Array.isArray(obj?.runtimeStatuses) || !Array.isArray(obj?.activeRuns)
-		|| runtimeStatuses.length !== obj.runtimeStatuses.length || activeRuns.length !== obj.activeRuns.length;
-	return { reachable, mode, generation: stringValue(obj?.generation), health: obj?.health, runtimeStatuses, activeRuns, ambiguous: incomplete || booleanValue(obj?.ambiguous) };
+		|| runtimeStatuses.length !== obj.runtimeStatuses.length || activeRuns.length !== obj.activeRuns.length
+		|| (obj?.reliability !== undefined && !reliability);
+	return { reachable, mode, generation: stringValue(obj?.generation), health: obj?.health, runtimeStatuses, activeRuns, reliability, ambiguous: incomplete || booleanValue(obj?.ambiguous) };
 }
 
 export function checkActiveWork(status: GatewaySafetyStatus, target: GatewayTarget = "web"): ActiveWorkCheck {
@@ -389,6 +410,11 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	}
 	console.log(`  active yielded runs: ${status.activeRuns.length}`);
 	for (const run of status.activeRuns) console.log(`    ${run.runId ?? "unknown"}: ${run.status ?? "active"}${run.toolName ? ` (${run.toolName})` : ""} session=${run.piboSessionId ?? "unknown"}`);
+	if (status.reliability) {
+		console.log(`  run-job reliability: ${status.reliability.status}`);
+		console.log(`    expired orphan jobs: ${status.reliability.expiredOrphanRunJobs}`);
+		console.log(`    orphan DLQ records: ${status.reliability.orphanRunDeadLetters}`);
+	}
 }
 
 function managerRequiresShell(command: string): boolean {
@@ -427,7 +453,14 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 			} else console.log("  restart safety: idle");
 			printRestartApproval(status);
 		}
-		if (command === "doctor") process.exitCode = status.reachable && !status.error && status.mode === expectedMode(target) ? 0 : 1;
+		if (command === "doctor") {
+			process.exitCode = status.reachable
+				&& !status.error
+				&& status.mode === expectedMode(target)
+				&& status.reliability?.status !== "degraded"
+				? 0
+				: 1;
+		}
 		return true;
 	}
 

@@ -1,5 +1,6 @@
 import type { RuntimeCapacityStatus } from "../core/runtime-capacity.js";
 import type { PiboEventListener, PiboForkCandidate, PiboInputEvent, PiboOutputEvent, PiboSessionStatus } from "../core/events.js";
+import type { RunJobReliabilityStatus } from "../reliability/store.js";
 import type { PiboRunSnapshot } from "../runs/registry.js";
 import type { PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
 import type {
@@ -78,6 +79,7 @@ export type PiboChannelContext = {
 	listSessionRuntimeStatuses?(): PiboSessionStatus[];
 	getRuntimeCapacityStatus?(): RuntimeCapacityStatus;
 	listRuns?(options?: { includeConsumed?: boolean; includeDetached?: boolean }): PiboRunSnapshot[];
+	getRunJobReliabilityStatus?(): RunJobReliabilityStatus;
 	snapshotSignalSession?(piboSessionId: string): PiboSignalSnapshot;
 	snapshotSignalTree?(rootPiboSessionId: string): PiboSignalSnapshot;
 	snapshotSignalStatuses?(): PiboSignalStatusSnapshot;

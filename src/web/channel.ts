@@ -226,6 +226,7 @@ function createGatewayStatusResponse(channelContext: PiboChannelContext, options
 		health: { status: "ok", mode },
 		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
 		...(channelContext.getRuntimeCapacityStatus ? { runtimeCapacity: channelContext.getRuntimeCapacityStatus() } : {}),
+		...(channelContext.getRunJobReliabilityStatus ? { reliability: channelContext.getRunJobReliabilityStatus() } : {}),
 		activeRuns: collectActiveRuns(channelContext),
 	});
 }

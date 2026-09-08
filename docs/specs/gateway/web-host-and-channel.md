@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T18:00:00Z"
+  at: "2026-09-08T19:00:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "a3ba8acd08baf9999676a0151119100f2938d0cd"
+  commit: "d2b4a2106c8632b0cc43b24b558d291d2b245359"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -177,6 +177,22 @@ traceability:
         - "Post-header body failures and client disconnects cancel the Web body reader and close only the affected response or socket."
         - "Request diagnostics omit headers, cookies, bodies, query strings, error messages, and credentials."
       confidence: "high"
+    - id: "WP02-GW-STATUS-008"
+      status: "implemented"
+      sources:
+        - path: "src/web/channel.ts"
+          symbol: "createGatewayStatusResponse"
+        - path: "src/gateway/cli.ts"
+          symbol: "printSafetyStatus"
+      tests:
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "reports degraded run-job reliability without counting orphan jobs as active runs"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "gateway doctor reports degraded run-job reliability without presenting it as active work"
+      public: ["/gateway/status reliability", "pibo gateway web status", "pibo gateway web doctor"]
+      failures:
+        - "Orphan reliability state is degraded and observable but does not become active work or a replay trigger."
+      confidence: "high"
     - id: "WP02-GW-STATUS-006"
       status: "implemented"
       sources:
@@ -240,6 +256,10 @@ Gateway auth-mode selection SHALL default to Better Auth, reject legacy PIBO_DEV
 
 Before writing a status line, the host SHALL distinguish destroyed, ended, finished, and headers-sent responses. If response streaming fails after headers, it SHALL cancel the body reader and close the affected response without writing a second header block. A client disconnect SHALL cancel streaming without an unhandled rejection. Application Node handlers that partially write and then throw SHALL be contained, while failures before response startup SHALL retain the normal JSON error response. Every asynchronous request and upgrade entry point SHALL terminate rejected fire-and-forget promises at the request or socket boundary. Diagnostics SHALL identify the phase, method, bounded path, error class/code, and response state without recording bodies, header values, cookies, credentials, query strings, or error messages.
 
+## Requirement: WP02-GW-STATUS-008: Gateway health separates degraded run-job reliability from active work
+
+Gateway status and doctor SHALL report expired orphan run-job and `orphan_run_job` dead-letter counts. Those records SHALL NOT appear in `activeRuns` or block as active yielded execution. Doctor SHALL return a degraded exit when orphan reliability records remain, without replaying or otherwise executing them.
+
 ## Requirement: WP02-GW-STATUS-006: Signal projection reuses its complete listed view
 
 When known-session signal projection has listed the stored Sessions, it SHALL derive ancestor depths from that same per-call view without rereading each Session or ancestor from storage. Parent-first projection, current queue/activity signals, and available active telemetry SHALL remain unchanged. A subsequent projection SHALL use a fresh listed view rather than a cross-request cache.
@@ -302,7 +322,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `a3ba8acd08baf9999676a0151119100f2938d0cd`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
+Source symbols and named tests are bound to commit `806e1d2f0cb369c1d378b0c2e667e5ee5a229470`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
 
 Package verification commands:
 
