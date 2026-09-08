@@ -3,9 +3,10 @@ import { TELEMETRY_MAINTENANCE_SCHEMA } from "./telemetry-maintenance.js";
 import { MESSAGE_COMMAND_SCHEMA } from "./message-command-store.js";
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 13;
+export const PIBO_DATA_SCHEMA_VERSION = 14;
 
 const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
+const TERMINAL_MESSAGE_UNREAD_SCHEMA_VERSION = 14;
 const retiredScopeColumn = ["owner", "scope"].join("_");
 
 type RetiredScopeTable = {
@@ -226,6 +227,14 @@ function applyPiboDataSchemaInTransaction(
 	rebuildRetiredScopeTables(db, tablesToRebuild);
 	if (rebuildPayloadTable) rebuildPayloadTableForMetadataIdentity(db);
 	hooks.afterStep?.("payload-metadata-identity");
+	if (previousVersion < TERMINAL_MESSAGE_UNREAD_SCHEMA_VERSION) {
+		db.exec(`
+			DROP TRIGGER IF EXISTS chat_unread_event_insert;
+			DROP TRIGGER IF EXISTS chat_unread_event_update;
+			DROP INDEX IF EXISTS idx_event_log_unread_stream;
+			DROP INDEX IF EXISTS idx_event_log_unread_session_stream;
+		`);
+	}
 	db.exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
@@ -688,8 +697,10 @@ function applyPiboDataSchemaInTransaction(
 			ON event_log(session_id, stream_id);
 		CREATE INDEX IF NOT EXISTS idx_event_log_unread_session_stream
 			ON event_log(session_id, stream_id)
-			WHERE (retention_class = 'chat_message' AND type IN ('user.message.accepted', 'assistant_message'))
-				OR type = 'session_error';
+			WHERE type = 'message_finished';
+		CREATE INDEX IF NOT EXISTS idx_event_log_unread_error_session_stream
+			ON event_log(session_id, stream_id)
+			WHERE type = 'session_error';
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_sequence_stream
 			ON event_log(session_id, session_sequence DESC, stream_id DESC);
 		CREATE INDEX IF NOT EXISTS idx_event_log_session_type_sequence_stream
@@ -794,6 +805,16 @@ function applyPiboDataSchemaInTransaction(
 			ON telemetry_tool_calls(retention_class, updated_at);
 	`);
 	db.exec(CHAT_READ_PROJECTION_SCHEMA);
+	if (previousVersion < TERMINAL_MESSAGE_UNREAD_SCHEMA_VERSION) {
+		db.exec(`
+			DELETE FROM chat_unread_counts;
+			DELETE FROM chat_unread_index;
+			UPDATE chat_read_backfill
+			SET event_cursor = 0,
+				event_target = (SELECT COALESCE(MAX(stream_id), 0) FROM event_log)
+			WHERE id = 1;
+		`);
+	}
 	db.exec(CHAT_NAVIGATION_REVISION_SCHEMA);
 	db.exec(TELEMETRY_MAINTENANCE_SCHEMA);
 	hooks.afterStep?.("schema");
