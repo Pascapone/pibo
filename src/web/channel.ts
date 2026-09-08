@@ -263,9 +263,15 @@ function requestPath(request: IncomingMessage): string {
 }
 
 function errorIdentity(error: unknown): string {
-	if (!(error instanceof Error)) return typeof error;
-	const code = "code" in error && typeof error.code === "string" ? error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) : undefined;
-	return code ? `${error.name}:${code}` : error.name.slice(0, 64);
+	try {
+		if (!(error instanceof Error)) return typeof error;
+		const rawName = typeof error.name === "string" ? error.name : "Error";
+		const name = rawName.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "Error";
+		const code = "code" in error && typeof error.code === "string" ? error.code.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) : undefined;
+		return code ? `${name}:${code}` : name;
+	} catch {
+		return "Error";
+	}
 }
 
 function logHttpBoundaryFailure(
@@ -274,9 +280,13 @@ function logHttpBoundaryFailure(
 	error: unknown,
 	response?: ServerResponse,
 ): void {
-	const method = (request.method ?? "UNKNOWN").replace(/[^A-Z]/gi, "").slice(0, 16) || "UNKNOWN";
-	const state = response ? ` response={${responseState(response)}}` : "";
-	console.error(`[web-host] contained ${phase} failure method=${method} path=${requestPath(request)} error=${errorIdentity(error)}${state}`);
+	try {
+		const method = (request.method ?? "UNKNOWN").replace(/[^A-Z]/gi, "").slice(0, 16) || "UNKNOWN";
+		const state = response ? ` response={${responseState(response)}}` : "";
+		console.error(`[web-host] contained ${phase} failure method=${method} path=${requestPath(request)} error=${errorIdentity(error)}${state}`);
+	} catch {
+		// Diagnostics are best-effort and must never reopen the request rejection path.
+	}
 }
 
 function terminateResponse(response: ServerResponse, error?: unknown): void {
@@ -514,14 +524,22 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			for (const app of channelContext.getWebApps()) await app.initialize?.(createAppContext(channelContext));
 			server = createServer((request, response) => {
 				void handleRequest(request, response).catch((error: unknown) => {
-					logHttpBoundaryFailure("request-terminal", request, error, response);
-					terminateResponse(response, error);
+					try {
+						logHttpBoundaryFailure("request-terminal", request, error, response);
+						terminateResponse(response, error);
+					} catch {
+						// The terminal request boundary itself is intentionally nonthrowing.
+					}
 				});
 			});
 			server.on("upgrade", (request, socket, head) => {
 				void handleUpgrade(request, socket, head).catch((error: unknown) => {
-					logHttpBoundaryFailure("upgrade-terminal", request, error);
-					endUpgradeSocket(socket);
+					try {
+						logHttpBoundaryFailure("upgrade-terminal", request, error);
+						endUpgradeSocket(socket);
+					} catch {
+						// The terminal upgrade boundary itself is intentionally nonthrowing.
+					}
 				});
 			});
 			server.on("connection", (socket) => {

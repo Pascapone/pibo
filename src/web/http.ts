@@ -96,7 +96,7 @@ export async function sendWebResponse(
 	assertResponseCanStart(response);
 	const headers = responseHeaders(webResponse);
 	const compressEncoding = preferredResponseEncoding(response.req?.headers["accept-encoding"], webResponse);
-	let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+	let reader = webResponse.body?.getReader();
 	let wroteHeaders = false;
 	let clientClosed = false;
 	const cancelReader = () => {
@@ -120,9 +120,17 @@ export async function sendWebResponse(
 		}
 	};
 
+	if (reader) {
+		response.once("close", close);
+		options.signal?.addEventListener("abort", abort, { once: true });
+		if (options.signal?.aborted) abort();
+	}
+
 	try {
-		if (compressEncoding && webResponse.body) {
-			const body = await readResponseBody(webResponse);
+		if (compressEncoding && reader) {
+			const body = await readResponseBody(reader);
+			if (clientClosed || options.signal?.aborted || response.destroyed || response.writableEnded || response.writableFinished) return;
+			assertResponseCanStart(response);
 			if (body.length >= MIN_COMPRESS_RESPONSE_BYTES && body.length <= MAX_SYNC_GZIP_RESPONSE_BYTES) {
 				const compressionStartedAt = performance.now();
 				const compressed = gzipSync(body, { level: 1 });
@@ -146,21 +154,20 @@ export async function sendWebResponse(
 
 		response.writeHead(webResponse.status, headers);
 		wroteHeaders = true;
-		if (!webResponse.body) {
+		if (!reader) {
 			response.end();
 			return;
 		}
 
-		reader = webResponse.body.getReader();
-		response.once("close", close);
-		options.signal?.addEventListener("abort", abort, { once: true });
-		if (options.signal?.aborted) abort();
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
 			const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
 			for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
-				if (response.destroyed || response.writableEnded || response.writableFinished) return;
+				if (response.destroyed || response.writableEnded || response.writableFinished) {
+					cancelReader();
+					return;
+				}
 				if (!response.write(bytes.subarray(offset, offset + 64 * 1024))) {
 					const drained = await waitForResponseDrain(
 						response,
@@ -184,6 +191,13 @@ export async function sendWebResponse(
 	} finally {
 		response.off("close", close);
 		options.signal?.removeEventListener("abort", abort);
+		if (reader) {
+			try {
+				reader.releaseLock();
+			} catch {
+				// Cancellation/read settlement owns the lock until the pending read resolves.
+			}
+		}
 	}
 }
 
@@ -255,20 +269,14 @@ function responseCanBeCompressed(webResponse: Response): boolean {
 	return /^application\/json\b/.test(contentType);
 }
 
-async function readResponseBody(webResponse: Response): Promise<Buffer> {
+async function readResponseBody(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<Buffer> {
 	const chunks: Buffer[] = [];
-	const reader = webResponse.body!.getReader();
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			chunks.push(Buffer.from(value));
-		}
-		return Buffer.concat(chunks);
-	} catch (error) {
-		void reader.cancel().catch(() => undefined);
-		throw error;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		chunks.push(Buffer.from(value));
 	}
+	return Buffer.concat(chunks);
 }
 
 function appendVary(existing: string | string[] | undefined, value: string): string {

@@ -295,6 +295,105 @@ test("sendWebResponse refuses every terminal or already-started response state",
 	}
 });
 
+test("disconnect during a pending compressed-body read cancels and unlocks the reader before headers", async () => {
+	class PendingResponse extends EventEmitter {
+		req = { headers: { "accept-encoding": "gzip" } };
+		writableEnded = false;
+		writableFinished = false;
+		destroyed = false;
+		headersSent = false;
+		writeHeadCalls = 0;
+		writeHead() {
+			this.writeHeadCalls += 1;
+			this.headersSent = true;
+		}
+		end() {
+			this.writableEnded = true;
+		}
+		destroy() {
+			this.destroyed = true;
+			this.emit("close");
+		}
+	}
+	let canceled = false;
+	const body = new ReadableStream({
+		pull() {
+			// Deliberately remain pending until the client closes.
+		},
+		cancel() {
+			canceled = true;
+		},
+	}, { highWaterMark: 0 });
+	const response = new PendingResponse();
+	const sending = sendWebResponse(response, new Response(body, { headers: { "content-type": "application/json" } }));
+	await delay(10);
+	response.emit("close");
+	await sending;
+	assert.equal(canceled, true);
+	assert.equal(response.writeHeadCalls, 0);
+	assert.equal(body.locked, false);
+});
+
+test("compressed-body buffering rechecks response state before writeHead", async () => {
+	class EndedResponse extends EventEmitter {
+		req = { headers: { "accept-encoding": "gzip" } };
+		writableEnded = false;
+		writableFinished = false;
+		destroyed = false;
+		headersSent = false;
+		writeHeadCalls = 0;
+		writeHead() {
+			this.writeHeadCalls += 1;
+		}
+		end() {
+			this.writableEnded = true;
+		}
+	}
+	const response = new EndedResponse();
+	const body = new ReadableStream({
+		pull(controller) {
+			response.writableEnded = true;
+			controller.enqueue(new Uint8Array(2048));
+			controller.close();
+		},
+	}, { highWaterMark: 0 });
+	await sendWebResponse(response, new Response(body, { headers: { "content-type": "application/json" } }));
+	assert.equal(response.writeHeadCalls, 0);
+	assert.equal(body.locked, false);
+});
+
+test("regular streaming cancels and unlocks its reader when the response ends mid-chunk", async () => {
+	let canceled = false;
+	const response = new EventEmitter();
+	Object.assign(response, {
+		writableEnded: false,
+		writableFinished: false,
+		destroyed: false,
+		headersSent: false,
+		writeHead() {
+			this.headersSent = true;
+		},
+		write() {
+			this.writableEnded = true;
+			return true;
+		},
+		end() {
+			this.writableEnded = true;
+		},
+	});
+	const body = new ReadableStream({
+		start(controller) {
+			controller.enqueue(new Uint8Array(128 * 1024));
+		},
+		cancel() {
+			canceled = true;
+		},
+	}, { highWaterMark: 0 });
+	await sendWebResponse(response, new Response(body));
+	assert.equal(canceled, true);
+	assert.equal(body.locked, false);
+});
+
  test('streaming HTTP waits for socket drain before pulling another frame and splits large writes',async()=>{
   class SocketResponse extends EventEmitter {
    writableEnded=false;writableFinished=false;headersSent=false;destroyed=false;allow=false;writes=[];
