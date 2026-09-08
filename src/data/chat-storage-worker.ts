@@ -25,6 +25,7 @@ export type ChatStorageCommand =
 	| { type: "claimCommand"; owner: string; leaseMs: number }
 	| { type: "transitionCommand"; id: string; owner: string; token: number; state: MessageCommandState; error?: string }
 	| { type: "heartbeatCommand"; id: string; owner: string; token: number; leaseMs: number }
+	| { type: "durableQueueHealth" }
 	| { type: "status" };
 
 type Configuration = { path: string; payloadRootDir: string };
@@ -40,6 +41,11 @@ const ingest = new ChatDataIngestService(store);
 const rooms = new ChatRoomService(store);
 const sessions = new ChatSessionQueryService(store);
 const messageCommands = new MessageCommandStore(store);
+// Startup repair is bounded and conservative: terminal evidence may settle a receipt,
+// but ambiguous work is retained and never replayed. A damaged row must not stop the worker.
+let startupReconciliation: ReturnType<MessageCommandStore["reconcileInterrupted"]> | { error: string };
+try { startupReconciliation = messageCommands.reconcileInterrupted(); }
+catch (error) { startupReconciliation = { error: error instanceof Error ? error.message.slice(0,500) : "Unknown reconciliation error" }; }
 let active = false;
 let operations = 0;
 let busyRetries = 0;
@@ -54,6 +60,7 @@ function execute(command: ChatStorageCommand): unknown {
 		case "claimCommand": return messageCommands.claim(command.owner,command.leaseMs);
 		case "transitionCommand": return messageCommands.transition(command.id,command.owner,command.token,command.state,command.error);
 		case "heartbeatCommand": return messageCommands.heartbeat(command.id,command.owner,command.token,command.leaseMs);
+		case "durableQueueHealth": return messageCommands.health();
 		case "resolveRoom": {
 			const room = command.roomId ? rooms.getRoom(command.roomId) : undefined;
 			if (room) return room;
@@ -111,7 +118,7 @@ function execute(command: ChatStorageCommand): unknown {
 		case "status": return { operations, busyRetries, lastOperationMs, pid: process.pid, synchronous: store.db.prepare("PRAGMA synchronous").get(), journalMode: store.db.prepare("PRAGMA journal_mode").get() };
 	}
 }
-function respond(request: Request, response: { value?: unknown; error?: { code: string; message: string } }) {
+function respond(request: Request, response: { value?: unknown; error?: { code: string; message: string; details?: Record<string,unknown> } }) {
 	port!.postMessage({ id: request.id, ...response, worker: workerStatus() });
 	active = false;
 }
@@ -136,7 +143,9 @@ function attempt(request: Request) {
 		}
 		const domainCode = error && typeof error === "object" && "code" in error ? String(error.code) : "";
 		if (domainCode === "room_not_found" || domainCode === "room_read_only" || (domainCode.startsWith("storage_") || domainCode.startsWith("command_")) || domainCode === "pibo_output_identity_collision") {
-			respond(request, { error: { code: domainCode, message } });
+			const source=error as Record<string,unknown>;
+			const details=Object.fromEntries(["retryable","scope","blockingCommandId","blockedSince","oldestWaitAgeMs","nextAction"].flatMap(key=>source[key]===undefined?[]:[[key,source[key]]]));
+			respond(request, { error: { code: domainCode, message, ...(Object.keys(details).length?{details}:{}) } });
 			return;
 		}
 		respond(request, { error: { code: /database is (?:locked|busy)/i.test(message) ? "storage_busy" : "storage_operation_failed", message: "Storage operation failed; reconcile the transaction ID before retrying." } });
@@ -153,5 +162,6 @@ port.postMessage({
 		...workerStatus(),
 		journalMode: store.db.prepare("PRAGMA journal_mode").get(),
 		synchronous: store.db.prepare("PRAGMA synchronous").get(),
+		startupReconciliation,
 	},
 });

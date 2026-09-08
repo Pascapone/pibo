@@ -35,6 +35,21 @@ type RuntimeStatus = {
 	activeTelemetry?: RuntimeTelemetryHint;
 };
 
+type DurableMessageQueueStatus = {
+	status?: "healthy"|"degraded"|"ambiguous";
+	storage?: {available?:boolean;error?:string};
+	counts?: Array<{state?:string;delivery?:string;count?:number;bytes?:number}>;
+	interruptedPredecessors?:number;
+	blockedSuccessors?:number;
+	expiredOwnedLeases?:number;
+	oldestDispatchableWaitMs?:number;
+	oldestBlockedWaitMs?:number;
+	affectedScopes?:Array<{sessionId?:string;roomId?:string;blockingCommandId?:string;blockedSince?:number;blockedSuccessors?:number}>;
+	degradedReasons?:string[];
+	admissionCapacity?:unknown;
+	bounded?:unknown;
+};
+
 type ActiveRunSummary = {
 	runId?: string;
 	status?: string;
@@ -49,6 +64,7 @@ export type GatewaySafetyStatus = {
 	health?: unknown;
 	runtimeStatuses: RuntimeStatus[];
 	activeRuns: ActiveRunSummary[];
+	durableMessageQueue?: DurableMessageQueueStatus;
 	ambiguous?: boolean;
 	error?: string;
 };
@@ -274,14 +290,25 @@ function activeRun(value: unknown): ActiveRunSummary | undefined {
 	};
 }
 
+function durableMessageQueueStatus(value:unknown):DurableMessageQueueStatus|undefined{
+	const obj=objectValue(value);if(!obj)return undefined;
+	const status=obj.status==="healthy"||obj.status==="degraded"||obj.status==="ambiguous"?obj.status:undefined;
+	const storage=objectValue(obj.storage);
+	const counts=Array.isArray(obj.counts)?obj.counts.flatMap(value=>{const row=objectValue(value);return row?[{state:stringValue(row.state),delivery:stringValue(row.delivery),count:numberValue(row.count),bytes:numberValue(row.bytes)}]:[]}):undefined;
+	const affectedScopes=Array.isArray(obj.affectedScopes)?obj.affectedScopes.flatMap(value=>{const row=objectValue(value);return row?[{sessionId:stringValue(row.sessionId),roomId:stringValue(row.roomId),blockingCommandId:stringValue(row.blockingCommandId),blockedSince:numberValue(row.blockedSince),blockedSuccessors:numberValue(row.blockedSuccessors)}]:[]}):undefined;
+	return {status,storage:storage?{available:booleanValue(storage.available),error:stringValue(storage.error)}:undefined,counts,interruptedPredecessors:numberValue(obj.interruptedPredecessors),blockedSuccessors:numberValue(obj.blockedSuccessors),expiredOwnedLeases:numberValue(obj.expiredOwnedLeases),oldestDispatchableWaitMs:numberValue(obj.oldestDispatchableWaitMs),oldestBlockedWaitMs:numberValue(obj.oldestBlockedWaitMs),affectedScopes,degradedReasons:Array.isArray(obj.degradedReasons)&&obj.degradedReasons.every(v=>typeof v==="string")?obj.degradedReasons as string[]:undefined,admissionCapacity:obj.admissionCapacity,bounded:obj.bounded};
+}
+
 function parseGatewaySafetyPayload(payload: unknown, reachable: boolean): GatewaySafetyStatus {
 	const obj = objectValue(payload);
 	const mode = obj && (obj.mode === "dev" || obj.mode === "prod" || obj.mode === "fallback") ? obj.mode : "unknown";
 	const runtimeStatuses = Array.isArray(obj?.runtimeStatuses) ? obj.runtimeStatuses.map(runtimeStatus).filter((item): item is RuntimeStatus => Boolean(item)) : [];
 	const activeRuns = Array.isArray(obj?.activeRuns) ? obj.activeRuns.map(activeRun).filter((item): item is ActiveRunSummary => Boolean(item)) : [];
+	const durableMessageQueue=durableMessageQueueStatus(obj?.durableMessageQueue);
 	const incomplete = !Array.isArray(obj?.runtimeStatuses) || !Array.isArray(obj?.activeRuns)
-		|| runtimeStatuses.length !== obj.runtimeStatuses.length || activeRuns.length !== obj.activeRuns.length;
-	return { reachable, mode, generation: stringValue(obj?.generation), health: obj?.health, runtimeStatuses, activeRuns, ambiguous: incomplete || booleanValue(obj?.ambiguous) };
+		|| runtimeStatuses.length !== obj.runtimeStatuses.length || activeRuns.length !== obj.activeRuns.length
+		|| (obj?.durableMessageQueue!==undefined&&!durableMessageQueue?.status);
+	return { reachable, mode, generation: stringValue(obj?.generation), health: obj?.health, runtimeStatuses, activeRuns, durableMessageQueue, ambiguous: incomplete || booleanValue(obj?.ambiguous) };
 }
 
 export function checkActiveWork(status: GatewaySafetyStatus, target: GatewayTarget = "web"): ActiveWorkCheck {
@@ -370,7 +397,8 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	console.log(`  reachable: ${status.reachable ? "yes" : "no"}`);
 	console.log(`  mode: ${status.mode}`);
 	if (status.error) console.log(`  status error: ${status.error}`);
-	console.log(`  runtime sessions: ${status.runtimeStatuses.length}`);
+	console.log("  runtime queue layer:");
+	console.log(`    sessions: ${status.runtimeStatuses.length}`);
 	for (const session of status.runtimeStatuses) {
 		console.log(`    ${session.piboSessionId ?? "unknown"}: processing=${session.processing === true} streaming=${session.streaming === true} queued=${session.queuedMessages ?? 0}`);
 		if (session.activeEventId) console.log(`      active event: ${session.activeEventId}`);
@@ -389,6 +417,22 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	}
 	console.log(`  active yielded runs: ${status.activeRuns.length}`);
 	for (const run of status.activeRuns) console.log(`    ${run.runId ?? "unknown"}: ${run.status ?? "active"}${run.toolName ? ` (${run.toolName})` : ""} session=${run.piboSessionId ?? "unknown"}`);
+	console.log("  durable message queue layer:");
+	const durable=status.durableMessageQueue;
+	if(!durable)console.log("    status: unavailable (gateway app did not report this layer)");
+	else{
+		console.log(`    status: ${durable.status??"ambiguous"}`);
+		console.log(`    storage: ${durable.storage?.available===true?"available":"unavailable"}${durable.storage?.error?` (${durable.storage.error})`:""}`);
+		for(const row of durable.counts??[])console.log(`    ${row.delivery??"unknown"}.${row.state??"unknown"}: count=${row.count??0} bytes=${row.bytes??0}`);
+		console.log(`    interrupted predecessors: ${durable.interruptedPredecessors??0}`);
+		console.log(`    FIFO-blocked successors: ${durable.blockedSuccessors??0}`);
+		console.log(`    expired owned leases: ${durable.expiredOwnedLeases??0}`);
+		console.log(`    oldest dispatchable wait: ${durable.oldestDispatchableWaitMs??0}ms`);
+		console.log(`    oldest blocked wait: ${durable.oldestBlockedWaitMs??0}ms`);
+		for(const scope of durable.affectedScopes??[])console.log(`    affected session=${scope.sessionId??"unknown"} room=${scope.roomId??"unknown"} blocker=${scope.blockingCommandId??"unknown"} successors=${scope.blockedSuccessors??0}`);
+		for(const reason of durable.degradedReasons??[])console.log(`    degraded: ${reason}`);
+	}
+	console.log("  next: pibo debug message-queue");
 }
 
 function managerRequiresShell(command: string): boolean {
@@ -418,8 +462,9 @@ async function waitForManagedGatewayHealth(target: GatewayTarget): Promise<Gatew
 async function runManagedGatewayCommand(target: GatewayTarget, command: string | undefined, args: string[], argv = process.argv): Promise<boolean> {
 	if (command === "status" || command === "doctor") {
 		const status = await readGatewaySafetyStatus(target);
-		printSafetyStatus(target, status);
-		if (target === "web") {
+		if(args.includes("--json"))console.log(JSON.stringify({...status,nextCommands:[`pibo gateway ${target} doctor`,`pibo debug message-queue`]},null,2));
+		else printSafetyStatus(target, status);
+		if (target === "web" && !args.includes("--json")) {
 			const active = checkActiveWork(status, target);
 			if (active.unsafe) {
 				console.log("  restart safety: blocked");
@@ -427,7 +472,7 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 			} else console.log("  restart safety: idle");
 			printRestartApproval(status);
 		}
-		if (command === "doctor") process.exitCode = status.reachable && !status.error && status.mode === expectedMode(target) ? 0 : 1;
+		if (command === "doctor") process.exitCode = status.reachable && !status.error && status.mode === expectedMode(target) && status.durableMessageQueue?.status === "healthy" && status.durableMessageQueue.storage?.available === true ? 0 : 1;
 		return true;
 	}
 
@@ -612,6 +657,7 @@ Commands:
   dev doctor       Check dev gateway health
 
 Options:
+  --json         Print status or doctor output as JSON with next discovery commands
   --force --confirm <snapshot-token>
                  Restart only the work explicitly approved from web status
 

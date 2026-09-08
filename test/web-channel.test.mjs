@@ -9209,6 +9209,17 @@ test("versioned durable admission acknowledges before cold runtime dispatch and 
 });
 
 
+test("Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts",async()=>{
+ let unblock;const blocked=new Promise(resolve=>{unblock=resolve;});const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(){await blocked;return {type:"message_queued"};}});const headers={"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"};
+ try{
+  const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers})).json();const send=id=>fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers,body:JSON.stringify({admissionVersion:2,piboSessionId:session.id,text:"duplicate content",clientTxnId:id})});
+  const firstResponse=await send("barrier-first");assert.equal(firstResponse.status,202);const first=await firstResponse.json();await waitForCondition(()=>host.emitted.length===1,"first command did not enter dispatch");
+  const db=new DatabaseSync(host.dataStorePath);try{db.prepare("UPDATE message_commands SET state='interrupted',owner=NULL,lease_until=0,error='fixture interruption' WHERE id=?").run(first.receipt.id);}finally{db.close();}
+  const rejected=await send("barrier-second");assert.equal(rejected.status,409);assert.equal(rejected.headers.get("retry-after"),null);const body=await rejected.json();assert.equal(body.code,"command_reconciliation_required");assert.equal(body.retryable,false);assert.equal(body.scope,"session");assert.equal(body.blockingCommandId,first.receipt.id);assert.match(body.error,/previous interrupted message requires review/i);
+  const status=await(await fetch(`${host.baseURL}/gateway/status`)).json();assert.equal(status.runtimeQueue.layer,"runtime-session");assert.equal(status.durableMessageQueue.status,"degraded");assert.equal(status.durableMessageQueue.affectedScopes[0].sessionId,session.id);assert.equal(JSON.stringify(status).includes("duplicate content"),false);
+ }finally{unblock();await host.channel.stop?.();}
+});
+
 test("web startup dispatches a committed command without an HTTP request", async () => {
  const storageDir=mkdtempSync(join(tmpdir(),"pibo-command-startup-"));
  const sessions=new InMemoryPiboSessionStore();

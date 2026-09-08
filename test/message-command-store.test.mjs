@@ -180,6 +180,11 @@ test("byte and wait-age limits reject new work while preserving duplicate receip
   store.db.prepare("UPDATE message_commands SET created_at=? WHERE id=?").run(Date.now()-10*60*1000-1,waiting.id);
   assert.throws(()=>add("age-overflow","waiting"),{code:"command_overloaded"});
   assert.equal(add("unrelated","small").state,"accepted");
+  const blockedFirst=add("blocked-first","blocked"),blockedSuccessor=add("blocked-successor","blocked");
+  store.db.prepare("UPDATE message_commands SET state='interrupted' WHERE id=?").run(blockedFirst.id);
+  store.db.prepare("UPDATE message_commands SET created_at=? WHERE id=?").run(Date.now()-15*60*1000-1,blockedSuccessor.id);
+  assert.equal(add("same-room-other-session","independent").state,"accepted","a FIFO-blocked successor must not spend room/global wait-age capacity");
+  assert.throws(()=>add("blocked-new","blocked"),{code:"command_reconciliation_required",retryable:false});
   assert.equal(add("control","waiting","steer","steer").state,"accepted");
   assert.equal(commands.get(waiting.id).state,"accepted");
  } finally {store.close();rmSync(root,{recursive:true,force:true});}
@@ -212,6 +217,72 @@ test("receipt polling retains an older active turn after a long stream of termin
  } finally {store.close();rmSync(root,{recursive:true,force:true});}
 });
 
+
+test("lease recovery monotonically honors every terminal output with a deterministic persistence barrier",()=>{
+ for(const [type,expected] of [["message_finished","completed"],["session_error","failed"],["message_steered","completed"]]){
+  const root=mkdtempSync(join(tmpdir(),"pibo-command-terminal-race-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);
+  try{
+   const saved=store.transaction(()=>commands.insert({key:type,sessionId:"session",roomId:"room",eventId:"event",streamId:1,delivery:type==="message_steered"?"steer":"queue",...commands.prepare({sessionId:"session",roomId:"room",text:"x",delivery:type==="message_steered"?"steer":"queue"})}));
+   const claim=commands.claim("expired-owner",1000);commands.transition(claim.id,"expired-owner",claim.token,"running");store.db.prepare("UPDATE message_commands SET lease_until=0 WHERE id=?").run(saved.id);
+   let crossed=false;commands.recoverExpiredLeases(Date.now(),()=>{crossed=true;store.eventLog.appendEvent({sessionId:"session",roomId:"room",topic:"pibo.output",type,source:"test",eventId:"event",retentionClass:"audit_event"});});
+   assert.equal(crossed,true);assert.equal(commands.get(saved.id).state,expected);assert.equal(store.db.prepare("SELECT owner,lease_until FROM message_commands WHERE id=?").get(saved.id).owner,null);
+   assert.equal(commands.reconcileInterrupted().reconciled,0);assert.equal(commands.get(saved.id).state,expected);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE event_id='event'").get().n),1);
+  }finally{store.close();rmSync(root,{recursive:true,force:true});}
+ }
+});
+
+test("bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors",async()=>{
+ const root=mkdtempSync(join(tmpdir(),"pibo-command-startup-reconcile-"));const path=join(root,"data.sqlite"),payloadRoot=join(root,"payloads");const store=new PiboDataStore(path,{payloadRootDir:payloadRoot});const commands=new MessageCommandStore(store);
+ const add=(key,session,stream)=>store.transaction(()=>commands.insert({key,sessionId:session,roomId:"room",eventId:key,streamId:stream,delivery:"queue",...commands.prepare({sessionId:session,roomId:"room",text:key,delivery:"queue"})}));
+ try{
+  const evidenced=add("evidenced","one",1),ambiguous=add("ambiguous","two",2),successor=add("successor","two",3);
+  store.db.prepare("UPDATE message_commands SET state='interrupted',error='expired' WHERE id IN (?,?)").run(evidenced.id,ambiguous.id);
+  store.eventLog.appendEvent({sessionId:"one",roomId:"room",topic:"pibo.output",type:"session_error",source:"test",eventId:"evidenced",retentionClass:"audit_event"});
+  const storage=new AsyncChatStorage(path,payloadRoot);try{
+   assert.equal((await storage.commandReceipt(evidenced.id)).state,"failed");assert.equal((await storage.commandReceipt(ambiguous.id)).state,"interrupted");assert.equal((await storage.commandReceipt(successor.id)).state,"failed");
+   assert.equal(await storage.claimCommand("must-not-replay",1000),undefined);
+  }finally{await storage.close();}
+  const repeated=commands.reconcileInterrupted();assert.equal(repeated.reconciled,0);assert.equal(commands.get(ambiguous.id).state,"interrupted");
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test("one malformed reconciliation candidate cannot prevent an unrelated terminal repair",()=>{
+ const root=mkdtempSync(join(tmpdir(),"pibo-command-reconcile-isolation-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);const add=(key,stream)=>store.transaction(()=>commands.insert({key,sessionId:key,roomId:"room",eventId:key,streamId:stream,delivery:"queue",...commands.prepare({sessionId:key,roomId:"room",text:key,delivery:"queue"})}));
+ try{const malformed=add("malformed",1),good=add("good",2);store.db.prepare("UPDATE message_commands SET state='interrupted' WHERE id IN (?,?)").run(malformed.id,good.id);for(const key of ["malformed","good"])store.eventLog.appendEvent({sessionId:key,roomId:"room",topic:"pibo.output",type:"message_finished",source:"test",eventId:key,retentionClass:"audit_event"});const original=store.db.prepare.bind(store.db);store.db.prepare=sql=>{const statement=original(sql);if(sql.startsWith("UPDATE message_commands SET state=")){const run=statement.run.bind(statement);statement.run=(...args)=>{if(args[1]===malformed.id)throw new Error("malformed row fixture");return run(...args);};}return statement;};const result=commands.reconcileInterrupted();assert.equal(result.errors,1);assert.equal(commands.get(malformed.id).state,"interrupted");assert.equal(commands.get(good.id).state,"completed");}
+ finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test("admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available",async()=>{
+ const root=mkdtempSync(join(tmpdir(),"pibo-command-barrier-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const room=new ChatRoomService(store).ensureDefaultRoom();const sessions=new InMemoryPiboSessionStore();const blocked=sessions.create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const other=sessions.create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const storage=new AsyncChatStorage(store.path,join(root,"payloads"));
+ const admit=(session,id,text="same")=>storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"actor",clientTxnId:id,retentionClass:"chat_message",payload:{type:"user.message.accepted",text,clientTxnId:id}},session,text,{eventId:id,delivery:"queue"});
+ try{
+  const first=await admit(blocked,"first");store.db.prepare("UPDATE message_commands SET state='interrupted',error='ambiguous',created_at=? WHERE id=?").run(Date.now()-16*60*1000,first.receipt.id);
+  const duplicate=await admit(blocked,"first");assert.equal(duplicate.created,false);assert.equal(duplicate.receipt.id,first.receipt.id);
+  for(const id of ["second","third"]){await assert.rejects(admit(blocked,id),error=>error.code==="command_reconciliation_required"&&error.retryable===false&&error.scope==="session"&&error.blockingCommandId===first.receipt.id);}
+  assert.equal(Number(store.db.prepare("SELECT count(*) n FROM message_commands").get().n),1);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE type='user.message.accepted'").get().n),1);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM payloads").get().n),1);
+  const admitted=await admit(other,"unrelated");assert.equal(admitted.receipt.state,"accepted","an old blocked session must not become room/global wait-age overload");
+ }finally{await storage.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test("durable queue health separates dispatchable backlog from FIFO degradation using bounded metadata",()=>{
+ const root=mkdtempSync(join(tmpdir(),"pibo-command-health-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);const add=(key,session,stream)=>store.transaction(()=>commands.insert({key,sessionId:session,roomId:"room",eventId:key,streamId:stream,delivery:"queue",...commands.prepare({sessionId:session,roomId:"room",text:"secret body",delivery:"queue"})}));
+ try{
+  const healthy=add("healthy","healthy",1);let status=commands.health();assert.equal(status.status,"healthy");assert.equal(status.oldestDispatchableWaitMs>=0,true);
+  const blocker=add("blocker","blocked",2);add("successor","blocked",3);store.db.prepare("UPDATE message_commands SET state='interrupted',error='ambiguous' WHERE id=?").run(blocker.id);
+  status=commands.health();assert.equal(status.status,"degraded");assert.equal(status.interruptedPredecessors,1);assert.equal(status.blockedSuccessors,1);assert.equal(status.affectedScopes[0].blockingCommandId,blocker.id);assert.equal(JSON.stringify(status).includes("secret body"),false);
+  commands.recordOutput("healthy",healthy.eventId,"message_finished");
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test("health summaries remain operationally bounded across large terminal history",()=>{
+ const root=mkdtempSync(join(tmpdir(),"pibo-command-large-health-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);
+ try{
+  const seed=store.transaction(()=>commands.insert({key:"seed",sessionId:"seed",roomId:"room",eventId:"seed",streamId:1,delivery:"queue",...commands.prepare({sessionId:"seed",roomId:"room",text:"not exposed",delivery:"queue"})}));commands.recordOutput("seed","seed","message_finished");const payload=store.db.prepare("SELECT payload_ref,payload_bytes FROM message_commands WHERE id=?").get(seed.id);
+  store.db.prepare(`WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<5000) INSERT INTO message_commands(id,request_key,fingerprint,session_id,room_id,event_id,stream_id,payload_ref,payload_bytes,delivery,state,created_at,updated_at) SELECT 'cmd_history_'||x,'history-'||x,'fingerprint-'||x,'history-session','room','history-event-'||x,x+1,?,?,'queue','completed',1,1 FROM n`).run(payload.payload_ref,payload.payload_bytes);
+  const original=store.db.prepare.bind(store.db);store.db.prepare=sql=>{if(/^\s*SELECT/i.test(sql))assert.doesNotMatch(sql,/\bpayloads\b|\bevent_log\b/,"health must not inspect payload bodies or event history");return original(sql);};
+  const health=commands.health();assert.equal(health.counts.find(row=>row.state==="completed"&&row.delivery==="queue").count,5001);assert.equal(health.status,"healthy");assert.equal(health.affectedScopes.length,0);
+ }finally{store.close();rmSync(root,{recursive:true,force:true});}
+});
 
 test("FIFO predecessor checks use the state-and-stream covering index instead of scanning terminal history",()=>{
  const root=mkdtempSync(join(tmpdir(),"pibo-command-index-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);

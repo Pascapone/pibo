@@ -217,16 +217,25 @@ function createGatewayRuntimeStatuses(channelContext: PiboChannelContext): unkno
 	});
 }
 
-function createGatewayStatusResponse(channelContext: PiboChannelContext, options: WebHostChannelOptions, generation: string): Response {
+async function createGatewayStatusResponse(channelContext: PiboChannelContext, options: WebHostChannelOptions, generation: string): Promise<Response> {
 	const mode = gatewayMode(options);
+	const appStatuses:Record<string,unknown>={};
+	for(const app of channelContext.getWebApps()){
+		if(!app.gatewayStatus)continue;
+		try{Object.assign(appStatuses,await app.gatewayStatus());}
+		catch(error){appStatuses[`${app.name}Status`]={status:"ambiguous",error:error instanceof Error?error.message:"Status unavailable"};}
+	}
+	const durable=appStatuses.durableMessageQueue as {status?:unknown}|undefined;
 	return responseJson({
-		status: "ok",
+		status: durable?.status==="degraded"||durable?.status==="ambiguous"?"degraded":"ok",
 		mode,
 		generation,
-		health: { status: "ok", mode },
+		health: { status: durable?.status==="degraded"||durable?.status==="ambiguous"?"degraded":"ok", mode },
+		runtimeQueue: { layer:"runtime-session",statuses:createGatewayRuntimeStatuses(channelContext) },
 		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
 		...(channelContext.getRuntimeCapacityStatus ? { runtimeCapacity: channelContext.getRuntimeCapacityStatus() } : {}),
 		activeRuns: collectActiveRuns(channelContext),
+		...appStatuses,
 	});
 }
 
@@ -355,7 +364,7 @@ export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHo
 			}
 
 			if (url.pathname === "/gateway/status") {
-				await sendResponse(nodeResponse, createGatewayStatusResponse(requireContext(), options, generation));
+				await sendResponse(nodeResponse, await createGatewayStatusResponse(requireContext(), options, generation));
 				return;
 			}
 
