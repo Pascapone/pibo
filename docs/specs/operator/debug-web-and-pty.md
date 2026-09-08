@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-08T19:00:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -22,7 +22,7 @@ implementation:
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "aacf12b17e8ba92249a901b3e1d44d57a35f9bf8"
   requirements:
     - id: "OP-DEBUG-001"
       status: "implemented"
@@ -137,6 +137,26 @@ traceability:
       failures:
         - "Malformed scenarios, assertions, timeouts, ignored cancellation, and cleanup failures remain visible in bounded artifacts."
       confidence: high
+    - id: "OP-DEBUG-006"
+      status: "implemented"
+      sources:
+        - path: src/debug/index.ts
+          symbol: runDebugJobs
+        - path: src/reliability/store.ts
+          symbol: inspectJobs
+        - path: src/reliability/store.ts
+          symbol: reconcileOrphanRunJobs
+      tests:
+        - path: test/debug-cli.test.mjs
+          name: "pibo debug jobs reconcile-runs supports dry-run and apply against a temporary reliability store"
+        - path: test/debug-cli.test.mjs
+          name: "pibo debug jobs lists dead jobs and replays one"
+      public:
+        - "pibo debug jobs list --queue runs"
+        - "pibo debug jobs reconcile-runs --dry-run|--apply"
+      failures:
+        - "Cleanup requires exactly one explicit dry-run or apply mode, never replays work, and omits payloads."
+      confidence: high
     - id: "OP-DEBUG-005"
       status: "implemented"
       sources:
@@ -192,7 +212,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### State
 
-- Local debug defaults read owner stores read-only; persistence audit reports incomplete lifecycles, identity collisions, queue/dead-letter state, and bounded detail. Repair is dry-run by default and applies only with exact completed Product History, Reliability, or adapter evidence. Optional explicit artifact directories hold Web/PTY evidence.
+- Local debug defaults read owner stores read-only; persistence audit reports incomplete lifecycles, identity collisions, queue/dead-letter state, and bounded detail. Run-job listing reports claim expiry, missing run rows, and effective liveness without payloads; orphan cleanup requires explicit dry-run or apply. Repair is dry-run by default and applies only with exact completed Product History, Reliability, or adapter evidence. Optional explicit artifact directories hold Web/PTY evidence.
 
 ### Lifecycle
 
@@ -272,6 +292,10 @@ The upstream/dev refresh implementation and named tests provide the current sour
 - Failure/security boundary: Malformed scenarios, assertions, timeouts, ignored cancellation, and cleanup failures remain visible in bounded artifacts.
 - Confidence: **high**
 
+### Requirement: OP-DEBUG-006: Run-job diagnostics expose orphan liveness and gate cleanup
+
+`pibo debug jobs list --queue runs` SHALL expose claim expiry, matching-run presence, and effective liveness without payloads. `pibo debug jobs reconcile-runs` SHALL require exactly one of `--dry-run` or `--apply`, list only expired orphan candidates, and SHALL NOT replay side effects. Apply moves candidates to the dead-letter queue through the reliability owner.
+
 ### Requirement: OP-DEBUG-005
 
 Default diagnostics to bounded/read-only/mock behavior and require explicit apply, destructive, real-provider, and iteration controls for state-changing or external paths.
@@ -335,7 +359,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+All source and named-test references are bound to commit `aacf12b17e8ba92249a901b3e1d44d57a35f9bf8`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
 
 Later validation commands:
 
