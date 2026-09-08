@@ -131,6 +131,7 @@ export type ChatTelemetryRetentionPruneBody = {
 export type ChatMessageDelivery = "queue" | "steer";
 
 export type ChatMessageBody = {
+	admissionVersion?: unknown;
 	piboSessionId?: unknown;
 	roomId?: unknown;
 	text?: unknown;

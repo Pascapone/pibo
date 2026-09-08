@@ -2,8 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { PiboOutputEvent } from "../../../core/events.js";
 import type { ChatEventAppendInput, StoredChatEvent } from "../types/event-store.js";
 import { isLiveOnlyOutputEvent } from "../output-event-policy.js";
+import type { StoredPiboEventLogRow } from "../../../data/event-log.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
 import { compactObject, nextSessionSequence, previewForPayload, storedChatEventFromV2Row, type EventLogRow } from "./chat-data-mappers.js";
+
+export function chatClientTransactionKey(roomId: string | undefined, actorId: string | undefined, clientTxnId: string): string {
+	return `chat:user.accepted:${roomId ?? ""}:${actorId ?? ""}:${clientTxnId}`;
+}
 
 export class ChatEventCommandService {
 	constructor(private readonly store: PiboDataStore) {}
@@ -11,9 +16,7 @@ export class ChatEventCommandService {
 	appendEvent(input: ChatEventAppendInput): StoredChatEvent {
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const eventId = input.eventId ?? `ce_${randomUUID()}`;
-		const idempotencyKey = input.clientTxnId ? `chat:user.accepted:${input.roomId ?? ""}:${input.actorId ?? ""}:${input.clientTxnId}` : `chat:event:${eventId}`;
-		const existing = input.clientTxnId ? this.findByClientTxn(input.roomId, input.actorId, input.clientTxnId) : undefined;
-		if (existing) return existing;
+		const idempotencyKey = input.clientTxnId ? chatClientTransactionKey(input.roomId, input.actorId, input.clientTxnId) : `chat:event:${eventId}`;
 		const stored = this.store.eventLog.appendEvent({
 			sessionId: input.piboSessionId,
 			sessionSequence: input.piboSessionId ? nextSessionSequence(this.store, input.piboSessionId) : undefined,
@@ -31,21 +34,7 @@ export class ChatEventCommandService {
 			createdAt,
 			indexedAt: createdAt,
 		});
-		return storedChatEventFromV2Row({
-			stream_id: stored.streamId,
-			session_id: stored.sessionId ?? null,
-			session_sequence: stored.sessionSequence ?? null,
-			room_id: stored.roomId ?? null,
-			type: stored.type,
-			actor_type: stored.actorType ?? null,
-			actor_id: stored.actorId ?? null,
-			event_id: stored.eventId ?? null,
-			idempotency_key: stored.idempotencyKey ?? null,
-			retention_class: stored.retentionClass,
-			preview_text: stored.previewText ?? null,
-			attributes_json: JSON.stringify(stored.attributes),
-			created_at: stored.createdAt,
-		});
+		return chatEventFromStoredRow(stored);
 	}
 
 	appendOutputEvent(event: PiboOutputEvent, _input: { roomId?: string; actorId?: string } = {}): StoredChatEvent | undefined {
@@ -56,8 +45,14 @@ export class ChatEventCommandService {
 
 	findByClientTxn(roomId: string | undefined, actorId: string | undefined, clientTxnId: string): StoredChatEvent | undefined {
 		if (!roomId || !actorId) return undefined;
-		const row = this.store.db.prepare("SELECT * FROM event_log WHERE room_id = ? AND actor_id = ? AND json_extract(attributes_json, '$.clientTxnId') = ? ORDER BY stream_id ASC LIMIT 1").get(roomId, actorId, clientTxnId) as EventLogRow | undefined;
-		return row ? storedChatEventFromV2Row(row) : undefined;
+		// Empty IDs are not valid HTTP transaction keys. Retain the legacy direct-call
+		// lookup contract without adding a scan fallback to ordinary indexed misses.
+		if (clientTxnId === "") {
+			const row = this.store.db.prepare("SELECT * FROM event_log WHERE room_id = ? AND actor_id = ? AND json_extract(attributes_json, '$.clientTxnId') = ? ORDER BY stream_id ASC LIMIT 1").get(roomId, actorId, clientTxnId) as EventLogRow | undefined;
+			return row ? storedChatEventFromV2Row(row) : undefined;
+		}
+		const row = this.store.eventLog.findByIdempotencyKey(chatClientTransactionKey(roomId, actorId, clientTxnId));
+		return row ? chatEventFromStoredRow(row) : undefined;
 	}
 
 	deleteSessions(piboSessionIds: string[]): number {
@@ -73,4 +68,22 @@ export class ChatEventCommandService {
 		const result = this.store.db.prepare(`DELETE FROM event_log WHERE room_id IN (${placeholders})`).run(...roomIds);
 		return Number(result.changes ?? 0);
 	}
+}
+
+function chatEventFromStoredRow(stored: StoredPiboEventLogRow): StoredChatEvent {
+	return storedChatEventFromV2Row({
+		stream_id: stored.streamId,
+		session_id: stored.sessionId ?? null,
+		session_sequence: stored.sessionSequence ?? null,
+		room_id: stored.roomId ?? null,
+		type: stored.type,
+		actor_type: stored.actorType ?? null,
+		actor_id: stored.actorId ?? null,
+		event_id: stored.eventId ?? null,
+		idempotency_key: stored.idempotencyKey ?? null,
+		retention_class: stored.retentionClass,
+		preview_text: stored.previewText ?? null,
+		attributes_json: JSON.stringify(stored.attributes),
+		created_at: stored.createdAt,
+	});
 }

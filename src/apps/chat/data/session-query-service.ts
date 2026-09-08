@@ -14,9 +14,10 @@ export class ChatSessionQueryService {
 		session: PiboSession,
 		status: ChatWebSessionIndexItem["status"] = "idle",
 		lastActivityAt = session.updatedAt,
+		options: { preserveRuntimeBinding?: boolean } = {},
 	): void {
 		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
-		this.store.sessions.upsertSession({ session, roomId, status, lastActivityAt });
+		this.store.sessions.upsertSession({ session, roomId, status, lastActivityAt, preserveRuntimeBinding: options.preserveRuntimeBinding });
 		this.upsertNavigation(session, roomId, status, lastActivityAt);
 	}
 
@@ -24,11 +25,12 @@ export class ChatSessionQueryService {
 		let written = 0;
 		let skipped = 0;
 		for (const session of sessions) {
-			if (this.sessionIndexMatches(session)) {
+			const status=this.getSession(session.id)?.status ?? "idle";
+			if (this.sessionIndexMatches(session,status)) {
 				skipped++;
 				continue;
 			}
-			this.upsertSession(session);
+			this.upsertSession(session,status);
 			written++;
 		}
 		return { checked: sessions.length, written, skipped };
@@ -42,7 +44,7 @@ export class ChatSessionQueryService {
 	): ChatWebStoredPiboEvent | undefined {
 		if (session) {
 			const status = statusFromOutputEvent(event);
-			if (status) this.upsertSession(session, status, createdAt);
+			if (status) this.upsertSession(session, status, createdAt, { preserveRuntimeBinding: true });
 			else this.touchSession(session, createdAt);
 		}
 		return undefined;
@@ -50,7 +52,7 @@ export class ChatSessionQueryService {
 
 	private touchSession(session: PiboSession, lastActivityAt: string): void {
 		const roomId = chatRoomIdFromMetadata(session.metadata) ?? "room_default";
-		this.store.sessions.upsertSession({ session, roomId, lastActivityAt });
+		this.store.sessions.upsertSession({ session, roomId, lastActivityAt, preserveRuntimeBinding: true });
 		this.store.navigation.upsertSession({
 			roomId,
 			sessionId: session.id,
@@ -65,20 +67,28 @@ export class ChatSessionQueryService {
 		});
 	}
 
-	listSessions(): ChatWebSessionIndexItem[] {
+	listSessions(roomId?:string): ChatWebSessionIndexItem[] {
 		const rows = this.store.db.prepare(`
-			SELECT s.*, b.runtime_instance_id, b.runtime_adapter_id, b.native_session_id, b.binding_state
+			SELECT s.id,s.pi_session_id,s.parent_id,s.channel,s.kind,s.profile,s.created_at,s.updated_at,s.last_activity_at,s.status,b.runtime_instance_id,b.runtime_adapter_id,b.native_session_id,b.binding_state
 			FROM sessions s
 			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
-			WHERE s.deleted_at IS NULL
+			WHERE s.deleted_at IS NULL ${roomId?"AND s.room_id=?":""}
 			ORDER BY s.last_activity_at DESC, s.created_at DESC
-		`).all() as SessionRow[];
+		`).all(...(roomId?[roomId]:[])) as SessionRow[];
+		return rows.map(sessionFromRow);
+	}
+
+	listSessionIndexPage(input:{roomId:string;afterId?:string;limit?:number}):ChatWebSessionIndexItem[] {
+		const limit=Math.max(1,Math.min(input.limit??500,500));
+		const rows=this.store.db.prepare(`SELECT s.id,s.pi_session_id,s.parent_id,s.channel,s.kind,s.profile,s.created_at,s.updated_at,s.last_activity_at,s.status,b.runtime_instance_id,b.runtime_adapter_id,b.native_session_id,b.binding_state
+		FROM sessions s LEFT JOIN session_runtime_bindings b ON b.pibo_session_id=s.id
+		WHERE s.deleted_at IS NULL AND s.room_id=? AND s.id>? ORDER BY s.id LIMIT ?`).all(input.roomId,input.afterId??"",limit) as SessionRow[];
 		return rows.map(sessionFromRow);
 	}
 
 	getSession(piboSessionId: string): ChatWebSessionIndexItem | undefined {
 		const row = this.store.db.prepare(`
-			SELECT s.*, b.runtime_instance_id, b.runtime_adapter_id, b.native_session_id, b.binding_state
+			SELECT s.id,s.pi_session_id,s.parent_id,s.channel,s.kind,s.profile,s.created_at,s.updated_at,s.last_activity_at,s.status,b.runtime_instance_id,b.runtime_adapter_id,b.native_session_id,b.binding_state
 			FROM sessions s
 			LEFT JOIN session_runtime_bindings b ON b.pibo_session_id = s.id
 			WHERE s.id = ? AND s.deleted_at IS NULL

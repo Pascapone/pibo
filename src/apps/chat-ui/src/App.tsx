@@ -48,6 +48,7 @@ import {
 	readStoredShowArchivedRooms,
 	readStoredShowArchivedSessions,
 	readStoredDebugMode,
+	readStoredDebugFeatures,
 	readStoredShowThinking,
 	readStoredToolDisplayMode,
 	removeStoredNewSessionProfile,
@@ -60,6 +61,7 @@ import {
 	writeStoredShowArchivedRooms,
 	writeStoredShowArchivedSessions,
 	writeStoredDebugMode,
+	writeStoredDebugFeatures,
 	writeStoredShowThinking,
 	writeStoredToolDisplayMode,
 } from "./app-storage";
@@ -301,6 +303,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
 	const routePiboSessionId = route.area === "sessions" || route.area === "context" ? route.piboSessionId : undefined;
 	const routeSessionViewId = route.area === "sessions" ? route.sessionViewId : undefined;
+	const routeToolCallNodeId = route.area === "sessions" ? route.toolCallNodeId : undefined;
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
 	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -327,6 +330,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
 	const [expandThinking, setExpandThinking] = useState(readStoredExpandThinking);
 	const [debugMode, setDebugMode] = useState(readStoredDebugMode);
+	const [debugFeatures, setDebugFeatures] = useState(readStoredDebugFeatures);
 	const [toolMetricThresholds, setToolMetricThresholds] = useState(readStoredToolMetricThresholds);
 	const showRawEvents = false;
 	const updateDebugMode = (value: boolean) => {
@@ -334,6 +338,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 		writeStoredDebugMode(value);
 	};
 	const toggleDebugMode = () => updateDebugMode(!debugMode);
+	const updateDebugFeatures = (value: typeof debugFeatures) => {
+		setDebugFeatures(value);
+		writeStoredDebugFeatures(value);
+	};
 	const updateToolMetricThresholds = (value: ToolMetricThresholds) => {
 		setToolMetricThresholds(value);
 		writeStoredToolMetricThresholds(value);
@@ -1275,10 +1283,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
 		onMutate: async ({ piboSessionId }) => {
 			await queryClient.cancelQueries({ queryKey: tracePageQueriesForSession(piboSessionId) });
-			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, status: "running", lastActivityAt: new Date().toISOString() })));
-		},
-		onError: (_error, variables) => {
-			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, variables.piboSessionId, (node) => ({ ...node, status: "error" })));
+			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, lastActivityAt: new Date().toISOString() })));
 		},
 	});
 
@@ -1890,7 +1895,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				label="Settings"
 				sidebar={<SettingsSidebar activePanel={panel} onSelect={(nextPanel) => navigateToRoute({ area: "settings", panel: nextPanel })} piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} />}
 			>
-				<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} debugMode={debugMode} onDebugModeChange={updateDebugMode} toolMetricThresholds={toolMetricThresholds} onToolMetricThresholdsChange={updateToolMetricThresholds} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} />
+				<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} debugMode={debugMode} onDebugModeChange={updateDebugMode} debugFeatures={debugFeatures} onDebugFeaturesChange={updateDebugFeatures} toolMetricThresholds={toolMetricThresholds} onToolMetricThresholdsChange={updateToolMetricThresholds} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} />
 			</ResponsiveTabSidebarPanel>
 		);
 	};
@@ -2002,6 +2007,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
 							selectedRoomId={selectedRoomId}
+							targetToolCallNodeId={routeToolCallNodeId}
 							contextLabel={selectedRoomContextLabel}
 							selectedRoomArchived={selectedRoomArchived}
 							roomNavigationPending={loadingSelectedRoom}
@@ -2028,6 +2034,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							composerFocusSignal={composerFocusSignal}
 							onComposerTextChange={updateComposerText}
 							debugMode={debugMode}
+							debugFeatures={debugFeatures}
 							toolMetricThresholds={toolMetricThresholds}
 							onToggleDebugMode={toggleDebugMode}
 							onToggleThinking={() => { const next = !showThinking; setShowThinking(next); writeStoredShowThinking(next); }}
@@ -2242,6 +2249,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						bootstrap={bootstrap}
 						selectedPiboSessionId={selectedPiboSessionId}
 						selectedRoomId={selectedRoomId}
+						targetToolCallNodeId={routeToolCallNodeId}
 						contextLabel={selectedRoomContextLabel}
 						selectedRoomArchived={selectedRoomArchived}
 						roomNavigationPending={loadingSelectedRoom}
@@ -2267,6 +2275,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						composerFocusSignal={composerFocusSignal}
 						onComposerTextChange={updateComposerText}
 						debugMode={debugMode}
+						debugFeatures={debugFeatures}
 						toolMetricThresholds={toolMetricThresholds}
 						onToggleDebugMode={toggleDebugMode}
 						onToggleThinking={() => {
@@ -2340,6 +2349,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 									setExpandThinking={setExpandThinking}
 									debugMode={debugMode}
 									onDebugModeChange={updateDebugMode}
+									debugFeatures={debugFeatures}
+									onDebugFeaturesChange={updateDebugFeatures}
 									toolMetricThresholds={toolMetricThresholds}
 									onToolMetricThresholdsChange={updateToolMetricThresholds}
 									modelDefaults={bootstrap.modelDefaults}

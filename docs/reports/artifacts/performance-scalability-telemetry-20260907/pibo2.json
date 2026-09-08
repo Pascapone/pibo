@@ -1,0 +1,497 @@
+{
+  "created": {
+    "roomId": "room_910202ff-a7da-4223-937c-6f65a4c32ff3",
+    "sessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+    "url": "https://slot-01.pool.pibo2.neuralnexus.me/apps/chat/rooms/room_910202ff-a7da-4223-937c-6f65a4c32ff3/sessions/ps_7961ab1d-6164-45e4-a55e-811c0f542250"
+  },
+  "result": {
+    "at": "2026-09-07T11:15:08.216Z",
+    "page": {
+      "receipts": [
+        {
+          "id": "cmd_16840d18-6739-4bab-8b26-f779f2c2a21c",
+          "sessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+          "roomId": "room_910202ff-a7da-4223-937c-6f65a4c32ff3",
+          "eventId": "web-mtr58ov2-2cdc43e9-2db8-4f84-a4d1-756b54e6e994",
+          "streamId": 987973,
+          "state": "completed",
+          "createdAt": 1788779688208,
+          "updatedAt": 1788779692051
+        }
+      ],
+      "queue": {
+        "queue": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 64,
+            "bytes": 4194304,
+            "waitMs": 600000
+          }
+        },
+        "steer": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 4,
+            "bytes": 1048576,
+            "waitMs": 60000
+          }
+        }
+      }
+    },
+    "capacity": {
+      "coldStarts": {
+        "active": 0,
+        "waiting": 0,
+        "limit": 2,
+        "perRoom": 1,
+        "reserved": 0,
+        "maxWaiting": 64,
+        "maxWaitMs": 60000,
+        "oldestWaitMs": 0
+      },
+      "maxRuntimes": 32,
+      "providers": [],
+      "telemetry": {
+        "mode": "worker",
+        "closed": false,
+        "queued": 0,
+        "inFlight": 0,
+        "pendingBytes": 0,
+        "oldestAgeMs": 0,
+        "accepted": 53,
+        "restarts": 0,
+        "completed": 53,
+        "rejected": 0,
+        "failed": 0,
+        "expired": 0,
+        "batches": 19,
+        "maxBatchMs": 10.338995000012801,
+        "worker": {
+          "pid": 7,
+          "threadId": 2,
+          "transactions": 19,
+          "operations": 53,
+          "busy": 0,
+          "rssBytes": 383963136,
+          "heapUsedBytes": 8713424,
+          "synchronous": "FULL"
+        },
+        "transport": {
+          "ready": true,
+          "closed": false,
+          "exited": false
+        },
+        "limits": {
+          "count": 1024,
+          "bytes": 4194304,
+          "ageMs": 2000,
+          "batchCount": 64,
+          "batchBytes": 262144,
+          "batchTimeMs": 8
+        }
+      },
+      "activeRuntimes": 1,
+      "initializingRuntimes": 0,
+      "recentInitializations": [
+        {
+          "sessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+          "waitMs": 0.08626100000401493,
+          "totalMs": 44.93094099999871,
+          "phases": {
+            "bindingAndProfileMs": 3.6640670000051614,
+            "portableHistoryMs": 0.0011220000014873222,
+            "resourcesAndToolsMs": 2.86199000000488,
+            "adapterOpenAndBindingMs": 37.37349399999948
+          },
+          "outcome": "ready"
+        }
+      ]
+    },
+    "runtime": [
+      {
+        "piboSessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+        "runtimeBinding": {
+          "runtimeInstanceId": "pi",
+          "adapterId": "pi",
+          "nativeSessionId": "e90ae9b4-01d0-46f0-9fa3-94a255632cc2",
+          "state": "bound",
+          "protocol": "pi-sdk",
+          "protocolVersion": "0.85.0",
+          "revision": 3
+        },
+        "queuedMessages": 0,
+        "queuedEventIds": [],
+        "processing": false,
+        "streaming": false,
+        "activeTools": [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "pibo_agents_list_agents",
+          "pibo_agents_observe",
+          "pibo_agents_kill",
+          "pibo_run_start",
+          "pibo_run_list",
+          "pibo_run_status",
+          "pibo_run_wait",
+          "pibo_run_read",
+          "pibo_run_cancel",
+          "pibo_run_ack"
+        ],
+        "enabledTools": [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "pibo_agents_list_agents",
+          "pibo_agents_observe",
+          "pibo_agents_kill",
+          "pibo_run_start",
+          "pibo_run_list",
+          "pibo_run_status",
+          "pibo_run_wait",
+          "pibo_run_read",
+          "pibo_run_cancel",
+          "pibo_run_ack"
+        ],
+        "enabledSkills": [],
+        "contextFiles": [
+          "pibo://runtime/session-context.md",
+          "pibo://runtime/delegated-agents.md",
+          ".pibo/context/installed-pibo-tools.md"
+        ],
+        "cwd": "/root",
+        "disposed": false,
+        "thinkingLevel": "low",
+        "fastMode": false,
+        "retry": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "provider": {
+            "maxRetryDelayMs": 60000
+          }
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "type": "user.message",
+        "status": "done",
+        "output": "Run the direct bash tool once with command printf TELEMETRY-TOOL-OK. Do not use yielded tools or subagents. Then reply exactly TELEMETRY-FINAL-OK."
+      },
+      {
+        "type": "agent.turn",
+        "status": "done"
+      },
+      {
+        "type": "tool.call",
+        "status": "done",
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "TELEMETRY-TOOL-OK"
+            }
+          ]
+        }
+      },
+      {
+        "type": "assistant.message",
+        "status": "done",
+        "output": "TELEMETRY-FINAL-OK"
+      }
+    ],
+    "network": [
+      {
+        "url": "/api/chat/message",
+        "status": 202,
+        "ms": 72.09999990463257,
+        "at": "2026-09-07T11:14:48.251Z",
+        "receipt": {
+          "id": "cmd_16840d18-6739-4bab-8b26-f779f2c2a21c",
+          "sessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+          "roomId": "room_910202ff-a7da-4223-937c-6f65a4c32ff3",
+          "eventId": "web-mtr58ov2-2cdc43e9-2db8-4f84-a4d1-756b54e6e994",
+          "streamId": 987973,
+          "state": "accepted",
+          "createdAt": 1788779688208,
+          "updatedAt": 1788779688208
+        },
+        "serverTiming": "chat_lookup;dur=0.00, chat_append;dur=31.58, chat_ingest;dur=0.00, chat_ack;dur=38.63, json_serialize;dur=0.0, response_compress;dur=0.2"
+      }
+    ],
+    "visibleText": "Untitled Session\nROOM\nTelemetry final 2700e24d\n\u00b7\nps_7961ab1d-6164-45e4-a55e-811c0f542250\nTools: Default\nTools: Hide\nTools: Slim\nTools: Intent\nWEEKLY LIMIT\n3%\nCONTEXT USAGE\n2%\nagent-tools-validation\npi \u00b7 bound\nopenai-codex/gpt-5.6-luna low\n1\nagent-tools-validation\n\u203a\nRun the direct bash tool once with command printf TELEMETRY-TOOL-OK. Do not use yielded tools or subagents. Then reply exactly TELEMETRY-FINAL-OK.\n11:14\n\u2022\nRan printf TELEMETRY-TOOL-OK\n\u2514\nTELEMETRY-TOOL-OK\n\nTELEMETRY-FINAL-OK\n\n11:14 \u00b7 00:00:03",
+    "composer": true
+  },
+  "reload": {
+    "at": "2026-09-07T11:15:52.074Z",
+    "page": {
+      "receipts": [
+        {
+          "id": "cmd_16840d18-6739-4bab-8b26-f779f2c2a21c",
+          "sessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+          "roomId": "room_910202ff-a7da-4223-937c-6f65a4c32ff3",
+          "eventId": "web-mtr58ov2-2cdc43e9-2db8-4f84-a4d1-756b54e6e994",
+          "streamId": 987973,
+          "state": "completed",
+          "createdAt": 1788779688208,
+          "updatedAt": 1788779692051
+        }
+      ],
+      "queue": {
+        "queue": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 64,
+            "bytes": 4194304,
+            "waitMs": 600000
+          }
+        },
+        "steer": {
+          "count": 0,
+          "bytes": 0,
+          "oldestWaitMs": 0,
+          "limits": {
+            "count": 4,
+            "bytes": 1048576,
+            "waitMs": 60000
+          }
+        }
+      }
+    },
+    "capacity": {
+      "coldStarts": {
+        "active": 0,
+        "waiting": 0,
+        "limit": 2,
+        "perRoom": 1,
+        "reserved": 0,
+        "maxWaiting": 64,
+        "maxWaitMs": 60000,
+        "oldestWaitMs": 0
+      },
+      "maxRuntimes": 32,
+      "providers": [],
+      "telemetry": {
+        "mode": "worker",
+        "closed": false,
+        "queued": 0,
+        "inFlight": 0,
+        "pendingBytes": 0,
+        "oldestAgeMs": 0,
+        "accepted": 53,
+        "restarts": 0,
+        "completed": 53,
+        "rejected": 0,
+        "failed": 0,
+        "expired": 0,
+        "batches": 19,
+        "maxBatchMs": 10.338995000012801,
+        "worker": {
+          "pid": 7,
+          "threadId": 2,
+          "transactions": 19,
+          "operations": 53,
+          "busy": 0,
+          "rssBytes": 383963136,
+          "heapUsedBytes": 8713424,
+          "synchronous": "FULL"
+        },
+        "transport": {
+          "ready": true,
+          "closed": false,
+          "exited": false
+        },
+        "limits": {
+          "count": 1024,
+          "bytes": 4194304,
+          "ageMs": 2000,
+          "batchCount": 64,
+          "batchBytes": 262144,
+          "batchTimeMs": 8
+        }
+      },
+      "activeRuntimes": 1,
+      "initializingRuntimes": 0,
+      "recentInitializations": [
+        {
+          "sessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+          "waitMs": 0.08626100000401493,
+          "totalMs": 44.93094099999871,
+          "phases": {
+            "bindingAndProfileMs": 3.6640670000051614,
+            "portableHistoryMs": 0.0011220000014873222,
+            "resourcesAndToolsMs": 2.86199000000488,
+            "adapterOpenAndBindingMs": 37.37349399999948
+          },
+          "outcome": "ready"
+        }
+      ]
+    },
+    "runtime": [
+      {
+        "piboSessionId": "ps_7961ab1d-6164-45e4-a55e-811c0f542250",
+        "runtimeBinding": {
+          "runtimeInstanceId": "pi",
+          "adapterId": "pi",
+          "nativeSessionId": "e90ae9b4-01d0-46f0-9fa3-94a255632cc2",
+          "state": "bound",
+          "protocol": "pi-sdk",
+          "protocolVersion": "0.85.0",
+          "revision": 3
+        },
+        "queuedMessages": 0,
+        "queuedEventIds": [],
+        "processing": false,
+        "streaming": false,
+        "activeTools": [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "pibo_agents_list_agents",
+          "pibo_agents_observe",
+          "pibo_agents_kill",
+          "pibo_run_start",
+          "pibo_run_list",
+          "pibo_run_status",
+          "pibo_run_wait",
+          "pibo_run_read",
+          "pibo_run_cancel",
+          "pibo_run_ack"
+        ],
+        "enabledTools": [
+          "read",
+          "bash",
+          "edit",
+          "write",
+          "pibo_agents_list_agents",
+          "pibo_agents_observe",
+          "pibo_agents_kill",
+          "pibo_run_start",
+          "pibo_run_list",
+          "pibo_run_status",
+          "pibo_run_wait",
+          "pibo_run_read",
+          "pibo_run_cancel",
+          "pibo_run_ack"
+        ],
+        "enabledSkills": [],
+        "contextFiles": [
+          "pibo://runtime/session-context.md",
+          "pibo://runtime/delegated-agents.md",
+          ".pibo/context/installed-pibo-tools.md"
+        ],
+        "cwd": "/root",
+        "disposed": false,
+        "thinkingLevel": "low",
+        "fastMode": false,
+        "retry": {
+          "enabled": true,
+          "maxRetries": 3,
+          "baseDelayMs": 2000,
+          "provider": {
+            "maxRetryDelayMs": 60000
+          }
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "type": "user.message",
+        "status": "done",
+        "output": "Run the direct bash tool once with command printf TELEMETRY-TOOL-OK. Do not use yielded tools or subagents. Then reply exactly TELEMETRY-FINAL-OK."
+      },
+      {
+        "type": "agent.turn",
+        "status": "done"
+      },
+      {
+        "type": "tool.call",
+        "status": "done",
+        "output": {
+          "content": [
+            {
+              "type": "text",
+              "text": "TELEMETRY-TOOL-OK"
+            }
+          ]
+        }
+      },
+      {
+        "type": "assistant.message",
+        "status": "done",
+        "output": "TELEMETRY-FINAL-OK"
+      }
+    ],
+    "visibleText": "Untitled Session\nROOM\nTelemetry final 2700e24d\n\u00b7\nps_7961ab1d-6164-45e4-a55e-811c0f542250\nTools: Default\nTools: Hide\nTools: Slim\nTools: Intent\nWEEKLY LIMIT\n3%\nCONTEXT USAGE\n2%\nagent-tools-validation\npi \u00b7 bound\nopenai-codex/gpt-5.6-luna low\n1\nagent-tools-validation\n\u203a\nRun the direct bash tool once with command printf TELEMETRY-TOOL-OK. Do not use yielded tools or subagents. Then reply exactly TELEMETRY-FINAL-OK.\n11:14\n\u2022\nRan printf TELEMETRY-TOOL-OK\n\u2514\nTELEMETRY-TOOL-OK\n\nTELEMETRY-FINAL-OK\n\n11:14 \u00b7 00:00:03",
+    "composer": true
+  },
+  "facts": {
+    "telemetry_turns": [
+      [
+        "ok",
+        1
+      ]
+    ],
+    "telemetry_provider_requests": [
+      [
+        "completed",
+        2
+      ]
+    ],
+    "telemetry_tool_calls": [
+      [
+        "ok",
+        1
+      ]
+    ]
+  },
+  "health": {
+    "at": "2026-09-07T11:16:43.191Z",
+    "samples": 300,
+    "ok": 300,
+    "p95": 8.099999904632568,
+    "p99": 9,
+    "max": 12.199999809265137
+  },
+  "release": {
+    "id": "lease_9b633284817d4a0e43",
+    "slotId": "slot-01",
+    "holder": "ps_87cdcbbc-3dde-4266-889f-a87fb5a6a786",
+    "seedMode": "full",
+    "artifactSha256": "53329b7fa8f98d8784e2c4fb1b8d91ec8e9ede1495a94a9f3039073b9cdd12c7",
+    "artifactRuntimePath": "/opt/pibo-candidates/performance-telemetry/2700e24d3f9597cc1467af67e09804983a115325/runtime",
+    "packageVersion": "1.7.2",
+    "commit": "2700e24d3f9597cc1467af67e09804983a115325",
+    "containerName": "pibo-pool-slot-01",
+    "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+    "status": "released",
+    "createdAt": "2026-09-07T11:13:25.036Z",
+    "expiresAt": "2026-09-07T12:13:25.036Z",
+    "releasedAt": "2026-09-07T11:16:57.441Z"
+  },
+  "lease": {
+    "id": "lease_9b633284817d4a0e43",
+    "slotId": "slot-01",
+    "holder": "ps_87cdcbbc-3dde-4266-889f-a87fb5a6a786",
+    "seedMode": "full",
+    "artifactSha256": "53329b7fa8f98d8784e2c4fb1b8d91ec8e9ede1495a94a9f3039073b9cdd12c7",
+    "artifactRuntimePath": "/opt/pibo-candidates/performance-telemetry/2700e24d3f9597cc1467af67e09804983a115325/runtime",
+    "packageVersion": "1.7.2",
+    "commit": "2700e24d3f9597cc1467af67e09804983a115325",
+    "containerName": "pibo-pool-slot-01",
+    "publicUrl": "https://slot-01.pool.pibo2.neuralnexus.me/",
+    "status": "ready",
+    "createdAt": "2026-09-07T11:13:25.036Z",
+    "expiresAt": "2026-09-07T12:13:25.036Z"
+  }
+}

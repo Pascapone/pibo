@@ -14,14 +14,14 @@ export function webOutboxPaths(directory) {
 	};
 }
 
-export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
+export async function startWebOutboxProcessHost({ directory, piboSessionId, structureRevision, onInput, host: bindHost, port = 0 }) {
 	mkdirSync(directory, { recursive: true });
 	const paths = webOutboxPaths(directory);
 	const sessions = new InMemoryPiboSessionStore();
 	sessions.create({ id: piboSessionId, channel: "test", kind: "chat", profile: "base" });
 	const listeners = new Set();
 	const app = createChatWebApp(paths);
-	const channel = createWebHostChannel({ port: 0, announce: false });
+	const channel = createWebHostChannel({ host: bindHost, port, announce: false });
 	await channel.start({
 		auth: {
 			name: "process-fixture-auth",
@@ -36,6 +36,7 @@ export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
 			},
 		},
 		emit(event) {
+			onInput?.(event, (output) => { for (const listener of listeners) listener(output); });
 			return Promise.resolve({
 				type: event.type === "message" ? "message_queued" : "execution_result",
 				piboSessionId: event.piboSessionId,
@@ -53,6 +54,7 @@ export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
 		deleteSession(id) { return sessions.delete(id); },
 		findSessions(input) { return sessions.find(input); },
 		listSessions() { return sessions.list(); },
+		getSessionStructureRevision: structureRevision,
 		getSessionRuntimeBinding(id) { return sessions.getRuntimeBinding(id); },
 		getGatewayActions() { return []; },
 		getProfiles() { return []; },
@@ -64,6 +66,7 @@ export async function startWebOutboxProcessHost({ directory, piboSessionId }) {
 	const address = channel.getAddress();
 	if (!address) throw new Error("web outbox fixture channel has no address");
 	return {
+		app,
 		channel,
 		baseURL: `http://${address.host}:${address.port}`,
 		paths,

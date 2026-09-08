@@ -228,7 +228,8 @@ test("Web Compact Terminal source preserves shared flow ordering hooks and strea
 	const fixtureRows = buildCanonicalTerminalRows();
 	assert.ok(fixtureRows.some((row) => row.kind === "tool.status" && row.orderSource), "canonical shared fixture exercises Web row/card hooks");
 	const compactSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
-	assert.match(compactSource, /buildCompactTerminalRows\(traceView, \{ showThinking, toolDisplayMode, debugMode \}\)/, "Web terminal must derive rows, tool display mode, and debug mode from the shared row builder");
+	assert.match(compactSource, /buildCompactTerminalRows\(traceView, \{ showThinking, toolDisplayMode: effectiveToolDisplayMode, debugMode, debugFeatures \}\)/, "Web terminal must derive rows, tool display mode, Debug mode, and feature settings from the shared row builder");
+	assert.match(compactSource, /const effectiveToolDisplayMode = targetToolCallNodeId \? "default" : toolDisplayMode/, "Tool-call deep links should reveal targets hidden by compact display modes");
 	assert.match(compactSource, /computeItemKey=\{\(_, row\) => row\.id\}/, "Web terminal should use shared row ids as stable render keys");
 	assert.match(compactSource, /data-row-kind=\{row\.kind\}/, "Web terminal should expose shared row kind hooks");
 	assert.match(compactSource, /data-row-status=\{row\.status\}/, "Web terminal should expose shared row status hooks");

@@ -1,0 +1,139 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {PiboDataStore} from '../dist/data/pibo-store.js';
+import {AsyncChatReadQueries} from '../dist/data/async-chat-reads.js';
+import {startWebOutboxProcessHost} from './fixtures/web-outbox-process-harness.mjs';
+
+test('navigation invalidates an index when the structure changes during indexing', async () => {
+ const directory=mkdtempSync(join(tmpdir(),'pibo-navigation-revision-'));let host,revision=0,indexCalls=0;
+ const {ChatSessionQueryService}=await import('../dist/apps/chat/data/session-query-service.js');
+ const original=ChatSessionQueryService.prototype.upsertSessionsIfChanged;
+ ChatSessionQueryService.prototype.upsertSessionsIfChanged=function(sessions){
+  indexCalls++;const result=original.call(this,sessions);revision++;return result;
+ };
+ try {
+  host=await startWebOutboxProcessHost({directory,piboSessionId:'ps_revision',structureRevision:()=>revision});
+  const url=host.baseURL+'/api/chat/navigation?piboSessionId=ps_revision',headers={'x-test-user':'user-1'};
+  const first=await fetch(url,{headers});assert.equal(first.status,200);await first.json();
+  const before=indexCalls;
+  const second=await fetch(url,{headers});assert.equal(second.status,200);await second.json();
+  assert.ok(indexCalls>before,'a revision newer than the indexed snapshot must trigger indexing');
+ } finally {ChatSessionQueryService.prototype.upsertSessionsIfChanged=original;await host?.channel.stop();await host?.app.dispose();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('room event pages stay within the IPC budget and page through large bodies without gaps', async () => {
+ const directory=mkdtempSync(join(tmpdir(),'pibo-room-event-budget-'));let host,store;
+ try {
+  host=await startWebOutboxProcessHost({directory,piboSessionId:'ps_room_budget'});
+  const headers={'x-test-user':'user-1'};
+  const navigation=await fetch(host.baseURL+'/api/chat/navigation?piboSessionId=ps_room_budget',{headers});
+  assert.equal(navigation.status,200);const {selectedRoomId:roomId}=await navigation.json();
+  store=new PiboDataStore(host.paths.dataStorePath,{payloadRootDir:host.paths.dataPayloadRootDir});
+  const body='b'.repeat(512*1024),ids=[];
+  const payload=store.payloads.writePayload({value:body,contentType:'text/plain',retentionClass:'product_history'});
+  for(let i=0;i<12;i++) ids.push(store.eventLog.appendEvent({sessionId:'ps_room_budget',sessionSequence:i+1,roomId,topic:'chat',type:'assistant_message',source:'agent',retentionClass:'chat_message',payloadRef:payload.id,previewText:'preview',attributes:{assistantIndex:i},createdAt:'2026-09-08T00:00:00Z'}).streamId);
+  const seen=[];let since='';
+  for(let page=0;page<20;page++) {
+   const response=await fetch(host.baseURL+`/api/chat/rooms/${roomId}/events?since=${since}`,{headers});
+   assert.equal(response.status,200);const {events}=await response.json();
+   if(!events.length)break;
+   assert.ok(Buffer.byteLength(JSON.stringify(events))<4*1024*1024);
+   for(const event of events){assert.equal(event.payload.text,body);seen.push(event.streamId);}
+   since=String(events.at(-1).streamId);
+  }
+  assert.deepEqual(seen,ids);
+ } finally {store?.close();await host?.channel.stop();await host?.app.dispose();rmSync(directory,{recursive:true,force:true});}
+});
+
+test('file history reads run on a separate worker and large bodies remain explicitly referenced',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pibo-read-worker-'));const path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
+ const store=new PiboDataStore(path,{payloadRootDir});const reader=new AsyncChatReadQueries(path,payloadRootDir);
+ try{
+  const payload=store.payloads.writePayload({value:'x'.repeat(1024*1024),contentType:'text/plain',retentionClass:'product_history'});
+  store.messages.insertMessage({id:'message',sessionId:'session',sequence:1,role:'assistant',status:'complete',createdAt:'2026-09-07',contentPreview:'preview',contentPayloadRef:payload.id});
+  const entries=await reader.history.listProductHistoryEntries({piboSessionId:'session',limit:50});
+  assert.equal(entries[0].content,'preview');assert.equal(entries[0].metadata.payloadRef,payload.id);assert.equal(entries[0].metadata.contentTruncated,true);
+  const {parseTracePayloadRef,readTracePayloadChunk}=await import('../dist/apps/chat/trace-v2.js');
+  const fullRef=entries[0].metadata.tracePayloadRef;assert.equal(fullRef.byteLength,1024*1024);assert.equal(parseTracePayloadRef(fullRef.ref).payloadId,payload.id);
+  const chunk=await readTracePayloadChunk({payloadStore:store.payloads,ref:fullRef.ref,offset:0,limit:1024});assert.ok(chunk);
+  assert.equal(entries[0].metadata.contentBytes,1024*1024);
+  const {traceNodesFromHistoryEntries}=await import('../dist/shared/trace-history.js');
+  const nodes=traceNodesFromHistoryEntries('session',entries);const visit=list=>list.flatMap(node=>[node,...visit(node.children??[])]);
+  const answer=visit(nodes).find(node=>node.type==='assistant.message');assert.equal(answer.payloadRefs.output.ref,fullRef.ref);
+  assert.equal((await reader.history.getProductHistoryCoverage('session')).messageCount,1);
+  assert.ok(reader.status().worker.threadId>0);assert.equal(reader.status().worker.readOnly,true);
+  assert.equal((await reader.maintenance('pause')).paused,true);assert.equal((await reader.maintenance('resume')).paused,false);
+  const readonly=new PiboDataStore(path,{payloadRootDir,readOnly:true});try{assert.throws(()=>readonly.db.exec("DELETE FROM chat_messages"),/readonly/i);}finally{readonly.close();}
+ }finally{await reader.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('authenticated trace cache hits precede reconstruction and invalidate on durable and scope changes',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'pibo-trace-cache-'));let host;let revision=0;
+ try{
+  host=await startWebOutboxProcessHost({directory,piboSessionId:'ps_cache',structureRevision:()=>revision});
+  const headers={'x-test-user':'user-1'};const url=host.baseURL+'/api/chat/trace/summary?piboSessionId=ps_cache';
+  const first=await fetch(url,{headers});assert.equal(first.status,200);await first.json();
+  const cached=await fetch(url,{headers});assert.match(cached.headers.get('server-timing'),/watermark-hit/);const etag=cached.headers.get('etag');await cached.json();
+  const unchanged=await fetch(url,{headers:{...headers,'if-none-match':etag}});assert.equal(unchanged.status,304);
+  const unauthorized=await fetch(url);assert.notEqual(unauthorized.status,200);assert.doesNotMatch(unauthorized.headers.get('server-timing')??'',/watermark-hit/);
+  host.emitOutput({type:'assistant_message',piboSessionId:'ps_cache',eventId:'new-output',assistantIndex:0,text:'new answer'});await host.app.drain();
+  const changed=await fetch(url,{headers});assert.equal(changed.status,200);assert.notEqual(changed.headers.get('etag'),etag);assert.doesNotMatch(changed.headers.get('server-timing'),/watermark-hit/);await changed.json();
+  revision++;const scope=await fetch(url,{headers});assert.doesNotMatch(scope.headers.get('server-timing'),/watermark-hit/);await scope.json();
+ }finally{await host?.channel.stop();await host?.app.dispose();rmSync(directory,{recursive:true,force:true});}
+});
+
+
+test('read worker replacement waits for exit and preserves projections',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pibo-read-restart-')),path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
+ const store=new PiboDataStore(path,{payloadRootDir}),reader=new AsyncChatReadQueries(path,payloadRootDir);
+ try{
+  store.messages.insertMessage({id:'persisted',sessionId:'session',sequence:1,role:'assistant',status:'complete',createdAt:'2026-09-07',contentPreview:'survives reader crash'});
+  assert.equal((await reader.history.getProductHistoryCoverage('session')).messageCount,1);
+  const firstThread=reader.status().worker.threadId;
+  await reader.client.worker.terminate();
+  await new Promise(resolve=>setTimeout(resolve,1050));
+  assert.equal((await reader.history.getProductHistoryCoverage('session')).messageCount,1);
+  assert.equal(reader.status().restarts,1);assert.notEqual(reader.status().worker.threadId,firstThread);
+  await reader.close();await assert.rejects(reader.history.getProductHistoryCoverage('session'),{code:'storage_closed'});
+ }finally{await reader.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+
+test('navigation status pages use stable bounded keysets without dropping sessions',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pibo-navigation-page-')),path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
+ const store=new PiboDataStore(path,{payloadRootDir});let reader;
+ try{
+  const {ChatSessionQueryService}=await import('../dist/apps/chat/data/session-query-service.js');
+  const {InMemoryPiboSessionStore}=await import('../dist/sessions/store.js');
+  const {ChatRoomService}=await import('../dist/apps/chat/data/room-service.js');
+  new ChatRoomService(store).ensureDefaultRoom();
+  const sessions=new InMemoryPiboSessionStore(),index=new ChatSessionQueryService(store);
+  const ids=[];store.transaction(()=>{for(let i=0;i<1101;i++){const session=sessions.create({channel:'test',kind:'chat',profile:'base',metadata:{chatRoomId:'room_default'}});ids.push(session.id);index.upsertSession(session);}});
+  reader=new AsyncChatReadQueries(path,payloadRootDir);
+  let afterId;const read=[];
+  for(;;){const page=await reader.navigation.sessionIndexPage({roomId:'room_default',afterId,limit:10000});assert.ok(page.length<=500);read.push(...page.map(s=>s.piboSessionId));if(page.length<500)break;afterId=page.at(-1).piboSessionId;}
+  assert.deepEqual(read,ids.sort());
+  const plan=store.db.prepare("EXPLAIN QUERY PLAN SELECT id FROM sessions WHERE room_id=? AND deleted_at IS NULL AND id>? ORDER BY id LIMIT 500").all('room_default','');assert.match(JSON.stringify(plan),/idx_sessions_navigation_cursor/);assert.doesNotMatch(JSON.stringify(plan),/TEMP B-TREE/);
+ }finally{await reader?.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('the isolated read worker answers a timeline query with the same content as the in-process fallback',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pibo-read-hydration-')),path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
+ const store=new PiboDataStore(path,{payloadRootDir}),reader=new AsyncChatReadQueries(path,payloadRootDir);
+ try{
+  // Larger than a 64 KiB worker budget, inside the shared 1 MiB hydration default.
+  const body='assistant answer body '.repeat(8000);
+  const payload=store.payloads.writePayload({value:body,contentType:'text/plain',retentionClass:'product_history'});
+  store.eventLog.appendEvent({sessionId:'ps_large_answer',sessionSequence:1,roomId:'room_large',topic:'chat',type:'assistant_message',source:'agent',
+   retentionClass:'chat_message',payloadRef:payload.id,previewText:'TRUNCATED PREVIEW',attributes:{assistantIndex:0,contentIndex:0},createdAt:'2026-09-07T00:00:00.000Z'});
+  const {ChatTimelineQueryService}=await import('../dist/apps/chat/data/timeline-query-service.js');
+  const listed={piboSessionId:'ps_large_answer',limit:10};
+  const viaWorker=await reader.timeline.listEvents(listed);
+  // StoredChatEvent carries no payload reference, so a dropped body is unrecoverable on this path.
+  assert.equal(viaWorker[0].payload.text,body);
+  assert.deepEqual(viaWorker,new ChatTimelineQueryService(store).listEvents(listed));
+ }finally{await reader.close();store.close();rmSync(root,{recursive:true,force:true});}
+});

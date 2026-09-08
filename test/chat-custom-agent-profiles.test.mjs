@@ -33,8 +33,9 @@ test("web gateway registry loads custom agent profiles before channels start", a
 		}
 	}
 
+	let registry;
 	try {
-		const registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
+		registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
 		const profileInfos = registry.getProfileInfos();
 
 		assert.ok(profileInfos.some((profile) => profile.name === "unity-agent"));
@@ -50,6 +51,7 @@ test("web gateway registry loads custom agent profiles before channels start", a
 		]);
 		assert.equal(profile.mainThinkingLevel, "xhigh");
 	} finally {
+		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
 		await rm(dir, { recursive: true, force: true }).catch((error) => {
 			if (error?.code !== "EBUSY") throw error;
 		});
@@ -88,8 +90,9 @@ test("web gateway registry loads duplicate legacy custom agents after migration"
 	insert.run("agent_control", "scout", "scout", null, "[]", "[]", "[]", "[]", "default", 0, "2026-05-03T00:00:00.000Z", "2026-05-03T00:00:00.000Z");
 	db.close();
 
+	let registry;
 	try {
-		const registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
+		registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
 		const store = new CustomAgentStore(agentStorePath);
 		const migrated = store.list({ includeArchived: true });
 		store.close();
@@ -102,6 +105,7 @@ test("web gateway registry loads duplicate legacy custom agents after migration"
 		assert.equal(registry.resolveProfileName("agent_old"), oldAgent.profileName);
 		assert.equal(registry.resolveProfileName("scout"), "scout");
 	} finally {
+		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
 		await rm(dir, { recursive: true, force: true }).catch((error) => {
 			if (error?.code !== "EBUSY") throw error;
 		});
@@ -124,8 +128,9 @@ test("stale custom agent tool references do not break the profile catalog", asyn
 	const warnings = [];
 	const originalWarn = console.warn;
 	console.warn = (message) => warnings.push(String(message));
+	let registry;
 	try {
-		const registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
+		registry = createWebPiboPluginRegistry({ authMode: "local", chat: { agentStorePath } });
 		const profileInfos = registry.getProfileInfos();
 		const profileInfo = profileInfos.find((profile) => profile.name === agent.profileName);
 		assert.ok(profileInfo);
@@ -134,6 +139,7 @@ test("stale custom agent tool references do not break the profile catalog", asyn
 		assert.ok(warnings.some((warning) => warning.includes(`Skipping unknown tool "retired-tool" for custom agent "${agent.profileName}"`)));
 	} finally {
 		console.warn = originalWarn;
+		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
 		await rm(dir, { recursive: true, force: true }).catch((error) => {
 			if (error?.code !== "EBUSY") throw error;
 		});

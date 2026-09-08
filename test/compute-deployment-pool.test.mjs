@@ -47,6 +47,44 @@ function createSourceHome(root) {
 	return home;
 }
 
+test("deployment seeds never clone OAuth sessions or unknown credential types", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-pool-oauth-"));
+	try {
+		const sourceHome = createSourceHome(dir), sourcePiHome = resolve(dir, "pi");
+		mkdirSync(resolve(sourcePiHome, "agent"), { recursive: true });
+		const source = JSON.stringify({
+			"openai-codex": { type: "oauth", access: "fixture-access", refresh: "fixture-refresh", expires: 9999999999999 },
+			fixture: { type: "api_key", key: "fixture-key", refresh: "must-not-copy" },
+			unknown: { type: "future-credential", token: "must-not-copy" },
+		});
+		writeFileSync(resolve(sourcePiHome, "agent/auth.json"), source);
+		for (const mode of ["full", "medium", "fresh"]) {
+			const config = fixtureConfig(resolve(dir, mode), sourceHome, { PIBO_COMPUTE_POOL_SEED_SOURCE_PI_HOME: sourcePiHome });
+			const prepared = await prepareDeploymentSeed({ config, slotId: "slot-01", mode, publicUrl: "https://slot-01.pool.example.test" });
+			assert.deepEqual(JSON.parse(await readFile(resolve(prepared.piHomePath, "agent/auth.json"), "utf8")), { fixture: { type: "api_key", key: "fixture-key" } });
+			assert.equal(await readFile(resolve(sourcePiHome, "agent/auth.json"), "utf8"), source);
+		}
+	} finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("OAuth-only seeds omit credentials and malformed credentials preserve the active seed", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "pibo-pool-oauth-only-"));
+	try {
+		const sourceHome = createSourceHome(dir), sourcePiHome = resolve(dir, "pi");
+		mkdirSync(resolve(sourcePiHome, "agent"), { recursive: true });
+		const authPath = resolve(sourcePiHome, "agent/auth.json");
+		writeFileSync(authPath, JSON.stringify({ "openai-codex": { type: "oauth", refresh: "fixture-refresh" } }));
+		const config = fixtureConfig(resolve(dir, "pool"), sourceHome, { PIBO_COMPUTE_POOL_SEED_SOURCE_PI_HOME: sourcePiHome });
+		const input = { config, slotId: "slot-01", mode: "fresh", publicUrl: "https://slot-01.pool.example.test" };
+		const prepared = await prepareDeploymentSeed(input);
+		assert.equal(existsSync(resolve(prepared.piHomePath, "agent/auth.json")), false);
+		writeFileSync(resolve(prepared.homePath, "keep.txt"), "active seed");
+		writeFileSync(authPath, '{"secret":"sensitive-fixture",BROKEN');
+		await assert.rejects(prepareDeploymentSeed(input), { message: "Cannot read the Pi credential seed." });
+		assert.equal(await readFile(resolve(prepared.homePath, "keep.txt"), "utf8"), "active seed");
+	} finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("deployment pool config creates fixed slots and caps active count", () => {
 	const config = fixtureConfig("/tmp/pool-config", "/tmp/source", { PIBO_COMPUTE_POOL_SLOT_COUNT: "4", PIBO_COMPUTE_POOL_MAX_ACTIVE: "9" });
 	assert.equal(config.maxActive, 4);

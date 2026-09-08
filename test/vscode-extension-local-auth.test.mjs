@@ -20,6 +20,8 @@ function startLoopbackChannel() {
 			workflowStorePath: join(storageDir, "pibo-workflows.sqlite"),
 		}),
 	];
+	const stopChannel = channel.stop?.bind(channel);
+	channel.stop = async () => { await stopChannel?.(); await Promise.all(webApps.map((app) => app.dispose?.())); };
 	const listeners = new Set();
 	const context = {
 		auth: createDevAuthService(),

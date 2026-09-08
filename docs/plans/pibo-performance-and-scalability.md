@@ -5,7 +5,7 @@ description: "Priorisiert den belegten Annahme-Fix und den schrittweisen Umbau z
 tags: ["performance", "gateway", "sqlite", "concurrency", "scalability"]
 status: "draft"
 authority: "directive"
-generated: { by: "openai/codex", at: "2026-09-06T19:38:08Z" }
+generated: { by: "openai/codex", at: "2026-09-08T06:00:00Z" }
 sources:
   - id: "audit"
     resource: "/reports/production-performance-audit-2026-09-06.md"
@@ -41,7 +41,7 @@ Die Produktionsprüfung belegt zwei getrennte Probleme:
 
 Die 18,34 Sekunden des Erstberichts wurden nicht erneut erzwungen. Der zugrunde liegende Ausfallmodus ist bestätigt; warme Cache-Zustände machen ihn nur weniger sichtbar. Alle neuen Messungen, Einschränkungen und Codebezüge stehen im [Produktionsaudit](/reports/production-performance-audit-2026-09-06.md).[^audit]
 
-**Stand:** Analyse abgeschlossen, Implementierung nicht begonnen, keine Produktionsfreigabe erteilt. Dieser Plan erlaubt keine Löschung von Datenbanken oder Sessions und keine automatische Event-Bereinigung.
+**Stand:** Paket A ist implementiert und als PR #953 offen; [Implementierung und Nachweise](/reports/performance-scalability-p0-2026-09-06.md). Paket B hat das lokale Integrationsgate und die erneute Pibo2-Abnahme bestanden; [204 Tests und exakte Kandidatenevidenz](/reports/performance-scalability-storage-final-2026-09-07.md). Pakete C–H bleiben offen. Die Gesamtabnahme ist offen; keine Produktionsfreigabe erteilt. Dieser Plan erlaubt keine Löschung von Datenbanken oder Sessions und keine automatische Event-Bereinigung.
 
 # 1. Ziel und Nichtziele
 
@@ -391,6 +391,8 @@ Nach Unit-/Lasttests im isolierten Worker und nach Deployment auf Dev:
 
 # 8. Reihenfolge, Arbeitspakete und Freigaben
 
+Stand 7. September 2026: A und B sind separat zur Review vorbereitet. C hat den lokalen Build, Recovery-/Crash-Tests und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Command-Abnahmebericht](/reports/performance-scalability-commands-2026-09-07.md). D hat die 1/2/5/10/20-Rampen, begrenzte Runtime-Aktivierung und die abschließende Pibo2-Abnahme bestanden; Belege stehen im [Capacity-Abnahmebericht](/reports/performance-scalability-capacity-2026-09-07.md). E hat die isolierte Telemetrie, reduzierten Outbox-Checkpoints und abschließende Pibo2-Abnahme bestanden; Messgrenzen und Belege stehen im [Telemetrie-Abnahmebericht](/reports/performance-scalability-telemetry-2026-09-07.md). F–H und die übergreifende Last-/Soak-Abnahme sind weiterhin offen.
+
 | Paket | Priorität | Abhängigkeit | Ergebnis / Gate |
 |---|---|---|---|
 | A: Index-Fix + minimale Spans | P0 | Legacy-Vertrag, schmale Regression | Warme Großraum-Annahme schnell; kein Scan |
@@ -454,3 +456,10 @@ Nach jedem abgeschlossenen Paket aktuelle Verträge in die zuständigen Spezifik
 [^audit]: Read-only-Produktionsaudit vom 6. September 2026; die Messungen sind eine Diagnose, keine bereits erreichten Ziel-SLOs.
 [^sqlite-wal]: Offizielle SQLite-Dokumentation: getrennte Reader/Writer- und Checkpoint-Eigenschaften; am 6. September 2026 geprüft.
 [^sqlite-backup]: Offizielle SQLite-Dokumentation der Online-Backup-Verfahren; am 6. September 2026 geprüft.
+
+
+## Abnahmevereinbarung vom 8. September 2026
+
+Der Auftraggeber hat den zweistündigen Dauertest vorerst zurückgestellt und ausdrücklich erlaubt, vorher zu mergen und zu releasen. Dieser Test bleibt als spätere Langzeitmessung offen; er ist für die jetzt angefragte testweise Installation kein Freigabeblocker.
+
+Die aktuelle Abschlussprüfung konzentriert sich auf gleichzeitige Agent-Antworten, Schreiben, Streaming und Lesen sowie vollständigen Zugriff auf große Einzelinhalte. Kostenpflichtige Testaufrufe verwenden ausdrücklich `openai-codex/gpt-5.6-luna` mit Reasoning Effort `low`; die wirksame Session-Konfiguration wird vor dem Senden geprüft. Kurze integrierte Funktionsläufe ersetzen keinen statistischen Nachweis der langfristigen Kapazitätsziele dieses Plans.

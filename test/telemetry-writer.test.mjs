@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -131,6 +131,8 @@ test("async telemetry writer bounds its queue without dropping ordered work", as
 		writer.enqueue(() => order.push(1));
 		writer.enqueue(() => { throw new Error("isolated telemetry failure"); });
 		writer.enqueue(() => order.push(3));
+		assert.deepEqual(order, [], "queue pressure must never run SQLite in the producer");
+		await writer.flush();
 		assert.deepEqual(order, [1, 3]);
 		assert.equal(errors.length, 1);
 		assert.deepEqual(transactions.counts(), { begins: 1, commits: 1 });
@@ -169,7 +171,8 @@ test("async telemetry writer batches concurrent session lifecycle load globally"
 		}
 
 		await writer.flush();
-		assert.deepEqual(transactions.counts(), { begins: 1, commits: 1 });
+		assert.equal(transactions.counts().begins, Math.ceil(sessionCount * 23 / 64));
+		assert.equal(transactions.counts().commits, transactions.counts().begins);
 		for (let index = 0; index < sessionCount; index += 1) {
 			assert.equal(store.telemetry.getTurnTimeline(turnIdForEvent(`evt_load_${index}`)).turn.status, "ok");
 		}
@@ -177,5 +180,51 @@ test("async telemetry writer batches concurrent session lifecycle load globally"
 		await writer.dispose();
 		transactions.restore();
 		store.close();
+	}
+});
+
+test("an explicitly detailed provider event mode survives the telemetry worker boundary", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-telemetry-worker-mode-"));
+	// A file-backed store is what routes commands through the real telemetry worker thread.
+	const store = new PiboDataStore(join(root, "telemetry.sqlite"), { payloadRootDir: join(root, "payloads") });
+	const writer = new AsyncTelemetryWriter(store.telemetry, { flushIntervalMs: 5 });
+	const currentSession = session("ps_detailed_mode");
+	const runtime = new PiboRuntimeTelemetryRecorder(store.telemetry, undefined, { writer, providerEventMode: "detailed" });
+	const provider = new PiboProviderTelemetryRecorder({
+		store: store.telemetry,
+		writer,
+		session: currentSession,
+		model: { provider: "openai", id: "gpt-test", api: "openai-responses" },
+	});
+	const eventId = "evt_detailed_mode";
+	try {
+		assert.equal(writer.status().mode, "worker");
+		runtime.recordOutput({ type: "message_queued", piboSessionId: currentSession.id, eventId, queuedMessages: 1, text: "tool", source: "user" }, { session: currentSession, status: status(currentSession.id, 1), at: "2026-07-13T00:00:01.000Z" });
+		runtime.recordOutput({ type: "message_started", piboSessionId: currentSession.id, eventId, text: "tool", source: "user" }, { session: currentSession, status: status(currentSession.id), at: "2026-07-13T00:00:02.000Z" });
+		provider.recordRequestStart({ model: "gpt-test" }, { at: "2026-07-13T00:00:03.000Z" });
+		provider.recordResponse({ status: 200, headers: {}, at: "2026-07-13T00:00:04.000Z" });
+		runtime.recordPiEvent(currentSession.id, {
+			type: "message_update",
+			assistantMessageEvent: { type: "toolcall_delta", contentIndex: 0, delta: '{"command":"secret value"}' },
+			message: {
+				role: "assistant",
+				responseId: "resp_detailed_mode",
+				content: [{ type: "toolCall", id: "call_detailed|item_detailed", name: "bash", arguments: { command: "secret value" } }],
+			},
+		}, { session: currentSession, status: status(currentSession.id), activeEventId: eventId, at: "2026-07-13T00:00:05.000Z" });
+
+		await writer.flush();
+		assert.equal(writer.status().failed, 0);
+		const timeline = store.telemetry.getTurnTimeline(turnIdForEvent(eventId));
+		assert.ok(timeline);
+		const events = store.telemetry.listProviderEvents(timeline.providerRequests[0].providerRequestId);
+		assert.equal(events.length, 1, "PIBO_TELEMETRY_PROVIDER_EVENTS=detailed must not be downgraded inside the worker");
+		assert.equal(events[0].eventType, "pi.toolcall_delta");
+		assert.equal(events[0].toolCallId, "call_detailed|item_detailed");
+		assert.equal(JSON.stringify(events[0]).includes("secret value"), false);
+	} finally {
+		await writer.dispose();
+		store.close();
+		rmSync(root, { recursive: true, force: true });
 	}
 });

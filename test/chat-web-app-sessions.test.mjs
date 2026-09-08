@@ -86,8 +86,8 @@ function createHarness(options = {}) {
 		emitted,
 		request,
 		subscriptionCounts: () => ({ subscriptions, unsubscriptions }),
-		cleanup() {
-			app.dispose?.();
+		async cleanup() {
+			await app.dispose?.();
 			rmSync(storageDir, { recursive: true, force: true });
 		},
 	};
@@ -115,6 +115,9 @@ function assertNoRetiredPartitionPayloadFields(value, label) {
 }
 
 function ensureLegacyRoomCompatibility(db) {
+	// Fixture-only DDL may overlap the read worker's bounded projection maintenance.
+	// Wait for that transaction instead of failing an otherwise unrelated access test.
+	db.exec("PRAGMA busy_timeout = 1000");
 	const roomColumns = new Set(db.prepare("PRAGMA table_info(rooms)").all().map((column) => column.name));
 	if (!roomColumns.has(retiredStorageColumn)) db.exec(`ALTER TABLE rooms ADD COLUMN ${retiredStorageColumn} TEXT`);
 	db.exec(`
@@ -150,7 +153,7 @@ test("Chat Web disposal releases its channel event subscription", async () => {
 	const harness = createHarness();
 	await harness.request("/apps/chat");
 	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 0 });
-	harness.cleanup();
+	await harness.cleanup();
 	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 1 });
 });
 
@@ -208,7 +211,7 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without part
 		assert.equal(harness.emitted.at(-1).piboSessionId, userSession.id);
 		assert.equal(harness.emitted.at(-1).text, "continue historical session");
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -244,7 +247,7 @@ test("Chat Web forwards queue and steering delivery choices", async () => {
 			(error) => error?.statusCode === 400,
 		);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -272,7 +275,7 @@ test("Chat Web returns a conflict when the active turn cannot accept steering", 
 		);
 		assert.equal(harness.emitted.at(-1).delivery, "steer");
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -352,7 +355,7 @@ test("Chat Web real API paths bootstrap, open, and send for shared, legacy user,
 			assert.equal(harness.emitted.at(-1).text, `message for ${label}`);
 		}
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -360,6 +363,13 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 	const harness = createHarness();
 	let db;
 	try {
+		// Force the storage worker to open and apply the schema before the legacy ALTER below; a
+		// worker-startup migration landing mid-request would rebuild rooms under live reads.
+		const warmupRoom = (await json(await harness.request("/api/chat/rooms", { method: "POST", body: JSON.stringify({ name: "Warmup room" }) }))).room;
+		const warmupSession = harness.sessions.create({ channel: "pibo.chat-web", kind: "chat", profile: "base", metadata: { chatRoomId: warmupRoom.id } });
+		const warmup = await harness.request("/api/chat/message", { method: "POST", body: JSON.stringify({ piboSessionId: warmupSession.id, roomId: warmupRoom.id, text: "warmup" }) });
+		assert.equal(warmup.status, 200);
+
 		db = new DatabaseSync(harness.dataStorePath);
 		insertHistoricalRoom(db, { id: "room_shared_history", legacyPartition: PRE_CUTOVER_LEGACY_PARTITION_SCOPE, name: "Shared room", metadata: { default: true }, updatedAt: "2026-05-01T00:00:00.000Z" });
 		insertHistoricalRoom(db, { id: "room_legacy_history", legacyPartition: "user:legacy-account", name: "Legacy account room", updatedAt: "2026-05-02T00:00:00.000Z" });
@@ -411,7 +421,7 @@ test("Chat Web treats rooms, sidebar navigation, and mutations as app-global res
 		assert.ok(bootstrap.sessions.some((item) => item.piboSessionId === session.id), "navigation includes legacy room session");
 	} finally {
 		if (db) db.close();
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -480,7 +490,7 @@ test("Chat Web read state is shared across authenticated accounts", async () => 
 		assert.equal(db.prepare("SELECT COUNT(*) AS count FROM app_session_read_state WHERE session_id = ?").get(session.id).count, 1);
 	} finally {
 		if (db) db.close();
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -558,7 +568,7 @@ test("Chat Web mutates and routes historical account sessions by resource existe
 		assert.equal(harness.sessions.get(session.id), undefined);
 		assert.equal(harness.sessions.get(child.id), undefined);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -640,7 +650,7 @@ test("Chat Web persists pinning and manual room order without update-based movem
 		assert.equal(rename.status, 200);
 		assert.deepEqual(await roomIds(), beforeRename);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
 });
 
@@ -738,6 +748,26 @@ test("Chat Web persists pinning and manual session order without activity-based 
 		assert.equal(rename.status, 200);
 		assert.deepEqual(rootIds(await bootstrap()), beforeActivityUpdate);
 	} finally {
-		harness.cleanup();
+		await harness.cleanup();
 	}
+});
+
+test("Chat Web indexed retries preserve the duplicate response and bounded Server-Timing", async () => {
+	const harness = createHarness();
+	try {
+		const roomResponse = await harness.request('/api/chat/rooms', { method: 'POST', body: JSON.stringify({ name: 'Indexed admission' }) });
+		const { room } = await roomResponse.json();
+		const session = harness.sessions.create({ channel: 'pibo.chat-web', kind: 'chat', profile: 'base', metadata: { chatRoomId: room.id } });
+		const body = { piboSessionId: session.id, roomId: room.id, text: 'index test', clientTxnId: 'indexed-retry' };
+		const first = await harness.request('/api/chat/message', { method: 'POST', body: JSON.stringify(body) });
+		assert.equal(first.status, 200);
+		const accepted = await first.json();
+		assert.match(first.headers.get('server-timing'), /chat_lookup;dur=[\d.]+, chat_append;dur=[\d.]+, chat_ingest;dur=[\d.]+, chat_emit;dur=[\d.]+, chat_ack;dur=[\d.]+/);
+		const retry = await harness.request('/api/chat/message', { method: 'POST', body: JSON.stringify({ ...body, text: 'changed retry' }) });
+		const duplicate = await retry.json();
+		assert.equal(duplicate.duplicate, true);
+		assert.deepEqual(duplicate.event, accepted.event);
+		assert.match(retry.headers.get('server-timing'), /^chat_lookup;dur=[\d.]+, chat_ack;dur=[\d.]+, json_serialize;dur=[\d.]+$/);
+		assert.equal(harness.emitted.filter(event => event.type === 'message').length, 1);
+	} finally { await harness.cleanup(); }
 });

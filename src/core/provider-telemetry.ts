@@ -8,11 +8,12 @@ import {
 	type TelemetryProviderRequestStatus,
 	type TelemetryStore,
 } from "../data/telemetry.js";
+import type { ProviderTelemetryCommand } from "../data/telemetry-command.js";
 import type { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
 import type { ModelProfile } from "./profiles.js";
 import { normalizeSessionErrorDetails } from "./session-errors.js";
 
-type ProviderTelemetryModel = ModelProfile & { api?: string };
+export type ProviderTelemetryModel = ModelProfile & { api?: string };
 
 type ProviderTelemetryOptions = {
 	store?: TelemetryStore;
@@ -22,22 +23,22 @@ type ProviderTelemetryOptions = {
 	onError?: (error: unknown) => void;
 };
 
-type ProviderResponseSummary = {
+export type ProviderResponseSummary = {
 	status?: number;
 	headers?: Record<string, string>;
 	at?: string;
 };
 
-type ProviderRequestStartOptions = {
+export type ProviderRequestStartOptions = {
 	at?: string;
 	model?: ProviderTelemetryModel;
 };
 
-type ProviderMessageEndOptions = {
+export type ProviderMessageEndOptions = {
 	at?: string;
 };
 
-type ProviderAssistantMessage = {
+export type ProviderAssistantMessage = {
 	role?: unknown;
 	stopReason?: unknown;
 	errorMessage?: unknown;
@@ -56,7 +57,8 @@ export class PiboProviderTelemetryRecorder {
 
 	recordRequestStart(payload: unknown, options: ProviderRequestStartOptions = {}): StoredTelemetryProviderRequest | undefined {
 		const capturedOptions = { ...options, at: options.at ?? new Date().toISOString() };
-		return this.schedule(() => this.recordRequestStartNow(providerPayloadSnapshot(payload), capturedOptions));
+		const captured=providerPayloadSnapshot(payload);
+		return this.schedule({kind:"start",payload:captured,options:capturedOptions}, () => this.recordRequestStartNow(captured, capturedOptions));
 	}
 
 	private recordRequestStartNow(payload: unknown, options: ProviderRequestStartOptions): StoredTelemetryProviderRequest | undefined {
@@ -123,7 +125,7 @@ export class PiboProviderTelemetryRecorder {
 
 	recordResponse(input: ProviderResponseSummary): StoredTelemetryProviderRequest | undefined {
 		const captured = { status: input.status, at: input.at ?? new Date().toISOString() };
-		return this.schedule(() => this.recordResponseNow(captured));
+		return this.schedule({kind:"response",input:captured}, () => this.recordResponseNow(captured));
 	}
 
 	private recordResponseNow(input: ProviderResponseSummary): StoredTelemetryProviderRequest | undefined {
@@ -183,7 +185,7 @@ export class PiboProviderTelemetryRecorder {
 		if (!isAssistantMessage(message)) return undefined;
 		const captured = providerAssistantMessageSnapshot(message);
 		const capturedOptions = { ...options, at: options.at ?? new Date().toISOString() };
-		return this.schedule(() => this.recordMessageEndNow(captured, capturedOptions));
+		return this.schedule({kind:"end",message:captured,options:capturedOptions}, () => this.recordMessageEndNow(captured, capturedOptions));
 	}
 
 	private recordMessageEndNow(message: ProviderAssistantMessage, options: ProviderMessageEndOptions): StoredTelemetryProviderRequest | undefined {
@@ -202,12 +204,21 @@ export class PiboProviderTelemetryRecorder {
 	}
 
 	recordShutdown(reason: string, at = new Date().toISOString()): StoredTelemetryProviderRequest | undefined {
-		return this.schedule(() => this.finishActiveProviderRequest("aborted", at, reason, undefined, "runtime_abort"));
+		return this.schedule({kind:"shutdown",at,reason}, () => this.finishActiveProviderRequest("aborted", at, reason, undefined, "runtime_abort"));
 	}
 
-	private schedule<T>(write: () => T): T | undefined {
+	executeTelemetryCommand(command: ProviderTelemetryCommand): void {
+		switch(command.kind){
+		case "start":this.recordRequestStartNow(command.payload,command.options);break;
+		case "response":this.recordResponseNow(command.input);break;
+		case "end":this.recordMessageEndNow(command.message,command.options);break;
+		case "shutdown":this.finishActiveProviderRequest("aborted",command.at,command.reason,undefined,"runtime_abort");
+		}
+	}
+
+	private schedule<T>(command: ProviderTelemetryCommand, write: () => T): T | undefined {
 		if (this.options.writer) {
-			this.options.writer.enqueue(write, this.options.onError);
+			this.options.writer.record({recorder:"provider",command,session:{...this.options.session,metadata:{chatRoomId:this.options.session.metadata?.chatRoomId??null,rootSessionId:this.options.session.metadata?.rootSessionId??null}},model:this.options.model},write,this.options.onError);
 			return undefined;
 		}
 		return write();

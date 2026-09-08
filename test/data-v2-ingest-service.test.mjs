@@ -294,6 +294,84 @@ test("chat data ingest preserves post-compaction output and repeated lifecycle e
 	}
 });
 
+test("chat data ingest snapshots tool metrics for each successful compaction segment", () => {
+	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-compaction-stats-")) });
+	try {
+		const ingest = new ChatDataIngestService(store);
+		const session = makeSession({ id: "ps_compaction_stats", piSessionId: "pi_compaction_stats" });
+		const base = { session, roomId: "room_compaction_stats", actorId: "agent:test" };
+		const finish = (eventId, toolCallId, outputTokens, tokenBasis = "chars/4") => ingest.ingestOutputEvent({
+			...base,
+			event: {
+				type: "tool_execution_finished",
+				piboSessionId: session.id,
+				eventId,
+				toolCallId,
+				toolName: "bash",
+				result: "done",
+				isError: false,
+				toolMetrics: { durationMs: 10, inputTokens: 1, outputTokens, tokenBasis },
+			},
+		});
+
+		finish("turn-1", "tool-1", 40);
+		finish("turn-1", "tool-2", 120, "tiktoken/o200k_base");
+		const firstCompaction = {
+			type: "compaction_end",
+			piboSessionId: session.id,
+			eventId: "turn-1",
+			compactionIndex: 0,
+			reason: "context_guard",
+			result: { summary: "# First summary", tokensBefore: 90_000 },
+			aborted: false,
+		};
+		ingest.ingestOutputEvent({ ...base, event: firstCompaction });
+		assert.deepEqual(firstCompaction.compactionStats, {
+			toolCallCount: 2,
+			maxToolOutputTokens: 120,
+			maxToolOutputTokenBasis: "tiktoken/o200k_base",
+			compactionTokens: 90_000,
+		});
+
+		finish("turn-2", "tool-3", 12);
+		const failedCompaction = {
+			type: "compaction_end",
+			piboSessionId: session.id,
+			eventId: "turn-2",
+			compactionIndex: 1,
+			reason: "context_guard",
+			aborted: false,
+			errorMessage: "provider failed",
+		};
+		ingest.ingestOutputEvent({ ...base, event: failedCompaction });
+		assert.equal(failedCompaction.compactionStats, undefined);
+
+		const secondCompaction = {
+			type: "compaction_end",
+			piboSessionId: session.id,
+			eventId: "turn-2",
+			compactionIndex: 2,
+			reason: "manual",
+			result: { summary: "Second summary", tokensBefore: 24_000 },
+			aborted: false,
+		};
+		ingest.ingestOutputEvent({ ...base, event: secondCompaction });
+		assert.deepEqual(secondCompaction.compactionStats, {
+			toolCallCount: 1,
+			maxToolOutputTokens: 12,
+			maxToolOutputTokenBasis: "chars/4",
+			compactionTokens: 24_000,
+		});
+
+		const persisted = new ChatTimelineQueryService(store).listTraceEvents({ piboSessionId: session.id, limit: 20 });
+		const compactions = persisted.filter((event) => event.payload.type === "compaction_end");
+		assert.deepEqual(compactions[0].payload.compactionStats, firstCompaction.compactionStats);
+		assert.deepEqual(compactions[2].payload.compactionStats, secondCompaction.compactionStats);
+	} finally {
+		store.close();
+	}
+});
+
 test("chat data ingest records output identity collisions instead of silently dropping them", () => {
 	const store = new PiboDataStore(":memory:", { payloadRootDir: mkdtempSync(join(tmpdir(), "pibo-ingest-payloads-")) });
 	try {

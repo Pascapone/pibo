@@ -1,0 +1,29 @@
+{
+  "commit": "0fe71c72a1d3bcb3b0d06295d323317a452b367a",
+  "packageSha256": "04ea606edef044966868e62d7383f19435f3977c8c77f5a3c67d3269ff8319ef",
+  "name": "performance-complete-0908",
+  "local": {
+    "build": "passed",
+    "typecheck": "passed",
+    "focusedTests": {
+      "passed": 27,
+      "failed": 0
+    },
+    "fullSuiteSource": "e1326daac63e49a8aa149cfdb1d940e2422f4373",
+    "fullSuite": {
+      "passed": 2895,
+      "failed": 0,
+      "skipped": 10
+    }
+  },
+  "pibo2": {
+    "installed": true,
+    "activeCommit": "0fe71c72a1d3bcb3b0d06295d323317a452b367a",
+    "publicPath": "https://pibo2.neuralnexus.me/apps/chat",
+    "authenticatedFinalLunaLowResponses": 2,
+    "mixedCompleted": 30,
+    "largeMessageHashesVerified": 2,
+    "headfulReader": "reader-headful.json",
+    "oauthSurvivedRestart": true
+  }
+}

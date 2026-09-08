@@ -26,6 +26,9 @@ type ThinkingBuffer = {
 };
 
 export class OutputCompactor {
+	private liveVersion=0;
+	private readonly liveVersions=new Map<string,number>();
+	versionForSession(id:string):number { return this.liveVersions.get(id)??this.liveVersion; }
 	private readonly assistantBuffers = new Map<string, AssistantBuffer>();
 	private readonly thinkingBuffers = new Map<string, ThinkingBuffer>();
 	private readonly toolSnapshots = new Map<string, Extract<PiboOutputEvent, { type: "tool_execution_updated" }>>();
@@ -125,6 +128,9 @@ export class OutputCompactor {
 			if (settled) return;
 			settled = true;
 			for (const mutate of mutations) mutate();
+			this.liveVersions.delete(event.piboSessionId);
+			this.liveVersions.set(event.piboSessionId,++this.liveVersion);
+			while(this.liveVersions.size>MAX_TRACKED_COMPACTOR_SESSIONS)this.liveVersions.delete(this.liveVersions.keys().next().value!);
 			this.touchSession(event.piboSessionId);
 		};
 		return {
@@ -167,9 +173,11 @@ export class OutputCompactor {
 		}
 		this.sessionBufferCounts.delete(piboSessionId);
 		this.sessionRecency.delete(piboSessionId);
+		this.liveVersions.delete(piboSessionId);
 	}
 
 	disposeAll(): void {
+		this.liveVersions.clear();
 		this.assistantBuffers.clear();
 		this.thinkingBuffers.clear();
 		this.toolSnapshots.clear();

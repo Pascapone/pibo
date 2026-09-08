@@ -461,6 +461,7 @@ export class PiboGatewayServer {
 			},
 			findSessions: (input) => this.requireSessionStore().find(input),
 			listSessions: () => this.requireSessionStore().list?.() ?? [],
+			getSessionStructureRevision: () => this.requireSessionStore().getStructureRevision?.(),
 			getSessionRuntimeBinding: (piboSessionId) => this.requireRouter().getSessionRuntimeBinding(piboSessionId),
 			getSessionRuntimeProfile: (piboSessionId) => this.requireRouter().getSessionRuntimeProfile(piboSessionId),
 			inspectSessionRuntimeHistory: async (piboSessionId) => {
@@ -521,6 +522,7 @@ export class PiboGatewayServer {
 			getSessionStatusSnapshot: (piboSessionId, options) => this.requireRouter().getSessionStatusSnapshot(piboSessionId, options),
 			getSessionForkCandidates: (piboSessionId) => this.requireRouter().getSessionForkCandidates(piboSessionId),
 			listSessionRuntimeStatuses: () => this.requireRouter().listSessionRuntimeStatuses(),
+			getRuntimeCapacityStatus: () => this.requireRouter().getRuntimeCapacityStatus(),
 			listRuns: (options) => this.requireRouter().listRuns(options),
 			snapshotSignalSession: (piboSessionId) => this.requireRouter().snapshotSignalSession(piboSessionId),
 			snapshotSignalTree: (rootPiboSessionId) => this.requireRouter().snapshotSignalTree(rootPiboSessionId),

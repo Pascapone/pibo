@@ -1,3 +1,4 @@
+import { withMessageReceipts } from "./tracing/message-receipts";
 import {
   useCallback,
   useEffect,
@@ -20,8 +21,8 @@ import type {
   ThinkingLevel,
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
-import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
-import { getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
+import type { ChatSessionViewId, ChatSessionViewProps, ToolDisplayMode } from "./session-views/types";
+import { getMessageReceipts, getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
@@ -53,6 +54,9 @@ import {
   createComposerSendPlan,
   withComposerSendDelivery,
   type ComposerSendPlan,
+  readPendingMessageTransaction,
+  rememberPendingMessageTransaction,
+  samePendingMessageIntent,
 } from "./composer-send";
 import {
   createClientTxnId,
@@ -107,6 +111,7 @@ export function SessionTracePane({
   bootstrap,
   selectedPiboSessionId,
   selectedRoomId,
+  targetToolCallNodeId,
   contextKind = "room",
   contextLabel,
   selectedRoomArchived,
@@ -130,6 +135,7 @@ export function SessionTracePane({
   showRawEvents,
   showThinking,
   debugMode,
+  debugFeatures,
   toolMetricThresholds = DEFAULT_TOOL_METRIC_THRESHOLDS,
   expandThinking,
   toolDisplayMode,
@@ -162,6 +168,7 @@ export function SessionTracePane({
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
   selectedRoomId: string | null;
+  targetToolCallNodeId?: string;
   contextKind?: "room";
   contextLabel?: string;
   selectedRoomArchived: boolean;
@@ -184,6 +191,7 @@ export function SessionTracePane({
   showRawEvents: boolean;
   showThinking: boolean;
   debugMode: boolean;
+  debugFeatures?: ChatSessionViewProps["debugFeatures"];
   toolMetricThresholds?: ToolMetricThresholds;
   expandThinking: boolean;
   toolDisplayMode: ToolDisplayMode;
@@ -220,6 +228,8 @@ export function SessionTracePane({
   onExitDesktopPreviewFullscreen?: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [initialRetryTransaction] = useState(readPendingMessageTransaction);
+  const retrySendPlanRef = useRef<ReturnType<typeof readPendingMessageTransaction>>(initialRetryTransaction);
   const liveEventSeqRef = useRef(0);
   const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
   const [liveTraceOverlay, setLiveTraceOverlayState] =
@@ -414,7 +424,7 @@ export function SessionTracePane({
     createUploadAttachmentId,
   );
 
-  const currentTraceView = useCurrentSessionTrace({
+  const rawCurrentTraceView = useCurrentSessionTrace({
     selectedPiboSessionId: selectedBackendPiboSessionId,
     baseTraceView,
     liveTraceOverlay: selectedLiveTraceOverlay,
@@ -422,6 +432,15 @@ export function SessionTracePane({
   });
   const forkSupported = sessionSupportsFork(bootstrap, selectedPiboSessionId, selectedSessionProfile);
   const forkWhileRunningSupported = sessionSupportsForkWhileRunning(bootstrap, selectedPiboSessionId, selectedSessionProfile);
+  const messageReceiptsQuery = useQuery({
+    queryKey: ["chat", "message-receipts", selectedBackendPiboSessionId],
+    queryFn: () => getMessageReceipts(selectedBackendPiboSessionId!),
+    enabled: Boolean(selectedBackendPiboSessionId),
+    refetchInterval: 1_000,
+    retry: false,
+  });
+  const currentTraceView = useMemo(() => withMessageReceipts(rawCurrentTraceView, messageReceiptsQuery.data?.receipts ?? []), [rawCurrentTraceView,messageReceiptsQuery.data]);
+
   const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
   const forkCandidateStatusRevision = selectedSessionStatus ?? "unknown";
   const forkCandidatesEnabled = Boolean(selectedBackendPiboSessionId)
@@ -538,6 +557,8 @@ export function SessionTracePane({
         sendPlan.optimisticEvent,
       ),
     );
+    retrySendPlanRef.current = sendPlan;
+    rememberPendingMessageTransaction(sendPlan);
     await onSend(
       sendPlan.text,
       sendPlan.webAnnotationIds,
@@ -545,12 +566,16 @@ export function SessionTracePane({
       sendPlan.clientTxnId,
       delivery,
     );
+    retrySendPlanRef.current = null;
+    rememberPendingMessageTransaction(null);
+    void messageReceiptsQuery.refetch();
     clearSelectedWebAnnotationAttachments();
     clearSelectedUploadAttachments();
-    await Promise.all([
+    // Acceptance is already durable; a refresh error must not roll the send back.
+    void Promise.all([
       tracePageQuery.refetch(),
       webAnnotationsQuery.refetch(),
-    ]);
+    ]).catch((caught) => onError(errorMessage(caught)));
     schedulePostSendTraceRefresh(sendPlan.piboSessionId);
   };
 
@@ -586,7 +611,7 @@ export function SessionTracePane({
       selectedUploadAttachments,
       eventSequence: liveEventSeqRef.current++,
       now: new Date().toISOString(),
-      clientTxnId: createClientTxnId(),
+      clientTxnId: samePendingMessageIntent(retrySendPlanRef.current, { piboSessionId: selectedPiboSessionId, text, webAnnotationIds: selectedWebAnnotations.map(a => a.id), fileAttachmentPaths: selectedUploadAttachments.map(a => a.path) }) ? retrySendPlanRef.current!.clientTxnId : createClientTxnId(),
     });
     if (canSteer) {
       setPendingSendPlan(sendPlan);
@@ -639,6 +664,7 @@ export function SessionTracePane({
     isLoading: loadingTrace,
     showThinking,
     debugMode,
+    debugFeatures,
     toolMetricThresholds,
     expandThinking,
     toolDisplayMode: effectiveToolDisplayMode,
@@ -650,6 +676,7 @@ export function SessionTracePane({
     signals,
     sessionGoal: sessionGoalQuery.data?.goal,
     selectedPiboSessionId,
+    targetToolCallNodeId,
     workflowSessionLinked,
     sessionNodes: bootstrap.sessions,
     sessionLinks,
