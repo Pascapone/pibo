@@ -58,7 +58,11 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 	return store.transaction(()=>{
 		const row=readCommand(store,options.commandId);if(!row)throw new Error(`Unknown durable message command "${options.commandId}".`);
 		const desired:MessageCommandState=options.decision==="mark-failed"?"failed":"completed";
-		if(row.state===desired){return {applied:false,alreadyApplied:true,decision:options.decision,command:projection(row,desired,row.error),successors:[],auditEventId:undefined,health:commands.health(now),nextAction:`pibo debug message-queue inspect --session ${row.session_id}`};}
+		if(row.state===desired){
+			const priorAudit=store.eventLog.findByIdempotencyKey(`message-command-reconcile:${row.id}:${options.decision}`);
+			if(!priorAudit)throw new Error(`Command ${row.id} is already ${row.state}, but no matching reconciliation audit exists; inspect the current state.`);
+			return {applied:false,alreadyApplied:true,decision:options.decision,command:projection(row,desired,row.error),successors:[],auditEventId:priorAudit.eventId,health:commands.health(now),nextAction:`pibo debug message-queue inspect --session ${row.session_id}`};
+		}
 		if(options.expected&&(row.state!==options.expected.state||row.token!==options.expected.token||row.updated_at!==options.expected.updatedAt))throw Object.assign(new Error("Command changed after inspection; inspect again before applying."),{code:"command_snapshot_changed"});
 		if(row.state!=="interrupted")throw new Error(`Command ${row.id} is ${row.state}; only an interrupted command may be reconciled.`);
 		if(row.owner&&row.lease_until>now)throw Object.assign(new Error(`Command ${row.id} still has a live owner lease; reconciliation refused.`),{code:"command_live_lease"});
@@ -77,7 +81,7 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 		store.db.prepare("UPDATE telemetry_turns SET status=?,current_phase='reconciled',completed_at=COALESCE(completed_at,?),last_progress_at=?,updated_at=? WHERE pibo_session_id=? AND event_id=? AND status NOT IN ('completed','failed')").run(desired,iso,iso,iso,row.session_id,row.event_id);
 		options.beforeAudit?.();
 		const actor=(options.actor??process.env.USER??"operator").replace(/[^A-Za-z0-9_.@-]/g,"_").slice(0,100)||"operator";
-		const audit=store.eventLog.appendEvent({sessionId:row.session_id,roomId:row.room_id,topic:"pibo.audit",type:"durable_message_command.reconciled",source:"pibo-debug-cli",actorType:"operator",actorId:actor,eventId:`reconcile:${row.id}:${row.token}:${row.updated_at}`,idempotencyKey:`message-command-reconcile:${row.id}:${row.token}:${row.updated_at}:${options.decision}`,retentionClass:"audit_event",previewText:`Durable command ${options.decision}`,attributes:{commandId:row.id,eventId:row.event_id,decision:options.decision,priorState:row.state,resultingState:desired,evidenceStreamIds:evidence.map(item=>item.streamId),affectedSuccessorIds:selected.map(item=>item.id),actor,source:"pibo-debug-cli",occurredAt:iso,replay:false}});
+		const audit=store.eventLog.appendEvent({sessionId:row.session_id,roomId:row.room_id,topic:"pibo.audit",type:"durable_message_command.reconciled",source:"pibo-debug-cli",actorType:"operator",actorId:actor,eventId:`reconcile:${row.id}:${options.decision}`,idempotencyKey:`message-command-reconcile:${row.id}:${options.decision}`,retentionClass:"audit_event",previewText:`Durable command ${options.decision}`,attributes:{commandId:row.id,eventId:row.event_id,decision:options.decision,priorState:row.state,resultingState:desired,evidenceStreamIds:evidence.map(item=>item.streamId),affectedSuccessorIds:selected.map(item=>item.id),actor,source:"pibo-debug-cli",occurredAt:iso,replay:false}});
 		return {...plan,applied:true,auditEventId:audit.eventId,health:commands.health(now)};
 	});
 }

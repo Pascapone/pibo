@@ -9,6 +9,7 @@ import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { AsyncChatStorage } from "../dist/data/async-chat-storage.js";
 import { MessageCommandStore } from "../dist/data/message-command-store.js";
 import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
+import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 test("durable commands commit with admission, deduplicate and reject changed payloads", async () => {
@@ -220,13 +221,16 @@ test("receipt polling retains an older active turn after a long stream of termin
 
 test("lease recovery monotonically honors every terminal output with a deterministic persistence barrier",()=>{
  for(const [type,expected] of [["message_finished","completed"],["session_error","failed"],["message_steered","completed"]]){
-  const root=mkdtempSync(join(tmpdir(),"pibo-command-terminal-race-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);
+  const root=mkdtempSync(join(tmpdir(),"pibo-command-terminal-race-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const commands=new MessageCommandStore(store);const room=new ChatRoomService(store).ensureDefaultRoom();const session=new InMemoryPiboSessionStore().create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const ingest=new ChatDataIngestService(store);
   try{
-   const saved=store.transaction(()=>commands.insert({key:type,sessionId:"session",roomId:"room",eventId:"event",streamId:1,delivery:type==="message_steered"?"steer":"queue",...commands.prepare({sessionId:"session",roomId:"room",text:"x",delivery:type==="message_steered"?"steer":"queue"})}));
+   ingest.ingestUserMessageAccepted({session,roomId:room.id,actorId:"actor",text:"x",eventId:"event"});
+   const saved=store.transaction(()=>commands.insert({key:type,sessionId:session.id,roomId:room.id,eventId:"event",streamId:1,delivery:type==="message_steered"?"steer":"queue",...commands.prepare({sessionId:session.id,roomId:room.id,text:"x",delivery:type==="message_steered"?"steer":"queue"})}));
    const claim=commands.claim("expired-owner",1000);commands.transition(claim.id,"expired-owner",claim.token,"running");store.db.prepare("UPDATE message_commands SET lease_until=0 WHERE id=?").run(saved.id);
-   let crossed=false;commands.recoverExpiredLeases(Date.now(),()=>{crossed=true;store.eventLog.appendEvent({sessionId:"session",roomId:"room",topic:"pibo.output",type,source:"test",eventId:"event",retentionClass:"audit_event"});});
+   let crossed=false;commands.recoverExpiredLeases(Date.now(),()=>{crossed=true;ingest.ingestOutputEvent({session,roomId:room.id,event:{type,piboSessionId:session.id,eventId:"event",source:"test",...(type==="session_error"?{error:"terminal fixture"}:type==="message_steered"?{text:"x",activeEventId:"active"}:{})}});});
    assert.equal(crossed,true);assert.equal(commands.get(saved.id).state,expected);assert.equal(store.db.prepare("SELECT owner,lease_until FROM message_commands WHERE id=?").get(saved.id).owner,null);
-   assert.equal(commands.reconcileInterrupted().reconciled,0);assert.equal(commands.get(saved.id).state,expected);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE event_id='event'").get().n),1);
+   assert.equal(commands.reconcileInterrupted().reconciled,0);assert.equal(commands.get(saved.id).state,expected);assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE event_id='event' AND type=?").get(type).n),1);
+   const projected=store.db.prepare("SELECT s.status session_status,n.status navigation_status FROM sessions s JOIN session_navigation n ON n.session_id=s.id WHERE s.id=?").get(session.id);assert.equal(projected.session_status,type==="session_error"?"error":type==="message_steered"?"running":"idle");assert.equal(projected.navigation_status,projected.session_status);
+   assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE session_id=? AND event_id='event' AND type=?").get(session.id,type).n),1);
   }finally{store.close();rmSync(root,{recursive:true,force:true});}
  }
 });
