@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/run-reminder-admission-validation-2026-09-08.md",
+      "state": "conformant",
+      "classification": "runtime reminder validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/performance-scalability-final-acceptance-2026-09-08.md",
       "state": "conformant",
       "classification": "integrated performance and full-content acceptance",

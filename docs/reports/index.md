@@ -78,6 +78,7 @@
 * [Resource reaper browser profile exemption validation — 2026&#45;08&#45;07](resource-reaper-browser-profile-exemption-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Room creation ownership validation — September 6, 2026](room-creation-ownership-validation-2026-09-06.md) - Records optimistic Room preservation, navigation ownership, selective rollback, and exact&#45;candidate headful Pibo2 acceptance&#46;
 * [Room edit ownership validation — September 6, 2026](room-edit-ownership-validation-2026-09-06.md) - Records Room edit and archive navigation safety, field&#45;scoped optimistic updates, and exact&#45;candidate Pibo2 acceptance&#46;
+* [Run&#45;reminder admission validation — 2026&#45;09&#45;08](run-reminder-admission-validation-2026-09-08.md) - Records deterministic runtime and headful Chat Web acceptance for nonfatal run&#45;reminder deferral&#46;
 * [Runtime Auth Control Plane Validation](runtime-auth-control-plane-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Runtime Binding Persistence Validation — 2026&#45;08&#45;15](runtime-binding-persistence-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Runtime Portability v4&#46;1 Validation Report](runtime-portability-v4-1-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
