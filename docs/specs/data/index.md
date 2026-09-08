@@ -4,6 +4,7 @@
 
 ## Concepts
 
+* [Bounded SQLite Storage Health and Maintenance](storage-maintenance.md) - Defines bounded operator status, verification, checkpoint, backup, and retention behavior for Pibo SQLite stores&#46;
 * [Live Pibo Session Signals](signals.md) - Defines the implemented live pibo session signals contract and its current ownership boundaries&#46;
 * [Pibo Sessions and Runtime Binding Persistence](sessions-and-runtime-bindings.md) - Defines the implemented pibo sessions and runtime binding persistence contract and its current ownership boundaries&#46;
 * [Product Store, History, Payloads, and Read Models](product-store-history-and-read-models.md) - Defines the implemented product store, history, payloads, and read models contract and its current ownership boundaries&#46;
