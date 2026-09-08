@@ -147,6 +147,18 @@ function assertProviderToolAuthorization(snapshot: PiPrefixSnapshot, current: Re
 	}
 }
 
+/** Frozen definitions must remain compatible with the current executable tool set. */
+function assertLocalToolCompatibility(snapshot: PiPrefixSnapshot, tools: Context["tools"]): void {
+	const available = new Map((tools ?? []).map(tool => [tool.name, tool]));
+	for (const tool of snapshot.tools) {
+		const current = available.get(tool.name);
+		if (!current || !isDeepStrictEqual(current.parameters, tool.parameters)
+			|| !isDeepStrictEqual(current.constrainedSampling, tool.constrainedSampling)) {
+			throw new PrefixRecoveryRequiredError(`frozen Pi tool ${tool.name} is unavailable or incompatible`);
+		}
+	}
+}
+
 /** Read before SDK resource discovery, not after live context was rebuilt. */
 export async function restorePiPrefix(controller: SessionPrefixController): Promise<PiPrefixSnapshot | undefined> {
 	const codec = controller.binding?.capsule.codec ?? PI_CODEX_PREFIX_CODEC;
@@ -178,14 +190,7 @@ export async function installPiPrefixCodec(
 	await preparePiPrefixNativeState(session, Boolean(snapshot));
 	await resolvePiPrefixTransition(session, controller);
 	if (snapshot) {
-		const available = new Map(session.agent.state.tools.map(tool => [tool.name, tool]));
-		for (const tool of snapshot.tools) {
-			const current = available.get(tool.name);
-			if (!current || JSON.stringify(current.parameters) !== JSON.stringify(tool.parameters)
-				|| JSON.stringify(current.constrainedSampling) !== JSON.stringify(tool.constrainedSampling)) {
-				throw new PrefixRecoveryRequiredError(`frozen Pi tool ${tool.name} is unavailable or incompatible`);
-			}
-		}
+		assertLocalToolCompatibility(snapshot, session.agent.state.tools);
 		session.agent.state.systemPrompt = snapshot.systemPrompt;
 	}
 	const stream = session.agent.streamFunction;
@@ -198,7 +203,11 @@ export async function installPiPrefixCodec(
 		const modelConfiguration = modelInputConfiguration(model);
 		if (snapshot && !isDeepStrictEqual(snapshot.modelConfiguration, modelConfiguration)) throw new PrefixRecoveryRequiredError("model input configuration changed; explicit transition required");
 		if (snapshot && snapshot.providerStatic.model !== model.id) throw new PrefixRecoveryRequiredError("model change requires an explicit prefix epoch transition");
-		if (snapshot) session.agent.state.systemPrompt = snapshot.systemPrompt;
+		if (snapshot) {
+			assertLocalToolCompatibility(snapshot, session.agent.state.tools);
+			assertLocalToolCompatibility(snapshot, context.tools);
+			session.agent.state.systemPrompt = snapshot.systemPrompt;
+		}
 		const frozenContext: Context = snapshot
 			? { ...context, systemPrompt: snapshot.systemPrompt, tools: snapshot.tools }
 			: context;

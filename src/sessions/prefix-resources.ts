@@ -29,11 +29,12 @@ function inside(root: string, path: string): boolean {
 	return child === "" || (!isAbsolute(child) && child !== ".." && !child.startsWith(`..${sep}`));
 }
 
-async function readRegular(path: string, maxBytes: number): Promise<Buffer> {
+async function readRegular(path: string, maxBytes: number, executable?: boolean): Promise<Buffer> {
 	const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
 	try {
 		const metadata = await handle.stat();
 		if (!metadata.isFile() || metadata.size > maxBytes) throw new PrefixRecoveryRequiredError("resource is not a bounded regular file");
+		if (executable !== undefined && Boolean(metadata.mode & 0o111) !== executable) throw new PrefixRecoveryRequiredError("resource executable mode changed");
 		const body = Buffer.alloc(metadata.size + 1);
 		let length = 0;
 		while (length < body.length) {
@@ -191,7 +192,7 @@ export class PrefixResourceBundleStore {
 			const path = join(target, file.path);
 			if (await realpath(path) !== path) throw new PrefixRecoveryRequiredError("resource delivery contains a symlink");
 			const expected = Buffer.from(file.content, "base64");
-			if (!(await readRegular(path, expected.length)).equals(expected)) throw new PrefixRecoveryRequiredError("frozen resource content changed");
+			if (!(await readRegular(path, expected.length, file.executable)).equals(expected)) throw new PrefixRecoveryRequiredError("frozen resource content changed");
 		}
 		return {
 			context: bundle.context.map((item, index) => ({ ...item, ...(item.content === undefined ? {} : { materializedPath: join(target, `context/${index}.md`) }) })),

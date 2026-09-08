@@ -45,6 +45,10 @@ test("resource publication is concurrent and corruption fails closed", async t =
 	const bundle = await capturePrefixResources(f.context, f.skills);
 	const [a, b] = await Promise.all([f.store.put("pi", bundle), f.store.put("pi", bundle)]);
 	assert.deepEqual(a, b);
+	const executable = join(dirname(a.resources.skills[0].sourcePath), "run.sh");
+	await chmod(executable, 0o400);
+	await assert.rejects(f.store.restore(a.reference), /resource executable mode changed/);
+	await chmod(executable, 0o500);
 	const unexpected = join(dirname(a.resources.skills[0].sourcePath), "unexpected.md");
 	await writeFile(unexpected, "not captured");
 	await assert.rejects(f.store.restore(a.reference), /unexpected entry/);

@@ -186,6 +186,17 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi ${providerApi} HTTP pref
 		await runtime.session.prompt("equivalent explicit compatibility defaults");
 		assert.equal(api.requests.length, 4);
 		const baselineCount = api.requests.length;
+		const currentTools = runtime.session.agent.state.tools;
+		runtime.session.agent.state.tools = currentTools.filter(tool => tool.name !== "prefix_probe");
+		await runtime.session.prompt("local tool removed during the active session");
+		assert.equal(api.requests.length, baselineCount, "removed local tools must block dispatch under frozen definitions");
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /unavailable or incompatible/);
+		runtime.session.agent.state.tools = currentTools.map(tool => tool.name === "prefix_probe"
+			? { ...tool, parameters: { type: "object", properties: { changed: { type: "string" } } } } : tool);
+		await runtime.session.prompt("local tool schema changed during the active session");
+		assert.equal(api.requests.length, baselineCount, "incompatible live tools must block dispatch under frozen definitions");
+		assert.match(runtime.session.state.messages.at(-1).errorMessage, /unavailable or incompatible/);
+		runtime.session.agent.state.tools = currentTools;
 		providerSearchEnabled = false;
 		await runtime.session.prompt("provider tool permission revoked");
 		assert.equal(api.requests.length, baselineCount, "revoked provider tools must not execute under frozen definitions");
