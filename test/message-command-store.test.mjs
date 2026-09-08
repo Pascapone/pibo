@@ -175,6 +175,7 @@ test("byte and wait-age limits reject new work while preserving duplicate receip
  const add=(key,session,text="x",delivery="queue")=>store.transaction(()=>commands.insert({key,sessionId:session,roomId:"room",eventId:key,streamId:++stream,delivery,...commands.prepare({sessionId:session,roomId:"room",text,delivery})}));
  try {
   for(let i=0;i<4;i++) add(`big-${i}`,"large","x".repeat(1024*1024));
+  const capacity=commands.health();assert.equal(capacity.status,"degraded");assert.ok(capacity.admissionCapacity.sessions.some(row=>row.sessionId==="large"&&row.delivery==="queue"&&!row.available));
   assert.throws(()=>add("overflow","large"),{code:"command_overloaded"});
   assert.equal(add("big-0","large","x".repeat(1024*1024)).eventId,"big-0");
   const waiting=add("old","waiting");

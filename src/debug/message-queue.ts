@@ -6,7 +6,7 @@ type CommandRow={id:string;request_key:string;session_id:string;room_id:string;e
 export type MessageQueueInspection={
 	generatedAt:string;
 	sessionId?:string;
-	commands:Array<{id:string;fifo:number;sessionId:string;roomId:string;eventId:string;streamId:number;delivery:string;state:MessageCommandState;owner?:string;lease:{until:number;fresh:boolean};createdAt:number;updatedAt:number;error?:string;blockedBy?:string;blocks:string[];terminalEvidence:ReturnType<MessageCommandStore["terminalEvidence"]>}>;
+	commands:Array<{id:string;fifo:number;sessionId:string;roomId:string;eventId:string;streamId:number;delivery:string;state:MessageCommandState;owner?:string;lease:{until:number;fresh:boolean};createdAt:number;updatedAt:number;error?:string;blockedBy?:string;blocks:string[];terminalOutcome:"completed"|"failed"|"ambiguous";terminalEvidence:ReturnType<MessageCommandStore["terminalEvidence"]>}>;
 	health:ReturnType<MessageCommandStore["health"]>;
 	truncated:boolean;
 	nextCommands:string[];
@@ -40,7 +40,7 @@ export function inspectMessageQueue(store:PiboDataStore,input:{sessionId?:string
 		const siblings=bySession.get(row.session_id)??[];
 		const blocker=siblings.find(candidate=>candidate.state==="interrupted"&&candidate.stream_id<row.stream_id);
 		const blocks=siblings.filter(candidate=>row.state==="interrupted"&&ACTIVE_STATES.has(candidate.state)&&candidate.stream_id>row.stream_id).map(candidate=>candidate.id);
-		return {id:row.id,fifo:index+1,sessionId:row.session_id,roomId:row.room_id,eventId:row.event_id,streamId:row.stream_id,delivery:row.delivery,state:row.state,...(row.owner?{owner:row.owner}:{}),lease:{until:row.lease_until,fresh:Boolean(row.owner&&row.lease_until>now)},createdAt:row.created_at,updatedAt:row.updated_at,...(row.error?{error:row.error}:{}),...(blocker?{blockedBy:blocker.id}:{}),blocks,terminalEvidence:commands.terminalEvidence(row.session_id,row.event_id)};
+		return {id:row.id,fifo:index+1,sessionId:row.session_id,roomId:row.room_id,eventId:row.event_id,streamId:row.stream_id,delivery:row.delivery,state:row.state,...(row.owner?{owner:row.owner}:{}),lease:{until:row.lease_until,fresh:Boolean(row.owner&&row.lease_until>now)},createdAt:row.created_at,updatedAt:row.updated_at,...(row.error?{error:row.error}:{}),...(blocker?{blockedBy:blocker.id}:{}),blocks,terminalOutcome:commands.terminalOutcome(row.session_id,row.event_id)??"ambiguous",terminalEvidence:commands.terminalEvidence(row.session_id,row.event_id)};
 	}),health:commands.health(now),truncated:rows.length>limit,nextCommands:input.sessionId?[`pibo debug message-queue reconcile <command-id> --mark-failed --dry-run`,`pibo debug message-queue reconcile <command-id> --mark-failed --apply`]:["pibo debug message-queue inspect --session <pibo-session-id>"]};
 }
 
@@ -66,7 +66,7 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 		if(options.expected&&(row.state!==options.expected.state||row.token!==options.expected.token||row.updated_at!==options.expected.updatedAt))throw Object.assign(new Error("Command changed after inspection; inspect again before applying."),{code:"command_snapshot_changed"});
 		if(row.state!=="interrupted")throw new Error(`Command ${row.id} is ${row.state}; only an interrupted command may be reconciled.`);
 		if(row.owner&&row.lease_until>now)throw Object.assign(new Error(`Command ${row.id} still has a live owner lease; reconciliation refused.`),{code:"command_live_lease"});
-		const evidence=commands.terminalEvidence(row.session_id,row.event_id),authoritativeCompleted=evidence.length>0&&evidence.every(item=>item.state==="completed");
+		const evidence=commands.terminalEvidence(row.session_id,row.event_id),authoritativeCompleted=commands.terminalOutcome(row.session_id,row.event_id)==="completed";
 		if(options.decision==="confirm-completed"&&!authoritativeCompleted&&options.confirmWithoutEvidence!==row.id)throw new Error(`No unambiguous completed terminal evidence exists. To explicitly confirm side effects, add --confirm-without-evidence ${row.id}.`);
 		const candidates=successorRows(store,row),selected=options.cancelSuccessors?candidates:options.cancelSuccessorIds?.length?options.cancelSuccessorIds.map(id=>{const found=candidates.find(item=>item.id===id);if(!found)throw new Error(`Successor ${id} is not an unstarted FIFO successor of ${row.id}.`);return found;}):[];
 		const resultError=desired==="failed"?"Operator marked interrupted durable message failed; command was not replayed.":null;
@@ -88,7 +88,7 @@ export function reconcileMessageCommand(store:PiboDataStore,options:ReconcileOpt
 
 export function formatMessageQueueInspection(result:MessageQueueInspection):string{
 	const lines=["Durable message queue",`  status: ${result.health.status}`,`  interrupted: ${result.health.interruptedPredecessors}`,`  FIFO blocked: ${result.health.blockedSuccessors}`,`  expired leases: ${result.health.expiredOwnedLeases}`];
-	for(const row of result.commands){lines.push(`  ${row.fifo}. ${row.id} state=${row.state} delivery=${row.delivery} session=${row.sessionId} event=${row.eventId} owner=${row.owner??"-"} lease=${row.lease.fresh?"fresh":"stale/none"}${row.blockedBy?` blockedBy=${row.blockedBy}`:""}`);if(row.terminalEvidence.length)lines.push(`     evidence: ${row.terminalEvidence.map(item=>`${item.type}@${item.streamId}`).join(", ")}`);if(row.blocks.length)lines.push(`     blocks: ${row.blocks.join(", ")}`);}
+	for(const row of result.commands){lines.push(`  ${row.fifo}. ${row.id} state=${row.state} delivery=${row.delivery} session=${row.sessionId} event=${row.eventId} owner=${row.owner??"-"} lease=${row.lease.fresh?"fresh":"stale/none"}${row.blockedBy?` blockedBy=${row.blockedBy}`:""}`);if(row.terminalEvidence.length)lines.push(`     evidence: outcome=${row.terminalOutcome??"ambiguous"} ${row.terminalEvidence.map(item=>`${item.type}@${item.streamId}`).join(", ")}`);if(row.blocks.length)lines.push(`     blocks: ${row.blocks.join(", ")}`);}
 	lines.push("Next:",...result.nextCommands.map(command=>`  ${command}`));return lines.join("\n");
 }
 
