@@ -189,10 +189,10 @@ function PayloadRefDetail({ kind, refInfo }: { kind: string; refInfo: TracePaylo
 	return (
 		<div className="space-y-1" data-shared-terminal-payload-ref={kind}>
 			<div className="text-[11px] font-semibold text-[#737373]">
-				{kind} payload ({Math.ceil(refInfo.byteLength / 1024)} KB)
+				Full content ({Math.ceil(refInfo.byteLength / 1024)} KB)
 			</div>
 			{state.status === "loading" ? (
-				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#737373]">Loading payload preview...</div>
+				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#737373]">Loading content...</div>
 			) : state.status === "error" ? (
 				<div className="border border-[#2a2a2a] bg-[#0b0b0b] p-2 text-[12px] text-[#ef4444]">{state.message}</div>
 			) : (
