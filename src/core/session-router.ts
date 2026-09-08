@@ -1,3 +1,5 @@
+import { SessionPrefixController } from "../sessions/prefix-session.js";
+import { readSessionPrefixBinding, readSessionPrefixResourceReference, PrefixRecoveryRequiredError } from "../sessions/prefix-capsule.js";
 import { previouslyClearedMessages } from "./events.js";
 import { createProviderCapacityExtension } from "./provider-capacity.js";
 import { RuntimeCapacity, type RuntimeCapacityOptions, type RuntimeCapacityStatus, type RuntimeInitializationTiming } from "./runtime-capacity.js";
@@ -142,7 +144,7 @@ export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
 
 export type PiboSessionRouterOptions = Omit<
 	PiboRuntimeOptions,
-	"profile" | "agentsController" | "runToolController" | "resources"
+	"profile" | "agentsController" | "runToolController" | "resources" | "prefixController"
 > & {
 	profile?: InitialSessionContext;
 	pluginRegistry?: PiboPluginRegistry;
@@ -169,6 +171,8 @@ export type PiboSessionRouterOptions = Omit<
 	/** Portable product-history source used for cross-runtime rebind handoff. */
 	portableHistoryProvider?: AgentRuntimePortableHistoryProvider;
 	runtimeCapacity?: RuntimeCapacityOptions;
+	/** Rollout gate for new eligible native sessions. Existing protected bindings always restore. */
+	sessionPrefixProtection?: boolean;
 };
 
 const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
@@ -1640,7 +1644,29 @@ export class PiboSessionRouter {
 		const agentsController = this.createAgentsController(piboSession.id);
 		const runToolController = this.createRunToolController(piboSession.id);
 		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
+		const bindingSync = { expectedRevision: binding.revision };
+		const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(this.sessionStore, {
+			piboSessionId: piboSession.id,
+			onPersisted: (updated) => {
+				binding = updated;
+				bindingSync.expectedRevision = updated.revision;
+				const updatedSession = this.sessionStore.get(piboSession.id);
+				if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
+			},
+		});
+
+		const protectedPrefix = readSessionPrefixBinding(binding.metadata) || readSessionPrefixResourceReference(binding.metadata);
+		if (protectedPrefix && !runtimeAdapter.canInitializePrefix) {
+			throw new PrefixRecoveryRequiredError("configured adapter has no protected open contract");
+		}
+		const initializePrefix = !protectedPrefix && this.options.sessionPrefixProtection === true && !historyHandoff
+			&& runtimeAdapter.canInitializePrefix && await runtimeAdapter.canInitializePrefix({ binding, workspace });
 		const sessionGeneration = randomUUID();
+		let prefixController: SessionPrefixController | undefined;
+		if (protectedPrefix || initializePrefix) {
+			if (!runtimeBindingPersistence) throw new PrefixRecoveryRequiredError("protected sessions require durable binding persistence");
+			prefixController = new SessionPrefixController({ getBinding: () => binding, persistence: runtimeBindingPersistence, runtimeGeneration: sessionGeneration });
+		}
 		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
 		if (previousResources) await previousResources.dispose();
 		this.portableToolSessions.get(piboSession.id)?.dispose();
@@ -1670,6 +1696,7 @@ export class PiboSessionRouter {
 				cwd: workspace,
 				timezone: userSettings.timezone,
 				capabilities: runtimeAdapter.descriptor.capabilities,
+				prefixController,
 			});
 			this.runtimeResourceSessions.set(piboSession.id, resources);
 		} catch (error) {
@@ -1678,16 +1705,7 @@ export class PiboSessionRouter {
 			throw error;
 		}
 		phases.resourcesAndToolsMs=performance.now()-phaseStarted;phaseStarted=performance.now();
-		const bindingSync = { expectedRevision: binding.revision };
-		const runtimeBindingPersistence = createAgentRuntimeBindingPersistence(this.sessionStore, {
-			piboSessionId: piboSession.id,
-			onPersisted: (updated) => {
-				binding = updated;
-				bindingSync.expectedRevision = updated.revision;
-				const updatedSession = this.sessionStore.get(piboSession.id);
-				if (updatedSession) this.signalRegistry.project({ type: "session_created", session: updatedSession });
-			},
-		});
+
 		let runtimeSession: AgentRuntimeSession;
 		try {
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
@@ -1713,6 +1731,7 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
+					prefixController,
 					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
@@ -1725,6 +1744,7 @@ export class PiboSessionRouter {
 							...(this.options.extensionFactories ?? []),
 						],
 						modelDefaults,
+						modelRuntime: this.options.modelRuntime,
 						initialFastMode,
 						providerFallbacksEnabled: modelFallbacks.length > 0,
 					},
@@ -1795,12 +1815,17 @@ export class PiboSessionRouter {
 				contribution.sourcePath ?? contribution.path ?? contribution.label
 			)).filter((value): value is string => Boolean(value)))],
 		};
+		let usageSequence = 0;
 		session = new RoutedSession(
 			piboSession.id,
 			runtimeSession,
 			this.emitOutput,
 			this.pluginRegistry,
 			{
+				getCacheEvidence: () => prefixController?.getCacheEvidence() ?? {
+					id: `${sessionGeneration}:${++usageSequence}`, atMs: Date.now(),
+					runtimeGeneration: sessionGeneration, historyContinuity: "unknown",
+				},
 				forwardLegacyPiEvents: this.options.forwardPiEvents ?? false,
 				onNativeEventTelemetry: this.telemetryRecorder
 					? (id, event, context) => this.telemetryRecorder?.recordPiEvent(id, event, {

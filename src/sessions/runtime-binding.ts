@@ -1,6 +1,7 @@
 import type { PiboJsonObject } from "../core/events.js";
 import { DEFAULT_AGENT_RUNTIME_INSTANCE_ID } from "../core/profiles.js";
 import { readSessionPrefixBinding, readSessionPrefixResourceReference } from "./prefix-capsule.js";
+import { readPrefixTransition } from "./prefix-transition.js";
 
 export type AgentRuntimeAdapterId = string;
 export type AgentRuntimeInstanceId = string;
@@ -105,6 +106,7 @@ export function createInitialRuntimeSessionBinding(
 	}
 	const prefix = readSessionPrefixBinding(input.metadata);
 	const resources = readSessionPrefixResourceReference(input.metadata);
+	if (readPrefixTransition(input.metadata)) throw new RuntimeSessionBindingTransitionError(piboSessionId, "native transitions require an existing binding");
 	if (resources && resources.adapterId !== input.adapterId) {
 		throw new RuntimeSessionBindingTransitionError(piboSessionId, "resource and runtime binding disagree");
 	}
@@ -177,6 +179,27 @@ export function assertRuntimeSessionBindingTransition(
 	const nextPrefix = readSessionPrefixBinding(next.metadata);
 	const previousResources = readSessionPrefixResourceReference(current.metadata);
 	const nextResources = readSessionPrefixResourceReference(next.metadata);
+	const previousTransition = readPrefixTransition(current.metadata);
+	const nextTransition = readPrefixTransition(next.metadata);
+	if (previousTransition && !nextTransition) throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "native transition receipt cannot be discarded");
+	if (JSON.stringify(previousTransition) !== JSON.stringify(nextTransition) && nextTransition) {
+		if (previousTransition?.state === "pending") {
+			if (JSON.stringify({ ...previousTransition, state: nextTransition.state }) !== JSON.stringify(nextTransition)
+				|| nextTransition.state === "pending" || !previousPrefix || !nextPrefix
+				|| nextPrefix.epoch !== previousPrefix.epoch + Number(nextTransition.state === "completed")
+				|| nextTransition.state === "completed" && nextPrefix.reason !== "compaction"
+				|| JSON.stringify(nextPrefix.capsule) !== JSON.stringify(previousPrefix.capsule)) {
+				throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "native transition completion does not match its pending receipt");
+			}
+		} else if (nextTransition.state !== "pending" || nextTransition.id === previousTransition?.id
+			|| !previousPrefix || nextTransition.fromEpoch !== previousPrefix.epoch
+			|| nextTransition.nativeSessionId !== current.nativeSessionId
+			|| JSON.stringify(previousPrefix) !== JSON.stringify(nextPrefix)) {
+			throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "native transition must begin against the current sealed epoch");
+		}
+	} else if (previousTransition?.state === "pending" && JSON.stringify(previousPrefix) !== JSON.stringify(nextPrefix)) {
+		throw new RuntimeSessionBindingTransitionError(current.piboSessionId, "pending native transition must be resolved before changing the epoch");
+	}
 	if ((previousResources || previousPrefix) && JSON.stringify(previousResources) !== JSON.stringify(nextResources)) {
 		if (!previousPrefix || !nextPrefix || nextPrefix.epoch !== previousPrefix.epoch + 1
 			|| !["explicit-refresh", "runtime-change"].includes(nextPrefix.reason)) {

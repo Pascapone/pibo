@@ -1,4 +1,5 @@
 import { previouslyClearedMessages } from "../core/events.js";
+import { boundedCacheEvidence } from "../shared/cache-diagnostics.js";
 import type { CapacityLease } from "../core/runtime-capacity.js";
 import type { ModelProfile } from "../core/profiles.js";
 import {
@@ -102,6 +103,7 @@ export type PiboMessagePreflight = (
 ) => Promise<{ allowed: boolean; reason?: string; code?: string }> | { allowed: boolean; reason?: string; code?: string };
 
 export type RuntimeRoutedSessionOptions = {
+	getCacheEvidence?: () => import("../shared/cache-diagnostics.js").CacheInferenceEvidence | undefined;
 	forwardLegacyPiEvents?: boolean;
 	onNativeEventTelemetry?: (
 		piboSessionId: string,
@@ -263,6 +265,18 @@ export class RuntimeRoutedSession {
 	private suppressProviderFailures = false;
 	private pendingProviderFailure?: { message: string; details: PiboSessionErrorDetails };
 	private unsubscribe?: () => void;
+	private droppedCacheObservations = 0;
+
+	private readCacheEvidence(): import("../shared/cache-diagnostics.js").CacheInferenceEvidence | undefined {
+		try {
+			const value = this.options.getCacheEvidence?.();
+			if (!value) return undefined;
+			const bounded = boundedCacheEvidence(value);
+			if (!bounded) this.droppedCacheObservations++;
+			return bounded;
+		}
+		catch { this.droppedCacheObservations++; return undefined; }
+	}
 
 	constructor(
 		private readonly piboSessionId: string,
@@ -435,6 +449,7 @@ export class RuntimeRoutedSession {
 			fastMode: status.fastMode?.mode === "fast",
 			retry: status.retry as PiboSessionStatus["retry"],
 			warnings: status.warnings,
+			...(this.droppedCacheObservations ? { cacheDiagnostics: { droppedObservations: this.droppedCacheObservations } } : {}),
 			errors: status.errors,
 			...(pendingApprovals.length > 0
 				? { pendingApprovals: pendingApprovals.map((request) => structuredClone(request)) }
@@ -823,6 +838,7 @@ export class RuntimeRoutedSession {
 					reasoningTokens: event.usage.reasoningTokens,
 					totalTokens: event.usage.totalTokens,
 					costUsd: event.usage.costUsd,
+					cacheEvidence: this.readCacheEvidence(),
 					provenance: this.activeMessage?.provenance,
 				}));
 				this.trackRunReminderTurnGuard("usage", {

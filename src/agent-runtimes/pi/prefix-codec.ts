@@ -1,7 +1,10 @@
 import type { AgentSession, Skill } from "@earendil-works/pi-coding-agent";
+import { createHash } from "node:crypto";
 import type { Context } from "@earendil-works/pi-ai";
 import { PrefixRecoveryRequiredError } from "../../sessions/prefix-capsule.js";
 import type { SessionPrefixController } from "../../sessions/prefix-session.js";
+import { preparePiPrefixNativeState, syncPiPrefixNativeState } from "./prefix-native-state.js";
+import { resolvePiPrefixTransition } from "./prefix-lifecycle.js";
 
 export const PI_CODEX_PREFIX_CODEC = "pi-0.85.0/openai-codex-responses/v2";
 
@@ -56,6 +59,16 @@ function captureTools(tools: Context["tools"]): NonNullable<Context["tools"]> {
 	}));
 }
 
+function inferenceFacts(snapshot: PiPrefixSnapshot): { cacheKeyDigest?: string; configurationDigest: string } {
+	const fields = ["model", "reasoning", "text", "service_tier", "temperature"];
+	return {
+		configurationDigest: createHash("sha256").update(JSON.stringify(fields.map(key => [key, snapshot.providerStatic[key]]))).digest("hex"),
+		...(typeof snapshot.providerStatic.prompt_cache_key === "string" ? {
+			cacheKeyDigest: createHash("sha256").update(`pibo-cache-key\0${snapshot.providerStatic.prompt_cache_key}`).digest("hex"),
+		} : {}),
+	};
+}
+
 /** Read before SDK resource discovery, not after live context was rebuilt. */
 export async function restorePiCodexPrefix(controller: SessionPrefixController): Promise<PiPrefixSnapshot | undefined> {
 	const restored = await controller.restore(PI_CODEX_PREFIX_CODEC);
@@ -74,8 +87,12 @@ export async function installPiCodexPrefixCodec(
 	preparedSnapshot?: PiPrefixSnapshot,
 ): Promise<void> {
 	let snapshot = preparedSnapshot ?? await restorePiCodexPrefix(controller);
+	let facts = snapshot ? inferenceFacts(snapshot) : undefined;
 	const historical = session.sessionManager.getEntries().some(entry => entry.type === "message" && entry.message.role === "assistant");
 	if (!snapshot && historical) throw new PrefixRecoveryRequiredError("Pi history has no captured original prefix");
+	if (snapshot && controller.binding?.nativeSessionId !== session.sessionId) throw new PrefixRecoveryRequiredError("restored Pi session identity changed");
+	await preparePiPrefixNativeState(session, Boolean(snapshot));
+	await resolvePiPrefixTransition(session, controller);
 	if (snapshot) {
 		const available = new Map(session.agent.state.tools.map(tool => [tool.name, tool]));
 		for (const tool of snapshot.tools) {
@@ -91,6 +108,7 @@ export async function installPiCodexPrefixCodec(
 	session.agent.streamFunction = async (model, context, options) => {
 		// Compaction uses a separate summarization prompt and must retain native semantics.
 		if (session.isCompacting) return stream(model, context, options);
+		await resolvePiPrefixTransition(session, controller);
 		if (model.api !== "openai-codex-responses") throw new PrefixRecoveryRequiredError("Pi prefix codec does not support this provider API");
 		if (snapshot && snapshot.providerStatic.model !== model.id) throw new PrefixRecoveryRequiredError("model change requires an explicit prefix epoch transition");
 		if (snapshot) session.agent.state.systemPrompt = snapshot.systemPrompt;
@@ -113,11 +131,13 @@ export async function installPiCodexPrefixCodec(
 						format: 2, systemPrompt: frozenContext.systemPrompt ?? "", skills: structuredClone(session.resourceLoader.getSkills().skills),
 						tools: captureTools(frozenContext.tools), providerStatic,
 					};
+					await syncPiPrefixNativeState(session);
 					await controller.seal({
 						codec: PI_CODEX_PREFIX_CODEC, payload: JSON.stringify(captured), nativeSessionId: session.sessionId,
 						evidence: "adapter-inputs", hasHistoricalModelInput: historical,
 					});
 					snapshot = deepFreeze(captured);
+					facts = inferenceFacts(snapshot);
 				}
 				// Configuration changes are not silently undone. They need a visible epoch transition.
 				for (const key of ["model", "reasoning", "text", "service_tier", "temperature", "prompt_cache_key"]) {
@@ -126,6 +146,7 @@ export async function installPiCodexPrefixCodec(
 					}
 				}
 				// Only a shallow envelope allocation; no per-turn history or tools serialization.
+				controller.recordInference(facts!);
 				return { ...snapshot.providerStatic, input: transformed.input };
 			},
 		});

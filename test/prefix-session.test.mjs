@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,6 +8,7 @@ import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-binding-persistence.js";
 import { PrefixCapsuleStore } from "../dist/sessions/prefix-capsule.js";
 import { SessionPrefixController } from "../dist/sessions/prefix-session.js";
+import { resolvePiPrefixTransition, createPiPrefixLifecycleExtension } from "../dist/agent-runtimes/pi/prefix-lifecycle.js";
 
 for (const Store of [SqlitePiboSessionStore, PiboDataSessionStore]) {
 	test(`${Store.name}: durable sealing, restart, epoch reuse and concurrent CAS`, async t => {
@@ -36,9 +37,51 @@ for (const Store of [SqlitePiboSessionStore, PiboDataSessionStore]) {
 		assert.equal(await resumed.restore("pi-v1"), input.payload);
 		assert.equal((await resumed.advanceEpoch("compaction")).capsule.digest, prefix.capsule.digest);
 		assert.equal(resumed.binding.epoch, 2);
+		const nativeFile = join(root, "native.jsonl");
+		await writeFile(nativeFile, "durable fixture\n");
+		const entries = new Map();
+		let head = "before";
+		const native = { sessionId: session.piSessionId, sessionManager: {
+			getSessionFile: () => nativeFile, getLeafId: () => head, getEntry: id => entries.get(id),
+		} };
+		await resumed.beginCompaction(head);
+		await assert.rejects(resumed.beginCompaction(head), /already pending/);
+		const pendingBinding = sessions.get(session.id).runtimeBinding;
+		await assert.rejects(Promise.resolve().then(() => sessions.updateRuntimeBinding(session.id, {
+			...pendingBinding, metadata: { ...pendingBinding.metadata, piboSessionPrefixTransition: undefined },
+		}, { expectedRevision: pendingBinding.revision })), /receipt|transition/);
+		// Crash before native mutation: the cold controller aborts without advancing.
+		let recovered = makeController();
+		await resolvePiPrefixTransition(native, recovered);
+		assert.equal(recovered.transition.state, "aborted");
+		assert.equal(recovered.binding.epoch, 2);
+		await recovered.beginCompaction(head);
+		entries.set("compacted", { id: "compacted", parentId: head, type: "compaction" });
+		head = "compacted";
+		// Crash after native mutation and before the completion CAS.
+		recovered = makeController();
+		await Promise.all([resolvePiPrefixTransition(native, recovered), resolvePiPrefixTransition(native, recovered)]);
+		assert.equal(recovered.transition.state, "completed");
+		assert.equal(recovered.binding.epoch, 3);
+		assert.equal(recovered.binding.capsule.digest, prefix.capsule.digest);
+		await resolvePiPrefixTransition(native, recovered);
+		assert.equal(recovered.binding.epoch, 3, "recovery must be idempotent");
+		await recovered.beginCompaction(head);
+		entries.set("unrelated", { id: "unrelated", parentId: head, type: "message" });
+		head = "unrelated";
+		await assert.rejects(resolvePiPrefixTransition(native, makeController()), /history changed/);
+		assert.equal(makeController().transition.state, "pending");
 		await assert.rejects(resumed.restore("pi-v2"), /unsupported runtime or codec/);
 	});
 }
+
+test("Pi explicitly cancels compaction when the durable transition cannot be recorded", async () => {
+	const handlers = new Map();
+	createPiPrefixLifecycleExtension({ get transition() { throw new Error("persistence unavailable"); } }, () => ({}))({
+		on: (name, callback) => handlers.set(name, callback),
+	});
+	assert.deepEqual(await handlers.get("session_before_compact")(), { cancel: true });
+});
 
 test("structural persistence cannot authorize a protected dispatch", () => {
 	assert.throws(() => new SessionPrefixController({ getBinding() { throw new Error("unused"); }, persistence: { async compareAndSet(binding) { return binding; } } }), /audited/);

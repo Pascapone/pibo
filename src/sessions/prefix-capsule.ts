@@ -91,7 +91,7 @@ async function syncDirectory(path: string): Promise<void> {
 	try { await directory.sync(); } finally { await directory.close(); }
 }
 
-async function ensureDurableDirectory(path: string): Promise<void> {
+export async function ensureDurableDirectory(path: string): Promise<void> {
 	const absolute = resolve(path);
 	await mkdir(absolute, { recursive: true, mode: 0o700 });
 	// Persist every newly created ancestor, including its entry in the existing

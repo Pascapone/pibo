@@ -32,6 +32,33 @@ export type CacheObservation = {
 
 export type CacheInference = { evidence: CacheInferenceEvidence; metrics: ModelInferenceMetrics };
 
+/** Bounded allowlist for the standard event stream; never forwards arbitrary diagnostic payloads. */
+export function boundedCacheEvidence(value: CacheInferenceEvidence): CacheInferenceEvidence | undefined {
+	const identifier = (text: unknown): text is string => typeof text === "string" && text.length > 0 && text.length <= 128 && !/[\u0000-\u001f\u007f]/.test(text);
+	if (!value || !identifier(value.id)
+		|| !Number.isFinite(value.atMs) || value.atMs < 0) return undefined;
+	const result: CacheInferenceEvidence = { id: value.id, atMs: value.atMs };
+	for (const field of ["prefixDigest", "configurationDigest", "cacheKeyDigest"] as const) {
+		if (value[field] === undefined) continue;
+		if (typeof value[field] !== "string" || !/^[a-f0-9]{64}$/.test(value[field])) return undefined;
+		result[field] = value[field];
+	}
+	for (const field of ["epoch", "runtimeGeneration"] as const) {
+		if (value[field] === undefined) continue;
+		if (!identifier(value[field])) return undefined;
+		result[field] = value[field];
+	}
+	if (value.historyContinuity !== undefined) {
+		if (value.historyContinuity !== "verified" && value.historyContinuity !== "unknown") return undefined;
+		result.historyContinuity = value.historyContinuity;
+	}
+	if (value.boundary !== undefined) {
+		if (!["compaction", "model-change", "runtime-change", "explicit-refresh"].includes(value.boundary)) return undefined;
+		result.boundary = value.boundary;
+	}
+	return result;
+}
+
 function count(value: number | undefined): number | undefined {
 	return Number.isSafeInteger(value) && Number(value) >= 0 ? value : undefined;
 }

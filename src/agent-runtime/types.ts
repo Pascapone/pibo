@@ -7,6 +7,7 @@ import type {
 } from "./resources.js";
 export type { AgentRuntimeDeliveryReport } from "./resources.js";
 import type { PiboSession } from "../sessions/store.js";
+import type { SessionPrefixController } from "../sessions/prefix-session.js";
 import type {
 	AgentRuntimeAdapterId,
 	AgentRuntimeBindingLocator,
@@ -152,6 +153,7 @@ export type AgentRuntimeOpenServices = {
 	portableTools?: PiboPortableToolSession;
 	resources?: PiboRuntimeResourceSession;
 	runtimeBindingPersistence?: AgentRuntimeBindingPersistence;
+	prefixController?: SessionPrefixController;
 	telemetry?: unknown;
 	compatibility?: unknown;
 };
@@ -226,6 +228,8 @@ export interface AgentRuntimeAdapter {
 	/** Read persisted fork candidates without opening a runtime; undefined retains the live fallback. */
 	readForkCandidates?(input: ResolveAgentRuntimeBindingInput): Promise<AgentRuntimeForkCandidate[] | undefined>;
 	resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;
+	/** Cold, native-owned eligibility check. Existing unproven history must return false. */
+	canInitializePrefix?(input: ResolveAgentRuntimeBindingInput): Promise<boolean>;
 }
 
 export type AgentRuntimeDriverCreateInput<TConfig> = {

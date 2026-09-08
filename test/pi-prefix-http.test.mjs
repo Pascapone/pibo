@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { gunzipSync, brotliDecompressSync, inflateSync, zstdDecompressSync } from "node:zlib";
+import { streamSimple as streamNativeCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
@@ -18,6 +19,9 @@ import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { PrefixCapsuleStore } from "../dist/sessions/prefix-capsule.js";
 import { SessionPrefixController } from "../dist/sessions/prefix-session.js";
 import { createAgentRuntimeBindingPersistence } from "../dist/sessions/runtime-binding-persistence.js";
+import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { PiboPluginRegistry, definePiboPlugin } from "../dist/plugins/registry.js";
+import { PiboReliabilityStore } from "../dist/reliability/store.js";
 
 async function fakeProvider(t) {
 	const requests = [];
@@ -60,6 +64,13 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	t.after(() => resourceService.dispose());
 	const sessions = new SqlitePiboSessionStore(join(root, "sessions.sqlite"));
 	const api = await fakeProvider(t);
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (input, init) => {
+		const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+		if (url.origin !== new URL(api.baseUrl).origin) throw new Error("Fixture blocked non-loopback provider access");
+		return originalFetch(input, init);
+	};
+	t.after(() => { globalThis.fetch = originalFetch; });
 	let runtime;
 	let nativePath;
 	t.after(async () => { await runtime?.dispose(); sessions.close(); if (nativePath) await rm(nativePath, { force: true }); await rm(root, { recursive: true, force: true }); });
@@ -88,6 +99,8 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 			}],
 		});
 		result.session.agent.transport = "sse";
+		result.session.settingsManager.setTransport("sse");
+		result.session.settingsManager.setCompactionEnabled(false);
 		result.session.state.model = { api: "openai-codex-responses", provider: "openai-codex", id: "gpt-5.5", name: "test", baseUrl: api.baseUrl, reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 500000, maxTokens: 1024 };
 		result.session.setThinkingLevel("high");
 		return result;
@@ -127,4 +140,103 @@ for (const repeatCount of [250, 25000, 50000]) test(`Pi HTTP prefix and native t
 	assert.deepEqual(after.input.slice(0, before.input.length), before.input);
 	assert.ok((await readFile(nativePath, "utf8")).startsWith(nativeBefore), "native history is append-only in this fixture");
 	assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix.evidence, "adapter-inputs");
+	if (repeatCount === 50000) {
+		const prefixBefore = sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix;
+		await runtime.session.prompt("second substantial turn ".repeat(10000));
+		const inputBeforeCompaction = api.requests.at(-1).input;
+		await runtime.session.compact();
+		const compacted = sessions.get(session.id).runtimeBinding.metadata;
+		assert.equal(compacted.piboSessionPrefixTransition.state, "completed");
+		assert.equal(compacted.piboSessionPrefix.epoch, prefixBefore.epoch + 1);
+		assert.equal(compacted.piboSessionPrefix.capsule.digest, prefixBefore.capsule.digest);
+		await runtime.dispose(); runtime = undefined;
+		runtime = await open();
+		await runtime.session.prompt("continue after compacted restart");
+		assert.equal(api.requests.at(-1).instructions, before.instructions);
+		assert.deepEqual(api.requests.at(-1).tools, before.tools);
+		assert.notDeepEqual(api.requests.at(-1).input.slice(0, inputBeforeCompaction.length), inputBeforeCompaction);
+	}
+});
+
+test("normal Pi router preserves protected resources and binding when rollout is disabled on restart", { timeout: 60000 }, async t => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-prefix-router-"));
+	const previousHome = process.env.PIBO_HOME;
+	process.env.PIBO_HOME = join(root, "pibo-home");
+	const sessions = new SqlitePiboSessionStore(join(root, "sessions.sqlite"));
+	const reliability = new PiboReliabilityStore(join(root, "reliability.sqlite"));
+	let router;
+	let nativePath;
+	t.after(async () => {
+		await router?.disposeAll(); reliability.close(); sessions.close();
+		if (nativePath) await rm(nativePath, { force: true });
+		if (previousHome === undefined) delete process.env.PIBO_HOME; else process.env.PIBO_HOME = previousHome;
+		await rm(root, { recursive: true, force: true });
+	});
+	const api = await fakeProvider(t);
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = (input, init) => {
+		const url = new URL(typeof input === "string" || input instanceof URL ? input : input.url);
+		if (url.origin !== new URL(api.baseUrl).origin) throw new Error("Fixture blocked non-loopback provider access");
+		return originalFetch(input, init);
+	};
+	t.after(() => { globalThis.fetch = originalFetch; });
+	const contextPath = join(root, "selected-context.md");
+	await writeFile(contextPath, "Original router context");
+	await savePiboCustomBasePrompt("Original router base", root);
+	const credentials = new InMemoryCredentialStore();
+	const claim = Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "test-only" } })).toString("base64url");
+	await credentials.modify("openai-codex", async () => ({ type: "oauth", access: `test.${claim}.test`, refresh: "test-only", expires: Date.now() + 3600000 }));
+	const modelRuntime = await ModelRuntime.create({ credentials, allowModelNetwork: false });
+	modelRuntime.registerProvider("openai-codex", { api: "openai-codex-responses", baseUrl: api.baseUrl,
+		streamSimple: (model, context, options) => streamNativeCodex({ ...model, baseUrl: api.baseUrl }, context, { ...options, transport: "sse" }),
+		models: [{ id: "gpt-5.5", name: "Fixture", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 500000, maxTokens: 1024 }] });
+	const profileName = "prefix-router-fixture";
+	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({ id: "prefix.router.fixture", register(registration) {
+		registration.registerProfile({ name: profileName, create: () => new InitialSessionContextBuilder(profileName)
+			.withBuiltinTools("disabled").withAutoContextFiles(false).withToolPackages({ goalControl: false })
+			.withModel({ provider: "openai-codex", id: "gpt-5.5" }).addContextFile({ path: contextPath }).createSession() });
+	} })] });
+	const session = sessions.create({ channel: "test", kind: "chat", profile: profileName, workspace: root });
+	const open = enabled => new PiboSessionRouter({ cwd: root, sessionStore: sessions, reliabilityStore: reliability, pluginRegistry: registry,
+		persistSession: true, sessionPrefixProtection: enabled, modelRuntime, thinkingLevel: "high", modelDefaults: {},
+		extensionFactories: [pi => { pi.registerTool({ name: "prefix_probe", label: "Probe", description: "Fixture", parameters: { type: "object", properties: {} },
+			execute: async () => ({ content: [{ type: "text", text: "persistent tool result" }], details: {} }) }); }],
+	});
+	const usage = [];
+	router = open(true);
+	router.subscribe(event => { if (event.type === "assistant_usage") usage.push(event); });
+	await router.emitMessageAndWaitForReply({ type: "message", piboSessionId: session.id, id: "first", source: "user", text: "first routed input" }, 20000);
+	assert.equal(api.requests.length, 2);
+	const beforeBinding = sessions.get(session.id).runtimeBinding;
+	assert.ok(beforeBinding.metadata.piboSessionPrefix);
+	assert.ok(beforeBinding.metadata.piboSessionPrefixResources);
+	nativePath = beforeBinding.locator.value;
+	const nativeBefore = await readFile(nativePath, "utf8");
+	await router.disposeAll(); router = undefined;
+	await rm(contextPath);
+	await savePiboCustomBasePrompt("Changed router base", root);
+	router = open(false);
+	router.subscribe(event => { if (event.type === "assistant_usage") usage.push(event); });
+	await router.emitMessageAndWaitForReply({ type: "message", piboSessionId: session.id, id: "second", source: "user", text: "second routed input" }, 20000);
+	assert.equal(api.requests.length, 3);
+	const [, before, after] = api.requests;
+	assert.equal(after.instructions, before.instructions);
+	assert.deepEqual(after.tools, before.tools);
+	assert.equal(after.prompt_cache_key, before.prompt_cache_key);
+	assert.deepEqual(after.input.slice(0, before.input.length), before.input);
+	assert.equal(sessions.get(session.id).runtimeBinding.metadata.piboSessionPrefix.capsule.digest, beforeBinding.metadata.piboSessionPrefix.capsule.digest);
+	assert.ok((await readFile(nativePath, "utf8")).startsWith(nativeBefore));
+	assert.equal(usage.length, 3);
+	assert.equal(usage[0].cacheEvidence.runtimeGeneration, usage[1].cacheEvidence.runtimeGeneration);
+	assert.notEqual(usage[1].cacheEvidence.runtimeGeneration, usage[2].cacheEvidence.runtimeGeneration);
+	assert.equal(usage[1].cacheEvidence.cacheKeyDigest, usage[2].cacheEvidence.cacheKeyDigest);
+	assert.equal(usage[1].cacheEvidence.prefixDigest, beforeBinding.metadata.piboSessionPrefix.capsule.digest);
+	assert.equal(usage[2].cacheEvidence.historyContinuity, "unknown");
+	assert.ok(Buffer.byteLength(JSON.stringify(usage[2].cacheEvidence)) <= 2048);
+	assert.ok(!JSON.stringify(usage.map(event => event.cacheEvidence)).includes("Original router"));
+	await router.disposeAll(); router = undefined;
+	await rm(nativePath);
+	router = open(false);
+	await assert.rejects(router.emitMessageAndWaitForReply({ type: "message", piboSessionId: session.id, id: "missing", source: "user", text: "must not dispatch" }, 20000), /missing|not found|recovery/i);
+	assert.equal(api.requests.length, 3);
 });

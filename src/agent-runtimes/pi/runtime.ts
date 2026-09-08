@@ -74,6 +74,7 @@ import {
 import { compilePiboToolForPi } from "./tool-compiler.js";
 import { installPiIntentTracing, piIntentTracingEnabled } from "./intent-tracing.js";
 import { installPiCodexPrefixCodec, restorePiCodexPrefix } from "./prefix-codec.js";
+import { createPiPrefixLifecycleExtension } from "./prefix-lifecycle.js";
 import type { SessionPrefixController } from "../../sessions/prefix-session.js";
 import type { PiboPortableToolSession } from "../../tools/session-service.js";
 import type {
@@ -298,6 +299,7 @@ function getProfileExtensionFactories(
 	extensionFactories: readonly ExtensionFactory[] | undefined,
 	contextGuardRecovery: PiboAssistantContextGuardRecovery,
 	getSettingsManager: () => SettingsManager | undefined,
+	prefixLifecycle?: ExtensionFactory,
 ): ExtensionFactory[] | undefined {
 	const piboPromptTemplateExtension = createPiboSystemPromptTemplateExtension();
 	const piboCompactionPromptExtension = createPiboCompactionPromptExtension({ getSettingsManager });
@@ -308,6 +310,7 @@ function getProfileExtensionFactories(
 		.map((tool) => createWebSearchProviderExtension(tool.providerTool));
 	if (profile.toolPackages.codexCompat !== true) {
 		return [
+			...(prefixLifecycle ? [prefixLifecycle] : []),
 			piboPromptTemplateExtension,
 			piboCompactionPromptExtension,
 			piboContextGuardExtension,
@@ -316,6 +319,7 @@ function getProfileExtensionFactories(
 		];
 	}
 	return [
+		...(prefixLifecycle ? [prefixLifecycle] : []),
 		piboPromptTemplateExtension,
 		piboCompactionPromptExtension,
 		piboContextGuardExtension,
@@ -394,6 +398,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		sessionStartEvent,
 	}) => {
 		const contextGuardRecovery = createPiboAssistantContextGuardRecovery();
+		let prefixSession: Parameters<typeof installPiCodexPrefixCodec>[0] | undefined;
 		const restoredPrefix = options.prefixController ? await restorePiCodexPrefix(options.prefixController) : undefined;
 		const resourceContextFiles = restoredPrefix ? [] : options.resources?.getContextContributions()
 			.flatMap((contribution) => contribution.content === undefined || contribution.nativeDiscovered ? [] : [{
@@ -424,6 +429,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 					options.extensionFactories,
 					contextGuardRecovery,
 					() => runtimeSettingsManager,
+					options.prefixController ? createPiPrefixLifecycleExtension(options.prefixController, () => prefixSession) : undefined,
 				),
 				noExtensions: true,
 				noSkills: true,
@@ -561,6 +567,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			originalDispose();
 		};
 		if (options.prefixController) {
+			prefixSession = created.session;
 			try { await installPiCodexPrefixCodec(created.session, options.prefixController, restoredPrefix); }
 			catch (error) { created.session.dispose(); throw error; }
 		}

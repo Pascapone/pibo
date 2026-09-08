@@ -1,4 +1,5 @@
 import { rejectUnsupportedPrefixRestore } from "../../sessions/prefix-capsule.js";
+import type { SessionPrefixController } from "../../sessions/prefix-session.js";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
@@ -201,6 +202,7 @@ export type PiAgentRuntimeCompatibilityServices = {
 	retryDefaults?: PiboRuntimeRetryDefaults;
 	extensionFactories?: ExtensionFactory[];
 	modelDefaults?: PiboRuntimeOptions["modelDefaults"];
+	modelRuntime?: PiboRuntimeOptions["modelRuntime"];
 	contextGuardTuiQueueOrdering?: boolean;
 	initialFastMode?: boolean;
 	providerFallbacksEnabled?: boolean;
@@ -388,6 +390,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		initialFastMode: boolean,
 		providerWebSearchEnabled: boolean,
 		providerFallbacksEnabled: boolean,
+		private readonly prefixController?: SessionPrefixController,
 	) {
 		this.cwd = runtime.cwd;
 		this.bindingNativeSessionId = runtime.session.sessionId;
@@ -413,6 +416,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 	}
 
 	getBinding(): RuntimeSessionBinding {
+		const persisted = this.prefixController?.getRuntimeBinding();
 		const persistent = this.binding.metadata?.persistent !== false;
 		if (this.bindingNativeSessionId !== this.runtime.session.sessionId) {
 			this.bindingNativeSessionId = this.runtime.session.sessionId;
@@ -420,6 +424,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		}
 		return {
 			...structuredClone(this.binding),
+			...(persisted ? { revision: persisted.revision, updatedAt: persisted.updatedAt } : {}),
 			nativeSessionId: this.runtime.session.sessionId,
 			state: "bound",
 			locator: this.runtime.session.sessionFile
@@ -427,6 +432,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 				: undefined,
 			metadata: {
 				...(this.binding.metadata ?? {}),
+				...(persisted?.metadata ?? {}),
 				nativePresenceExpected: persistent && this.nativePresenceExpected,
 			},
 		};
@@ -778,8 +784,14 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		};
 	}
 
+	async canInitializePrefix(input: ResolveAgentRuntimeBindingInput): Promise<boolean> {
+		if (input.binding.state !== "unbound") return false;
+		if (!input.binding.nativeSessionId) return input.binding.state === "unbound";
+		return !(await SessionManager.list(input.workspace)).some(session => session.id === input.binding.nativeSessionId);
+	}
+
 	async openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
-		rejectUnsupportedPrefixRestore(input.binding?.metadata);
+		if (!input.services?.prefixController) rejectUnsupportedPrefixRestore(input.binding?.metadata);
 		if (input.historyHandoff?.mode === "import" && input.binding?.state === "bound") {
 			throw new Error("Pi portable history import requires a new native session.");
 		}
@@ -800,6 +812,8 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			portableTools: input.services?.portableTools,
 			resources: input.services?.resources,
 			modelDefaults: compatibility?.modelDefaults,
+			modelRuntime: compatibility?.modelRuntime,
+			prefixController: input.services?.prefixController,
 			activeModel: input.activeModel,
 			sessionContext: {
 				piboSessionId: input.productContext.piboSessionId,
@@ -848,6 +862,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			compatibility?.initialFastMode ?? false,
 			profile.tools.some((tool) => tool.enabled !== false && isWebSearchProviderTool(tool)),
 			compatibility?.providerFallbacksEnabled ?? false,
+			input.services?.prefixController,
 		);
 	}
 

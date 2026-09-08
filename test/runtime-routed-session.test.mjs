@@ -28,6 +28,37 @@ function deferred() {
 	return { promise, resolve };
 }
 
+test("cache evidence failures and malformed payloads do not interrupt usage or assistant output", async () => {
+	let listener;
+	let observation = 0;
+	const events = [];
+	const runtime = {
+		adapterId: "cache-fixture", runtimeInstanceId: "cache-fixture", cwd: process.cwd(), capabilities: createMinimalAgentRuntimeCapabilities(),
+		getBinding: () => ({ piboSessionId: "ps_cache", runtimeInstanceId: "cache-fixture", adapterId: "cache-fixture", state: "bound" }),
+		getStatus: () => ({ streaming: false, enabledTools: [], cwd: process.cwd() }),
+		subscribe(callback) { listener = callback; return () => {}; }, async prompt() {}, async abort() {}, async dispose() {},
+	};
+	const routed = new RuntimeRoutedSession("ps_cache", runtime, event => events.push(event), PiboPluginRegistry.create(), {
+		getCacheEvidence() {
+			if (++observation === 1) throw new Error("sensitive error must not leak");
+			if (observation === 2) return { id: "bad", atMs: Date.now(), configurationDigest: "raw secret" };
+			return { id: "valid", atMs: Date.now(), runtimeGeneration: "generation", historyContinuity: "unknown", rawPrompt: "must be removed" };
+		},
+	});
+	try {
+		for (let i = 0; i < 3; i++) listener({ type: "usage", usage: { inputTokens: 20, outputTokens: 1, totalTokens: 21 } });
+		listener({ type: "assistant_message", text: "reply survives" });
+		assert.equal(events.filter(event => event.type === "assistant_usage").length, 3);
+		assert.equal(events[0].cacheEvidence, undefined);
+		assert.equal(events[1].cacheEvidence, undefined);
+		assert.equal(events[2].cacheEvidence.id, "valid");
+		assert.ok(events.some(event => event.type === "assistant_message" && event.text === "reply survives"));
+		assert.deepEqual(routed.getStatus().cacheDiagnostics, { droppedObservations: 2 });
+		assert.ok(!JSON.stringify(events).includes("raw secret"));
+		assert.ok(!JSON.stringify(events).includes("must be removed"));
+	} finally { await routed.dispose(); }
+});
+
 function createFakeRuntimeFixture(routerOptions = {}, script) {
 	const fakeDriver = createFakeAgentRuntimeDriver({
 		adapterId: "router-fake",

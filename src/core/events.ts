@@ -210,6 +210,7 @@ export type PiboExecutionEvent = PiboKnownExecutionEvent | PiboCustomExecutionEv
 export type PiboInputEvent = PiboMessageEvent | PiboExecutionEvent;
 
 export type PiboSessionStatus = {
+	cacheDiagnostics?: { droppedObservations: number };
 	piboSessionId: string;
 	activeModel?: { provider: string; id: string };
 	runtimeBinding?: {
