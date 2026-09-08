@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
-import { legacyOutputIdentityFingerprint, OUTPUT_IDENTITY_FINGERPRINT_VERSION, outputIdentityFieldDigests, outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
+import { legacyOutputIdentityFingerprintCandidates, OUTPUT_IDENTITY_FINGERPRINT_VERSION, outputIdentityFieldDigests, outputIdentityFingerprint, outputPartFingerprint } from "../core/output-render-sequence.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { PiboDataStore } from "./pibo-store.js";
 import type { PreparedPayload } from "./payload-store.js";
@@ -467,7 +467,7 @@ function storedFingerprintMatches(attributes: PiboJsonObject, event: PiboOutputE
 	if (attributes.identityFingerprintVersion === OUTPUT_IDENTITY_FINGERPRINT_VERSION) return fingerprint === currentFingerprint;
 	// Versionless fingerprints were produced by v1. Compare with the exact old
 	// algorithm instead of comparing incompatible hash formats.
-	return fingerprint === legacyOutputIdentityFingerprint(event);
+	return legacyOutputIdentityFingerprintCandidates(event).includes(fingerprint);
 }
 
 function deterministicId(prefix: string, value: string): string {

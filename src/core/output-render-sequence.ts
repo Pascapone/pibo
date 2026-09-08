@@ -469,6 +469,31 @@ export function legacyOutputIdentityFingerprint(event: PiboOutputEvent): string 
 	return createHash("sha256").update(stableJson(payload)).digest("hex");
 }
 
+export function legacyOutputIdentityFingerprintCandidates(event: PiboOutputEvent): string[] {
+	const variants: Array<Record<string, unknown>> = [{ ...event }];
+	const assistant = event.type === "assistant_delta" || event.type === "assistant_message";
+	const thinking = event.type === "thinking_started" || event.type === "thinking_delta" || event.type === "thinking_finished";
+	const index = assistant ? event.assistantIndex ?? event.contentIndex : thinking ? event.thinkingIndex ?? event.contentIndex : undefined;
+	if (index !== undefined && (assistant || thinking)) {
+		for (const attribute of assistant ? ["assistantIndex", "contentIndex"] : ["thinkingIndex", "contentIndex"]) {
+			const variant = { ...event } as Record<string, unknown>;
+			delete variant.assistantIndex;
+			delete variant.thinkingIndex;
+			delete variant.contentIndex;
+			variant[attribute] = index;
+			variants.push(variant);
+		}
+	}
+	for (const variant of [...variants]) {
+		if ("provenance" in variant) {
+			const withoutProvenance = { ...variant };
+			delete withoutProvenance.provenance;
+			variants.push(withoutProvenance);
+		}
+	}
+	return [...new Set(variants.map((variant) => legacyOutputIdentityFingerprint(variant as PiboOutputEvent)))];
+}
+
 /** Redacted, bounded evidence for diagnosing a fingerprint mismatch without retaining values. */
 export function outputIdentityFieldDigests(event: PiboOutputEvent): Record<string, string> {
 	return Object.fromEntries(Object.entries(outputIdentityPayload(event))
