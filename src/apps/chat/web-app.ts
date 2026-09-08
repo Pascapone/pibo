@@ -128,7 +128,7 @@ import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
 import { ScopedUserSkillManager } from "../../user-skills/manager.js";
-import { ChatDataIngestService, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
+import { ChatDataIngestService, legacyOutputIdempotencyKey, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
 import { ChatReadStateService } from "./data/read-state-service.js";
 import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
@@ -1174,6 +1174,11 @@ async function deliverWebOutputPersistenceState(
 					actorId: persistenceState.actorId ?? session.id,
 					event: delivery.event,
 					createdAt,
+					persistenceProvenance: {
+						producer: "chat-web" as const,
+						projection: "product-history" as const,
+						phase: retryContext.attempt > 1 ? "durable-replay" as const : "live" as const,
+					},
 				};
 				const asyncIngested = state.asyncStorage ? await state.asyncStorage.ingestOutput(ingestInput) : undefined;
 				const ingested = asyncIngested ?? state.ingestService.ingestOutputEvent(ingestInput);
@@ -1293,7 +1298,7 @@ function parseWebOutputPersistenceState(value: PiboJsonValue): WebOutputPersiste
 		const delivery = rawDelivery as Record<string, unknown>;
 		if (!isPiboOutputEvent(delivery.event) || !outputIdempotencyKey(delivery.event)) return undefined;
 		const deliveryId = outputPersistenceDeliveryKey(delivery.event);
-		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId) return undefined;
+		if (delivery.deliveryId !== undefined && delivery.deliveryId !== deliveryId && delivery.deliveryId !== legacyOutputIdempotencyKey(delivery.event)) return undefined;
 		const v2 = delivery.v2;
 		if (v2 !== undefined && (
 			!v2 || typeof v2 !== "object" || Array.isArray(v2)
