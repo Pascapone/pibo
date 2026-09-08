@@ -57,6 +57,44 @@ const RUN_REMINDER_MAX_PROVIDER_ROUNDS = 64;
 const RUN_REMINDER_MAX_ACTIVE_TOKENS = 2_000_000;
 export const RUN_REMINDER_MAX_DURATION_MS = 15 * 60 * 1000;
 const RUN_REMINDER_MAX_REPEATED_TOOL_CALLS = 12;
+const RUNTIME_QUEUE_MAX_MESSAGE_BYTES = 1024 * 1024;
+const RUNTIME_QUEUE_MAX_MESSAGES = 64;
+const RUNTIME_QUEUE_MAX_BYTES = 4 * 1024 * 1024;
+const RUNTIME_QUEUE_MAX_WAIT_MS = 10 * 60 * 1000;
+
+export type RuntimeQueueCapacityDimension = "message_bytes" | "queue_count" | "queue_bytes" | "oldest_wait_age";
+
+export class RuntimeQueueCapacityError extends Error {
+	readonly code = "runtime_capacity_unavailable";
+
+	constructor(
+		readonly dimension: RuntimeQueueCapacityDimension,
+		readonly current: {
+			messageBytes: number;
+			queueCount: number;
+			queueBytes: number;
+			oldestWaitMs: number;
+		},
+		readonly limit: number,
+	) {
+		super(`Session runtime queue ${dimension} capacity reached (current=${capacityDimensionCurrent(dimension, current)}, limit=${limit}).`);
+		this.name = "RuntimeQueueCapacityError";
+	}
+}
+
+function capacityDimensionCurrent(
+	dimension: RuntimeQueueCapacityDimension,
+	current: RuntimeQueueCapacityError["current"],
+): number {
+	if (dimension === "message_bytes") return current.messageBytes;
+	if (dimension === "queue_count") return current.queueCount;
+	if (dimension === "queue_bytes") return current.queueBytes;
+	return current.oldestWaitMs;
+}
+
+function isRunReminderMessage(event: PiboMessageEvent): boolean {
+	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
+}
 
 type RunReminderTurnGuard = {
 	eventId?: string;
@@ -126,6 +164,8 @@ export type RuntimeRoutedSessionOptions = {
 	logoutRuntimeAuth?: (input: LogoutAgentRuntimeAuthInput) => Promise<AgentRuntimeAuthOperationResult>;
 	statusResources?: Pick<PiboSessionStatus, "enabledSkills" | "contextFiles">;
 	getToolMetricTokenCalculation?: () => ToolMetricTokenCalculation;
+	/** Injected only for deterministic runtime-queue admission checks. */
+	now?: () => number;
 };
 
 function errorMessage(error: unknown): string {
@@ -262,6 +302,7 @@ export class RuntimeRoutedSession {
 	private readonly modelFallbacks: readonly ModelProfile[];
 	private suppressProviderFailures = false;
 	private pendingProviderFailure?: { message: string; details: PiboSessionErrorDetails };
+	private runReminderDeferredWarning?: string;
 	private unsubscribe?: () => void;
 
 	constructor(
@@ -285,14 +326,31 @@ export class RuntimeRoutedSession {
 		if (this.sessionIdentityOperationInFlight && !this.forkCandidatesRequest) {
 			throw new Error("Pibo session cannot accept messages while a session identity operation is in progress.");
 		}
-		const messages = this.queue.filter(item=>item.kind === "message");
-		const bytes = Buffer.byteLength(event.text);
-		if (bytes>1024*1024 || messages.length>=64 || messages.reduce((total,item)=>total+Buffer.byteLength(item.event.text),bytes)>4*1024*1024
-			|| messages.some(item=>Date.now()-item.acceptedAt>=10*60*1000)) {
-			throw Object.assign(new Error("Session runtime queue count, byte or wait-age capacity reached."),{code:"runtime_capacity_unavailable"});
+		if (isRunReminderMessage(event)) this.removeQueuedMessages(isRunReminderMessage);
+		const now = this.options.now?.() ?? Date.now();
+		// Run reminders are coalesced service work. They remain bounded on admission,
+		// but cannot age-poison the ordinary message budget while an active turn runs.
+		const messages = this.queue.filter(
+			(item): item is Extract<RuntimeRoutedQueueItem, { kind: "message" }> => item.kind === "message" && !isRunReminderMessage(item.event),
+		);
+		const messageBytes = Buffer.byteLength(event.text);
+		const queueBytes = messages.reduce((total, item) => total + Buffer.byteLength(item.event.text), messageBytes);
+		const oldestWaitMs = messages.reduce((oldest, item) => Math.max(oldest, now - item.acceptedAt), 0);
+		const current = { messageBytes, queueCount: messages.length, queueBytes, oldestWaitMs };
+		if (messageBytes > RUNTIME_QUEUE_MAX_MESSAGE_BYTES) {
+			throw new RuntimeQueueCapacityError("message_bytes", current, RUNTIME_QUEUE_MAX_MESSAGE_BYTES);
+		}
+		if (messages.length >= RUNTIME_QUEUE_MAX_MESSAGES) {
+			throw new RuntimeQueueCapacityError("queue_count", current, RUNTIME_QUEUE_MAX_MESSAGES);
+		}
+		if (queueBytes > RUNTIME_QUEUE_MAX_BYTES) {
+			throw new RuntimeQueueCapacityError("queue_bytes", current, RUNTIME_QUEUE_MAX_BYTES);
+		}
+		if (oldestWaitMs >= RUNTIME_QUEUE_MAX_WAIT_MS) {
+			throw new RuntimeQueueCapacityError("oldest_wait_age", current, RUNTIME_QUEUE_MAX_WAIT_MS);
 		}
 		onAccepted();
-		this.queue.push({ kind: "message", event, acceptedAt:Date.now() });
+		this.queue.push({ kind: "message", event, acceptedAt: now });
 		const output: PiboOutputEvent = {
 			type: "message_queued",
 			piboSessionId: this.piboSessionId,
@@ -434,7 +492,9 @@ export class RuntimeRoutedSession {
 			thinkingLevel,
 			fastMode: status.fastMode?.mode === "fast",
 			retry: status.retry as PiboSessionStatus["retry"],
-			warnings: status.warnings,
+			warnings: this.runReminderDeferredWarning
+				? [...new Set([...(status.warnings ?? []), this.runReminderDeferredWarning])]
+				: status.warnings,
 			errors: status.errors,
 			...(pendingApprovals.length > 0
 				? { pendingApprovals: pendingApprovals.map((request) => structuredClone(request)) }
@@ -454,7 +514,9 @@ export class RuntimeRoutedSession {
 			activeModel: status.activeModel,
 			contextUsage: status.contextUsage,
 			providerUsage: status.providerUsage,
-			warnings: status.warnings,
+			warnings: this.runReminderDeferredWarning
+				? [...new Set([...(status.warnings ?? []), this.runReminderDeferredWarning])]
+				: status.warnings,
 			errors: status.errors,
 		};
 	}
@@ -505,7 +567,12 @@ export class RuntimeRoutedSession {
 		}
 		removedMessages.reverse();
 		this.notifyMessagesInterrupted(removedMessages, "queued message removed");
+		if (removedMessages.length > 0) this.notifyState();
 		return removedMessages.length;
+	}
+
+	setRunReminderDeferredWarning(message: string | undefined): void {
+		this.runReminderDeferredWarning = message;
 	}
 
 	getCurrentSession(): PiboPiSessionSnapshot {

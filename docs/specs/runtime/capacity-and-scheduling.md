@@ -5,11 +5,11 @@ description: "Defines bounded durable admission, room fairness, cold-start and p
 tags: ["runtime", "capacity", "performance", "admission"]
 status: "stable"
 authority: "normative"
-generated: { by: "openai/codex", at: "2026-09-08T17:55:23Z" }
+generated: { by: "openai/gpt-5.6-sol", at: "2026-09-08T19:46:13Z" }
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "800bb6ec5dd0b13b64c6333719ac1a88239d1462"
+  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
   requirements:
     - id: "RUN-CAP-001"
       status: "implemented"
@@ -94,6 +94,25 @@ traceability:
         - "Blocked successors do not contribute wait age, but still consume count and byte capacity until bounded startup policy terminalizes them."
         - "Health storage failure is ambiguous/degraded rather than healthy."
       confidence: "high"
+    - id: "RUN-CAP-006"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtime/routed-session.ts"
+          symbol: "RuntimeRoutedSession.enqueueMessage"
+        - path: "src/core/session-router.ts"
+          symbol: "PiboSessionRouter.deliverRunReminder"
+        - path: "src/apps/chat/message-command-dispatcher.ts"
+          symbol: "MessageCommandDispatcher"
+      tests:
+        - path: "test/run-reminder-admission.test.mjs"
+          name: "real routed reminder coalescing keeps persistence, live signals, and trace on the active user turn"
+        - path: "test/session-quiescence.test.mjs"
+          name: "enqueue failure remains nonfatal, reports once, and retains the notification for later delivery"
+        - path: "test/message-command-dispatcher.test.mjs"
+          name: "runtime queue capacity failures persist dimension-specific numeric diagnostics without message content"
+      failures:
+        - "Internal reminder admission failure retains notification state and exposes a bounded warning without emitting an unscoped terminal Session error."
+      confidence: "high"
 ---
 
 # Scope
@@ -120,7 +139,7 @@ Explicit admission wakes survive an in-flight empty claim. Persisted terminal ou
 
 Storage RPC scheduling rotates Rooms within an aged priority class. Its bounded recent-Room history survives drained bursts. A one-millisecond idle admission window collects competing Room heads; control RPCs bypass that window. The Chat writer reserves eight of 128 pending entries and 256 KiB of its eight-MiB pending-byte budget for short control operations. General pressure therefore does not consume the entire control allowance. Count, byte and age limits remain enforced on every priority. One RPC is in flight; existing output durability and uncertainty rules remain authoritative.
 
-`clear_queue` cancels accepted/unstarted durable commands before invoking the runtime action, fences their claims and includes them in the cleared count before output emission, so the returned result and persisted/live command output agree. It does not relabel an initializing or running command as never dispatched. Runtime queue admission also checks 64 waiting messages, four MiB aggregate text, a one-MiB message limit and ten-minute oldest wait before its acceptance callback.
+`clear_queue` cancels accepted/unstarted durable commands before invoking the runtime action, fences their claims and includes them in the cleared count before output emission, so the returned result and persisted/live command output agree. It does not relabel an initializing or running command as never dispatched. Runtime queue admission also checks 64 waiting ordinary messages, four MiB aggregate ordinary text, a one-MiB incoming-message limit and ten-minute oldest ordinary wait before its acceptance callback. Rejections identify `message_bytes`, `queue_count`, `queue_bytes`, or `oldest_wait_age` and carry only numeric queue diagnostics, never message content. Coalesced internal run reminders remain bounded when admitted but do not count as an ordinary waiting message or establish its oldest-wait age.
 
 ## Requirement: RUN-CAP-002
 
@@ -151,6 +170,14 @@ An interrupted normal predecessor is an explicit Session-scoped reconciliation b
 Global and Room oldest-wait calculations count only dispatchable accepted or waiting-slot commands. A successor blocked by an interrupted predecessor therefore cannot age into Room-wide or database-wide overload for unrelated Sessions. Genuine count, byte, and dispatchable wait-age exhaustion remains `command_overloaded` and retryable. Blocked rows continue to consume count and bytes until the explicit terminalization policy runs; this avoids hiding retained durable storage.
 
 Durable queue health uses trigger-maintained state/delivery totals and bounded indexed operational reads. It separately reports interrupted predecessors, FIFO-blocked successors, dispatchable and blocked wait age, expired owned leases, global/Room/Session admission reasons, storage availability, affected command/Session/Room identities, and truncation metadata. It never reads message payload bodies or scans event history. Healthy dispatchable backlog remains distinct from a barrier. Storage timeout or unavailability is ambiguous/degraded.
+
+## Requirement: RUN-CAP-006
+
+One controller Session and runtime generation has at most one effective queued run-reminder delivery. A new run transition atomically removes the still-queued prior delivery, releases only its notification reservation, and creates a current snapshot. Replacement, deferral, and delivery do not consume or acknowledge tracked runs; completed, failed, timed-out, and still-running states remain eligible until the agent explicitly reads or acknowledges them.
+
+A queued reminder's age does not reject its replacement or an ordinary user message. Ordinary queue count, byte, single-message, and oldest-wait limits still apply. If those limits or another internal delivery boundary prevent reminder admission, the router releases the attempted notification reservation for a later state-driven retry. It does not emit an unscoped `session_error`; therefore the active user Turn, durable Session and navigation rows, live Session signal, and trace Turn remain active rather than becoming terminal error projections.
+
+The live runtime status exposes a `Run reminder deferred` warning, while the operator log emits at most one structured warning during each continuous deferral episode. Runtime-capacity warnings contain only the dimension and numeric current/limit values. A successful later delivery, explicit suppression, consumption, acknowledgement, cancellation, quiescence, or generation invalidation clears the warning as applicable. Retry is driven by bounded scheduling and queue state transitions rather than a zero-delay redelivery loop. Existing generation, quiescence, cancellation, restart-recovery, context-pressure, and reminder-turn guards continue to fence delivery.
 
 # Configuration and compatibility
 
