@@ -92,3 +92,17 @@ test("real temporary-store CLI exposes status, bounded verification, dry-run ret
 		const checkpoint = await run(["checkpoint", "--apply", "--mode", "passive", "--path", f.path, "--json"]); assert.equal(checkpoint.mutation, true);
 	} finally { try { f.store.close(); } catch {} rmSync(f.root, { recursive: true, force: true }); }
 });
+
+test("payload size completeness follows the 1000-row byte sample, not the larger row count", () => {
+ const f = fixture();
+ try {
+  const insert = f.store.db.prepare("INSERT INTO payloads (id, sha256, storage_kind, content_type, encoding, byte_size, retention_class, created_at) VALUES (?, ?, 'inline', 'text/plain', 'identity', 1, 'live_delta', '2025-01-01T00:00:00Z')");
+  f.store.transaction(() => { for (let i = 0; i < 1001; i++) insert.run(`bounded-${i}`, `hash-${i}`); });
+  const status = inspectStorageStatus({ path: f.path, payloadWarnBytes: 1001 });
+  assert.equal(status.payloads.rowsComplete, true);
+  assert.equal(status.payloads.rows, 1001);
+  assert.equal(status.sizes.payloadStoreMetadataSample, 1000);
+  assert.equal(status.sizes.payloadStoreSampleComplete, false);
+  assert.ok(status.warnings.includes("payload_size_threshold_indeterminate"));
+ } finally { f.store.close(); rmSync(f.root, { recursive: true, force: true }); }
+});

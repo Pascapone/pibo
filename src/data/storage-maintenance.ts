@@ -66,7 +66,7 @@ export function inspectStorageStatus(input: { path: string; databaseWarnBytes?: 
 			wal: fileSize(`${path}-wal`),
 			shm: fileSize(`${path}-shm`),
 			payloadStoreMetadataSample: payload.metadataBytes,
-			payloadStoreSampleComplete: payload.rowsComplete,
+			payloadStoreSampleComplete: payload.rowsComplete && payload.sampledRows === payload.rows,
 		};
 		const walPressure = sizes.wal >= thresholds.walBytes;
 		const warnings = [
