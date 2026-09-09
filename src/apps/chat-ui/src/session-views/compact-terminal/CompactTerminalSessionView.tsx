@@ -680,7 +680,7 @@ function TerminalRow({
 
 function ModelInferenceMetricsList({ records }: { records: CompactTerminalRow["modelInferences"] }) {
 	if (!records?.length) return null;
-	return <>{records.map((record) => <TerminalModelInferenceMetrics key={record.id} metrics={record.metrics} />)}</>;
+	return <>{records.map((record) => <TerminalModelInferenceMetrics key={record.id} metrics={record.metrics} cacheObservation={record.cacheObservation} />)}</>;
 }
 
 function TerminalRowContent({

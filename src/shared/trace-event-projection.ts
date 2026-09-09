@@ -10,6 +10,8 @@ import {
 } from "./trace-subagent-links.js";
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
+import { observeCacheUsage } from "./cache-observability.js";
+import type { ModelInferenceRecord } from "./model-inference-metrics.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -717,7 +719,11 @@ function attachModelInferenceToLatestOutput(
 	storedEvent: ChatWebStoredEvent,
 ): void {
 	const eventId = event.eventId;
-	const candidates = flattenTraceNodes(nodes)
+	const flattened = flattenTraceNodes(nodes);
+	const id = event.inferenceId
+		? `${eventId ?? storedEvent.piboSessionId}:inference:${event.inferenceId}`
+		: eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
+	const candidates = flattened
 		.filter((node) => node.eventId === eventId && (event.inferenceTarget || traceNodeStartedBeforeInference(node, storedEvent)) && (
 			node.type === "assistant.message"
 			|| node.type === "model.reasoning"
@@ -727,20 +733,21 @@ function attachModelInferenceToLatestOutput(
 		.sort(compareTraceNodes);
 	const anchor = event.inferenceTarget;
 	const turnNode = eventId ? byId.get(messageTurnNodeId(eventId)) : undefined;
-	const target = anchor
+	const anchoredTarget = anchor
 		? (anchor.type === "tool"
 			? candidates.find((node) => node.toolCallId === anchor.toolCallId)
 			: anchor.type === "assistant"
 				? candidates.find((node) => node.stableKey === `assistant:${eventId}:assistant:${anchor.assistantIndex}`)
 				: turnNode) ?? turnNode
 		: candidates.at(-1) ?? turnNode;
+	// A repeated provider receipt updates its original inference instead of moving
+	// the usage record to whichever output happened to render last.
+	const target = flattened.find((node) => node.modelInferences?.some((item) => item.id === id)) ?? anchoredTarget;
 	if (!target) return;
-	const id = event.inferenceId
-		? `${eventId ?? storedEvent.piboSessionId}:inference:${event.inferenceId}`
-		: eventId ? `${eventId}:usage:${event.usageIndex ?? 0}` : storedEvent.id;
-	const record = {
+	const existingRecord = target.modelInferences?.find((item) => item.id === id);
+	const record: ModelInferenceRecord = {
 		id,
-		completedAt: storedEvent.createdAt,
+		completedAt: existingRecord?.completedAt ?? storedEvent.createdAt,
 		metrics: {
 			...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
 			...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
@@ -751,6 +758,24 @@ function attachModelInferenceToLatestOutput(
 			...(event.costUsd === undefined ? {} : { costUsd: event.costUsd }),
 		},
 	};
+	const currentAt = Date.parse(record.completedAt ?? "");
+	let previous: ModelInferenceRecord | undefined;
+	let previousAt = -Infinity;
+	for (const node of flattened) {
+		for (const item of node.modelInferences ?? []) {
+			const at = Date.parse(item.completedAt ?? "");
+			if (item.id !== id && Number.isFinite(at) && (!Number.isFinite(currentAt) || at <= currentAt) && at >= previousAt) {
+				previous = item;
+				previousAt = at;
+			}
+		}
+	}
+	const compactionBetween = previous !== undefined && Number.isFinite(currentAt) && flattened.some((node) => {
+		if (node.type !== "execution.compaction") return false;
+		const at = Date.parse(node.startedAt ?? node.completedAt ?? "");
+		return Number.isFinite(at) && at > previousAt && at <= currentAt;
+	});
+	record.cacheObservation = observeCacheUsage(record, previous, { compactionBetween });
 	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record];
 }
 

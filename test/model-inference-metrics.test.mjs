@@ -4,7 +4,7 @@ import test from "node:test";
 import { chatStreamFramesFromOutputEvent, createChatStreamState } from "../dist/apps/chat/stream.js";
 import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
-import { modelInferenceCachedInputTokens, modelInferenceInputTokens, modelInferenceUncachedInputTokens } from "../dist/shared/model-inference-metrics.js";
+import { modelInferenceCachedInputTokens, modelInferenceCacheReadRatio, modelInferenceInputTokens, modelInferenceUncachedInputTokens } from "../dist/shared/model-inference-metrics.js";
 import { buildTraceViewFromEvents, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 import { applyTraceLiveEvents } from "../dist/shared/trace-live-reducer.js";
 
@@ -107,7 +107,12 @@ test("provider usage becomes a durable per-inference trace node across replay, p
 	}
 
 	const timeline = traceTimelinePageFromView({ trace: replay, payloadStore: { writePayload() { throw new Error("unexpected payload write"); } }, limit: 50 });
-	assert.deepEqual(timeline.nodes.find((node) => node.modelInferences?.length)?.modelInferences, [{ id: "turn:usage:0", completedAt: "2026-09-08T05:00:02.000Z", metrics }]);
+	const timelineInference = timeline.nodes.find((node) => node.modelInferences?.length)?.modelInferences?.[0];
+	assert.equal(timelineInference?.id, "turn:usage:0");
+	assert.equal(timelineInference?.completedAt, "2026-09-08T05:00:02.000Z");
+	assert.deepEqual(timelineInference?.metrics, metrics);
+	assert.equal(timelineInference?.cacheObservation?.source, "provider-reported-usage");
+	assert.equal(timelineInference?.cacheObservation?.cacheState, "warm");
 });
 
 test("usage attaches to the Tool or message span that completed the endpoint response", () => {
@@ -229,10 +234,66 @@ test("model and Tool diagnostics can be enabled independently under the global D
 	assert.deepEqual(toolsOnly.find((row) => row.kind === "message.assistant")?.modelInferences, [{ id: "usage-0", metrics }]);
 });
 
-test("inference metrics distinguish total input, cache hits, fresh input and output", () => {
+test("cache-read drop comparison survives trace replay and incremental reconstruction", () => {
+	const scenario = [
+		{ type: "message_started", text: "First", source: "user", eventId: "one" },
+		{ type: "assistant_message", text: "Warm", assistantIndex: 0, eventId: "one" },
+		{ type: "assistant_usage", usageIndex: 0, eventId: "one", totalTokens: 154_514, outputTokens: 259, inputTokens: 154_255, cacheReadTokens: 150_272 },
+		{ type: "message_started", text: "Continue", source: "user", eventId: "two" },
+		{ type: "tool_call", toolCallId: "a", toolName: "read", args: {}, argsComplete: true, eventId: "two" },
+		{ type: "tool_call", toolCallId: "b", toolName: "read", args: {}, argsComplete: true, eventId: "two" },
+		{ type: "assistant_usage", usageIndex: 0, eventId: "two", totalTokens: 154_514, outputTokens: 259, inputTokens: 154_255, cacheReadTokens: 3_712 },
+		{ type: "assistant_message", text: "Finished", assistantIndex: 0, eventId: "two" },
+		{ type: "assistant_usage", usageIndex: 1, eventId: "two", totalTokens: 156_210, outputTokens: 273, inputTokens: 155_937, cacheReadTokens: 153_984 },
+		// A delayed repeat must not move the Tool inference onto the final message.
+		{ type: "assistant_usage", usageIndex: 0, eventId: "two", totalTokens: 154_514, outputTokens: 259, inputTokens: 154_255, cacheReadTokens: 3_712 },
+	].map((event, index) => ({
+		id: `cache-${index}`,
+		eventSequence: index + 1,
+		piboSessionId: "ps_model_metrics",
+		type: event.type,
+		createdAt: new Date(Date.UTC(2026, 8, 9, 4, 0, index)).toISOString(),
+		payload: { ...event, piboSessionId: "ps_model_metrics" },
+	}));
+	for (const trace of [view(scenario), patchTraceViewWithEvents(view(scenario.slice(0, 6)), scenario.slice(6), "idle")]) {
+		const records = flatten(trace.nodes).flatMap((node) => node.modelInferences ?? []);
+		assert.equal(records.length, 3);
+		const cold = records.find((record) => record.id === "two:usage:0");
+		assert.equal(cold.cacheObservation.warning, "possible-cache-read-drop");
+		assert.equal(cold.cacheObservation.uncachedInputTokens, 150_543);
+		assert.equal(cold.cacheObservation.previousInferenceId, "one:usage:0");
+		assert.equal(flatten(trace.nodes).find((node) => node.modelInferences?.some((record) => record.id === cold.id)).type, "tool.call");
+		assert.equal(records.find((record) => record.id === "two:usage:1").cacheObservation.warning, "none");
+	}
+});
+
+test("cache-read comparison recognizes a visible compaction boundary", () => {
+	const scenario = [
+		{ type: "message_started", text: "First", source: "user" },
+		{ type: "assistant_message", text: "Warm", assistantIndex: 0 },
+		{ type: "assistant_usage", usageIndex: 0, totalTokens: 20_100, outputTokens: 100, cacheReadTokens: 18_000 },
+		{ type: "compaction_start", reason: "manual", compactionIndex: 0 },
+		{ type: "compaction_end", reason: "manual", compactionIndex: 0, result: { summary: "Summary" } },
+		{ type: "assistant_message", text: "New context", assistantIndex: 1 },
+		{ type: "assistant_usage", usageIndex: 1, totalTokens: 20_100, outputTokens: 100, cacheReadTokens: 0 },
+	].map((event, index) => ({
+		id: `compact-${index}`,
+		eventSequence: index + 1,
+		piboSessionId: "ps_model_metrics",
+		type: event.type,
+		createdAt: new Date(Date.UTC(2026, 8, 9, 4, 10, index)).toISOString(),
+		payload: { ...event, piboSessionId: "ps_model_metrics", eventId: "turn" },
+	}));
+	const record = flatten(view(scenario).nodes).flatMap((node) => node.modelInferences ?? []).find((item) => item.id === "turn:usage:1");
+	assert.equal(record.cacheObservation.warning, "none");
+	assert.equal(record.cacheObservation.explanation, "compaction-between-inferences");
+});
+
+test("inference metrics distinguish input, cache reads, cache writes, uncached input and output", () => {
 	assert.equal(modelInferenceInputTokens(metrics), 94_197);
-	assert.equal(modelInferenceCachedInputTokens(metrics), 91_800);
-	assert.equal(modelInferenceUncachedInputTokens(metrics), 2_397);
+	assert.equal(modelInferenceCachedInputTokens(metrics), 91_776);
+	assert.equal(modelInferenceUncachedInputTokens(metrics), 2_421);
+	assert.equal(modelInferenceCacheReadRatio(metrics), 91_776 / 94_197);
 	execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `
 		import assert from "node:assert/strict";
 		import React from "react";
@@ -245,10 +306,34 @@ test("inference metrics distinguish total input, cache hits, fresh input and out
 		assert.match(markup, />In</);
 		assert.match(markup, />94,197</);
 		assert.match(markup, />Cached</);
-		assert.match(markup, />91,800</);
+		assert.match(markup, />91,776</);
 		assert.match(markup, />Uncached</);
-		assert.match(markup, />2,397</);
+		assert.match(markup, />2,421</);
+		assert.match(markup, />Cache write</);
+		assert.match(markup, />24</);
+		assert.match(markup, />Cache %</);
+		assert.match(markup, />97\.4%/);
 		assert.match(markup, />Out</);
 		assert.match(markup, />300</);
+		const warningMarkup = renderToStaticMarkup(React.createElement(TerminalModelInferenceMetrics, {
+			metrics: ${JSON.stringify(metrics)},
+			cacheObservation: {
+				rule: "provider-cache-read-drop-v1",
+				source: "provider-reported-usage",
+				cacheState: "cold",
+				warning: "possible-cache-read-drop",
+				explanation: "provider-usage",
+				inputTokens: 94197,
+				cacheReadTokens: 1000,
+				uncachedInputTokens: 93197,
+				cacheReadRatio: 1000 / 94197,
+				previousInferenceId: "warm:usage:0",
+				previousCacheReadRatio: 0.9,
+				elapsedMs: 4000,
+			},
+		}));
+		assert.match(warningMarkup, /data-pibo-debug="cache-read-drop"/);
+		assert.match(warningMarkup, /Possible cache-read drop/);
+		assert.match(warningMarkup, /provider metrics do not identify the cause/);
 	`], { cwd: process.cwd(), stdio: "pipe" });
 });

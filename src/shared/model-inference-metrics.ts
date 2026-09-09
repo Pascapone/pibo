@@ -12,6 +12,7 @@ export type ModelInferenceRecord = {
 	id: string;
 	metrics: ModelInferenceMetrics;
 	completedAt?: string;
+	cacheObservation?: import("./cache-observability.js").CacheUsageObservation;
 };
 
 export function modelInferenceInputTokens(metrics: ModelInferenceMetrics | undefined): number | undefined {
@@ -22,16 +23,21 @@ export function modelInferenceInputTokens(metrics: ModelInferenceMetrics | undef
 }
 
 export function modelInferenceCachedInputTokens(metrics: ModelInferenceMetrics | undefined): number | undefined {
-	const cacheRead = tokenCount(metrics?.cacheReadTokens);
-	const cacheWrite = tokenCount(metrics?.cacheWriteTokens);
-	if (cacheRead === undefined && cacheWrite === undefined) return undefined;
-	return (cacheRead ?? 0) + (cacheWrite ?? 0);
+	return tokenCount(metrics?.cacheReadTokens);
 }
 
 export function modelInferenceUncachedInputTokens(metrics: ModelInferenceMetrics | undefined): number | undefined {
 	const input = modelInferenceInputTokens(metrics);
-	if (input === undefined) return undefined;
-	return Math.max(0, input - (modelInferenceCachedInputTokens(metrics) ?? 0));
+	const cached = modelInferenceCachedInputTokens(metrics);
+	if (input === undefined || cached === undefined || cached > input) return undefined;
+	return input - cached;
+}
+
+export function modelInferenceCacheReadRatio(metrics: ModelInferenceMetrics | undefined): number | undefined {
+	const input = modelInferenceInputTokens(metrics);
+	const cached = modelInferenceCachedInputTokens(metrics);
+	if (input === undefined || input === 0 || cached === undefined || cached > input) return undefined;
+	return cached / input;
 }
 
 function tokenCount(value: number | undefined): number | undefined {
