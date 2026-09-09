@@ -113,6 +113,7 @@ export function inspectDebugSession(
 			`pibo debug messages ${parsed.piboSessionId} list`,
 			`pibo debug final ${parsed.piboSessionId}`,
 			`pibo debug trace ${parsed.piboSessionId} --check`,
+			`pibo debug cache ${parsed.piboSessionId}`,
 			`pibo debug failures ${parsed.piboSessionId}`,
 			`pibo debug events ${parsed.piboSessionId} --limit 20`,
 		];
@@ -175,6 +176,7 @@ export function inspectDebugSessionRuntime(
 			nextCommands: [
 				`pibo debug trace ${parsed.piboSessionId} --check`,
 				`pibo debug trace ${parsed.piboSessionId} --native-history --check`,
+				`pibo debug cache ${parsed.piboSessionId}`,
 				`pibo debug events ${parsed.piboSessionId} --limit 20`,
 			],
 		};

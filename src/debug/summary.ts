@@ -63,6 +63,7 @@ export async function inspectDebugSummary(input: string, stores: { sessions: Res
 			`pibo debug failures ${parsed.piboSessionId}`,
 			`pibo debug messages ${parsed.piboSessionId} list`,
 			`pibo debug trace ${parsed.piboSessionId} --check`,
+			`pibo debug cache ${parsed.piboSessionId}`,
 			`pibo debug events ${parsed.piboSessionId} --limit 20`,
 		],
 	};

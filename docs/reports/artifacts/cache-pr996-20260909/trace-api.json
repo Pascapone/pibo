@@ -1,0 +1,154 @@
+{
+  "status": 200,
+  "ms": 51,
+  "data": {
+    "piboSessionId": "ps_dd734d43-847f-41ab-950f-6869466c68bd",
+    "piSessionId": "b1db6cbe-0c11-4d29-b876-eac0c19fa86a",
+    "title": "PR996 deterministic cache fixture",
+    "version": "37eef8bf966b6526933f7a795e736a24a8c9fdaf",
+    "latestStreamId": 987979,
+    "nodes": [
+      {
+        "id": "event:message:pr996-cache-fixture",
+        "piboSessionId": "ps_dd734d43-847f-41ab-950f-6869466c68bd",
+        "eventId": "pr996-cache-fixture",
+        "startedAt": "2026-09-09T07:40:36.172Z",
+        "source": "event-log",
+        "stableKey": "turn:pr996-cache-fixture",
+        "orderKey": {
+          "sourceRank": 1,
+          "turnSeq": 1,
+          "eventSequence": 1,
+          "phaseRank": 2,
+          "chronologyMs": 1788939636172
+        },
+        "children": [
+          {
+            "id": "event:assistant:pr996-cache-fixture:assistant:0",
+            "piboSessionId": "ps_dd734d43-847f-41ab-950f-6869466c68bd",
+            "eventId": "pr996-cache-fixture",
+            "parentId": "event:message:pr996-cache-fixture",
+            "type": "assistant.message",
+            "title": "Agent Message",
+            "status": "done",
+            "startedAt": "2026-09-09T07:40:36.172Z",
+            "completedAt": "2026-09-09T07:40:36.172Z",
+            "summary": "Synthetic cache counters for PR996 acceptance: warm, cold, cold, delayed repeat. These are not live provider measurements.",
+            "output": "Synthetic cache counters for PR996 acceptance: warm, cold, cold, delayed repeat. These are not live provider measurements.",
+            "source": "event-log",
+            "stableKey": "assistant:pr996-cache-fixture:assistant:0",
+            "orderKey": {
+              "sourceRank": 1,
+              "turnSeq": 2,
+              "eventSequence": 2,
+              "phaseRank": 8,
+              "chronologyMs": 1788939636172
+            },
+            "children": [],
+            "modelInferences": [
+              {
+                "id": "pr996-cache-fixture:usage:0",
+                "completedAt": "2026-09-09T07:40:36.172Z",
+                "completedSequence": 3,
+                "metrics": {
+                  "inputTokens": 20000,
+                  "outputTokens": 100,
+                  "cacheReadTokens": 18000,
+                  "cacheWriteTokens": 200,
+                  "totalTokens": 20100
+                },
+                "cacheObservation": {
+                  "rule": "provider-cache-read-drop-v1",
+                  "source": "provider-reported-usage",
+                  "cacheState": "warm",
+                  "warning": "none",
+                  "explanation": "provider-usage",
+                  "inputTokens": 20000,
+                  "cacheReadTokens": 18000,
+                  "cacheWriteTokens": 200,
+                  "uncachedInputTokens": 2000,
+                  "cacheReadRatio": 0.9
+                }
+              },
+              {
+                "id": "pr996-cache-fixture:usage:1",
+                "completedAt": "2026-09-09T07:40:36.172Z",
+                "completedSequence": 4,
+                "metrics": {
+                  "inputTokens": 20000,
+                  "outputTokens": 100,
+                  "cacheReadTokens": 1000,
+                  "cacheWriteTokens": 300,
+                  "totalTokens": 20100
+                },
+                "cacheObservation": {
+                  "rule": "provider-cache-read-drop-v1",
+                  "source": "provider-reported-usage",
+                  "cacheState": "cold",
+                  "warning": "possible-cache-read-drop",
+                  "explanation": "cache-read-ratio-dropped",
+                  "inputTokens": 20000,
+                  "cacheReadTokens": 1000,
+                  "cacheWriteTokens": 300,
+                  "uncachedInputTokens": 19000,
+                  "cacheReadRatio": 0.05,
+                  "previousInferenceId": "pr996-cache-fixture:usage:0",
+                  "previousCacheReadRatio": 0.9,
+                  "elapsedMs": 0
+                }
+              },
+              {
+                "id": "pr996-cache-fixture:usage:2",
+                "completedAt": "2026-09-09T07:40:36.172Z",
+                "completedSequence": 5,
+                "metrics": {
+                  "inputTokens": 20000,
+                  "outputTokens": 100,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0,
+                  "totalTokens": 20100
+                },
+                "cacheObservation": {
+                  "rule": "provider-cache-read-drop-v1",
+                  "source": "provider-reported-usage",
+                  "cacheState": "cold",
+                  "warning": "none",
+                  "explanation": "provider-usage",
+                  "inputTokens": 20000,
+                  "cacheReadTokens": 0,
+                  "cacheWriteTokens": 0,
+                  "uncachedInputTokens": 20000,
+                  "cacheReadRatio": 0,
+                  "previousInferenceId": "pr996-cache-fixture:usage:1",
+                  "previousCacheReadRatio": 0.05,
+                  "elapsedMs": 0
+                }
+              }
+            ]
+          }
+        ],
+        "type": "agent.turn",
+        "title": "Agent Turn",
+        "status": "done",
+        "completedAt": "2026-09-09T07:40:36.172Z"
+      }
+    ],
+    "rawEvents": [],
+    "runtimeBinding": {
+      "runtimeInstanceId": "pi",
+      "adapterId": "pi",
+      "nativeSessionId": "b1db6cbe-0c11-4d29-b876-eac0c19fa86a",
+      "state": "unbound",
+      "protocol": "pi-sdk",
+      "revision": 1
+    },
+    "eventCount": 7,
+    "eventLimit": 50,
+    "pageSize": 50,
+    "firstEventSequence": 1,
+    "lastEventSequence": 7,
+    "nextBeforeSequence": 1,
+    "nextBeforeCursor": "1",
+    "hasOlderEvents": false
+  }
+}

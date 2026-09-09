@@ -18,6 +18,14 @@ import type { ResolvedPiboDebugStore } from "./stores.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";
 import { formatNextCommands } from "./next-commands.js";
 import { resolveDebugTraceSessionStatus, summarizeDebugTraceStatus, type DebugTraceStatusSource } from "./trace-status.js";
+import { cacheUsageWarningText } from "../shared/cache-observability.js";
+import {
+	modelInferenceCacheReadRatio,
+	modelInferenceCachedInputTokens,
+	modelInferenceInputTokens,
+	modelInferenceUncachedInputTokens,
+	type ModelInferenceRecord,
+} from "../shared/model-inference-metrics.js";
 
 type SessionRow = {
 	id: string;
@@ -70,6 +78,7 @@ export type DebugTraceNodeRow = {
 	startedAt?: string;
 	completedAt?: string;
 	childrenCount?: number;
+	modelInferences?: ModelInferenceRecord[];
 	depth: number;
 };
 
@@ -208,6 +217,26 @@ export async function inspectDebugTraceNode(
 	};
 }
 
+function formatMetric(value: number | undefined): string {
+	return value === undefined ? "unknown" : String(value);
+}
+
+function formatRatio(value: number | undefined): string {
+	return value === undefined ? "unknown" : `${(value * 100).toFixed(1)}%`;
+}
+
+function formatModelInference(record: ModelInferenceRecord): string {
+	return [
+		record.id,
+		`input=${formatMetric(modelInferenceInputTokens(record.metrics))}`,
+		`cacheRead=${formatMetric(modelInferenceCachedInputTokens(record.metrics))}`,
+		`uncached=${formatMetric(modelInferenceUncachedInputTokens(record.metrics))}`,
+		`cacheWrite=${formatMetric(record.metrics.cacheWriteTokens)}`,
+		`output=${formatMetric(record.metrics.outputTokens)}`,
+		`cacheReadRatio=${formatRatio(modelInferenceCacheReadRatio(record.metrics))}`,
+	].join("\t");
+}
+
 export function formatDebugTrace(result: DebugTraceResult, options: { medium?: boolean } = {}): string {
 	const lines = [
 		`piboSessionId: ${result.piboSessionId}`,
@@ -247,6 +276,11 @@ export function formatDebugTrace(result: DebugTraceResult, options: { medium?: b
 			order: node.order,
 		};
 		lines.push(columns.map((column) => values[column] ?? "").join("\t"));
+		for (const inference of node.modelInferences ?? []) {
+			lines.push(`model-inference\t${formatModelInference(inference)}`);
+			const warning = inference.cacheObservation && cacheUsageWarningText(inference.cacheObservation);
+			if (warning) lines.push(`cache-warning\t${inference.id}\t${warning}`);
+		}
 	}
 	lines.push(`nodes: ${result.nodes.length}${result.nodes.length !== result.rawNodeCount ? ` of ${result.rawNodeCount}` : ""}`);
 	if (result.checks) {
@@ -279,6 +313,7 @@ export function formatDebugTraceNode(result: DebugTraceNodeResult): string {
 	if (node.linkedPiboSessionId) lines.push(`linkedPiboSessionId: ${node.linkedPiboSessionId}`);
 	if (node.runId) lines.push(`runId: ${node.runId}`);
 	if (node.toolCallId) lines.push(`toolCallId: ${node.toolCallId}`);
+	for (const inference of node.modelInferences ?? []) lines.push(`modelInference: ${JSON.stringify(inference)}`);
 	lines.push(...formatNextCommands(result.nextCommands));
 	return lines.join("\n");
 }
@@ -300,6 +335,7 @@ function flattenTraceNodes(nodes: PiboTraceNode[], depth = 0): DebugTraceNodeRow
 			startedAt: node.startedAt,
 			completedAt: node.completedAt,
 			childrenCount: node.children.length,
+			...(node.modelInferences?.length ? { modelInferences: node.modelInferences } : {}),
 			depth,
 		},
 		...flattenTraceNodes(node.children, depth + 1),

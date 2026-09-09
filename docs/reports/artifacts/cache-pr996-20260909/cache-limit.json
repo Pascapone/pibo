@@ -1,0 +1,44 @@
+{
+  "piboSessionId": "ps_dd734d43-847f-41ab-950f-6869466c68bd",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "source": "provider-reported-usage",
+  "summary": {
+    "inferenceCount": 3,
+    "cacheReadReportedCount": 3,
+    "cacheReadUnreportedCount": 0,
+    "possibleDropCount": 1,
+    "inputTokens": 60000,
+    "cacheReadTokens": 19000,
+    "uncachedInputTokens": 41000,
+    "cacheReadRatio": 0.31666666666666665,
+    "cacheWriteTokens": 500
+  },
+  "inferences": [
+    {
+      "id": "pr996-cache-fixture:usage:2",
+      "nodeId": "event:assistant:pr996-cache-fixture:assistant:0",
+      "nodeTitle": "Agent Message",
+      "completedAt": "2026-09-09T07:40:36.172Z",
+      "inputTokens": 20000,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "uncachedInputTokens": 20000,
+      "cacheReadRatio": 0,
+      "previousCacheReadRatio": 0.05,
+      "elapsedMs": 0,
+      "cacheState": "cold",
+      "warning": "none",
+      "explanation": "provider-usage"
+    }
+  ],
+  "limitations": [
+    "Cache counters are reported by the runtime or provider; missing counters remain unknown.",
+    "A cache-read drop does not identify whether Pibo, the runtime, the provider, or eviction caused it.",
+    "This command does not inspect or alter runtime source code, prompts, or provider cache keys."
+  ],
+  "nextCommands": [
+    "pibo debug trace ps_dd734d43-847f-41ab-950f-6869466c68bd --medium",
+    "pibo debug events ps_dd734d43-847f-41ab-950f-6869466c68bd --type assistant_usage --fields inputTokens,cacheReadTokens,cacheWriteTokens,totalTokens"
+  ]
+}
