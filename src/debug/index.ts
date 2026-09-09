@@ -64,6 +64,10 @@ export async function runDebugCli(argv = process.argv): Promise<void> {
 			await runDebugTrace(args.slice(1));
 			return;
 		}
+		if (args[0] === "cache") {
+			await runDebugCache(args.slice(1));
+			return;
+		}
 		if (args[0] === "summary") {
 			await runDebugSummary(args.slice(1));
 			return;
@@ -737,6 +741,25 @@ async function runDebugTelemetry(args: string[]): Promise<void> {
 	throw new Error(`Unknown pibo debug telemetry command "${command}". Run pibo debug telemetry --help.`);
 }
 
+async function runDebugCache(args: string[]): Promise<void> {
+	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+		printDebugCacheDiscovery();
+		return;
+	}
+	const options = parseOptions(args);
+	const piboSessionId = options.positionals[0];
+	if (!piboSessionId) throw new Error("pibo debug cache requires <pibo-session-id>");
+	if (options.positionals.length > 1) throw new Error("pibo debug cache accepts one <pibo-session-id>. Run pibo debug cache --help.");
+	const limit = options.limit === undefined ? undefined : Number(options.limit);
+	if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)) throw new Error("--limit must be an integer from 1 to 200");
+	const stores = { sessions: resolveDebugStore("sessions"), chat: resolveDebugStore("chat") };
+	const { formatJson } = await import("./sql.js");
+	const { formatDebugCache, inspectDebugCache } = await import("./cache.js");
+	const result = await inspectDebugCache(piboSessionId, stores, { limit });
+	if (options.json) console.log(formatJson(result));
+	else console.log(formatDebugCache(result));
+}
+
 async function runDebugTrace(args: string[]): Promise<void> {
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
 		printDebugTraceDiscovery();
@@ -1374,6 +1397,7 @@ Commands:
   messages List or show stored user/assistant messages
   final    Show the latest assistant message
   trace    Rebuild the Chat Web trace view for one Pibo Session
+  cache    Summarize provider-reported cache usage for one Pibo Session
   events   Inspect compact event payload fields for one Pibo Session
   agents   Inspect delegated child agents and their persisted activity
   tool     Inspect one grouped tool call
@@ -1396,6 +1420,7 @@ Next:
   pibo debug final <pibo-session-id>
   pibo debug messages <pibo-session-id> list
   pibo debug trace <pibo-session-id> --running-only
+  pibo debug cache <pibo-session-id>
   pibo debug events stream --topic pibo.output
   pibo debug persistence
   pibo debug repair output <pibo-session-id> <event-id> --dry-run
@@ -1680,6 +1705,24 @@ Usage:
 Next:
   pibo debug failures ps_...
   pibo debug tool ps_... <tool-call-id> --output
+`);
+}
+
+function printDebugCacheDiscovery(): void {
+	console.log(`pibo debug cache - summarize provider-reported cache usage
+
+Usage:
+  pibo debug cache <pibo-session-id> [--limit n] [--json]
+
+Reports:
+  Per-inference input, cache-read, cache-write and uncached token counts.
+  Warns when large consecutive requests move from mostly cached to mostly uncached input.
+  Provider metrics cannot identify the cause of a cache-read drop.
+
+Next:
+  pibo debug cache ps_... --json
+  pibo debug trace ps_... --medium
+  pibo debug events ps_... --type assistant_usage --fields inputTokens,cacheReadTokens,cacheWriteTokens,totalTokens
 `);
 }
 

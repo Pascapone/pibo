@@ -9,21 +9,21 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T14:55:00Z"
+  at: "2026-09-09T06:20:36Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Integrated trace and Workflow projection source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "14403bcb91edc685ecb2f2255475f6229008691d"
+  baseline_commit: "4d89b3c6d822f997c1f133c6bbf1bad541022205"
   package: "WP-06+07-WEB"
   source_evidence: "performed"
-  test_execution: "41 focused Debug, inference-usage, Tool-metric, Pi tracing, Goal-accounting, and shared Terminal tests passed"
-  build_typecheck_package_execution: "full build and all package typechecks passed in the isolated Docker worker"
-  browser_execution: "headful local Debug settings and Terminal model-usage rail passed at 800x457; CDP reload reported no console exceptions, log errors, or network failures"
+  test_execution: "the isolated Docker worker passed the full 2,982-test repository suite with 2,972 passed, 10 skipped, and 0 failed, including focused cache, Debug CLI, trace replay, live projection, and Compact Terminal coverage"
+  build_typecheck_package_execution: "workflow build, root TypeScript build, Chat UI build, and all package typechecks passed in the isolated Docker worker"
+  browser_execution: "headful local Compact Terminal cache rails and warning disclosure passed at 1439x822 and 390x844; CDP reload reported no console exceptions, log errors, network failures, or horizontal overflow"
 traceability:
-  commit: "ac5331fc094ba39fe9ed7ee8958eebdaeac4914d"
+  commit: "4d89b3c6d822f997c1f133c6bbf1bad541022205"
   requirements:
     - id: "WEB-TRACE-PAYLOAD-010"
       status: "implemented"
@@ -125,6 +125,8 @@ traceability:
           symbol: "DEFAULT_DEBUG_FEATURE_SETTINGS"
         - path: "src/shared/model-inference-metrics.ts"
           symbol: "modelInferenceUncachedInputTokens"
+        - path: "src/shared/cache-observability.ts"
+          symbol: "observeCacheUsage"
         - path: "src/shared/trace-event-projection.ts"
           symbol: "applySingleEventToNodes"
         - path: "src/core/user-settings.ts"
@@ -161,11 +163,17 @@ traceability:
         - path: "test/model-inference-metrics.test.mjs"
           name: "model and Tool diagnostics can be enabled independently under the global Debug mode"
         - path: "test/model-inference-metrics.test.mjs"
-          name: "inference metrics distinguish total input, cache hits, fresh input and output"
+          name: "inference metrics distinguish input, cache reads, cache writes, uncached input and output"
+        - path: "test/model-inference-metrics.test.mjs"
+          name: "cache-read drop comparison survives trace replay and incremental reconstruction"
+        - path: "test/model-inference-metrics.test.mjs"
+          name: "cache-read comparison recognizes a visible compaction boundary"
+        - path: "test/cache-observability.test.mjs"
+          name: "flags a large consecutive cache-read drop without claiming a cause"
         - path: "test/base-prompt-web.test.mjs"
           name: "chat user-settings API validates same-origin mutations and persists sanitized values"
-      public: ["SessionTraceHeader", "CompactTerminalSessionView", "TerminalModelInferenceMetrics", "/settings/debug", "pibo.chat.debugFeatures", "pibo.chat.toolMetricThresholds", "PiboAssistantUsageEvent", "PiboUserSettings.toolMetrics.tokenCalculation", "PiboToolExecutionFinishedEvent.toolMetrics"]
-      failures: ["Missing provider usage remains unavailable rather than estimated; usage attaches only to the latest related Tool, reasoning, assistant-message, or turn node; malformed or duplicate records cannot create extra pagination rows; missing, media, cyclic, over-budget, or oversized Tiktoken Tool payload metrics remain unavailable; Tool calculations are never presented as provider usage or billing; Debug features and thresholds are browser-local, calculation preferences persist in app user settings, and invalid values fall back to defaults."]
+      public: ["SessionTraceHeader", "CompactTerminalSessionView", "TerminalModelInferenceMetrics", "CacheUsageObservation", "/settings/debug", "pibo.chat.debugFeatures", "pibo.chat.toolMetricThresholds", "PiboAssistantUsageEvent", "PiboUserSettings.toolMetrics.tokenCalculation", "PiboToolExecutionFinishedEvent.toolMetrics"]
+      failures: ["Missing provider cache-read usage remains unavailable rather than estimated; cache writes are reported separately and never counted as cache hits; warnings are conservative observations over provider counters and never identify a cause; a visible compaction boundary suppresses consecutive-inference warnings; usage attaches only to the latest related Tool, reasoning, assistant-message, or turn node; malformed or duplicate records cannot create extra pagination rows; missing, media, cyclic, over-budget, or oversized Tiktoken Tool payload metrics remain unavailable; Tool calculations are never presented as provider usage or billing; Debug features and thresholds are browser-local, calculation preferences persist in app user settings, and invalid values fall back to defaults."]
       confidence: "high"
     - id: "WEB-TRACE-PROJECTION-001"
       status: "implemented"
@@ -416,7 +424,9 @@ Debug MUST default off and expose a stable accessible toggle name and pressed st
 
 When global Debug and Tool-call metrics are enabled, Terminal MUST show a compact monospaced status line below each tool invocation: execution time, argument payload tokens, result payload tokens, and the calculation basis used for that invocation. Output is visually emphasized. The calculation segment displays `chars ÷ <factor>`, `tiktoken · <encoding>`, or `—`. The line is independent of expanded details and works in Default and Slim. Intent uses the same metadata when the existing capability gate permits an intent row; this change does not enable unsupported Intent mode. Hide continues to hide tool rows. Tool-call metrics ungroup exploration/image tools so each invocation retains its own metrics. Disabling Tool-call metrics or global Debug restores normal grouping and removes Tool status lines without changing the model-inference selection.
 
-When global Debug and model-inference metrics are enabled, each normalized provider-response `assistant_usage` record MUST remain durable through stored replay, live updates, patching, and compact Timeline V2 projection. Projection attaches the record to the latest related Tool, reasoning, assistant-message, delegation, or turn node instead of creating a separate trace row. Terminal renders one flat `MODEL` rail below that owner with `IN`, `CACHED`, `UNCACHED`, and `OUT`. `IN` is total provider-reported model input, including cached input when total and output are available; `CACHED` is cache-read plus cache-write input; `UNCACHED` is non-negative `IN - CACHED`; and `OUT` is provider-reported output. Missing usage stays unavailable rather than estimated. Runtime adapters own normalization, including OpenAI-compatible endpoints; the browser performs no provider call, tokenization, or billing attribution.
+When global Debug and model-inference metrics are enabled, each normalized provider-response `assistant_usage` record MUST remain durable through stored replay, live updates, patching, and compact Timeline V2 projection. Projection attaches the record to the latest related Tool, reasoning, assistant-message, delegation, or turn node instead of creating a separate trace row. Terminal renders one flat `MODEL` rail below that owner with `IN`, `CACHED`, `UNCACHED`, `CACHE %`, optional `CACHE WRITE`, and `OUT`. `IN` is total provider-reported model input, including cached input when total and output are available. `CACHED` is provider-reported cache-read input only. `UNCACHED` is non-negative `IN - CACHED` only when cache-read usage is reported. `CACHE %` is `CACHED / IN`. `CACHE WRITE` is a separate provider counter and MUST NOT be counted as a cache hit. `OUT` is provider-reported output. Missing usage stays unavailable rather than estimated. Runtime adapters own normalization, including OpenAI-compatible endpoints; the browser performs no provider call, tokenization, cache-key inspection, or billing attribution.
+
+Projection MAY attach a passive cache observation derived only from consecutive provider-reported usage counters. The implemented warning rule considers only large consecutive inputs in the same visible compaction epoch and within six hours: the previous cache-read ratio is at least 50%, the current ratio is at most 10%, and the fall is at least 50 percentage points. The UI and CLI MUST label this as a possible cache-read drop and state that provider counters do not identify whether Pibo, a runtime, a provider policy, or eviction caused it. Missing counters, small requests, long gaps, and visible Compaction boundaries remain non-warning or unknown states. The observation does not block a turn, alter prompts, restore prefixes, inspect provider cache keys, or modify Pi, Codex, or OMP.
 
 The runtime collector measures start-to-finish elapsed time with a monotonic clock. At Tool start it captures the active calculation configuration and stores only that configuration, start time, and input count for the active call. It uses the same captured configuration for the result even if settings change while the Tool runs. It measures output once on completion, including failed calls, then releases the entry; turn cleanup clears abandoned entries. Finished-event metadata persists the method-specific basis separately from large payloads and survives live frames, stored-history replay, timeline compaction, and row projection. Legacy `chars/4` metrics remain readable as character-factor metrics.
 
@@ -428,7 +438,7 @@ Both modes exclude result-envelope metadata when a harness supplies `content`. N
 
 Debug rails follow the [Compact Terminal design](/project/design/compact-terminal.md): square geometry, 9px black-weight labels, 11px bold tabular values, no cards, shadows, polling, animation, or per-row timers. They wrap whole metric segments at narrow widths instead of truncating values or basis labels. Debug in the embedded VS Code Terminal is session-local.
 
-Tool Debug is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, normal output uses acid lime, and calculation basis uses cyan metadata so the four columns remain distinguishable from ordinary Terminal prose. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Model inference uses cyan for `MODEL` and `IN`, violet for `CACHED`, yellow for `UNCACHED`, and acid lime for `OUT`. Color supplements the visible number, basis, label, and `—` state; it is not the sole information channel.
+Tool Debug is a high-contrast signal rail. Normal time uses neon violet, normal input uses electric cyan, normal output uses acid lime, and calculation basis uses cyan metadata so the four columns remain distinguishable from ordinary Terminal prose. Elevated values use neon yellow/amber, high values use fluorescent orange, critical values use hot pink, and unavailable values remain neutral gray. Model inference uses cyan for `MODEL` and `IN`, violet for cache reads and ratio, yellow for `UNCACHED`, neutral slate for `CACHE WRITE`, and acid lime for `OUT`. A possible cache-read drop uses a flat orange disclosure with visible before/after ratios and explanatory text. Color supplements the visible number, basis, label, warning text, and `—` state; it is not the sole information channel.
 
 `Settings > Debug` exposes the persisted global Debug toggle, independent Tool-call and model-inference metric toggles, and three strictly increasing visual thresholds for each Tool metric. Defaults are 1/5/15 seconds for duration, 8k/20k/50k input tokens, and 2k/10k/50k output tokens. Threshold values are validated as positive numbers, stored in browser-local storage, and applied immediately to Terminal rendering. Restoring defaults does not change collected metrics or either feature selection.
 
@@ -439,6 +449,8 @@ Verification for this addition: isolated build and all typechecks passed; 192 fo
 Verification for the selectable-calculation refinement: the full build and all package typechecks passed. The focused calculation/API/UI suite passed 11 tests, and the wider Chat UI, metrics, API, and routed-runtime selection passed 327 tests with 322 passed, 0 failed, and 5 skipped. Headful desktop checks saved and reloaded Tiktoken with `p50k_edit`; runtime collection then persisted `tiktoken/p50k_edit`. Headful/CDP checks at desktop and 390×844 rendered character factors, Tiktoken encodings, and legacy `—` bases without rail or document overflow or JavaScript exceptions. These deterministic fixtures and local runtime checks do not claim provider billing parity or production deployment.
 
 Verification for model-inference diagnostics on September 8, 2026: the isolated Docker worker completed the full build, all package typechecks, and 41 focused Debug, inference-usage, Tool-metric, Pi tracing, Goal-accounting, and shared Terminal tests. A headful authenticated Chat Web target at 800×457 persisted global on, Tool metrics off, and model metrics on; reload preserved those selections. The deterministic persisted provider-usage fixture rendered `IN 94,173`, `CACHED 91,776`, `UNCACHED 2,397`, and `OUT 300` below its assistant response. Turning off model metrics hid that rail while global Debug stayed on; turning off global Debug hid it while the model selection stayed enabled. CDP reload observed the final rail with zero console errors, exceptions, log errors, or network failures. The fixture validates projection and rendering, not a live provider request, billing parity, production deployment, or wider desktop/mobile acceptance.
+
+Verification for the cache-observability refinement on September 9, 2026: the isolated Docker worker passed workflow compilation, root TypeScript compilation, Chat UI build/typecheck, all package typechecks, focused cache/debug tests, and a clean full repository run of 2,982 tests with 2,972 passed, 10 skipped, and 0 failed. A headful authenticated local Chat Web fixture rendered separate cache-read and cache-write counts, uncached input, cache-read ratio, and one conservative warning at 1439×822 and 390×844. Expanding the disclosure showed the previous inference, elapsed time, before/after ratios, and the explicit cause limitation. CDP reload at 390×844 reported two model rails, one warning, no horizontal overflow, no runtime exceptions, no warning/error log entries, and no non-aborted network failures. This deterministic fixture does not claim a live provider cache hit, provider billing parity, production deployment, or prefix-stability enforcement.
 
 ### Requirement: WEB-TRACE-PROJECTION-001
 
