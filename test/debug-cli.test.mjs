@@ -1353,8 +1353,13 @@ test("pibo debug help stays progressive", async () => {
 	assert.match(root.stdout, /pibo debug - inspect local Pibo data/);
 	assert.match(root.stdout, /pibo debug db/);
 	assert.match(root.stdout, /pibo debug trace/);
+	assert.match(root.stdout, /pibo debug cache/);
 	assert.match(root.stdout, /pibo debug telemetry/);
 	assert.doesNotMatch(root.stdout, /pibo_sessions/);
+
+	const cache = await execFileAsync("node", [cliPath, "debug", "cache", "--help"]);
+	assert.match(cache.stdout, /pibo debug cache - summarize provider-reported cache usage/);
+	assert.match(cache.stdout, /Provider metrics cannot identify the cause/);
 
 	const telemetry = await execFileAsync("node", [cliPath, "debug", "telemetry", "--help"]);
 	assert.match(telemetry.stdout, /pibo debug telemetry - inspect bounded runtime observability telemetry/);
@@ -1715,6 +1720,36 @@ test("pibo debug trace prints rebuilt Chat Web trace nodes", async () => {
 		const checkedParsed = JSON.parse(checked.stdout);
 		assert.equal(typeof checkedParsed.checks.status, "string");
 		assert.ok(Array.isArray(checkedParsed.checks.issues));
+	} finally {
+		await rm(cwd, { recursive: true, force: true });
+	}
+});
+
+test("pibo debug cache summarizes provider usage and flags a possible cache-read drop", async () => {
+	const cwd = await makeDebugFixture();
+	try {
+		const text = await execFileAsync("node", [cliPath, "debug", "cache", "ps_cache"], { cwd });
+		assert.match(text.stdout, /source: provider-reported-usage/);
+		assert.match(text.stdout, /inferences: 2/);
+		assert.match(text.stdout, /possibleDrops: 1/);
+		assert.match(text.stdout, /cacheReadTokens: 19000/);
+		assert.match(text.stdout, /cacheWriteTokens: 200/);
+		assert.match(text.stdout, /cacheReadRatio: 47\.5%/);
+		assert.match(text.stdout, /cache-warning\tevt_cache_cold:usage:0\tPossible cache-read drop/);
+		assert.match(text.stdout, /provider metrics do not identify the cause/i);
+
+		const json = await execFileAsync("node", [cliPath, "debug", "cache", "ps_cache", "--json"], { cwd });
+		const parsed = JSON.parse(json.stdout);
+		assert.equal(parsed.source, "provider-reported-usage");
+		assert.equal(parsed.summary.inferenceCount, 2);
+		assert.equal(parsed.summary.possibleDropCount, 1);
+		assert.equal(parsed.inferences[1].warning, "possible-cache-read-drop");
+		assert.equal(parsed.inferences[1].cacheReadRatio, 0.05);
+
+		const trace = await execFileAsync("node", [cliPath, "debug", "trace", "ps_cache"], { cwd });
+		assert.match(trace.stdout, /model-inference\tevt_cache_warm:usage:0/);
+		assert.match(trace.stdout, /cacheReadRatio=90\.0%/);
+		assert.match(trace.stdout, /cache-warning\tevt_cache_cold:usage:0/);
 	} finally {
 		await rm(cwd, { recursive: true, force: true });
 	}
@@ -2384,6 +2419,21 @@ async function makeDebugFixture() {
 			lastActivityAt: "2026-05-01T10:05:32.000Z",
 		});
 		insertSession(data.db, {
+			id: "ps_cache",
+			piSessionId: "99999999-9999-4999-8999-999999999999",
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			legacyPartition: "user:one",
+			rootSessionId: "ps_cache",
+			title: "Cache observability fixture",
+			status: "idle",
+			metadata: {},
+			createdAt: "2026-05-01T10:05:40.000Z",
+			updatedAt: "2026-05-01T10:05:48.000Z",
+			lastActivityAt: "2026-05-01T10:05:48.000Z",
+		});
+		insertSession(data.db, {
 			id: "ps_malformed_thinking",
 			piSessionId: "66666666-6666-4666-8666-666666666666",
 			channel: "pibo.chat-web",
@@ -2521,6 +2571,26 @@ async function makeDebugFixture() {
 			JSON.stringify({ toolCallId: "tool_payload", toolName: "read", isError: false }),
 			"2026-05-01T10:05:32.000Z",
 		);
+		for (const [streamId, sequence, eventId, type, createdAt, payload] of [
+			[11, 1, "evt_cache_warm", "message_started", "2026-05-01T10:05:41.000Z", { type: "message_started", source: "user", text: "warm" }],
+			[12, 2, "evt_cache_warm", "assistant_message", "2026-05-01T10:05:42.000Z", { type: "assistant_message", text: "warm result", assistantIndex: 0 }],
+			[13, 3, "evt_cache_warm", "assistant_usage", "2026-05-01T10:05:43.000Z", { type: "assistant_usage", usageIndex: 0, inputTokens: 20_000, outputTokens: 100, cacheReadTokens: 18_000, cacheWriteTokens: 200, totalTokens: 20_100 }],
+			[14, 4, "evt_cache_warm", "message_finished", "2026-05-01T10:05:44.000Z", { type: "message_finished", source: "user" }],
+			[15, 5, "evt_cache_cold", "message_started", "2026-05-01T10:05:45.000Z", { type: "message_started", source: "user", text: "cold" }],
+			[16, 6, "evt_cache_cold", "assistant_message", "2026-05-01T10:05:46.000Z", { type: "assistant_message", text: "cold result", assistantIndex: 0 }],
+			[17, 7, "evt_cache_cold", "assistant_usage", "2026-05-01T10:05:47.000Z", { type: "assistant_usage", usageIndex: 0, inputTokens: 20_000, outputTokens: 100, cacheReadTokens: 1_000, cacheWriteTokens: 0, totalTokens: 20_100 }],
+			[18, 8, "evt_cache_cold", "message_finished", "2026-05-01T10:05:48.000Z", { type: "message_finished", source: "user" }],
+		]) {
+			insertEvent(data.db, {
+				streamId,
+				sessionId: "ps_cache",
+				sequence,
+				eventId,
+				type,
+				createdAt,
+				payload: { ...payload, piboSessionId: "ps_cache", eventId },
+			});
+		}
 		insertEvent(data.db, {
 			streamId: 7,
 			sessionId: "ps_malformed_thinking",

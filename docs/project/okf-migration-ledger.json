@@ -13914,6 +13914,15 @@
       "file_bytes": 16257,
       "file_sha256": "b5404ab4449ca7da87f7a967553464bed3de2a796a9ed25be504ca963d988fa0",
       "body_sha256": "dd027ccf08c84846b9990ed9101e098ef549e96fcb3a2c3301284617495a75b5"
+    },
+    {
+      "path": "docs/reports/cache-observability-pr996-review-2026-09-09.md",
+      "state": "conformant",
+      "classification": "cache observability PR review and remote validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
     }
   ]
 }
