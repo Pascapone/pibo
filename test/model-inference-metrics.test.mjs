@@ -287,6 +287,7 @@ test("cache comparisons preserve inference order for same-millisecond receipts a
 	const live = view(applyTraceLiveEvents({ currentEvents: [], streamEvents: input.flatMap((event) => chatStreamFramesFromOutputEvent(event.payload, streamState)), piboSessionId: "ps_model_metrics", nextSequence: () => ++sequence, now: () => "2026-09-09T04:00:00.000Z" }));
 	for (const trace of [view(input), patched, live]) {
 		const records = flatten(trace.nodes).flatMap((node) => node.modelInferences ?? []);
+		assert.deepEqual(records.map((record) => record.id), ["turn:usage:0", "turn:usage:1", "turn:usage:2"]);
 		const cold = records.find((record) => record.id === "turn:usage:1");
 		assert.equal(cold.cacheObservation.previousInferenceId, "turn:usage:0");
 		assert.equal(cold.cacheObservation.warning, "possible-cache-read-drop");

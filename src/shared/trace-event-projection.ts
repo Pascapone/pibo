@@ -778,7 +778,7 @@ function attachModelInferenceToLatestOutput(
 		return compareInferenceCompletion(boundary, previous) > 0 && compareInferenceCompletion(boundary, record) <= 0;
 	});
 	record.cacheObservation = observeCacheUsage(record, previous, { compactionBetween });
-	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record];
+	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record].sort(compareInferenceCompletion);
 }
 
 function traceNodeStartedBeforeInference(node: PiboTraceNode, storedEvent: ChatWebStoredEvent): boolean {
