@@ -1,5 +1,6 @@
 import { cacheUsageWarningText, type CacheUsageObservation } from "../shared/cache-observability.js";
 import {
+	compareInferenceCompletion,
 	modelInferenceCacheReadRatio,
 	modelInferenceCachedInputTokens,
 	modelInferenceInputTokens,
@@ -55,11 +56,6 @@ function finiteToken(value: number | undefined): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 }
 
-function inferenceTimestamp(value: LocatedInference): number {
-	const timestamp = Date.parse(value.record.completedAt ?? "");
-	return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
 export async function inspectDebugCache(
 	piboSessionId: string,
 	stores: { sessions: ResolvedPiboDebugStore; chat: ResolvedPiboDebugStore },
@@ -70,7 +66,7 @@ export async function inspectDebugCache(
 	for (const node of trace.nodes) {
 		for (const record of node.modelInferences ?? []) byId.set(record.id, { nodeId: node.id, nodeTitle: node.title, record });
 	}
-	const located = [...byId.values()].sort((left, right) => inferenceTimestamp(left) - inferenceTimestamp(right));
+	const located = [...byId.values()].sort((left, right) => compareInferenceCompletion(left.record, right.record));
 	let reportedInput = 0;
 	let reportedRead = 0;
 	let reportedCount = 0;

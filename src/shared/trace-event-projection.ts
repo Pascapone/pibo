@@ -11,7 +11,7 @@ import {
 import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 import { observeCacheUsage } from "./cache-observability.js";
-import type { ModelInferenceRecord } from "./model-inference-metrics.js";
+import { compareInferenceCompletion, type ModelInferenceRecord } from "./model-inference-metrics.js";
 
 export type PersistedHistoryMode = "none" | "product" | "native";
 
@@ -748,6 +748,7 @@ function attachModelInferenceToLatestOutput(
 	const record: ModelInferenceRecord = {
 		id,
 		completedAt: existingRecord?.completedAt ?? storedEvent.createdAt,
+		completedSequence: existingRecord?.completedSequence ?? storedEvent.eventSequence ?? storedEvent.streamId,
 		metrics: {
 			...(event.inputTokens === undefined ? {} : { inputTokens: event.inputTokens }),
 			...(event.outputTokens === undefined ? {} : { outputTokens: event.outputTokens }),
@@ -760,20 +761,21 @@ function attachModelInferenceToLatestOutput(
 	};
 	const currentAt = Date.parse(record.completedAt ?? "");
 	let previous: ModelInferenceRecord | undefined;
-	let previousAt = -Infinity;
 	for (const node of flattened) {
 		for (const item of node.modelInferences ?? []) {
-			const at = Date.parse(item.completedAt ?? "");
-			if (item.id !== id && Number.isFinite(at) && (!Number.isFinite(currentAt) || at <= currentAt) && at >= previousAt) {
+			if (item.id !== id && compareInferenceCompletion(item, record) < 0
+				&& (!previous || compareInferenceCompletion(item, previous) > 0)) {
 				previous = item;
-				previousAt = at;
 			}
 		}
 	}
 	const compactionBetween = previous !== undefined && Number.isFinite(currentAt) && flattened.some((node) => {
 		if (node.type !== "execution.compaction") return false;
-		const at = Date.parse(node.startedAt ?? node.completedAt ?? "");
-		return Number.isFinite(at) && at > previousAt && at <= currentAt;
+		const boundary = {
+			completedAt: node.startedAt ?? node.completedAt,
+			completedSequence: node.orderKey?.eventSequence ?? node.orderKey?.streamId,
+		};
+		return compareInferenceCompletion(boundary, previous) > 0 && compareInferenceCompletion(boundary, record) <= 0;
 	});
 	record.cacheObservation = observeCacheUsage(record, previous, { compactionBetween });
 	target.modelInferences = [...(target.modelInferences ?? []).filter((item) => item.id !== id), record];

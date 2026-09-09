@@ -267,6 +267,32 @@ test("cache-read drop comparison survives trace replay and incremental reconstru
 	}
 });
 
+test("cache comparisons preserve inference order for same-millisecond receipts and delayed repeats", () => {
+	const input = [
+		{ type: "message_started", text: "Usage", source: "user" },
+		{ type: "assistant_message", text: "Done", assistantIndex: 0 },
+		...[18_000, 1_000, 0, 1_000].map((cacheReadTokens, index) => ({
+			type: "assistant_usage", usageIndex: index === 3 ? 1 : index,
+			inputTokens: 20_000, outputTokens: 100, totalTokens: 20_100, cacheReadTokens,
+		})),
+	].map((event, index) => ({
+		id: `same-${index}`, eventSequence: index + 1, piboSessionId: "ps_model_metrics",
+		type: event.type, createdAt: "2026-09-09T04:00:00.000Z",
+		payload: { ...event, eventId: "turn", piboSessionId: "ps_model_metrics" },
+	}));
+	let patched = view([]);
+	for (const event of input) patched = patchTraceViewWithEvents(patched, [event], "idle");
+	const streamState = createChatStreamState();
+	let sequence = 0;
+	const live = view(applyTraceLiveEvents({ currentEvents: [], streamEvents: input.flatMap((event) => chatStreamFramesFromOutputEvent(event.payload, streamState)), piboSessionId: "ps_model_metrics", nextSequence: () => ++sequence, now: () => "2026-09-09T04:00:00.000Z" }));
+	for (const trace of [view(input), patched, live]) {
+		const records = flatten(trace.nodes).flatMap((node) => node.modelInferences ?? []);
+		const cold = records.find((record) => record.id === "turn:usage:1");
+		assert.equal(cold.cacheObservation.previousInferenceId, "turn:usage:0");
+		assert.equal(cold.cacheObservation.warning, "possible-cache-read-drop");
+	}
+});
+
 test("cache-read comparison recognizes a visible compaction boundary", () => {
 	const scenario = [
 		{ type: "message_started", text: "First", source: "user" },
@@ -284,9 +310,11 @@ test("cache-read comparison recognizes a visible compaction boundary", () => {
 		createdAt: new Date(Date.UTC(2026, 8, 9, 4, 10, index)).toISOString(),
 		payload: { ...event, piboSessionId: "ps_model_metrics", eventId: "turn" },
 	}));
-	const record = flatten(view(scenario).nodes).flatMap((node) => node.modelInferences ?? []).find((item) => item.id === "turn:usage:1");
-	assert.equal(record.cacheObservation.warning, "none");
-	assert.equal(record.cacheObservation.explanation, "compaction-between-inferences");
+	for (const stored of [scenario, scenario.map((event) => ({ ...event, createdAt: scenario[0].createdAt }))]) {
+		const record = flatten(view(stored).nodes).flatMap((node) => node.modelInferences ?? []).find((item) => item.id === "turn:usage:1");
+		assert.equal(record.cacheObservation.warning, "none");
+		assert.equal(record.cacheObservation.explanation, "compaction-between-inferences");
+	}
 });
 
 test("inference metrics distinguish input, cache reads, cache writes, uncached input and output", () => {

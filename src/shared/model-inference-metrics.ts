@@ -12,6 +12,7 @@ export type ModelInferenceRecord = {
 	id: string;
 	metrics: ModelInferenceMetrics;
 	completedAt?: string;
+	completedSequence?: number;
 	cacheObservation?: import("./cache-observability.js").CacheUsageObservation;
 };
 
@@ -42,4 +43,16 @@ export function modelInferenceCacheReadRatio(metrics: ModelInferenceMetrics | un
 
 function tokenCount(value: number | undefined): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+}
+
+export function compareInferenceCompletion(
+	left: Pick<ModelInferenceRecord, "completedAt" | "completedSequence">,
+	right: Pick<ModelInferenceRecord, "completedAt" | "completedSequence">,
+): number {
+	const time = Date.parse(left.completedAt ?? "") - Date.parse(right.completedAt ?? "");
+	if (Number.isFinite(time) && time !== 0) return time;
+	if (left.completedSequence !== undefined && right.completedSequence !== undefined) {
+		return left.completedSequence - right.completedSequence;
+	}
+	return 0;
 }
