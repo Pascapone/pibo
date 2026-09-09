@@ -14,12 +14,12 @@ migration_lineage:
   source_sha256: "543f12d0ce1bb38fdf374dd4002046f7f7ec66836778ca7180180fb6749ebb37"
   source_body_sha256: "543f12d0ce1bb38fdf374dd4002046f7f7ec66836778ca7180180fb6749ebb37"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-09T06:20:36Z"
 ---
 # Agent Runtime History and Debug
 
-**Updated:** 2026-08-16
+**Updated:** 2026-09-09
 
 Architecture and operating procedures are documented in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md) and [`agent-runtime-operations.md`](./agent-runtime-operations.md).
 
@@ -84,6 +84,7 @@ Start runtime-neutral:
 ```text
 pibo debug session <ps_...> runtime
 pibo debug trace <ps_...> --check
+pibo debug cache <ps_...>
 pibo debug messages <ps_...> list
 pibo debug events <ps_...> --limit 20
 ```
@@ -94,7 +95,9 @@ Ask the frozen adapter for native history only when needed:
 pibo debug trace <ps_...> --native-history --check
 ```
 
-Session-scoped message, event, tool, failure, trace, summary, and telemetry detail outputs include runtime instance, adapter, native session id where useful, and binding state. `session runtime` reports bounded product-history counts and sanitized binding fields.
+Session-scoped message, event, tool, failure, trace, cache, summary, and telemetry detail outputs include runtime instance, adapter, native session id where useful, and binding state. `session runtime` reports bounded product-history counts and sanitized binding fields.
+
+`pibo debug cache` is a read-only projection of normalized provider usage already present in Product History. It lists input, cache-read, uncached, cache-write, output, and cache-read ratio per inference. Cache writes remain separate from cache hits. A warning is intentionally conservative and says only that a possible cache-read drop occurred between comparable large consecutive inferences. Missing counters remain unknown. The command does not inspect prompts or cache keys, enforce prefix stability, alter a runtime, or determine whether Pibo, Pi, Codex, OMP, provider policy, or eviction caused the observed change.
 
 Debug output must not expose runtime config, locator values, binding metadata values, provider-auth flow internals, bearer credentials, API keys, cookies, account identifiers, environment secrets, credential paths/content, or raw provider bodies. Externalized payloads are hydrated for explicitly requested full message/event/tool inspection; default text remains byte-bounded.
 

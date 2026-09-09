@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-09
+
+- **Provider cache observability**: Corrected model-inference diagnostics so cache writes are never counted as cache hits, added cache-read ratio and conservative provider-counter warnings across replay, Compact Terminal, `pibo debug trace`, and the new bounded `pibo debug cache` command. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006), [Debug CLI contract](/specs/operator/debug-web-and-pty.md#requirement-op-debug-002), [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rails), and [runtime-neutral debug reference](/project/agent-runtime-history-and-debug.md#debug-workflow). The Docker and headful browser fixtures use normalized provider usage and do not claim a live cache hit, identify the cause of a drop, enforce prefix stability, modify Pi/Codex/OMP, or deploy to production.
+
 ## 2026-09-08
 
 - **Request-scoped HTTP failure containment**: Updated the [authenticated Web host contract](/specs/gateway/web-host-and-channel.md#requirement-wp02-gw-web-007-http-failures-remain-inside-their-request-or-upgrade-boundary). Responses now reject duplicate startup across destroyed, ended, finished, and headers-sent states; post-header stream failures, regular early termination, and disconnects during pending compressed-body buffering cancel and unlock the body reader before any late header write; Node handler and upgrade failures remain socket-scoped; and every fire-and-forget HTTP entry promise has a nonthrowing terminal rejection boundary. Bounded diagnostics omit body, header, cookie, credential, query, and error-message content. Validation used deterministic Docker tests, not production incident data or deployment.

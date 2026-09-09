@@ -15,7 +15,7 @@ migration_lineage:
   source_body_sha256: "0faf4abf4a48f79b23f9a9cad421c97fa09519a3d356fc9dafb6be78ff62773b"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T08:12:30Z"
+  at: "2026-09-09T06:20:36Z"
 ---
 # Design System: Pibo Compact Terminal
 **Project ID:** local-reference-pibo-compact-terminal
@@ -239,11 +239,12 @@ When Tool-call metrics are enabled, each tool invocation may expose one flat sig
 
 When model-inference metrics are enabled, the related Tool, reasoning, assistant-message, delegation, or turn row may expose a separate flat provider-usage rail:
 
-- Use five square, adjacent segments: `MODEL`, `IN`, `CACHED`, `UNCACHED`, and `OUT`.
+- Use six square core segments: `MODEL`, `IN`, `CACHED`, `UNCACHED`, `CACHE %`, and `OUT`. Insert `CACHE WRITE` before `OUT` only when the provider reports it.
 - Reuse the Tool rail's typography, geometry, wrapping, near-black background, and prohibition on radius, shadows, glow, animation, or icons.
-- `MODEL` and `IN` use electric cyan, `CACHED` uses neon violet, `UNCACHED` uses neon yellow, and `OUT` uses acid lime.
-- `IN` is total provider-reported input; `CACHED` combines cache reads and cache writes; `UNCACHED` is the remaining non-negative input; and `OUT` is provider-reported output. Missing provider usage displays `—` and is never estimated in the browser.
+- `MODEL` and `IN` use electric cyan; cache reads and ratio use neon violet; `UNCACHED` uses neon yellow; `CACHE WRITE` stays neutral slate; and `OUT` uses acid lime.
+- `IN` is total provider-reported input. `CACHED` is cache-read input only. `UNCACHED` is the non-negative difference `IN - CACHED` when cache-read usage exists. `CACHE %` is `CACHED / IN`. `CACHE WRITE` is shown separately and never presented as a hit. `OUT` is provider-reported output. Missing provider usage displays `—` and is never estimated in the browser.
 - One rail appears beneath the row that owns each provider response. It must not create an empty transcript row or card.
+- A conservative provider-counter anomaly may add one flat orange `details` disclosure below the rail. Its summary names a possible cache-read drop and shows previous and current ratios. Expanded content shows the previous inference, elapsed time, current read/input counts, and an explicit statement that provider metrics do not identify the cause. Do not use a modal, toast, forced expansion, error styling, animation, or language that claims prefix corruption or assigns fault to Pibo, a runtime, or a provider.
 
 Default Tool display thresholds are intentionally simple and local to presentation: duration escalates at 1, 5, and 15 seconds; estimated input at 8k, 20k, and 50k tokens; estimated output at 2k, 10k, and 50k tokens. `Settings > Debug` lets users replace each increasing three-value band or restore these defaults. Thresholds and diagnostic feature selections persist only in the current browser.
 

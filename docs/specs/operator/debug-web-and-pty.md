@@ -9,20 +9,20 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T19:00:00Z"
+  at: "2026-09-09T06:20:36Z"
 sources:
   - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+    resource: "scope:Current implementation and named-test evidence at traceability.commit"
+    title: "Current Debug implementation and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  baseline_commit: "4d89b3c6d822f997c1f133c6bbf1bad541022205"
   package: "WP-05+09-COMPUTE-OPERATOR"
   source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
+  focused_test_execution: "cache, trace, discovery, and bounded JSON/text Debug CLI tests passed; the isolated Docker worker also passed the full 2,982-test repository suite with 2,972 passed, 10 skipped, and 0 failed"
+  build_and_typecheck_execution: "workflow build, root TypeScript build, Chat UI build, and all package typechecks passed in the isolated Docker worker"
 traceability:
-  commit: "aacf12b17e8ba92249a901b3e1d44d57a35f9bf8"
+  commit: "4d89b3c6d822f997c1f133c6bbf1bad541022205"
   requirements:
     - id: "OP-DEBUG-001"
       status: "implemented"
@@ -53,6 +53,10 @@ traceability:
           symbol: runReadOnlyQuery
         - path: src/debug/session.ts
           symbol: inspectDebugSession
+        - path: src/debug/trace.ts
+          symbol: inspectDebugTrace
+        - path: src/debug/cache.ts
+          symbol: inspectDebugCache
         - path: src/debug/events.ts
           symbol: inspectDebugEvents
         - path: src/debug/telemetry.ts
@@ -70,6 +74,8 @@ traceability:
           name: "pibo debug db rejects mutating and multi-statement SQL"
         - path: test/debug-cli.test.mjs
           name: "pibo debug trace prints rebuilt Chat Web trace nodes"
+        - path: test/debug-cli.test.mjs
+          name: "pibo debug cache summarizes provider usage and flags a possible cache-read drop"
         - path: test/debug-trace-checks.test.mjs
           name: "debug trace check reports duplicate stable keys"
         - path: test/output-integrity-debug.test.mjs
@@ -79,9 +85,9 @@ traceability:
         - path: test/output-repair-debug.test.mjs
           name: "scoped output repair is bounded by session and time and remains dry-run by default"
       public:
-        - "pibo debug db|session|trace|messages|events|failures|telemetry|resources|runs|signals"
+        - "pibo debug db|session|trace|cache|messages|events|failures|telemetry|resources|runs|signals"
       failures:
-        - "Debug reads owner stores/APIs without mutating them; SQL rejects mutation and multiple statements."
+        - "Debug reads owner stores/APIs without mutating them; SQL rejects mutation and multiple statements. Cache warnings use provider-reported counters, remain bounded and read-only, and do not identify a cause."
       confidence: high
     - id: "OP-DEBUG-003"
       status: "implemented"
@@ -204,7 +210,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Commands
 
-- pibo debug db|session|trace|summary|messages|final|tool|failures|events|agents|jobs|runs|resources|signals|telemetry|persistence|repair|web|pty; Web branches targets|attach-chat|snapshot|diff|watch|scenario|report; PTY branches run|scenario|list-scenarios.
+- pibo debug db|session|trace|cache|summary|messages|final|tool|failures|events|agents|jobs|runs|resources|signals|telemetry|persistence|repair|web|pty; Web branches targets|attach-chat|snapshot|diff|watch|scenario|report; PTY branches run|scenario|list-scenarios.
 
 ### Apis
 
@@ -212,7 +218,7 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### State
 
-- Local debug defaults read owner stores read-only; persistence audit reports incomplete lifecycles, identity collisions, queue/dead-letter state, and bounded detail. Run-job listing reports claim expiry, missing run rows, and effective liveness without payloads; orphan cleanup requires explicit dry-run or apply. Repair is dry-run by default and applies only with exact completed Product History, Reliability, or adapter evidence. Optional explicit artifact directories hold Web/PTY evidence.
+- Local debug defaults read owner stores read-only. `pibo debug cache` reconstructs provider-reported per-inference input, cache-read, cache-write, uncached, and ratio values from the normal trace projection; it may flag a conservative consecutive cache-read drop without assigning a cause. Persistence audit reports incomplete lifecycles, identity collisions, queue/dead-letter state, and bounded detail. Run-job listing reports claim expiry, missing run rows, and effective liveness without payloads; orphan cleanup requires explicit dry-run or apply. Repair is dry-run by default and applies only with exact completed Product History, Reliability, or adapter evidence. Optional explicit artifact directories hold Web/PTY evidence.
 
 ### Lifecycle
 
@@ -249,17 +255,17 @@ The upstream/dev refresh implementation and named tests provide the current sour
 
 ### Requirement: OP-DEBUG-002
 
-Read and reconstruct owner data for sessions, messages, events, traces, failures, telemetry, resources, runs, and signals without becoming source authority.
+Read and reconstruct owner data for sessions, messages, events, traces, provider-reported cache usage, failures, telemetry, resources, runs, and signals without becoming source authority.
 
 #### Current
 
-The upstream/dev refresh implementation and named tests provide the current source-grounded contract. The named tests were inspected and later executed only as recorded in the implementation report; they do not expand this requirement beyond the cited behavior.
+The implementation at the traceability commit and the named deterministic tests define the current source-grounded contract. Cache diagnostics are a read-only projection of normalized provider usage and do not expand Debug into runtime or provider authority.
 
 #### Acceptance
 
-- Source: `src/debug/sql.ts` — `runReadOnlyQuery`; `src/debug/session.ts` — `inspectDebugSession`; `src/debug/events.ts` — `inspectDebugEvents`; `src/debug/telemetry.ts` — `inspectTelemetrySessions`
-- Tests: `test/debug-cli.test.mjs` — “pibo debug db discovers schema and runs limited read-only SQL”; `test/debug-cli.test.mjs` — “pibo debug db rejects mutating and multi-statement SQL”; `test/debug-cli.test.mjs` — “pibo debug trace prints rebuilt Chat Web trace nodes”; `test/debug-trace-checks.test.mjs` — “debug trace check reports duplicate stable keys”
-- Failure/security boundary: Debug reads owner stores/APIs without mutating them; SQL rejects mutation and multiple statements.
+- Source: `src/debug/sql.ts` — `runReadOnlyQuery`; `src/debug/session.ts` — `inspectDebugSession`; `src/debug/trace.ts` — `inspectDebugTrace`; `src/debug/cache.ts` — `inspectDebugCache`; `src/debug/events.ts` — `inspectDebugEvents`; `src/debug/telemetry.ts` — `inspectTelemetrySessions`
+- Tests: `test/debug-cli.test.mjs` — “pibo debug db discovers schema and runs limited read-only SQL”; `test/debug-cli.test.mjs` — “pibo debug db rejects mutating and multi-statement SQL”; `test/debug-cli.test.mjs` — “pibo debug trace prints rebuilt Chat Web trace nodes”; `test/debug-cli.test.mjs` — “pibo debug cache summarizes provider usage and flags a possible cache-read drop”; `test/debug-trace-checks.test.mjs` — “debug trace check reports duplicate stable keys”
+- Failure/security boundary: Debug reads owner stores/APIs without mutating them; SQL rejects mutation and multiple statements. Cache output is limited to provider-reported usage and derived ratios, keeps missing counters unknown, and never attributes a cache-read drop to a specific cause.
 - Confidence: **high**
 
 ### Requirement: OP-DEBUG-003
