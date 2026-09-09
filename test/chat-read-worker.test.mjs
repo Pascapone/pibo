@@ -70,6 +70,39 @@ test('file history reads run on a separate worker and large bodies remain explic
  }finally{await reader.close();store.close();rmSync(root,{recursive:true,force:true});}
 });
 
+test('inline product history stays complete when a larger page limit is requested',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pibo-inline-history-')),path=join(root,'db.sqlite'),payloadRootDir=join(root,'payloads');
+ const store=new PiboDataStore(path,{payloadRootDir});const reader=new AsyncChatReadQueries(path,payloadRootDir);
+ try{
+  for(let sequence=1;sequence<9;sequence++) store.messages.insertMessage({id:`older-${sequence}`,sessionId:'session',sequence,role:'assistant',status:'complete',createdAt:'2026-09-09',contentPreview:`older ${sequence}`,attributes:{inlineText:`older ${sequence}`}});
+  const body='x'.repeat(5038)+'ä'.repeat(117);
+  assert.equal(body.length,5155);assert.equal(Buffer.byteLength(body),5272);
+  store.messages.insertMessage({id:'target',sessionId:'session',sequence:9,role:'assistant',status:'complete',createdAt:'2026-09-09',contentPreview:body.slice(0,512),attributes:{inlineText:body}});
+  for(const limit of [200,400]) {
+   const entries=await reader.history.listProductHistoryEntries({piboSessionId:'session',limit});
+   assert.equal(entries.find(entry=>entry.id==='product:target')?.content,body);
+  }
+ }finally{await reader.close();store.close();rmSync(root,{recursive:true,force:true});}
+});
+
+test('trace timeline page limits do not shorten the same inline assistant message',async()=>{
+ const directory=mkdtempSync(join(tmpdir(),'pibo-inline-timeline-'));let host,store;
+ try{
+  host=await startWebOutboxProcessHost({directory,piboSessionId:'ps_inline_timeline'});
+  store=new PiboDataStore(host.paths.dataStorePath,{payloadRootDir:host.paths.dataPayloadRootDir});
+  for(let sequence=1;sequence<9;sequence++) store.messages.insertMessage({id:`older-${sequence}`,sessionId:'ps_inline_timeline',sequence,role:'user',status:'complete',createdAt:'2026-09-09',contentPreview:`older ${sequence}`,attributes:{inlineText:`older ${sequence}`}});
+  const body='x'.repeat(5038)+'ä'.repeat(117);
+  store.messages.insertMessage({id:'target',sessionId:'ps_inline_timeline',sequence:9,role:'assistant',status:'complete',createdAt:'2026-09-09',contentPreview:body.slice(0,512),attributes:{inlineText:body}});
+  for(const limit of [100,200]) {
+   const response=await fetch(`${host.baseURL}/api/chat/trace/timeline?piboSessionId=ps_inline_timeline&limit=${limit}`,{headers:{'x-test-user':'user-1'}});
+   assert.equal(response.status,200);const page=await response.json();
+   const target=page.nodes.find(node=>node.inlinePayloads?.output===body);
+   assert.ok(target,`timeline limit ${limit} must retain the complete assistant message`);
+   assert.equal(page.responseBudget.truncatedByBytes,false);
+  }
+ }finally{store?.close();await host?.channel.stop();await host?.app.dispose();rmSync(directory,{recursive:true,force:true});}
+});
+
 test('authenticated trace cache hits precede reconstruction and invalidate on durable and scope changes',async()=>{
  const directory=mkdtempSync(join(tmpdir(),'pibo-trace-cache-'));let host;let revision=0;
  try{
