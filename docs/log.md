@@ -2,6 +2,8 @@
 
 ## 2026-09-09
 
+- **Cache diagnostics review**: Added the [PR 996 review and acceptance record](/reports/cache-observability-pr996-review-2026-09-09.md), documenting the reproduced same-millisecond receipt ordering defect, its correction, and validation.
+
 - **Provider cache observability**: Corrected model-inference diagnostics so cache writes are never counted as cache hits, added cache-read ratio and conservative provider-counter warnings across replay, Compact Terminal, `pibo debug trace`, and the new bounded `pibo debug cache` command. Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-debug-006), [Debug CLI contract](/specs/operator/debug-web-and-pty.md#requirement-op-debug-002), [Compact Terminal design](/project/design/compact-terminal.md#debug-metric-signal-rails), and [runtime-neutral debug reference](/project/agent-runtime-history-and-debug.md#debug-workflow). The Docker and headful browser fixtures use normalized provider usage and do not claim a live cache hit, identify the cause of a drop, enforce prefix stability, modify Pi/Codex/OMP, or deploy to production.
 
 ## 2026-09-08

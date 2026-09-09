@@ -1,0 +1,161 @@
+{
+  "piboSessionId": "ps_30ebb65e-1375-4078-a6da-f46e6f0c5c76",
+  "piSessionId": "7a4fe008-3478-4284-8d1b-7e2d4460630a",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "7a4fe008-3478-4284-8d1b-7e2d4460630a",
+  "runtimeBindingState": "bound",
+  "historySource": "product",
+  "title": "Untitled Session",
+  "status": "done",
+  "statusSource": "event-log",
+  "errorNodeCount": 0,
+  "nodes": [
+    {
+      "status": "done",
+      "type": "user.message",
+      "title": "User Message",
+      "id": "event:message_queued:e4f3fc4d-2089-4d15-9f86-5166942232cd",
+      "source": "product-history",
+      "stableKey": "event:message_queued:e4f3fc4d-2089-4d15-9f86-5166942232cd",
+      "order": "turn=4,tx=2,part=0,event=4,phase=0,source=1",
+      "startedAt": "2026-09-09T08:07:04.813Z",
+      "childrenCount": 0,
+      "depth": 0
+    },
+    {
+      "status": "done",
+      "type": "agent.turn",
+      "title": "Agent Turn",
+      "id": "event:message:e4f3fc4d-2089-4d15-9f86-5166942232cd",
+      "source": "event-log",
+      "stableKey": "turn:e4f3fc4d-2089-4d15-9f86-5166942232cd",
+      "order": "turn=4,event=4,phase=2,source=1",
+      "startedAt": "2026-09-09T08:07:04.820Z",
+      "completedAt": "2026-09-09T08:07:09.266Z",
+      "childrenCount": 1,
+      "depth": 0
+    },
+    {
+      "status": "done",
+      "type": "assistant.message",
+      "title": "Agent Message",
+      "id": "event:assistant:e4f3fc4d-2089-4d15-9f86-5166942232cd:assistant:0",
+      "parentId": "event:message:e4f3fc4d-2089-4d15-9f86-5166942232cd",
+      "source": "product-history",
+      "stableKey": "assistant:e4f3fc4d-2089-4d15-9f86-5166942232cd:assistant:0",
+      "order": "turn=5,tx=5,part=0,event=5,phase=8,source=1",
+      "startedAt": "2026-09-09T08:07:09.214Z",
+      "completedAt": "2026-09-09T08:07:09.266Z",
+      "childrenCount": 0,
+      "modelInferences": [
+        {
+          "id": "e4f3fc4d-2089-4d15-9f86-5166942232cd:usage:0",
+          "completedAt": "2026-09-09T08:07:09.219Z",
+          "completedSequence": 6,
+          "metrics": {
+            "inputTokens": 1997,
+            "outputTokens": 9,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0,
+            "totalTokens": 2006,
+            "costUsd": 0.010255
+          },
+          "cacheObservation": {
+            "rule": "provider-cache-read-drop-v1",
+            "source": "provider-reported-usage",
+            "cacheState": "cold",
+            "warning": "none",
+            "explanation": "provider-usage",
+            "inputTokens": 1997,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "uncachedInputTokens": 1997,
+            "cacheReadRatio": 0
+          }
+        }
+      ],
+      "depth": 1
+    },
+    {
+      "status": "done",
+      "type": "user.message",
+      "title": "User Message",
+      "id": "event:message_queued:440c2063-ca7a-4ed0-891f-a00bd6804a07",
+      "source": "product-history",
+      "stableKey": "event:message_queued:440c2063-ca7a-4ed0-891f-a00bd6804a07",
+      "order": "turn=11,tx=9,part=0,event=11,phase=0,source=1",
+      "startedAt": "2026-09-09T08:07:28.260Z",
+      "childrenCount": 0,
+      "depth": 0
+    },
+    {
+      "status": "done",
+      "type": "agent.turn",
+      "title": "Agent Turn",
+      "id": "event:message:440c2063-ca7a-4ed0-891f-a00bd6804a07",
+      "source": "event-log",
+      "stableKey": "turn:440c2063-ca7a-4ed0-891f-a00bd6804a07",
+      "order": "turn=11,event=11,phase=2,source=1",
+      "startedAt": "2026-09-09T08:07:28.264Z",
+      "completedAt": "2026-09-09T08:07:30.223Z",
+      "childrenCount": 1,
+      "depth": 0
+    },
+    {
+      "status": "done",
+      "type": "assistant.message",
+      "title": "Agent Message",
+      "id": "event:assistant:440c2063-ca7a-4ed0-891f-a00bd6804a07:assistant:0",
+      "parentId": "event:message:440c2063-ca7a-4ed0-891f-a00bd6804a07",
+      "source": "product-history",
+      "stableKey": "assistant:440c2063-ca7a-4ed0-891f-a00bd6804a07:assistant:0",
+      "order": "turn=12,tx=12,part=0,event=12,phase=8,source=1",
+      "startedAt": "2026-09-09T08:07:30.192Z",
+      "completedAt": "2026-09-09T08:07:30.223Z",
+      "childrenCount": 0,
+      "modelInferences": [
+        {
+          "id": "440c2063-ca7a-4ed0-891f-a00bd6804a07:usage:0",
+          "completedAt": "2026-09-09T08:07:30.197Z",
+          "completedSequence": 13,
+          "metrics": {
+            "inputTokens": 2025,
+            "outputTokens": 9,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "reasoningTokens": 0,
+            "totalTokens": 2034,
+            "costUsd": 0.010395
+          },
+          "cacheObservation": {
+            "rule": "provider-cache-read-drop-v1",
+            "source": "provider-reported-usage",
+            "cacheState": "cold",
+            "warning": "none",
+            "explanation": "provider-usage",
+            "inputTokens": 2025,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "uncachedInputTokens": 2025,
+            "cacheReadRatio": 0,
+            "previousInferenceId": "e4f3fc4d-2089-4d15-9f86-5166942232cd:usage:0",
+            "previousCacheReadRatio": 0,
+            "elapsedMs": 20978
+          }
+        }
+      ],
+      "depth": 1
+    }
+  ],
+  "rawNodeCount": 6,
+  "checks": {
+    "status": "ok",
+    "issues": []
+  },
+  "nextCommands": [
+    "pibo debug trace ps_30ebb65e-1375-4078-a6da-f46e6f0c5c76 show event:message_queued:e4f3fc4d-2089-4d15-9f86-5166942232cd",
+    "pibo debug messages ps_30ebb65e-1375-4078-a6da-f46e6f0c5c76 list"
+  ]
+}

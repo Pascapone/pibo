@@ -1,0 +1,131 @@
+{
+  "piboSessionId": "ps_dd734d43-847f-41ab-950f-6869466c68bd",
+  "piSessionId": "b1db6cbe-0c11-4d29-b876-eac0c19fa86a",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "nativeSessionId": "b1db6cbe-0c11-4d29-b876-eac0c19fa86a",
+  "runtimeBindingState": "unbound",
+  "historySource": "events",
+  "title": "PR996 deterministic cache fixture",
+  "status": "done",
+  "statusSource": "event-log",
+  "errorNodeCount": 0,
+  "nodes": [
+    {
+      "status": "done",
+      "type": "agent.turn",
+      "title": "Agent Turn",
+      "id": "event:message:pr996-cache-fixture",
+      "source": "event-log",
+      "stableKey": "turn:pr996-cache-fixture",
+      "order": "turn=1,event=1,phase=2,source=1",
+      "startedAt": "2026-09-09T07:40:36.172Z",
+      "completedAt": "2026-09-09T07:40:36.172Z",
+      "childrenCount": 1,
+      "depth": 0
+    },
+    {
+      "status": "done",
+      "type": "assistant.message",
+      "title": "Agent Message",
+      "id": "event:assistant:pr996-cache-fixture:assistant:0",
+      "parentId": "event:message:pr996-cache-fixture",
+      "source": "event-log",
+      "stableKey": "assistant:pr996-cache-fixture:assistant:0",
+      "order": "turn=2,event=2,phase=8,source=1",
+      "startedAt": "2026-09-09T07:40:36.172Z",
+      "completedAt": "2026-09-09T07:40:36.172Z",
+      "childrenCount": 0,
+      "modelInferences": [
+        {
+          "id": "pr996-cache-fixture:usage:0",
+          "completedAt": "2026-09-09T07:40:36.172Z",
+          "completedSequence": 3,
+          "metrics": {
+            "inputTokens": 20000,
+            "outputTokens": 100,
+            "cacheReadTokens": 18000,
+            "cacheWriteTokens": 200,
+            "totalTokens": 20100
+          },
+          "cacheObservation": {
+            "rule": "provider-cache-read-drop-v1",
+            "source": "provider-reported-usage",
+            "cacheState": "warm",
+            "warning": "none",
+            "explanation": "provider-usage",
+            "inputTokens": 20000,
+            "cacheReadTokens": 18000,
+            "cacheWriteTokens": 200,
+            "uncachedInputTokens": 2000,
+            "cacheReadRatio": 0.9
+          }
+        },
+        {
+          "id": "pr996-cache-fixture:usage:1",
+          "completedAt": "2026-09-09T07:40:36.172Z",
+          "completedSequence": 4,
+          "metrics": {
+            "inputTokens": 20000,
+            "outputTokens": 100,
+            "cacheReadTokens": 1000,
+            "cacheWriteTokens": 300,
+            "totalTokens": 20100
+          },
+          "cacheObservation": {
+            "rule": "provider-cache-read-drop-v1",
+            "source": "provider-reported-usage",
+            "cacheState": "cold",
+            "warning": "possible-cache-read-drop",
+            "explanation": "cache-read-ratio-dropped",
+            "inputTokens": 20000,
+            "cacheReadTokens": 1000,
+            "cacheWriteTokens": 300,
+            "uncachedInputTokens": 19000,
+            "cacheReadRatio": 0.05,
+            "previousInferenceId": "pr996-cache-fixture:usage:0",
+            "previousCacheReadRatio": 0.9,
+            "elapsedMs": 0
+          }
+        },
+        {
+          "id": "pr996-cache-fixture:usage:2",
+          "completedAt": "2026-09-09T07:40:36.172Z",
+          "completedSequence": 5,
+          "metrics": {
+            "inputTokens": 20000,
+            "outputTokens": 100,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "totalTokens": 20100
+          },
+          "cacheObservation": {
+            "rule": "provider-cache-read-drop-v1",
+            "source": "provider-reported-usage",
+            "cacheState": "cold",
+            "warning": "none",
+            "explanation": "provider-usage",
+            "inputTokens": 20000,
+            "cacheReadTokens": 0,
+            "cacheWriteTokens": 0,
+            "uncachedInputTokens": 20000,
+            "cacheReadRatio": 0,
+            "previousInferenceId": "pr996-cache-fixture:usage:1",
+            "previousCacheReadRatio": 0.05,
+            "elapsedMs": 0
+          }
+        }
+      ],
+      "depth": 1
+    }
+  ],
+  "rawNodeCount": 2,
+  "checks": {
+    "status": "ok",
+    "issues": []
+  },
+  "nextCommands": [
+    "pibo debug trace ps_dd734d43-847f-41ab-950f-6869466c68bd show event:message:pr996-cache-fixture",
+    "pibo debug messages ps_dd734d43-847f-41ab-950f-6869466c68bd list"
+  ]
+}

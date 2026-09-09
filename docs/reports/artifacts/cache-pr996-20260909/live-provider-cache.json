@@ -1,0 +1,58 @@
+{
+  "piboSessionId": "ps_30ebb65e-1375-4078-a6da-f46e6f0c5c76",
+  "runtimeInstanceId": "pi",
+  "runtimeAdapterId": "pi",
+  "source": "provider-reported-usage",
+  "summary": {
+    "inferenceCount": 2,
+    "cacheReadReportedCount": 2,
+    "cacheReadUnreportedCount": 0,
+    "possibleDropCount": 0,
+    "inputTokens": 4022,
+    "cacheReadTokens": 0,
+    "uncachedInputTokens": 4022,
+    "cacheReadRatio": 0,
+    "cacheWriteTokens": 0
+  },
+  "inferences": [
+    {
+      "id": "e4f3fc4d-2089-4d15-9f86-5166942232cd:usage:0",
+      "nodeId": "event:assistant:e4f3fc4d-2089-4d15-9f86-5166942232cd:assistant:0",
+      "nodeTitle": "Agent Message",
+      "completedAt": "2026-09-09T08:07:09.219Z",
+      "inputTokens": 1997,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "uncachedInputTokens": 1997,
+      "cacheReadRatio": 0,
+      "cacheState": "cold",
+      "warning": "none",
+      "explanation": "provider-usage"
+    },
+    {
+      "id": "440c2063-ca7a-4ed0-891f-a00bd6804a07:usage:0",
+      "nodeId": "event:assistant:440c2063-ca7a-4ed0-891f-a00bd6804a07:assistant:0",
+      "nodeTitle": "Agent Message",
+      "completedAt": "2026-09-09T08:07:30.197Z",
+      "inputTokens": 2025,
+      "cacheReadTokens": 0,
+      "cacheWriteTokens": 0,
+      "uncachedInputTokens": 2025,
+      "cacheReadRatio": 0,
+      "previousCacheReadRatio": 0,
+      "elapsedMs": 20978,
+      "cacheState": "cold",
+      "warning": "none",
+      "explanation": "provider-usage"
+    }
+  ],
+  "limitations": [
+    "Cache counters are reported by the runtime or provider; missing counters remain unknown.",
+    "A cache-read drop does not identify whether Pibo, the runtime, the provider, or eviction caused it.",
+    "This command does not inspect or alter runtime source code, prompts, or provider cache keys."
+  ],
+  "nextCommands": [
+    "pibo debug trace ps_30ebb65e-1375-4078-a6da-f46e6f0c5c76 --medium",
+    "pibo debug events ps_30ebb65e-1375-4078-a6da-f46e6f0c5c76 --type assistant_usage --fields inputTokens,cacheReadTokens,cacheWriteTokens,totalTokens"
+  ]
+}
