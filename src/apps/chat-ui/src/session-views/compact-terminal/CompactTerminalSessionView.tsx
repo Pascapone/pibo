@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, CircleX, Hammer, Images, MessageSquare, Minimize2 } from "lucide-react";
+import { BookOpenCheck, ChevronDown, ChevronLeft, ChevronRight, CircleX, FileArchive, Hammer, Image as ImageIcon, Images, MessageSquare, Pencil, SquareTerminal } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Virtuoso } from "react-virtuoso";
 import { chatImagePreviewUrls } from "../../api-chat-files";
 import { AgentDelegationCard } from "../../components/AgentDelegationCard";
@@ -309,7 +310,7 @@ export function CompactTerminalSessionView({
 		if (previewable.length) setImageDialog({ images: previewable, index });
 	}, []);
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
-		<div className="px-4 @max-[420px]:px-2">
+		<div>
 			<TerminalRow
 				row={row}
 				showToolDebugMetrics={showToolDebugMetrics}
@@ -481,7 +482,7 @@ function TerminalHeader({
 				) : null}
 				{compactionCount > 0 ? (
 					<TerminalBadge tone="cyan" label={`${compactionCount} compactions · jump to previous compaction`} onClick={() => onNavigate("compaction")}>
-						{compactionCount}<Minimize2 size={12} />
+						{compactionCount}<FileArchive size={12} />
 					</TerminalBadge>
 				) : null}
 				{errorCount > 0 ? (
@@ -702,7 +703,7 @@ function TerminalRowContent({
 }) {
 	if (row.kind === "message.assistant") {
 		return (
-			<div className="ml-[1.9rem] min-w-0" data-pibo-component="TerminalAssistantMessage">
+			<div className="ml-5 min-w-0" data-pibo-component="TerminalAssistantMessage">
 				<div className="compact-terminal-markdown" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="assistant-message">
 					<MarkdownRenderer streaming={row.status === "running"}>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 				</div>
@@ -720,9 +721,9 @@ function TerminalRowContent({
 	if (row.kind === "message.user") {
 		return (
 			<>
-				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
+				<TerminalLines lines={visibleLines} status={row.status} prefixIcon={terminalRowPrefixIcon(row)} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				{row.pendingMessageDelivery ? (
-					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-[1.9rem] mt-2" />
+					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-5 mt-2" />
 				) : null}
 				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>
@@ -739,8 +740,8 @@ function TerminalRowContent({
 	if (row.kind === "reasoning" && row.markdown) {
 		return (
 			<>
-				<TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
-				<div className="ml-[1.9rem] min-w-0" data-pibo-component="TerminalReasoningMarkdown">
+				<TerminalLines lines={visibleLines} status={row.status} prefixIcon={terminalRowPrefixIcon(row)} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
+				<div className="ml-5 min-w-0" data-pibo-component="TerminalReasoningMarkdown">
 					<div className="compact-terminal-markdown compact-terminal-reasoning" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="reasoning">
 						<MarkdownRenderer streaming={row.status === "running"}>{row.markdown}</MarkdownRenderer>
 					</div>
@@ -748,22 +749,24 @@ function TerminalRowContent({
 			</>
 		);
 	}
-	return <TerminalLines lines={visibleLines} status={row.status} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />;
+	return <TerminalLines lines={visibleLines} status={row.status} prefixIcon={terminalRowPrefixIcon(row)} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />;
 }
 
 function TerminalLines({
 	lines,
 	status,
+	prefixIcon,
 	clampPreview,
 	singleLine,
 }: {
 	lines: CompactTerminalLine[];
 	status: CompactTerminalRow["status"];
+	prefixIcon: LucideIcon;
 	clampPreview: boolean;
 	singleLine?: boolean;
 }) {
 	return lines.map((line, index) => (
-		<TerminalLine key={index} line={line} status={status} clampLines={singleLine ? 1 : clampPreview && index === 0 ? 5 : undefined} />
+		<TerminalLine key={index} line={line} status={status} prefixIcon={prefixIcon} clampLines={singleLine ? 1 : clampPreview && index === 0 ? 5 : undefined} />
 	));
 }
 
@@ -1000,6 +1003,16 @@ function focusToolCallReferenceAfterScroll(rowId: string, traceNodeId: string): 
 	requestAnimationFrame(() => requestAnimationFrame(focusReference));
 }
 
+function terminalRowPrefixIcon(row: CompactTerminalRow): LucideIcon {
+	if (row.kind === "tool.image" || row.kind === "tool.group.images") return ImageIcon;
+	if (row.kind === "execution.compaction") return FileArchive;
+	const toolName = row.lines.find((line) => line.functionCall)?.functionCall?.name ?? row.title ?? "";
+	const nameParts = toolName.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+	if (nameParts.includes("read")) return BookOpenCheck;
+	if (nameParts.includes("write") || nameParts.includes("edit")) return Pencil;
+	return SquareTerminal;
+}
+
 function collapsedToolCallPreviewLines(row: { kind: string; lines: CompactTerminalLine[] }) {
 	if (row.kind === "tool.group.exploring" || row.kind === "tool.group.images") return row.lines.slice(0, COLLAPSED_EXPLORING_PREVIEW_LINES);
 	return row.lines;
@@ -1052,8 +1065,8 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 		>
 			<div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1" aria-hidden="true">
 				{isWorking ? (
-					<div className="grid min-w-0 flex-1 grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words">
-						<span className="whitespace-pre text-[#737373]">•</span>
+					<div className="grid min-w-0 flex-1 grid-cols-[1.25rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
+						<span className="inline-flex items-center text-[#737373]"><SquareTerminal size={13} strokeWidth={1.8} aria-hidden="true" /></span>
 						<span className="inline-flex min-w-0 items-baseline gap-2">
 							{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
 							<span className="compact-terminal-working-scramble">
@@ -1173,8 +1186,8 @@ function useActiveTurnElapsed(startedAt: string | undefined): string | undefined
 function TerminalCompactionLine() {
 	const dots = useAnimatedDots();
 	return (
-		<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 whitespace-pre-wrap break-words">
-			<span className="whitespace-pre text-[#38bdf8]">•</span>
+		<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
+			<span className="inline-flex items-center text-[#38bdf8]"><FileArchive size={13} strokeWidth={1.8} aria-hidden="true" /></span>
 			<span className="min-w-0">
 				<span className="font-semibold text-[#38bdf8]">Compacting</span>
 				<span className="text-[#38bdf8]">{dots}</span>

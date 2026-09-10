@@ -114,7 +114,7 @@ export function TerminalToolMetrics({
 		<div
 			data-pibo-debug="tool-metrics"
 			aria-label="Tool call metrics"
-			className="ml-[1.9rem] mt-1 flex flex-wrap items-stretch gap-px border-y border-[#262626] bg-[#050505] py-px font-mono leading-[1.45] tabular-nums"
+			className="ml-5 mt-1 flex flex-wrap items-stretch gap-px border-y border-[#262626] bg-[#050505] py-px font-mono leading-[1.45] tabular-nums"
 		>
 			<ColoredMetricSignal
 				kind="duration"

@@ -66,15 +66,18 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.match(normal, />Room</);
 		assert.match(normal, />Pibo Core</);
 		assert.doesNotMatch(normal, /aria-label="Session views"|Switch to .* view|aria-label="Raw Events"/);
-		assert.match(normal, /aria-label="Tool display mode"/);
-		assert.match(normal, /<option value="intent" disabled="">Tools: Intent/);
+		const toolViewButton = buttonOpeningTag(normal, "Choose tool view");
+		assert.match(toolViewButton, /aria-haspopup="menu"/);
+		assert.match(toolViewButton, /aria-expanded="false"/);
+		assert.match(toolViewButton, /data-pibo-debug="tool-display-mode"/);
+		assert.doesNotMatch(normal, /<select|Tools: Default|>Default<|>Hide<|>Slim<|>Intent</);
 		assert.match(buttonOpeningTag(normal, "Debug"), /aria-pressed="false"/);
 		assert.equal(normal.includes('aria-label="Enter Terminal fullscreen"'), false);
 		assert.equal(normal.includes('aria-label="Open selected session in new window"'), false);
 
 		const intentAvailable = render({ toolDisplayMode: "intent", toolIntentSupported: true });
-		assert.match(intentAvailable, /<option value="intent" selected="">Tools: Intent/);
-		assert.doesNotMatch(intentAvailable, /<option value="intent" disabled=""/);
+		assert.match(buttonOpeningTag(intentAvailable, "Choose tool view"), /aria-expanded="false"/);
+		assert.doesNotMatch(intentAvailable, />Intent</);
 
 		const pwaWindowAvailable = render({ onOpenSessionWindow() {} });
 		assert.match(buttonOpeningTag(pwaWindowAvailable, "Open selected session in new window"), /data-pibo-debug="open-session-window"/);
@@ -87,7 +90,7 @@ async function runSessionViewToggleAccessibilityScenario() {
 		assert.doesNotMatch(desktopTerminal, /Switch to Terminal view|Switch to Workflow view/);
 		assert.doesNotMatch(desktopTerminal, /aria-label="Raw Events"/);
 		assert.doesNotMatch(desktopTerminal, /Web annotations/);
-		assert.match(desktopTerminal, /aria-label="Tool display mode"/);
+		assert.match(desktopTerminal, /aria-label="Choose tool view"/);
 		assert.match(desktopTerminal, /aria-label="Thinking"/);
 		assert.match(desktopTerminal, /aria-label="Enter Terminal fullscreen"/);
 		assert.match(buttonOpeningTag(desktopTerminal, "Debug"), /aria-pressed="false"/);
@@ -108,6 +111,17 @@ async function runSessionViewToggleAccessibilityScenario() {
 
 test("topbar exposes Debug without duplicate view navigation or Raw Events", async () => {
 	await assert.doesNotReject(runSessionViewToggleAccessibilityScenario());
+});
+
+test("tool view menu exposes checked choices without showing the active mode while closed", async () => {
+	const header = await readFile(new URL("../src/apps/chat-ui/src/session-trace-header.tsx", import.meta.url), "utf8");
+	assert.match(header, /<Hammer size=\{14\} \/>/);
+	assert.match(header, /role="menuitemradio"/);
+	assert.match(header, /aria-checked=\{selected\}/);
+	assert.match(header, /selected \? <Check size=\{13\} \/> : null/);
+	assert.match(header, /option\.value === "intent" && !intentSupported/);
+	assert.match(header, /event\.key === "Escape"/);
+	assert.match(header, /\["ArrowDown", "ArrowUp", "Home", "End"\]/);
 });
 
 test("normal desktop and mobile Session surfaces retain Terminal and Workflow views", async () => {
