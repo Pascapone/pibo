@@ -391,7 +391,7 @@ test("compact image tool rows group consecutive image reads", () => {
 	const group = rows[0];
 	assert.equal(group.kind, "tool.group.images");
 	assert.deepEqual(group.lines.map((line) => line.tokens.map((entry) => entry.text).join("")), [
-		"3 Images Viewed",
+		"3 Viewed Images",
 		"Viewed image /tmp/image-1.png",
 		"Viewed image /tmp/image-2.png",
 		"Viewed image /tmp/image-3.png",
@@ -400,6 +400,32 @@ test("compact image tool rows group consecutive image reads", () => {
 	assert.deepEqual(group.detailItems.map((item) => item.output.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
 	assert.deepEqual(group.imagePreviews.map((preview) => preview.path), ["/tmp/image-1.png", "/tmp/image-2.png", "/tmp/image-3.png"]);
 	assert.doesNotMatch(JSON.stringify(group), /abcabc|iVBOR/);
+});
+
+test("compact image tool rows remain grouped in slim mode", () => {
+	const images = Array.from({ length: 3 }, (_, index) => traceNode("tool.call", `slim-image-${index + 1}`, {
+		order: index + 1,
+		title: "view_image",
+		input: { path: `/tmp/slim-image-${index + 1}.png` },
+		output: { content: [{ type: "image", data: "abc", mimeType: "image/png" }], details: { path: `/tmp/slim-image-${index + 1}.png` } },
+	}));
+	const rows = buildCompactTerminalRows(traceView(images), { showThinking: false, toolDisplayMode: "slim" });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rows[0].kind, "tool.group.images");
+	assert.equal(rowText(rows[0]), "3 Viewed Images");
+	assert.deepEqual(rows[0].imagePreviews.map((preview) => preview.path), [
+		"/tmp/slim-image-1.png",
+		"/tmp/slim-image-2.png",
+		"/tmp/slim-image-3.png",
+	]);
+
+	const interrupted = buildCompactTerminalRows(traceView([
+		images[0],
+		traceNode("tool.call", "slim-separator", { order: 2, title: "bash", input: { command: "pwd" }, output: "/tmp" }),
+		{ ...images[1], order: 3, startedAt: "2026-05-16T10:00:03.000Z" },
+	]), { showThinking: false, toolDisplayMode: "slim" });
+	assert.equal(interrupted.length, 3, "another tool call terminates the slim image gallery");
 });
 
 test("image galleries append without losing identity, also with debug metrics", () => {

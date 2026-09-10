@@ -173,10 +173,11 @@ export function buildCompactTerminalRows(
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
 	const reconciled = reconcileConceptualRowCandidates(candidates);
-	const rows = (options.toolDisplayMode ?? "default") === "default"
-		? groupRelatedToolCandidates(reconciled, showToolDebugMetrics).map((candidate) => candidate.row)
+	const toolDisplayMode = options.toolDisplayMode ?? "default";
+	const rows = toolDisplayMode === "default" || toolDisplayMode === "slim"
+		? groupRelatedToolCandidates(reconciled, showToolDebugMetrics || toolDisplayMode === "slim").map((candidate) => candidate.row)
 		: reconciled.map((candidate) => candidate.row);
-	return applyToolDisplayMode(rows, options.toolDisplayMode ?? "default");
+	return applyToolDisplayMode(rows, toolDisplayMode);
 }
 
 function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode): CompactTerminalRow[] {
@@ -1232,7 +1233,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} ${detailItems.length === 1 ? "Image Viewed" : "Images Viewed"}`, toneForStatus(status), "semibold")],
+				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} Viewed ${detailItems.length === 1 ? "Image" : "Images"}`, toneForStatus(status), "semibold")],
 			},
 			...visibleDetailItems.map((item, index): CompactTerminalLine => ({
 				prefix: index === 0 ? "detail" : "continuation",

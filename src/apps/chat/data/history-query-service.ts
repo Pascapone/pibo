@@ -14,6 +14,9 @@ export type ChatProductHistoryCoverage = {
 	lastCreatedAt?: string;
 };
 
+const HISTORY_MESSAGE_MAX_BYTES = 64 * 1024;
+const HISTORY_ENTRY_RESERVE_MAX_BYTES = 4 * 1024;
+
 type HistoryMessageRow = {
 	id: string;
 	session_id: string;
@@ -58,14 +61,30 @@ export class ChatHistoryQueryService {
 			ORDER BY m.sequence DESC
 			LIMIT ?
 		`).all(...values, limit) as HistoryMessageRow[];
-		return rows.reverse().flatMap((row) => {
+		const preparedRows = rows.flatMap((row) => {
 			const role = historyRole(row.role);
-			if (!role) return [];
-			const attributes = parseObject(row.attributes_json);
-			const text = this.readMessageText(row, attributes, Math.min(64*1024,Math.floor(this.pageByteBudget/limit)));
-			const contentBytes=row.content_payload_ref?this.store.payloads.getPayload(row.content_payload_ref)?.byteSize:typeof attributes.inlineText==="string"?Buffer.byteLength(attributes.inlineText):Buffer.byteLength(row.content_preview??"");
-			const contentTruncated=contentBytes!==undefined && Buffer.byteLength(text)<contentBytes;
-			return [{
+			return role ? [{ row, role, attributes: parseObject(row.attributes_json) }] : [];
+		});
+		// Rows arrive newest first. Reserve a bounded share for older rows, then spend the
+		// remainder on the tail so requesting more history cannot shorten its newest nodes.
+		const reservePerEntry = Number.isFinite(this.pageByteBudget)
+			? Math.min(HISTORY_ENTRY_RESERVE_MAX_BYTES, Math.floor(this.pageByteBudget / Math.max(1, preparedRows.length)))
+			: Number.POSITIVE_INFINITY;
+		let remainingBytes = this.pageByteBudget;
+		const entries = preparedRows.map(({ row, role, attributes }, index) => {
+			const reservedForOlderEntries = reservePerEntry * (preparedRows.length - index - 1);
+			const maximumBytes = Number.isFinite(this.pageByteBudget)
+				? Math.min(HISTORY_MESSAGE_MAX_BYTES, Math.max(0, remainingBytes - reservedForOlderEntries))
+				: Number.POSITIVE_INFINITY;
+			const text = this.readMessageText(row, attributes, maximumBytes);
+			if (Number.isFinite(remainingBytes)) remainingBytes = Math.max(0, remainingBytes - Buffer.byteLength(text, "utf8"));
+			const contentBytes = row.content_payload_ref
+				? this.store.payloads.getPayload(row.content_payload_ref)?.byteSize
+				: typeof attributes.inlineText === "string"
+					? Buffer.byteLength(attributes.inlineText, "utf8")
+					: Buffer.byteLength(row.content_preview ?? "", "utf8");
+			const contentTruncated = contentBytes !== undefined && Buffer.byteLength(text, "utf8") < contentBytes;
+			return {
 				id: `product:${row.id}`,
 				type: "message" as const,
 				source: "product" as const,
@@ -82,12 +101,13 @@ export class ChatHistoryQueryService {
 					sourceStreamId: row.source_stream_id ?? undefined,
 					completedAt: row.completed_at ?? undefined,
 					payloadRef: row.content_payload_ref ?? undefined,
-                    tracePayloadRef: contentTruncated && row.content_payload_ref ? tracePayloadRefForStoredPayload({payloadStore:this.store.payloads,piboSessionId:row.session_id,payloadId:row.content_payload_ref,nodeId:`product:${row.id}`,payloadKind:"output"}) as unknown as PiboJsonObject : undefined,
-					contentTruncated:contentTruncated || undefined,
-					contentBytes:contentTruncated?contentBytes:undefined,
+					tracePayloadRef: contentTruncated && row.content_payload_ref ? tracePayloadRefForStoredPayload({payloadStore:this.store.payloads,piboSessionId:row.session_id,payloadId:row.content_payload_ref,nodeId:`product:${row.id}`,payloadKind:"output"}) as unknown as PiboJsonObject : undefined,
+					contentTruncated: contentTruncated || undefined,
+					contentBytes: contentTruncated ? contentBytes : undefined,
 				}),
-			} satisfies AgentRuntimeHistoryEntry];
+			} satisfies AgentRuntimeHistoryEntry;
 		});
+		return entries.reverse();
 	}
 
 	getProductHistoryCoverage(piboSessionId: string): ChatProductHistoryCoverage {
@@ -101,20 +121,28 @@ export class ChatHistoryQueryService {
           lastCreatedAt:edge("created_at","DESC")?.value as string|undefined};
     }
 
-	private readMessageText(row: HistoryMessageRow, attributes: PiboJsonObject, maximum:number): string {
+	private readMessageText(row: HistoryMessageRow, attributes: PiboJsonObject, maximumBytes: number): string {
 		if (row.content_payload_ref) {
 			try {
-				if(!Number.isFinite(this.pageByteBudget))return this.store.payloads.readPayloadText(row.content_payload_ref);
-				const payload=this.store.payloads.getPayload(row.content_payload_ref);
-				if(!payload || payload.byteSize>maximum)return (row.content_preview??"").slice(0,Math.min(2048,maximum/4));
-				return Buffer.from(this.store.payloads.readPayloadBytesBounded(row.content_payload_ref,maximum)).toString("utf8");
+				if (!Number.isFinite(this.pageByteBudget)) return this.store.payloads.readPayloadText(row.content_payload_ref);
+				const payload = this.store.payloads.getPayload(row.content_payload_ref);
+				if (!payload || payload.byteSize > maximumBytes) return truncateUtf8(row.content_preview ?? "", maximumBytes);
+				return this.store.payloads.readPayloadText(row.content_payload_ref);
 			} catch {
 				// Retain the durable preview if the external payload was removed or corrupted.
 			}
 		}
-		if (typeof attributes.inlineText === "string") return Number.isFinite(this.pageByteBudget)?attributes.inlineText.slice(0,Math.floor(maximum/4)):attributes.inlineText;
-		return Number.isFinite(this.pageByteBudget)?(row.content_preview ?? "").slice(0,Math.floor(maximum/4)):(row.content_preview ?? "");
+		if (typeof attributes.inlineText === "string") return truncateUtf8(attributes.inlineText, maximumBytes);
+		return truncateUtf8(row.content_preview ?? "", maximumBytes);
 	}
+}
+
+function truncateUtf8(value: string, maximumBytes: number): string {
+	if (!Number.isFinite(maximumBytes) || Buffer.byteLength(value, "utf8") <= maximumBytes) return value;
+	let end = Math.max(0, Math.floor(maximumBytes));
+	const bytes = Buffer.from(value, "utf8");
+	while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1;
+	return bytes.subarray(0, end).toString("utf8");
 }
 
 function historyRole(role: string): "user" | "assistant" | "system" | undefined {
