@@ -12,7 +12,10 @@ type TerminalLineProps = {
 const MAX_TERMINAL_LINE_TOKEN_SPANS = 120;
 
 export function TerminalLine({ line, status, prefixIcon: PrefixIcon, clampLines }: TerminalLineProps) {
-	const contentClassName = `min-w-0 whitespace-pre-wrap break-words ${clampLines ? "block overflow-hidden" : ""}`;
+	const truncateSingleLine = clampLines === 1;
+	const contentClassName = truncateSingleLine
+		? "block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+		: `min-w-0 whitespace-pre-wrap break-words ${clampLines ? "block overflow-hidden" : ""}`;
 	const tokens = compactTerminalLineTokens(line.tokens);
 	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS && !tokens.some((token) => token.href);
 	return (
@@ -20,7 +23,7 @@ export function TerminalLine({ line, status, prefixIcon: PrefixIcon, clampLines 
 			<span className={`inline-flex items-center whitespace-pre ${prefixClassName(line.prefix, status)}`}>
 				{line.prefix === "bullet" && PrefixIcon ? <PrefixIcon size={13} strokeWidth={1.8} aria-hidden="true" /> : prefixText(line.prefix)}
 			</span>
-			<span className={contentClassName} style={clampLines ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
+			<span className={contentClassName} style={clampLines && !truncateSingleLine ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
 				{renderPlainText
 					? <span className="text-[#d4d4d4]">{tokens.map((token) => token.text).join("")}</span>
 					: tokens.map((token, index) => token.href ? (
