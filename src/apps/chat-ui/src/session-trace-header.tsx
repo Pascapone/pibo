@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Brain, Bug, ChevronsDown, ChevronsUp, EyeOff, Maximize2, Plus } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { Brain, Bug, Check, ChevronsDown, ChevronsUp, EyeOff, Hammer, Maximize2, Plus } from "lucide-react";
 import { copyTextToClipboard } from "./clipboard";
 import type { getChatSessionView } from "./session-views/registry";
 import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";
@@ -141,19 +141,11 @@ export function SessionTraceHeader({
             <Plus size={15} />
           </button>
         ) : null}
-        <select
+        <ToolDisplayModeMenu
           value={toolDisplayMode}
-          onChange={(event) => onToolDisplayModeChange(event.target.value as ToolDisplayMode)}
-          title="Tool display mode"
-          aria-label="Tool display mode"
-          data-pibo-debug="tool-display-mode"
-          className="h-8 rounded-sm border border-slate-700 bg-[#0e1116] px-2 text-[11px] font-bold uppercase tracking-wide text-slate-300 outline-none focus:border-[#11a4d4]"
-        >
-          <option value="default">Tools: Default</option>
-          <option value="hide">Tools: Hide</option>
-          <option value="slim">Tools: Slim</option>
-          <option value="intent" disabled={!toolIntentSupported}>Tools: Intent</option>
-        </select>
+          intentSupported={toolIntentSupported}
+          onChange={onToolDisplayModeChange}
+        />
         {terminalFullscreenAvailable && onEnterTerminalFullscreen ? (
           <button
             type="button"
@@ -200,6 +192,143 @@ export function SessionTraceHeader({
       {showTerminalUsage ? (
         <div className="shrink-0 max-[980px]:order-2 @max-[680px]:order-2">
           <TerminalHeaderUsage status={terminalUsageStatus} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const TOOL_DISPLAY_MODE_OPTIONS: ReadonlyArray<{
+  value: ToolDisplayMode;
+  label: string;
+  description: string;
+}> = [
+  { value: "default", label: "Default", description: "Show full tool details" },
+  { value: "hide", label: "Hide", description: "Hide tool calls" },
+  { value: "slim", label: "Slim", description: "Show compact tool rows" },
+  { value: "intent", label: "Intent", description: "Show tool intent only" },
+];
+
+function ToolDisplayModeMenu({
+  value,
+  intentSupported,
+  onChange,
+}: {
+  value: ToolDisplayMode;
+  intentSupported: boolean;
+  onChange: (mode: ToolDisplayMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const selectedIndex = TOOL_DISPLAY_MODE_OPTIONS.findIndex((option) => option.value === value);
+    const focusFrame = window.requestAnimationFrame(() => {
+      const selectedOption = optionRefs.current[selectedIndex];
+      if (selectedOption && !selectedOption.disabled) selectedOption.focus();
+      else optionRefs.current.find((option) => option && !option.disabled)?.focus();
+    });
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [open, value]);
+
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeMenu(true);
+      return;
+    }
+    if (event.key === "Tab") {
+      closeMenu();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const enabledOptions = optionRefs.current.filter((option): option is HTMLButtonElement => Boolean(option && !option.disabled));
+    if (!enabledOptions.length) return;
+    const currentIndex = enabledOptions.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? enabledOptions.length - 1
+        : event.key === "ArrowDown"
+          ? (currentIndex + 1 + enabledOptions.length) % enabledOptions.length
+          : (currentIndex - 1 + enabledOptions.length) % enabledOptions.length;
+    enabledOptions[nextIndex]?.focus();
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          setOpen(true);
+        }}
+        title="Choose tool view"
+        aria-label="Choose tool view"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        data-pibo-debug="tool-display-mode"
+        className={`h-8 w-8 inline-flex items-center justify-center rounded-sm border transition-colors ${open ? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#11a4d4]" : "border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"}`}
+      >
+        <Hammer size={14} />
+      </button>
+      {open ? (
+        <div
+          id={menuId}
+          role="menu"
+          aria-label="Tool view options"
+          onKeyDown={handleMenuKeyDown}
+          className="absolute left-0 top-full z-50 mt-1 w-56 rounded-sm border border-slate-700 bg-[#151f24] p-1 shadow-2xl shadow-black/50"
+        >
+          {TOOL_DISPLAY_MODE_OPTIONS.map((option, index) => {
+            const selected = option.value === value;
+            const disabled = option.value === "intent" && !intentSupported;
+            return (
+              <button
+                key={option.value}
+                ref={(node) => { optionRefs.current[index] = node; }}
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected}
+                disabled={disabled}
+                title={disabled ? "Tool intent is unavailable for this runtime" : undefined}
+                onClick={() => {
+                  if (!selected) onChange(option.value);
+                  closeMenu(true);
+                }}
+                className="flex w-full items-center gap-3 rounded-sm px-3 py-2 text-left text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] focus:bg-[#11a4d4]/10 focus:text-[#11a4d4] focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-semibold">{option.label}</span>
+                  <span className="block text-[10px] text-slate-500">{option.description}</span>
+                </span>
+                <span className="grid h-4 w-4 shrink-0 place-items-center" aria-hidden="true">
+                  {selected ? <Check size={13} /> : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
     </div>
