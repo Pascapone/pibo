@@ -214,6 +214,7 @@ test("compact image tool rows hide binary blobs and show the image path", () => 
 
 	assert.equal(rows.length, 1);
 	assert.equal(rows[0].kind, "tool.image");
+	assert.equal(rows[0].lines[0].tokens[0].tone, "purple");
 	assert.match(rowText(rows[0]), /Viewed image/);
 	assert.match(rowText(rows[0]), /Path: \/tmp\/screenshot\.png/);
 	assert.doesNotMatch(rowText(rows[0]), /iVBOR/);
@@ -390,6 +391,7 @@ test("compact image tool rows group consecutive image reads", () => {
 	assert.equal(rows.length, 1);
 	const group = rows[0];
 	assert.equal(group.kind, "tool.group.images");
+	assert.equal(group.lines[0].tokens[0].tone, "purple");
 	assert.deepEqual(group.lines.map((line) => line.tokens.map((entry) => entry.text).join("")), [
 		"3 Viewed Images",
 		"Viewed image /tmp/image-1.png",

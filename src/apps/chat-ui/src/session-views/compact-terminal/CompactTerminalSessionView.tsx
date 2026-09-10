@@ -310,7 +310,7 @@ export function CompactTerminalSessionView({
 		if (previewable.length) setImageDialog({ images: previewable, index });
 	}, []);
 	const renderRow = useCallback((_: number, row: CompactTerminalRow) => (
-		<div>
+		<div className="px-[3px]">
 			<TerminalRow
 				row={row}
 				showToolDebugMetrics={showToolDebugMetrics}
@@ -927,9 +927,11 @@ function terminalRowClassName(row: CompactTerminalRow, focused = false): string 
 			? "group border-b border-[#141414] bg-[#11a4d4]/10 py-2 last:border-b-0 hover:bg-[#11a4d4]/15"
 			: row.kind === "agent.delegation"
 				? "group border-b border-[#141414] bg-[#f97316]/5 py-2 last:border-b-0"
-				: row.kind === "execution.command"
-				? "group border-b border-[#141414] bg-[#f59e0b]/5 py-2 last:border-b-0 hover:bg-[#f59e0b]/10"
-				: "group border-b border-[#141414] py-2 last:border-b-0 hover:bg-[#161616]";
+				: row.kind === "tool.image" || row.kind === "tool.group.images"
+					? "group border-b border-[#141414] bg-[#a855f7]/5 py-2 last:border-b-0 hover:bg-[#a855f7]/10"
+					: row.kind === "execution.command"
+						? "group border-b border-[#141414] bg-[#f59e0b]/5 py-2 last:border-b-0 hover:bg-[#f59e0b]/10"
+						: "group border-b border-[#141414] py-2 last:border-b-0 hover:bg-[#161616]";
 	const focusClass = row.expandable || focused ? " focus:outline-none focus:ring-1 focus:ring-[#38bdf8]/50" : "";
 	return focused ? `${base}${focusClass} ring-1 ring-[#38bdf8] bg-[#123040]` : `${base}${focusClass}`;
 }

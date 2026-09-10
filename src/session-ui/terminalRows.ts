@@ -27,7 +27,7 @@ export type CompactTerminalRowKind =
 
 export type TerminalInlineToken = {
 	text: string;
-	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "yellow" | "blue" | "amber";
+	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "purple" | "yellow" | "blue" | "amber";
 	weight?: "normal" | "semibold" | "bold";
 	italic?: boolean;
 	href?: string;
@@ -714,7 +714,7 @@ function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification)
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(image.verb, toneForStatus(node.status), "semibold")],
+				tokens: [token(image.verb, node.status === "done" ? "purple" : toneForStatus(node.status), "semibold")],
 			},
 			{
 				prefix: "detail",
@@ -1233,7 +1233,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} Viewed ${detailItems.length === 1 ? "Image" : "Images"}`, toneForStatus(status), "semibold")],
+				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} Viewed ${detailItems.length === 1 ? "Image" : "Images"}`, status === "done" ? "purple" : toneForStatus(status), "semibold")],
 			},
 			...visibleDetailItems.map((item, index): CompactTerminalLine => ({
 				prefix: index === 0 ? "detail" : "continuation",
