@@ -16,7 +16,7 @@ export function TerminalLine({ line, status, prefixIcon: PrefixIcon, clampLines 
 	const tokens = compactTerminalLineTokens(line.tokens);
 	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS && !tokens.some((token) => token.href);
 	return (
-		<div className="grid grid-cols-[1rem_minmax(0,1fr)] leading-[1.45]">
+		<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] leading-[1.45]">
 			<span className={`inline-flex items-center whitespace-pre ${prefixClassName(line.prefix, status)}`}>
 				{line.prefix === "bullet" && PrefixIcon ? <PrefixIcon size={13} strokeWidth={1.8} aria-hidden="true" /> : prefixText(line.prefix)}
 			</span>

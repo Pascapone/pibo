@@ -703,7 +703,7 @@ function TerminalRowContent({
 }) {
 	if (row.kind === "message.assistant") {
 		return (
-			<div className="ml-4 min-w-0" data-pibo-component="TerminalAssistantMessage">
+			<div className="ml-5 min-w-0" data-pibo-component="TerminalAssistantMessage">
 				<div className="compact-terminal-markdown" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="assistant-message">
 					<MarkdownRenderer streaming={row.status === "running"}>{typeof row.output === "string" ? row.output : ""}</MarkdownRenderer>
 				</div>
@@ -723,7 +723,7 @@ function TerminalRowContent({
 			<>
 				<TerminalLines lines={visibleLines} status={row.status} prefixIcon={terminalRowPrefixIcon(row)} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
 				{row.pendingMessageDelivery ? (
-					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-4 mt-2" />
+					<PendingUserMessageDelivery delivery={row.pendingMessageDelivery} state={row.messageDeliveryState} className="ml-5 mt-2" />
 				) : null}
 				<TerminalMessageMetadata timestamp={row.startedAt} forkEntryId={row.forkEntryId} onFork={onFork} />
 			</>
@@ -741,7 +741,7 @@ function TerminalRowContent({
 		return (
 			<>
 				<TerminalLines lines={visibleLines} status={row.status} prefixIcon={terminalRowPrefixIcon(row)} clampPreview={collapseToolCallPreview} singleLine={row.singleLine} />
-				<div className="ml-4 min-w-0" data-pibo-component="TerminalReasoningMarkdown">
+				<div className="ml-5 min-w-0" data-pibo-component="TerminalReasoningMarkdown">
 					<div className="compact-terminal-markdown compact-terminal-reasoning" data-pibo-component="MarkdownRendererHost" data-pibo-markdown-kind="reasoning">
 						<MarkdownRenderer streaming={row.status === "running"}>{row.markdown}</MarkdownRenderer>
 					</div>
@@ -1065,7 +1065,7 @@ function TerminalStreamingFooter({ startedAt, isWorking, goal }: { startedAt?: s
 		>
 			<div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1" aria-hidden="true">
 				{isWorking ? (
-					<div className="grid min-w-0 flex-1 grid-cols-[1rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
+					<div className="grid min-w-0 flex-1 grid-cols-[1.25rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
 						<span className="inline-flex items-center text-[#737373]"><SquareTerminal size={13} strokeWidth={1.8} aria-hidden="true" /></span>
 						<span className="inline-flex min-w-0 items-baseline gap-2">
 							{elapsed ? <span className="shrink-0 tabular-nums text-[#737373]">{elapsed}</span> : null}
@@ -1186,7 +1186,7 @@ function useActiveTurnElapsed(startedAt: string | undefined): string | undefined
 function TerminalCompactionLine() {
 	const dots = useAnimatedDots();
 	return (
-		<div className="grid grid-cols-[1rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
+		<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
 			<span className="inline-flex items-center text-[#38bdf8]"><FileArchive size={13} strokeWidth={1.8} aria-hidden="true" /></span>
 			<span className="min-w-0">
 				<span className="font-semibold text-[#38bdf8]">Compacting</span>

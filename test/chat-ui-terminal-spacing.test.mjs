@@ -19,9 +19,9 @@ const compactTerminalSources = [
 
 test("Terminal rows use the full viewport width and a compact aligned content gutter", () => {
 	assert.match(terminalViewSource, /const renderRow[\s\S]*?\(\s*<div>\s*<TerminalRow/);
-	assert.match(terminalLineSource, /grid-cols-\[1rem_minmax\(0,1fr\)\] leading-\[1\.45\]/);
+	assert.match(terminalLineSource, /grid-cols-\[1\.25rem_minmax\(0,1fr\)\] leading-\[1\.45\]/);
 	assert.match(terminalLineSource, /line\.prefix === "bullet" && PrefixIcon \? <PrefixIcon size=\{13\}/);
-	assert.match(terminalViewSource, /ml-4 min-w-0" data-pibo-component="TerminalAssistantMessage"/);
+	assert.match(terminalViewSource, /ml-5 min-w-0" data-pibo-component="TerminalAssistantMessage"/);
 	assert.match(terminalViewSource, /nameParts\.includes\("read"\)\) return BookOpenCheck/);
 	assert.match(terminalViewSource, /nameParts\.includes\("write"\) \|\| nameParts\.includes\("edit"\)\) return Pencil/);
 	assert.match(terminalViewSource, /row\.kind === "tool\.image" \|\| row\.kind === "tool\.group\.images"\) return ImageIcon/);

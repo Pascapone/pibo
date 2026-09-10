@@ -165,7 +165,7 @@ function TerminalLoadingSkeleton({ label }: { label: string }) {
 			<div className="min-h-0 h-full overflow-hidden font-mono text-[12px] leading-[1.45]">
 				<div>
 					<div className="group border-b border-[#141414] py-2">
-						<div className="grid grid-cols-[1rem_minmax(0,1fr)] leading-[1.45]">
+						<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] leading-[1.45]">
 							<span className="flex items-center text-[#38bdf8]">
 								<SquareTerminal size={13} strokeWidth={1.8} className="animate-pulse" aria-hidden="true" />
 							</span>
@@ -193,7 +193,7 @@ function TerminalSkeletonRow({ kind, lineCount }: { kind: "tool" | "markdown" | 
 				const bullet = index === 0 && !isMarkdown;
 				const detail = index > 0 && !isMarkdown;
 				return (
-					<div key={index} className="grid grid-cols-[1rem_minmax(0,1fr)] leading-[1.45]">
+					<div key={index} className="grid grid-cols-[1.25rem_minmax(0,1fr)] leading-[1.45]">
 						<span className={`flex items-center ${isCommand ? "text-[#f59e0b]" : "text-[#22c55e]"}`}>
 							{bullet ? <SquareTerminal size={13} strokeWidth={1.8} aria-hidden="true" /> : detail ? <span className="text-[10px] text-[#737373]">L</span> : null}
 						</span>

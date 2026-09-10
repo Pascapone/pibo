@@ -52,7 +52,7 @@ export function TerminalModelCard({
 	};
 
 	return (
-		<div className="ml-4 max-w-3xl border border-[#3a3a3a] bg-[#111111] text-[12px] shadow-lg" data-shared-terminal-card="model">
+		<div className="ml-5 max-w-3xl border border-[#3a3a3a] bg-[#111111] text-[12px] shadow-lg" data-shared-terminal-card="model">
 			<div className="flex items-center justify-between gap-3 border-b border-[#2a2a2a] px-3 py-2">
 				<div>
 					<div className="text-[#d4d4d4]">Model</div>

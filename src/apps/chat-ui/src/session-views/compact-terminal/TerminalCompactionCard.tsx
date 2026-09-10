@@ -38,12 +38,12 @@ export function TerminalCompactionCard({ row }: { row: CompactTerminalRow }) {
 
 	return (
 		<div data-pibo-component="TerminalCompactionCard" className="min-w-0">
-			<div className="grid grid-cols-[1rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
+			<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] whitespace-pre-wrap break-words">
 				<span className="flex items-center text-[#22c55e]"><FileArchive size={13} strokeWidth={1.8} aria-hidden="true" /></span>
 				<span className="font-semibold text-[#22c55e]">Compacted</span>
 			</div>
 			<div
-				className="ml-4 mt-2 grid gap-px border-y border-[#262626] bg-[#050505] sm:grid-cols-3"
+				className="ml-5 mt-2 grid gap-px border-y border-[#262626] bg-[#050505] sm:grid-cols-3"
 				aria-label="Compaction statistics"
 				data-pibo-debug="compaction-stats"
 			>
@@ -55,7 +55,7 @@ export function TerminalCompactionCard({ row }: { row: CompactTerminalRow }) {
 				<CompactionMetric label="Compaction tokens" value={formatCount(stats?.compactionTokens)} />
 			</div>
 			<details
-				className="ml-4 mt-2 border border-[#2a2a2a] bg-[#111111]"
+				className="ml-5 mt-2 border border-[#2a2a2a] bg-[#111111]"
 				onToggle={(event) => {
 					if (event.currentTarget.open) loadSummary();
 				}}
