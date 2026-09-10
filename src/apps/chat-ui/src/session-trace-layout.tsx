@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { SquareTerminal } from "lucide-react";
 
 import { Composer } from "./composer/Composer";
 import { SessionTraceHeader } from "./session-trace-header";
@@ -162,11 +163,11 @@ function TerminalLoadingSkeleton({ label }: { label: string }) {
 			aria-label={label}
 		>
 			<div className="min-h-0 h-full overflow-hidden font-mono text-[12px] leading-[1.45]">
-				<div className="px-4">
+				<div>
 					<div className="group border-b border-[#141414] py-2">
-						<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 leading-[1.45]">
+						<div className="grid grid-cols-[1rem_minmax(0,1fr)] leading-[1.45]">
 							<span className="flex items-center text-[#38bdf8]">
-								<span className="h-1.5 w-1.5 rounded-full bg-[#38bdf8] animate-pulse" />
+								<SquareTerminal size={13} strokeWidth={1.8} className="animate-pulse" aria-hidden="true" />
 							</span>
 							<span className="flex min-w-0 items-center gap-2">
 								<span className="font-semibold text-[#d4d4d4]">{label}</span>
@@ -192,9 +193,9 @@ function TerminalSkeletonRow({ kind, lineCount }: { kind: "tool" | "markdown" | 
 				const bullet = index === 0 && !isMarkdown;
 				const detail = index > 0 && !isMarkdown;
 				return (
-					<div key={index} className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 leading-[1.45]">
-						<span className="flex items-center text-[#737373]">
-							{bullet ? <span className={`h-1.5 w-1.5 rounded-full ${isCommand ? "bg-[#f59e0b]" : "bg-[#22c55e]"}`} /> : detail ? <span className="text-[10px]">L</span> : null}
+					<div key={index} className="grid grid-cols-[1rem_minmax(0,1fr)] leading-[1.45]">
+						<span className={`flex items-center ${isCommand ? "text-[#f59e0b]" : "text-[#22c55e]"}`}>
+							{bullet ? <SquareTerminal size={13} strokeWidth={1.8} aria-hidden="true" /> : detail ? <span className="text-[10px] text-[#737373]">L</span> : null}
 						</span>
 						<span className="min-w-0 py-[3px]">
 							{index === 0 ? (

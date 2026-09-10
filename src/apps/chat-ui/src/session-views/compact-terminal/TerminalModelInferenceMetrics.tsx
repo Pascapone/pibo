@@ -43,7 +43,7 @@ export function TerminalModelInferenceMetrics({ metrics, cacheObservation }: {
 			<div
 				data-pibo-debug="model-inference-metrics"
 				aria-label="Model inference metrics"
-				className="ml-[1.9rem] mt-1 flex flex-wrap items-stretch gap-px border-y border-[#262626] bg-[#050505] py-px font-mono leading-[1.45] tabular-nums"
+				className="ml-4 mt-1 flex flex-wrap items-stretch gap-px border-y border-[#262626] bg-[#050505] py-px font-mono leading-[1.45] tabular-nums"
 			>
 				<span className="inline-flex items-center border-l-2 border-[#11a4d4] bg-[#11a4d4]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-[#7dd3fc]">
 					Model
@@ -86,7 +86,7 @@ export function TerminalModelInferenceMetrics({ metrics, cacheObservation }: {
 					tone="border-[#a3ff12] bg-[#a3ff12]/15 text-[#c7ff6b]"
 				/>
 			</div>
-			{warning && cacheObservation ? <details data-pibo-debug="cache-read-drop" className="ml-[1.9rem] border-l-2 border-[#ff6b00] bg-[#ff6b00]/10 px-2 py-1 font-mono text-[11px] text-[#fdba74]">
+			{warning && cacheObservation ? <details data-pibo-debug="cache-read-drop" className="ml-4 border-l-2 border-[#ff6b00] bg-[#ff6b00]/10 px-2 py-1 font-mono text-[11px] text-[#fdba74]">
 				<summary className="cursor-pointer focus-visible:outline focus-visible:outline-[#11a4d4]">
 					Possible cache-read drop: {percentage(cacheObservation.previousCacheReadRatio)} → {percentage(cacheObservation.cacheReadRatio)}
 				</summary>

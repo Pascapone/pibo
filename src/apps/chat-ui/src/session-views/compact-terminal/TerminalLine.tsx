@@ -1,21 +1,25 @@
+import type { LucideIcon } from "lucide-react";
 import type { CompactTerminalLine, CompactTerminalRowStatus, TerminalInlineToken } from "../../../../../session-ui/terminalRows.js";
 import { TerminalFunctionCall } from "./TerminalInlineJson";
 
 type TerminalLineProps = {
 	line: CompactTerminalLine;
 	status: CompactTerminalRowStatus;
+	prefixIcon: LucideIcon;
 	clampLines?: number;
 };
 
 const MAX_TERMINAL_LINE_TOKEN_SPANS = 120;
 
-export function TerminalLine({ line, status, clampLines }: TerminalLineProps) {
+export function TerminalLine({ line, status, prefixIcon: PrefixIcon, clampLines }: TerminalLineProps) {
 	const contentClassName = `min-w-0 whitespace-pre-wrap break-words ${clampLines ? "block overflow-hidden" : ""}`;
 	const tokens = compactTerminalLineTokens(line.tokens);
 	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS && !tokens.some((token) => token.href);
 	return (
-		<div className="grid grid-cols-[1.9rem_minmax(0,1fr)] gap-2 leading-[1.45]">
-			<span className={`whitespace-pre ${prefixClassName(line.prefix, status)}`}>{prefixText(line.prefix)}</span>
+		<div className="grid grid-cols-[1rem_minmax(0,1fr)] leading-[1.45]">
+			<span className={`inline-flex items-center whitespace-pre ${prefixClassName(line.prefix, status)}`}>
+				{line.prefix === "bullet" && PrefixIcon ? <PrefixIcon size={13} strokeWidth={1.8} aria-hidden="true" /> : prefixText(line.prefix)}
+			</span>
 			<span className={contentClassName} style={clampLines ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
 				{renderPlainText
 					? <span className="text-[#d4d4d4]">{tokens.map((token) => token.text).join("")}</span>
@@ -44,7 +48,7 @@ export function TerminalLine({ line, status, clampLines }: TerminalLineProps) {
 function prefixText(prefix: CompactTerminalLine["prefix"] = "none"): string {
 	switch (prefix) {
 		case "bullet":
-			return "•";
+			return "";
 		case "detail":
 			return "└";
 		case "continuation":
