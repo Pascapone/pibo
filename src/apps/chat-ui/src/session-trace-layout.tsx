@@ -163,7 +163,7 @@ function TerminalLoadingSkeleton({ label }: { label: string }) {
 			aria-label={label}
 		>
 			<div className="min-h-0 h-full overflow-hidden font-mono text-[12px] leading-[1.45]">
-				<div>
+				<div className="px-[3px]">
 					<div className="group border-b border-[#141414] py-2">
 						<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] leading-[1.45]">
 							<span className="flex items-center text-[#38bdf8]">

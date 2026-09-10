@@ -19,6 +19,7 @@ export function colorForTone(tone: TerminalInlineToken["tone"]): InkTerminalColo
 		case "green":
 			return "green";
 		case "magenta":
+		case "purple":
 			return "magenta";
 		case "red":
 			return "red";
