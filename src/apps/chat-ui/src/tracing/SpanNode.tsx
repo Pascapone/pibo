@@ -151,7 +151,7 @@ export const SpanNode = memo(function SpanNode({
 	expansionDepth,
 	expansionSignal,
 	expandThinking,
-	toolDisplayMode = "default",
+	toolDisplayMode = "full",
 	onFork,
 	onOpenSession,
 }: SpanNodeProps) {
@@ -230,7 +230,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	onFork,
 	onOpenSession,
 	signals,
-	toolDisplayMode = "default",
+	toolDisplayMode = "full",
 	childrenContent,
 }: TraceSpanCardProps) {
 	countRender("TraceSpanCard");
@@ -239,7 +239,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	const statusStyles = getStatusStyles(span.status, isActive);
 	const isUserMessage = span.spanType === "user.prompt" || span.spanType === "user_input";
 	const hasChildren = Boolean(span.children?.length);
-	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
+	const compactToolDisplay = toolDisplayMode !== "full" && isToolDisplaySpan(span);
 	const relativeTime = formatRelativeTime(span.startTime, startTime);
 	const duration = span.durationUs
 		? `${(span.durationUs / 1000).toFixed(1)}ms`
@@ -259,7 +259,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 		}
 	};
 
-	if (span.spanType === "agent.delegation" && toolDisplayMode === "default") {
+	if (span.spanType === "agent.delegation" && toolDisplayMode === "full") {
 		return (
 			<div
 				className="relative mb-4"
@@ -376,7 +376,7 @@ function SpanHeader({
 	onOpenSession?: (piboSessionId: string) => void;
 	toolDisplayMode: ToolDisplayMode;
 }) {
-	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
+	const compactToolDisplay = toolDisplayMode !== "full" && isToolDisplaySpan(span);
 	const intent = toolDisplayMode === "intent" ? stringField(span.attributes.intent) : undefined;
 	const speechText = span.spanType === "model.response" && !isActive
 		? stringField(span.attributes.content ?? span.attributes.output ?? span.attributes.message)

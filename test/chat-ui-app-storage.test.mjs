@@ -51,7 +51,7 @@ async function runAppStorageScenario() {
 		writeStoredShowThinking(false);
 		writeStoredExpandThinking(false);
 		writeStoredShowRawEvents(true);
-		writeStoredToolDisplayMode("intent");
+		writeStoredToolDisplayMode("full");
 		writeStoredShowArchivedSessions(true);
 		writeStoredShowArchivedRooms(true);
 		writeStoredNewSessionProfile("pibo-agent");
@@ -61,7 +61,7 @@ async function runAppStorageScenario() {
 		assert.equal(readStoredShowThinking(), false);
 		assert.equal(readStoredExpandThinking(), false);
 		assert.equal(readStoredShowRawEvents(), true);
-		assert.equal(readStoredToolDisplayMode(), "intent");
+		assert.equal(readStoredToolDisplayMode(), "full");
 		assert.equal(readStoredShowArchivedSessions(), true);
 		assert.equal(readStoredShowArchivedRooms(), true);
 		assert.equal(readStoredNewSessionProfile(), "pibo-agent");

@@ -566,7 +566,7 @@ test("compact terminal row identity survives assistant and reasoning projection 
 	}
 });
 
-test("tool display modes preserve default output and support hide, slim, and intent views", () => {
+test("tool display modes provide bundled default, full, hide, slim, and intent views", () => {
 	const view = traceView([
 		traceNode("user.message", "user-1", { order: 1, output: "Inspect the tool modes" }),
 		traceNode("tool.call", "tool-1", {
@@ -581,7 +581,13 @@ test("tool display modes preserve default output and support hide, slim, and int
 
 	const defaultRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "default" });
 	assert.equal(defaultRows.length, 3);
-	assert.match(rowText(defaultRows[1]), /line one/);
+	assert.equal(defaultRows[1].singleLine, true);
+	assert.doesNotMatch(rowText(defaultRows[1]), /line one/);
+	assert.equal(defaultRows[1].output, "line one\nline two");
+
+	const fullRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "full" });
+	assert.equal(fullRows.length, 3);
+	assert.match(rowText(fullRows[1]), /line one/);
 
 	const hiddenRows = buildCompactTerminalRows(view, { showThinking: false, toolDisplayMode: "hide" });
 	assert.deepEqual(hiddenRows.map((row) => row.kind), ["message.user", "message.assistant"]);
@@ -603,6 +609,61 @@ test("tool display modes preserve default output and support hide, slim, and int
 		buildCompactTerminalRows(traceView([traceNode("tool.call", "tool-without-intent", { title: "read", input: { path: "README.md" } })]), { showThinking: false, toolDisplayMode: "intent" }),
 		[],
 	);
+});
+
+test("default tool mode bundles consecutive calls and keeps the newest call in the stable collapsed header", () => {
+	const firstTool = traceNode("tool.call", "tool-read", {
+		order: 2,
+		toolCallId: "call-read",
+		title: "read",
+		input: { path: "README.md" },
+		output: "read output",
+	});
+	const secondTool = traceNode("tool.call", "tool-bash", {
+		order: 3,
+		toolCallId: "call-bash",
+		title: "bash",
+		input: { command: "npm test" },
+		output: "tests passed",
+	});
+	const thirdTool = traceNode("tool.call", "tool-edit", {
+		order: 4,
+		toolCallId: "call-edit",
+		title: "edit",
+		status: "running",
+		input: { path: "src/index.ts" },
+	});
+	const build = (tools) => buildCompactTerminalRows(traceView([
+		traceNode("user.message", "user-group", { order: 1, output: "Group the tools" }),
+		...tools,
+		traceNode("assistant.message", "assistant-group", { order: 10, output: "Done" }),
+	]), { showThinking: false, toolDisplayMode: "default" });
+
+	const twoToolRows = build([firstTool, secondTool]);
+	assert.deepEqual(twoToolRows.map((row) => row.kind), ["message.user", "tool.group.calls", "message.assistant"]);
+	const group = twoToolRows[1];
+	assert.equal(group.groupRows.length, 2);
+	assert.equal(group.expandable, true);
+	assert.equal(group.singleLine, true);
+	assert.match(rowText(group), /npm test/);
+	assert.doesNotMatch(rowText(group), /README/);
+	assert.deepEqual(group.groupRows.map((row) => row.singleLine), [true, true]);
+	assert.deepEqual(group.groupRows.map((row) => row.output), ["read output", "tests passed"]);
+
+	const threeToolGroup = build([firstTool, secondTool, thirdTool])[1];
+	assert.equal(threeToolGroup.id, group.id, "the bundle remains expanded while a later tool becomes current");
+	assert.equal(threeToolGroup.groupRows.length, 3);
+	assert.equal(threeToolGroup.status, "running");
+	assert.equal(threeToolGroup.lines[0].functionCall.name, "edit");
+	assert.deepEqual(threeToolGroup.groupRows.at(-1).input, { path: "src/index.ts" });
+
+	const interrupted = build([
+		firstTool,
+		traceNode("assistant.message", "assistant-separator", { order: 2.5, startedAt: "2026-05-16T10:00:02.500Z", output: "Between tools" }),
+		secondTool,
+	]);
+	assert.equal(interrupted.filter((row) => row.kind === "tool.group.calls").length, 0);
+	assert.equal(interrupted.filter((row) => row.isToolCall).length, 2);
 });
 
 test("tool display modes include shell tools rendered as command rows", () => {
