@@ -601,7 +601,7 @@ function TerminalRow({
 				aria-current={focused ? "true" : undefined}
 			>
 				<div
-					className="flex min-w-0 cursor-pointer items-start gap-2"
+					className="flex min-w-0 cursor-pointer items-start gap-[7px]"
 					data-pibo-tool-call-group-trigger="true"
 					onClick={handleRowToggle}
 					onKeyDown={handleRowKeyDown}
@@ -615,7 +615,7 @@ function TerminalRow({
 						data-pibo-tool-call-group-count="true"
 						aria-label={`${toolCallCount} bundled tool calls`}
 						aria-live="polite"
-						className="mt-px min-w-[1.25rem] shrink-0 text-right font-semibold tabular-nums text-[#22c55e]"
+						className="mt-px shrink-0 font-semibold tabular-nums text-[#22c55e]"
 					>{toolCallCount}</span>
 					<div className="min-w-0 flex-1">
 						<TerminalRowContent
