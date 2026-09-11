@@ -5,7 +5,7 @@ import type { SessionBreadcrumbItem, SessionDerivationLink, SessionOriginLink } 
 import type { ToolMetricThresholds } from "../tool-metric-settings";
 
 export const chatSessionViewIds = ["terminal", "workflow"] as const;
-export const toolDisplayModes = ["default", "hide", "slim", "intent"] as const;
+export const toolDisplayModes = ["default", "full", "hide", "slim", "intent"] as const;
 
 export type ChatSessionViewId = (typeof chatSessionViewIds)[number];
 export type ToolDisplayMode = (typeof toolDisplayModes)[number];

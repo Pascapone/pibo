@@ -73,7 +73,7 @@ export function CompactTerminalSessionView({
 	onThinkingLevelChange,
 	onModelChanged,
 }: ChatSessionViewProps) {
-	const effectiveToolDisplayMode = targetToolCallNodeId ? "default" : toolDisplayMode;
+	const effectiveToolDisplayMode = targetToolCallNodeId ? "full" : toolDisplayMode;
 	const rows = useMemo(
 		() => buildCompactTerminalRows(traceView, { showThinking, toolDisplayMode: effectiveToolDisplayMode, debugMode, debugFeatures }),
 		[showThinking, effectiveToolDisplayMode, debugMode, debugFeatures, traceView],
@@ -156,7 +156,7 @@ export function CompactTerminalSessionView({
 		if (isOlderTraceScrollIntent(event, direction)) olderTraceIntentRef.current = true;
 	}, []);
 	const handleVisibleRangeChanged = useCallback((range: { startIndex: number; endIndex: number }) => {
-		if (!rangePrefetchReadyRef.current || toolDisplayMode !== "default") return;
+		if (!rangePrefetchReadyRef.current || toolDisplayMode !== "full") return;
 		if (range.startIndex <= OLDER_TRACE_PREFETCH_ROW_THRESHOLD) loadOlderNearTop();
 	}, [loadOlderNearTop, toolDisplayMode]);
 	const persistVisibleAnchor = useCallback((anchor: { key: string; offset: number } | undefined) => {
@@ -164,7 +164,7 @@ export function CompactTerminalSessionView({
 		writeTerminalReadingPosition(piboSessionId, anchor ? { rowId: anchor.key, offsetPx: anchor.offset } : undefined);
 	}, [piboSessionId]);
 
-	const olderTracePrefetchTopThreshold = toolDisplayMode === "default"
+	const olderTracePrefetchTopThreshold = toolDisplayMode === "full"
 		? OLDER_TRACE_PREFETCH_TOP_THRESHOLD_PX
 		: COMPACT_TOOL_MODE_PREFETCH_TOP_THRESHOLD_PX;
 	// This owns initial positioning too. A second Virtuoso initial-index scroll hides
@@ -296,7 +296,7 @@ export function CompactTerminalSessionView({
 		focusTerminalRowAfterScroll(target.row.id);
 	}, [rows, stickyView]);
 
-	const toggleRow = (row: CompactTerminalRow) => {
+	const toggleRow = useCallback((row: CompactTerminalRow) => {
 		if (!row.expandable) return;
 		setExpandedRows((current) => {
 			const next = new Set(current);
@@ -304,7 +304,7 @@ export function CompactTerminalSessionView({
 			else next.add(row.id);
 			return next;
 		});
-	};
+	}, []);
 	const openImagePreviews = useCallback((images: readonly CompactTerminalImagePreview[], index = 0) => {
 		const previewable = previewableTerminalImages(images);
 		if (previewable.length) setImageDialog({ images: previewable, index });
@@ -316,11 +316,12 @@ export function CompactTerminalSessionView({
 				showToolDebugMetrics={showToolDebugMetrics}
 				showModelInferenceMetrics={showModelInferenceMetrics}
 				toolMetricThresholds={toolMetricThresholds}
-				expanded={expandedRows.has(row.id)}
+				expandedRows={expandedRows}
 				focused={focusedNavigationRowId === row.id}
 				piboSessionId={traceView?.piboSessionId ?? ""}
 				targetToolCallNodeId={targetToolCallNodeId}
-				onToggle={() => toggleRow(row)}
+				onToggleRow={toggleRow}
+				disclosureMode={effectiveToolDisplayMode === "full" ? "single" : "double"}
 				onFork={onFork}
 				onOpenSession={onOpenSession}
 				onThinkingLevelChange={onThinkingLevelChange}
@@ -329,7 +330,7 @@ export function CompactTerminalSessionView({
 				signals={signals}
 			/>
 		</div>
-	), [expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, showModelInferenceMetrics, showToolDebugMetrics, signals, targetToolCallNodeId, toolMetricThresholds, traceView?.piboSessionId]);
+	), [effectiveToolDisplayMode, expandedRows, focusedNavigationRowId, onFork, onModelChanged, onOpenSession, onThinkingLevelChange, openImagePreviews, showModelInferenceMetrics, showToolDebugMetrics, signals, targetToolCallNodeId, toggleRow, toolMetricThresholds, traceView?.piboSessionId]);
 
 	const virtuosoComponents = useMemo(() => ({
 		Footer: isStreaming || showGoalIndicator
@@ -535,11 +536,12 @@ function TerminalRow({
 	showToolDebugMetrics,
 	showModelInferenceMetrics,
 	toolMetricThresholds,
-	expanded,
+	expandedRows,
 	focused,
 	piboSessionId,
 	targetToolCallNodeId,
-	onToggle,
+	onToggleRow,
+	disclosureMode,
 	onFork,
 	onOpenSession,
 	onThinkingLevelChange,
@@ -551,11 +553,12 @@ function TerminalRow({
 	showToolDebugMetrics: boolean;
 	showModelInferenceMetrics: boolean;
 	toolMetricThresholds: ChatSessionViewProps["toolMetricThresholds"];
-	expanded: boolean;
+	expandedRows: ReadonlySet<string>;
 	focused: boolean;
 	piboSessionId: string;
 	targetToolCallNodeId?: string;
-	onToggle: () => void;
+	onToggleRow: (row: CompactTerminalRow) => void;
+	disclosureMode: "single" | "double";
 	onFork: ChatSessionViewProps["onFork"];
 	onOpenSession: ChatSessionViewProps["onOpenSession"];
 	onThinkingLevelChange: ChatSessionViewProps["onThinkingLevelChange"];
@@ -563,21 +566,99 @@ function TerminalRow({
 	onViewImages: (images: readonly CompactTerminalImagePreview[], index?: number) => void;
 	signals: ChatSessionViewProps["signals"];
 }) {
+	const expanded = expandedRows.has(row.id);
+	const singleClickDisclosure = disclosureMode === "single" || row.isToolCall;
 	const collapseToolCallPreview = !expanded && isToolCallLikeRow(row);
 	const imageRow = row.kind === "tool.image" || row.kind === "tool.group.images";
 	const images = previewableTerminalImages(row.imagePreviews ?? []);
 	const visibleLines = imageRow ? row.lines.slice(0, 1) : collapseToolCallPreview ? collapsedToolCallPreviewLines(row) : row.lines;
-	const handleRowClick = (event: MouseEvent<HTMLDivElement>) => {
+	const handleRowToggle = (event: MouseEvent<HTMLDivElement>) => {
 		if (!row.expandable || isInteractiveEventTarget(event)) return;
-		onToggle();
+		onToggleRow(row);
 	};
 	const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		if (!row.expandable || isInteractiveEventTarget(event)) return;
 		if (event.key === "Enter" || event.key === " ") {
 			event.preventDefault();
-			onToggle();
+			onToggleRow(row);
 		}
 	};
+
+	if (row.kind === "tool.group.calls") {
+		const currentRow = row.groupRows?.at(-1) ?? row;
+		const toolCallCount = row.groupRows?.length ?? 0;
+		return (
+			<div
+				className={terminalRowClassName(row, focused)}
+				data-pibo-component="TerminalRow"
+				data-pibo-debug="terminal-row"
+				data-pibo-terminal-row="true"
+				data-pibo-tool-call-group="true"
+				data-row-id={row.id}
+				data-row-kind={row.kind}
+				data-row-status={row.status}
+				data-trace-node-id={row.sourceNodeIds.join(" ")}
+				aria-current={focused ? "true" : undefined}
+			>
+				<div
+					className="flex min-w-0 cursor-pointer items-start gap-[7px]"
+					data-pibo-tool-call-group-trigger="true"
+					onClick={handleRowToggle}
+					onKeyDown={handleRowKeyDown}
+					role="button"
+					tabIndex={0}
+					aria-expanded={expanded}
+					aria-label={`${expanded ? "Collapse" : "Expand"} ${toolCallCount} tool calls`}
+				>
+					{expanded ? <ChevronDown size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-slate-500" /> : <ChevronRight size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-slate-500" />}
+					<span
+						data-pibo-tool-call-group-count="true"
+						aria-label={`${toolCallCount} bundled tool calls`}
+						aria-live="polite"
+						className="shrink-0 font-semibold tabular-nums text-[#22c55e]"
+					>{toolCallCount}</span>
+					<div className="min-w-0 flex-1">
+						<TerminalRowContent
+							row={currentRow}
+							visibleLines={currentRow.lines.slice(0, 1)}
+							collapseToolCallPreview={false}
+							piboSessionId={piboSessionId}
+							onThinkingLevelChange={onThinkingLevelChange}
+							onModelChanged={onModelChanged}
+							onFork={onFork}
+						/>
+					</div>
+					<TerminalRowActions row={currentRow} onOpenSession={onOpenSession} onViewImages={onViewImages} />
+				</div>
+				{expanded ? (
+					<div className="ml-12 mt-2 border-l border-[#2a2a2a] pl-2" data-pibo-tool-call-group-children="true">
+						{row.groupRows?.map((childRow) => (
+							<div key={childRow.id} data-pibo-tool-call-group-child="true">
+								<TerminalRow
+									row={childRow}
+									showToolDebugMetrics={showToolDebugMetrics}
+									showModelInferenceMetrics={showModelInferenceMetrics}
+									toolMetricThresholds={toolMetricThresholds}
+									expandedRows={expandedRows}
+									focused={false}
+									piboSessionId={piboSessionId}
+									targetToolCallNodeId={targetToolCallNodeId}
+									onToggleRow={onToggleRow}
+									disclosureMode="single"
+									onFork={onFork}
+									onOpenSession={onOpenSession}
+									onThinkingLevelChange={onThinkingLevelChange}
+									onModelChanged={onModelChanged}
+									onViewImages={onViewImages}
+									signals={signals}
+								/>
+							</div>
+						))}
+					</div>
+				) : null}
+			</div>
+		);
+	}
 
 	if (row.kind === "agent.delegation") {
 		return (
@@ -633,7 +714,9 @@ function TerminalRow({
 			data-order-source={row.orderSource}
 			data-order-stream-id={row.orderStreamId}
 			data-order-frame-index={row.orderStreamFrameIndex}
-			onClick={row.expandable ? handleRowClick : undefined}
+			data-pibo-disclosure-mode={row.expandable ? (singleClickDisclosure ? "single" : "double") : undefined}
+			onClick={row.expandable && singleClickDisclosure ? handleRowToggle : undefined}
+			onDoubleClick={row.expandable && !singleClickDisclosure ? handleRowToggle : undefined}
 			onKeyDown={row.expandable ? handleRowKeyDown : undefined}
 			role={row.expandable ? "button" : undefined}
 			tabIndex={row.expandable || focused ? 0 : undefined}
@@ -927,6 +1010,8 @@ function terminalRowClassName(row: CompactTerminalRow, focused = false): string 
 			? "group border-b border-[#141414] bg-[#11a4d4]/10 py-2 last:border-b-0 hover:bg-[#11a4d4]/15"
 			: row.kind === "agent.delegation"
 				? "group border-b border-[#141414] bg-[#f97316]/5 py-2 last:border-b-0"
+				: row.kind === "tool.group.calls"
+					? "group border-b border-[#141414] bg-[#a855f7]/5 py-2 last:border-b-0 hover:bg-[#a855f7]/10"
 				: row.kind === "tool.image" || row.kind === "tool.group.images"
 					? "group border-b border-[#141414] bg-[#a855f7]/5 py-2 last:border-b-0 hover:bg-[#a855f7]/10"
 					: row.kind === "execution.command"
@@ -942,11 +1027,15 @@ function retainExistingExpandedRows(
 	expandThinking: boolean,
 ): Set<string> {
 	const next = new Set<string>();
-	for (const row of rows) {
+	for (const row of flattenGroupedTerminalRows(rows)) {
 		if (current.has(row.id)) next.add(row.id);
 		if (expandThinking && row.kind === "reasoning" && row.expandable) next.add(row.id);
 	}
 	return sameSet(current, next) ? current : next;
+}
+
+function flattenGroupedTerminalRows(rows: readonly CompactTerminalRow[]): CompactTerminalRow[] {
+	return rows.flatMap((row) => [row, ...flattenGroupedTerminalRows(row.groupRows ?? [])]);
 }
 
 function isNavigableTerminalRow(row: CompactTerminalRow, kind: TerminalNavigationKind): boolean {
@@ -1024,6 +1113,7 @@ function isToolCallLikeRow(row: { kind: string; expandable?: boolean }) {
 	return Boolean(row.expandable) && (
 		row.kind === "tool.call" ||
 		row.kind === "tool.image" ||
+		row.kind === "tool.group.calls" ||
 		row.kind === "tool.group.exploring" ||
 		row.kind === "tool.group.images" ||
 		row.kind === "agent.delegation" ||
