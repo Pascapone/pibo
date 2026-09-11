@@ -10,7 +10,7 @@ test("default tool bundles expose their live count and use single-click child de
 	assert.match(source, /expanded \? <ChevronDown[\s\S]*?: <ChevronRight/);
 	assert.match(source, /row\.groupRows\?\.at\(-1\) \?\? row/, "the collapsed bundle header must always show the newest tool call");
 	assert.match(source, /const toolCallCount = row\.groupRows\?\.length \?\? 0/);
-	assert.match(source, /data-pibo-tool-call-group-count="true"[\s\S]*?className="mt-px shrink-0 font-semibold tabular-nums text-\[#22c55e\]"[\s\S]*?>\{toolCallCount\}<\/span>[\s\S]*?<TerminalRowContent/, "the live count must not reserve extra width before the current tool icon");
+	assert.match(source, /data-pibo-tool-call-group-count="true"[\s\S]*?className="shrink-0 font-semibold tabular-nums text-\[#22c55e\]"[\s\S]*?>\{toolCallCount\}<\/span>[\s\S]*?<TerminalRowContent/, "the live count must align without a vertical offset before the current tool icon");
 	assert.match(source, /data-pibo-tool-call-group-children="true"/);
 	assert.match(source, /data-pibo-tool-call-group-child="true"[\s\S]*?disclosureMode="single"/);
 	assert.match(source, /const singleClickDisclosure = disclosureMode === "single" \|\| row\.isToolCall/);

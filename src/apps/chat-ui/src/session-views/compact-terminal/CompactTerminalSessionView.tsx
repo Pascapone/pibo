@@ -615,7 +615,7 @@ function TerminalRow({
 						data-pibo-tool-call-group-count="true"
 						aria-label={`${toolCallCount} bundled tool calls`}
 						aria-live="polite"
-						className="mt-px shrink-0 font-semibold tabular-nums text-[#22c55e]"
+						className="shrink-0 font-semibold tabular-nums text-[#22c55e]"
 					>{toolCallCount}</span>
 					<div className="min-w-0 flex-1">
 						<TerminalRowContent
