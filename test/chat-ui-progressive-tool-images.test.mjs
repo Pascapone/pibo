@@ -4,11 +4,12 @@ import test from "node:test";
 
 const read = (path) => fs.readFileSync(`src/apps/chat-ui/src/${path}`, "utf8");
 
-test("terminal tools preserve Full-mode direct expansion and compact-mode double-click details", () => {
+test("terminal tool details expand directly in every display mode", () => {
 	const source = read("session-views/compact-terminal/CompactTerminalSessionView.tsx");
 	assert.doesNotMatch(source, /Show full content|Hide full content/);
-	assert.match(source, /onClick=\{row.expandable && disclosureMode === "single" \? handleRowToggle : undefined\}/);
-	assert.match(source, /onDoubleClick=\{row.expandable && disclosureMode === "double" \? handleRowToggle : undefined\}/);
+	assert.match(source, /const singleClickDisclosure = disclosureMode === "single" \|\| row\.isToolCall/);
+	assert.match(source, /onClick=\{row\.expandable && singleClickDisclosure \? handleRowToggle : undefined\}/);
+	assert.match(source, /onDoubleClick=\{row\.expandable && !singleClickDisclosure \? handleRowToggle : undefined\}/);
 	assert.match(source, /max-h-\[7\.25em\] overflow-hidden/);
 	assert.match(source, /expanded && \(!imageRow \|\| !images.length \|\| row.status === "error"\) \? \(\s*<TerminalDetails/);
 	assert.match(source, /expanded && imageRow && images.length/);

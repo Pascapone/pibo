@@ -567,6 +567,7 @@ function TerminalRow({
 	signals: ChatSessionViewProps["signals"];
 }) {
 	const expanded = expandedRows.has(row.id);
+	const singleClickDisclosure = disclosureMode === "single" || row.isToolCall;
 	const collapseToolCallPreview = !expanded && isToolCallLikeRow(row);
 	const imageRow = row.kind === "tool.image" || row.kind === "tool.group.images";
 	const images = previewableTerminalImages(row.imagePreviews ?? []);
@@ -585,6 +586,7 @@ function TerminalRow({
 
 	if (row.kind === "tool.group.calls") {
 		const currentRow = row.groupRows?.at(-1) ?? row;
+		const toolCallCount = row.groupRows?.length ?? 0;
 		return (
 			<div
 				className={terminalRowClassName(row, focused)}
@@ -606,9 +608,15 @@ function TerminalRow({
 					role="button"
 					tabIndex={0}
 					aria-expanded={expanded}
-					aria-label={`${expanded ? "Collapse" : "Expand"} ${row.groupRows?.length ?? 0} tool calls`}
+					aria-label={`${expanded ? "Collapse" : "Expand"} ${toolCallCount} tool calls`}
 				>
 					{expanded ? <ChevronDown size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-slate-500" /> : <ChevronRight size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-slate-500" />}
+					<span
+						data-pibo-tool-call-group-count="true"
+						aria-label={`${toolCallCount} bundled tool calls`}
+						aria-live="polite"
+						className="mt-px min-w-[1.25rem] shrink-0 text-right font-semibold tabular-nums text-[#a855f7]"
+					>{toolCallCount}</span>
 					<div className="min-w-0 flex-1">
 						<TerminalRowContent
 							row={currentRow}
@@ -623,7 +631,7 @@ function TerminalRow({
 					<TerminalRowActions row={currentRow} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 				</div>
 				{expanded ? (
-					<div className="ml-5 mt-2 border-l border-[#2a2a2a] pl-2" data-pibo-tool-call-group-children="true">
+					<div className="ml-12 mt-2 border-l border-[#2a2a2a] pl-2" data-pibo-tool-call-group-children="true">
 						{row.groupRows?.map((childRow) => (
 							<div key={childRow.id} data-pibo-tool-call-group-child="true">
 								<TerminalRow
@@ -636,7 +644,7 @@ function TerminalRow({
 									piboSessionId={piboSessionId}
 									targetToolCallNodeId={targetToolCallNodeId}
 									onToggleRow={onToggleRow}
-									disclosureMode="double"
+									disclosureMode="single"
 									onFork={onFork}
 									onOpenSession={onOpenSession}
 									onThinkingLevelChange={onThinkingLevelChange}
@@ -706,9 +714,9 @@ function TerminalRow({
 			data-order-source={row.orderSource}
 			data-order-stream-id={row.orderStreamId}
 			data-order-frame-index={row.orderStreamFrameIndex}
-			data-pibo-disclosure-mode={row.expandable ? disclosureMode : undefined}
-			onClick={row.expandable && disclosureMode === "single" ? handleRowToggle : undefined}
-			onDoubleClick={row.expandable && disclosureMode === "double" ? handleRowToggle : undefined}
+			data-pibo-disclosure-mode={row.expandable ? (singleClickDisclosure ? "single" : "double") : undefined}
+			onClick={row.expandable && singleClickDisclosure ? handleRowToggle : undefined}
+			onDoubleClick={row.expandable && !singleClickDisclosure ? handleRowToggle : undefined}
 			onKeyDown={row.expandable ? handleRowKeyDown : undefined}
 			role={row.expandable ? "button" : undefined}
 			tabIndex={row.expandable || focused ? 0 : undefined}
