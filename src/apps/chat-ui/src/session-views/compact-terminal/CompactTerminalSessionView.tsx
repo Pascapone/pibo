@@ -631,7 +631,7 @@ function TerminalRow({
 					<TerminalRowActions row={currentRow} onOpenSession={onOpenSession} onViewImages={onViewImages} />
 				</div>
 				{expanded ? (
-					<div className="ml-12 mt-2 border-l border-[#2a2a2a] pl-2" data-pibo-tool-call-group-children="true">
+					<div className="ml-6 mt-2 border-l border-[#2a2a2a] pl-2" data-pibo-tool-call-group-children="true">
 						{row.groupRows?.map((childRow) => (
 							<div key={childRow.id} data-pibo-tool-call-group-child="true">
 								<TerminalRow
