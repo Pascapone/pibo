@@ -16,6 +16,7 @@ export type CompactTerminalRowKind =
 	| "tool.login"
 	| "tool.model"
 	| "tool.image"
+	| "tool.group.calls"
 	| "tool.group.exploring"
 	| "tool.group.images"
 	| "agent.delegation"
@@ -27,7 +28,7 @@ export type CompactTerminalRowKind =
 
 export type TerminalInlineToken = {
 	text: string;
-	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "yellow" | "blue" | "amber";
+	tone?: "default" | "dim" | "cyan" | "green" | "red" | "magenta" | "purple" | "yellow" | "blue" | "amber";
 	weight?: "normal" | "semibold" | "bold";
 	italic?: boolean;
 	href?: string;
@@ -124,9 +125,10 @@ export type CompactTerminalRow = {
 	previewOmission?: CompactTerminalPreviewOmission;
 	detailItems?: readonly CompactTerminalDetailItem[];
 	imagePreviews?: readonly CompactTerminalImagePreview[];
+	groupRows?: readonly CompactTerminalRow[];
 };
 
-export type ToolDisplayMode = "default" | "hide" | "slim" | "intent";
+export type ToolDisplayMode = "default" | "full" | "hide" | "slim" | "intent";
 
 export type BuildTerminalRowsOptions = {
 	showThinking: boolean;
@@ -173,25 +175,25 @@ export function buildCompactTerminalRows(
 	const candidates = syncThinkingToolRows(flatNodes.map((item) => createRowCandidate(item.node, item.turnId)));
 	applyCompletedTurnTiming(candidates, turnById);
 	const reconciled = reconcileConceptualRowCandidates(candidates);
-	const toolDisplayMode = options.toolDisplayMode ?? "default";
-	const rows = toolDisplayMode === "default" || toolDisplayMode === "slim"
-		? groupRelatedToolCandidates(reconciled, showToolDebugMetrics || toolDisplayMode === "slim").map((candidate) => candidate.row)
-		: reconciled.map((candidate) => candidate.row);
+	const toolDisplayMode = options.toolDisplayMode ?? "full";
+	const rows = toolDisplayMode === "full"
+		? groupRelatedToolCandidates(reconciled, showToolDebugMetrics).map((candidate) => candidate.row)
+		: toolDisplayMode === "default"
+			? groupConsecutiveToolCandidates(reconciled).map((candidate) => candidate.row)
+			: toolDisplayMode === "slim"
+				? groupRelatedToolCandidates(reconciled, true).map((candidate) => candidate.row)
+				: reconciled.map((candidate) => candidate.row);
 	return applyToolDisplayMode(rows, toolDisplayMode);
 }
 
 function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode): CompactTerminalRow[] {
-	if (mode === "default") return rows;
+	if (mode === "default" || mode === "full") return rows;
 	if (mode === "hide") return rows.filter((row) => !isToolDisplayRow(row));
 	return rows.flatMap((row) => {
 		if (!isToolDisplayRow(row)) return [row];
 		const intent = row.intent?.trim();
 		if (mode === "intent" && !intent) return [];
-		const slimRow: CompactTerminalRow = {
-			...row,
-			lines: row.lines.slice(0, 1),
-			singleLine: true,
-		};
+		const slimRow = compactToolDisplayRow(row);
 		if (mode !== "intent") return [slimRow];
 		return [{
 			...slimRow,
@@ -212,11 +214,20 @@ function applyToolDisplayMode(rows: CompactTerminalRow[], mode: ToolDisplayMode)
 	});
 }
 
+function compactToolDisplayRow(row: CompactTerminalRow): CompactTerminalRow {
+	return {
+		...row,
+		lines: row.lines.slice(0, 1),
+		singleLine: true,
+	};
+}
+
 function isToolDisplayRow(row: CompactTerminalRow): boolean {
 	return row.sourceNodeIds.some((nodeId) => parseTraceToolNodeIdentity(nodeId) !== undefined)
 		|| row.id.startsWith("terminal:tool:")
 		|| row.kind === "tool.call"
 		|| row.kind === "tool.image"
+		|| row.kind === "tool.group.calls"
 		|| row.kind === "tool.group.exploring"
 		|| row.kind === "tool.group.images"
 		|| row.kind === "agent.delegation";
@@ -714,7 +725,7 @@ function createImageToolRow(node: PiboTraceNode, image: ImageToolClassification)
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(image.verb, toneForStatus(node.status), "semibold")],
+				tokens: [token(image.verb, node.status === "done" ? "purple" : toneForStatus(node.status), "semibold")],
 			},
 			{
 				prefix: "detail",
@@ -1128,6 +1139,68 @@ function isThinkingLevelSetOutput(value: unknown): boolean {
 	return isRecord(value) && value.action === "set_thinking_level";
 }
 
+function groupConsecutiveToolCandidates(candidates: readonly RowCandidate[]): RowCandidate[] {
+	const grouped: RowCandidate[] = [];
+	for (let index = 0; index < candidates.length; index += 1) {
+		const candidate = candidates[index];
+		if (!isBundledToolDisplayRow(candidate.row)) {
+			grouped.push(candidate);
+			continue;
+		}
+		const run: RowCandidate[] = [candidate];
+		let cursor = index + 1;
+		while (cursor < candidates.length && isBundledToolDisplayRow(candidates[cursor].row) && candidates[cursor].turnId === candidate.turnId) {
+			run.push(candidates[cursor]);
+			cursor += 1;
+		}
+		if (run.length === 1) {
+			grouped.push({ ...candidate, row: compactToolDisplayRow(candidate.row) });
+		} else {
+			grouped.push({ row: createToolCallGroup(run), turnId: candidate.turnId });
+		}
+		index = cursor - 1;
+	}
+	return grouped;
+}
+
+function isBundledToolDisplayRow(row: CompactTerminalRow): boolean {
+	return isToolDisplayRow(row) && row.kind !== "agent.delegation";
+}
+
+function createToolCallGroup(candidates: readonly RowCandidate[]): CompactTerminalRow {
+	const groupRows = candidates.map((candidate) => compactToolDisplayRow(candidate.row));
+	const firstRow = groupRows[0]!;
+	const latestRow = groupRows[groupRows.length - 1]!;
+	const hasError = groupRows.some((row) => row.status === "error");
+	const status = groupRows.some((row) => row.status === "running")
+		? "running"
+		: hasError
+			? "error"
+			: "done";
+	return {
+		id: `group:tools:${firstRow.id}`,
+		kind: "tool.group.calls",
+		status,
+		errorKind: hasError ? "tool" : undefined,
+		lines: latestRow.lines.slice(0, 1),
+		sourceNodeIds: groupRows.flatMap((row) => row.sourceNodeIds),
+		isToolCall: true,
+		toolMetrics: latestRow.toolMetrics,
+		modelInferences: latestRow.modelInferences,
+		title: latestRow.title,
+		eventId: latestRow.eventId,
+		runId: latestRow.runId,
+		orderSource: firstRow.orderSource,
+		orderStreamId: firstRow.orderStreamId,
+		orderStreamFrameIndex: firstRow.orderStreamFrameIndex,
+		startedAt: firstRow.startedAt,
+		completedAt: latestRow.completedAt,
+		expandable: true,
+		singleLine: true,
+		groupRows,
+	};
+}
+
 function groupRelatedToolCandidates(candidates: readonly RowCandidate[], imagesOnly = false): RowCandidate[] {
 	const grouped: RowCandidate[] = [];
 	for (let index = 0; index < candidates.length; index += 1) {
@@ -1233,7 +1306,7 @@ function createImageGroup(candidates: readonly RowCandidate[]): CompactTerminalR
 		lines: [
 			{
 				prefix: "bullet",
-				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} Viewed ${detailItems.length === 1 ? "Image" : "Images"}`, toneForStatus(status), "semibold")],
+				tokens: [token(status === "running" ? `Viewing ${detailItems.length} images` : status === "error" ? `${detailItems.length} image reads · error` : `${detailItems.length} Viewed ${detailItems.length === 1 ? "Image" : "Images"}`, status === "done" ? "purple" : toneForStatus(status), "semibold")],
 			},
 			...visibleDetailItems.map((item, index): CompactTerminalLine => ({
 				prefix: index === 0 ? "detail" : "continuation",

@@ -17,15 +17,18 @@ const compactTerminalSources = [
 	].map((name) => fs.readFileSync(`src/apps/chat-ui/src/session-views/compact-terminal/${name}`, "utf8")),
 ].join("\n");
 
-test("Terminal rows use the full viewport width and a compact aligned content gutter", () => {
-	assert.match(terminalViewSource, /const renderRow[\s\S]*?\(\s*<div>\s*<TerminalRow/);
+test("Terminal rows keep a three-pixel viewport gutter and compact aligned content", () => {
+	assert.match(terminalViewSource, /const renderRow[\s\S]*?\(\s*<div className="px-\[3px\]">\s*<TerminalRow/);
 	assert.match(terminalLineSource, /grid-cols-\[1\.25rem_minmax\(0,1fr\)\] leading-\[1\.45\]/);
 	assert.match(terminalLineSource, /line\.prefix === "bullet" && PrefixIcon \? <PrefixIcon size=\{13\}/);
 	assert.match(terminalViewSource, /ml-5 min-w-0" data-pibo-component="TerminalAssistantMessage"/);
 	assert.match(terminalViewSource, /nameParts\.includes\("read"\)\) return BookOpenCheck/);
 	assert.match(terminalViewSource, /nameParts\.includes\("write"\) \|\| nameParts\.includes\("edit"\)\) return Pencil/);
 	assert.match(terminalViewSource, /row\.kind === "tool\.image" \|\| row\.kind === "tool\.group\.images"\) return ImageIcon/);
+	assert.match(terminalViewSource, /row\.kind === "tool\.image" \|\| row\.kind === "tool\.group\.images"[\s\S]*?bg-\[#a855f7\]\/5/);
+	assert.match(terminalLineSource, /tone === "purple"\) return "text-\[#a855f7\]"/);
+	assert.match(terminalLineSource, /token\.tone === "purple"[\s\S]*?"text-\[#a855f7\]"/);
 	assert.match(terminalViewSource, /row\.kind === "execution\.compaction"\) return FileArchive/);
-	assert.match(terminalLayoutSource, /<div>\s*<div className="group border-b border-\[#141414\] py-2">/);
+	assert.match(terminalLayoutSource, /<div className="px-\[3px\]">\s*<div className="group border-b border-\[#141414\] py-2">/);
 	assert.doesNotMatch(compactTerminalSources, /1\.9rem|return "•"/);
 });

@@ -151,7 +151,7 @@ export const SpanNode = memo(function SpanNode({
 	expansionDepth,
 	expansionSignal,
 	expandThinking,
-	toolDisplayMode = "default",
+	toolDisplayMode = "full",
 	onFork,
 	onOpenSession,
 }: SpanNodeProps) {
@@ -230,7 +230,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	onFork,
 	onOpenSession,
 	signals,
-	toolDisplayMode = "default",
+	toolDisplayMode = "full",
 	childrenContent,
 }: TraceSpanCardProps) {
 	countRender("TraceSpanCard");
@@ -239,7 +239,8 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 	const statusStyles = getStatusStyles(span.status, isActive);
 	const isUserMessage = span.spanType === "user.prompt" || span.spanType === "user_input";
 	const hasChildren = Boolean(span.children?.length);
-	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
+	const toolDisplaySpan = isToolDisplaySpan(span);
+	const compactToolDisplay = toolDisplayMode !== "full" && toolDisplaySpan;
 	const relativeTime = formatRelativeTime(span.startTime, startTime);
 	const duration = span.durationUs
 		? `${(span.durationUs / 1000).toFixed(1)}ms`
@@ -247,8 +248,12 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 			? `${((span.endTime - span.startTime) / 1000).toFixed(1)}ms`
 			: null;
 
+	const handleCardClick = (event: MouseEvent<HTMLDivElement>) => {
+		if (!toolDisplaySpan || compactToolDisplay || isInteractiveSpanEventTarget(event)) return;
+		onToggle();
+	};
 	const handleCardDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
-		if (compactToolDisplay || isInteractiveSpanEventTarget(event)) return;
+		if (toolDisplaySpan || compactToolDisplay || isInteractiveSpanEventTarget(event)) return;
 		onToggle();
 	};
 	const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -259,7 +264,7 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 		}
 	};
 
-	if (span.spanType === "agent.delegation" && toolDisplayMode === "default") {
+	if (span.spanType === "agent.delegation" && toolDisplayMode === "full") {
 		return (
 			<div
 				className="relative mb-4"
@@ -312,7 +317,8 @@ export const TraceSpanCard = memo(function TraceSpanCard({
 				className={`min-w-0 ${isUserMessage ? "bg-[#11a4d4]/10" : "bg-white dark:bg-[#1a262b]"} border ${statusStyles.cardClass} rounded-sm shadow-sm transition-all hover:border-opacity-70 focus:outline-none focus:ring-1 focus:ring-[#11a4d4]/50 ${
 					isActive ? statusStyles.glowClass : ""
 				}`}
-				onDoubleClick={handleCardDoubleClick}
+				onClick={toolDisplaySpan && !compactToolDisplay ? handleCardClick : undefined}
+				onDoubleClick={!toolDisplaySpan ? handleCardDoubleClick : undefined}
 				onKeyDown={handleCardKeyDown}
 				role={compactToolDisplay ? undefined : "button"}
 				tabIndex={compactToolDisplay ? undefined : 0}
@@ -376,7 +382,7 @@ function SpanHeader({
 	onOpenSession?: (piboSessionId: string) => void;
 	toolDisplayMode: ToolDisplayMode;
 }) {
-	const compactToolDisplay = toolDisplayMode !== "default" && isToolDisplaySpan(span);
+	const compactToolDisplay = toolDisplayMode !== "full" && isToolDisplaySpan(span);
 	const intent = toolDisplayMode === "intent" ? stringField(span.attributes.intent) : undefined;
 	const speechText = span.spanType === "model.response" && !isActive
 		? stringField(span.attributes.content ?? span.attributes.output ?? span.attributes.message)
