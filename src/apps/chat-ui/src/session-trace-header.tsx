@@ -203,7 +203,8 @@ const TOOL_DISPLAY_MODE_OPTIONS: ReadonlyArray<{
   label: string;
   description: string;
 }> = [
-  { value: "default", label: "Default", description: "Show full tool details" },
+  { value: "default", label: "Default", description: "Bundle consecutive tool calls" },
+  { value: "full", label: "Full", description: "Show full tool details" },
   { value: "hide", label: "Hide", description: "Hide tool calls" },
   { value: "slim", label: "Slim", description: "Show compact tool rows" },
   { value: "intent", label: "Intent", description: "Show tool intent only" },

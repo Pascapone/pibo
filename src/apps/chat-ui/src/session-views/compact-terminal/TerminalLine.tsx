@@ -20,7 +20,7 @@ export function TerminalLine({ line, status, prefixIcon: PrefixIcon, clampLines 
 	const renderPlainText = tokens.length > MAX_TERMINAL_LINE_TOKEN_SPANS && !tokens.some((token) => token.href);
 	return (
 		<div className="grid grid-cols-[1.25rem_minmax(0,1fr)] leading-[1.45]">
-			<span className={`inline-flex items-center whitespace-pre ${prefixClassName(line.prefix, status)}`}>
+			<span className={`inline-flex items-center whitespace-pre ${prefixClassName(line.prefix, status, line.tokens[0]?.tone)}`}>
 				{line.prefix === "bullet" && PrefixIcon ? <PrefixIcon size={13} strokeWidth={1.8} aria-hidden="true" /> : prefixText(line.prefix)}
 			</span>
 			<span className={contentClassName} style={clampLines && !truncateSingleLine ? { maxHeight: `${clampLines * 1.45}em` } : undefined}>
@@ -64,8 +64,9 @@ function prefixText(prefix: CompactTerminalLine["prefix"] = "none"): string {
 	}
 }
 
-function prefixClassName(prefix: CompactTerminalLine["prefix"] = "none", status: CompactTerminalRowStatus): string {
+function prefixClassName(prefix: CompactTerminalLine["prefix"] = "none", status: CompactTerminalRowStatus, tone?: TerminalInlineToken["tone"]): string {
 	if (prefix === "bullet") {
+		if (tone === "purple") return "text-[#a855f7]";
 		if (status === "running") return "text-[#38bdf8]";
 		if (status === "error") return "text-[#ef4444]";
 		if (status === "done") return "text-[#22c55e]";
@@ -86,13 +87,15 @@ function tokenClassName(token: TerminalInlineToken): string {
 						? "text-[#ef4444]"
 						: token.tone === "magenta"
 							? "text-[#d946ef]"
-							: token.tone === "yellow"
-								? "text-[#facc15]"
-								: token.tone === "blue"
-									? "text-[#60a5fa]"
-									: token.tone === "amber"
-										? "text-[#f59e0b]"
-									: "text-[#d4d4d4]";
+							: token.tone === "purple"
+								? "text-[#a855f7]"
+								: token.tone === "yellow"
+									? "text-[#facc15]"
+									: token.tone === "blue"
+										? "text-[#60a5fa]"
+										: token.tone === "amber"
+											? "text-[#f59e0b]"
+											: "text-[#d4d4d4]";
 	const weightClass =
 		token.weight === "bold" ? "font-bold" : token.weight === "semibold" ? "font-semibold" : "font-normal";
 	const italicClass = token.italic ? "italic" : "";

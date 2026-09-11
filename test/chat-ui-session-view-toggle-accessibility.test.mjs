@@ -116,6 +116,8 @@ test("topbar exposes Debug without duplicate view navigation or Raw Events", asy
 test("tool view menu exposes checked choices without showing the active mode while closed", async () => {
 	const header = await readFile(new URL("../src/apps/chat-ui/src/session-trace-header.tsx", import.meta.url), "utf8");
 	assert.match(header, /<Hammer size=\{14\} \/>/);
+	assert.match(header, /value: "default", label: "Default", description: "Bundle consecutive tool calls"/);
+	assert.match(header, /value: "full", label: "Full", description: "Show full tool details"/);
 	assert.match(header, /role="menuitemradio"/);
 	assert.match(header, /aria-checked=\{selected\}/);
 	assert.match(header, /selected \? <Check size=\{13\} \/> : null/);
