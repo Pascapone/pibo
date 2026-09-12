@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-12
+
+- **Default delegated Steering**: Updated the [delegated-agent contract](/specs/orchestration/subagents.md#requirement-orch-sub-007) so reused children with an active steerable turn receive Steering by default, `queue: true` explicitly requests a separate follow-up turn, and idle or non-steerable children always use Queue. Steering completion follows the shared active-turn identity; cancelling its additional waiter does not retract input or cancel that turn. Focused Docker tests cover default Steering, forced Queue, dispatch-race fallback, active-turn reply correlation, and cancellation ownership.
+
 ## 2026-09-09
 
 - **Cache diagnostics review**: Added the [PR 996 review and acceptance record](/reports/cache-observability-pr996-review-2026-09-09.md), documenting the reproduced same-millisecond receipt ordering defect, its correction, and validation.

@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
-import type { PiboAssistantMessageEvent, PiboJsonValue, PiboMessageProvenance } from "../core/events.js";
+import type {
+	PiboAssistantMessageEvent,
+	PiboJsonValue,
+	PiboMessageDelivery,
+	PiboMessageProvenance,
+} from "../core/events.js";
 import type { ModelProfile, SubagentProfile } from "../core/profiles.js";
 import type {
 	PiboAgentObservationCursorMode,
@@ -56,6 +61,8 @@ export type PiboAgentSendMessageInput = {
 	sessionName: string;
 	message: string;
 	threadKey?: string;
+	/** Force a queued follow-up turn even when the child can accept steering. */
+	queue?: boolean;
 	toolCallId?: string;
 	requestId?: string;
 	parentProvenance?: PiboMessageProvenance;
@@ -69,6 +76,8 @@ export type PiboAgentSendMessageResult = {
 	profile: string;
 	threadKey: string;
 	eventId: string;
+	delivery?: PiboMessageDelivery;
+	activeEventId?: string;
 	finalMessage?: string;
 	reply: PiboAssistantMessageEvent;
 };
@@ -196,6 +205,7 @@ type PiboAgentToolInput = {
 	sessionName: string;
 	message: string;
 	threadKey?: string;
+	queue?: boolean;
 };
 
 type PiboDeprecatedSubagentToolInput = Omit<PiboAgentToolInput, "name">;
@@ -253,10 +263,11 @@ export function formatAgentObservationsForModel(result: PiboAgentObserveResult):
 function normalizeAgentSendMessageResult(
 	result: PiboAgentSendMessageResult,
 	fallbackRequestId: string,
-): PiboAgentSendMessageResult & { requestId: string; finalMessage: string } {
+): PiboAgentSendMessageResult & { requestId: string; delivery: PiboMessageDelivery; finalMessage: string } {
 	return {
 		...result,
 		requestId: result.requestId?.trim() || fallbackRequestId,
+		delivery: result.delivery ?? "queue",
 		finalMessage: typeof result.finalMessage === "string" ? result.finalMessage : result.reply.text,
 	};
 }
@@ -281,11 +292,11 @@ export function createAgentToolDefinitions(
 			name: "pibo_agents_send_message",
 			title: "Pibo Agents Send Message",
 			description: [
-				"Yielded-only delegated send with a required sessionName. It must be a nonblank string of at most 40 Unicode code points and is trimmed before use. name selects the configured agent, sessionName is the human-readable child-session title, and threadKey controls conversation reuse. Invalid arguments fail before a run or child session is created. Start this tool through pibo_run_start; bounded waits do not limit the child lifetime.",
+				"Yielded-only delegated send with a required sessionName. It must be a nonblank string of at most 40 Unicode code points and is trimmed before use. name selects the configured agent, sessionName is the human-readable child-session title, and threadKey controls conversation reuse. By default, a reused child with an active steerable turn receives the message as steering; an idle child receives a queued turn. Set queue=true only when the message must run as a separate next turn even while the child is active. Steering is never attempted for an idle child. Invalid arguments fail before a run or child session is created. Start this tool through pibo_run_start; bounded waits do not limit the child lifetime.",
 				"Available agents:",
 				catalog,
 			].join("\n"),
-			promptSnippet: "Start pibo_agents_send_message through pibo_run_start. Provide a nonblank sessionName of at most 40 Unicode code points on every call; Pibo trims it and rejects invalid input before creating a run. Follow-up calls update the reused child title without changing identity. Reuse threadKey to continue its child session, and use run wait/status/read/cancel plus agent observe for lifecycle control.",
+			promptSnippet: "Start pibo_agents_send_message through pibo_run_start. Reuse threadKey to address the same child session. Omit queue to steer its active turn automatically; if the child is idle, Pibo queues a normal turn instead. Set queue=true only when you deliberately want a separate follow-up turn after the active turn. You cannot force steering on an idle child. Provide a nonblank sessionName of at most 40 Unicode code points on every call; follow-up calls update the reused child title without changing identity. Use run wait/status/read/cancel plus agent observe for lifecycle control.",
 			executionMode: "parallel",
 			inputSchema: Type.Object({
 				name: piboStringEnum(names, { description: "Configured delegated-agent selector; not the child title or reuse key" }),
@@ -302,6 +313,10 @@ export function createAgentToolDefinitions(
 						maxLength: 256,
 					}),
 				),
+				queue: Type.Optional(Type.Boolean({
+					description: "Force this message into the child's next-turn queue. Omit or set false to steer an active steerable child automatically; idle children are always queued.",
+					default: false,
+				})),
 			}),
 			prepareInput: preparePiboAgentToolInput,
 			async execute(toolCallId, params, signal, _onUpdate, context) {
@@ -316,6 +331,7 @@ export function createAgentToolDefinitions(
 					sessionName: preparedParams.sessionName,
 					message: preparedParams.message,
 					threadKey: preparedParams.threadKey,
+					queue: preparedParams.queue,
 					toolCallId,
 					requestId: context.yieldedRunId,
 					parentProvenance: context.getActiveMessage?.()?.provenance,
@@ -324,7 +340,7 @@ export function createAgentToolDefinitions(
 				return {
 					content: [{
 						type: "text",
-						text: `Agent request ${result.requestId} completed (${result.name}, ${result.agentId}, thread ${result.threadKey}).\n\n${result.finalMessage}`,
+						text: `Agent request ${result.requestId} completed via ${result.delivery} (${result.name}, ${result.agentId}, thread ${result.threadKey}).\n\n${result.finalMessage}`,
 					}],
 					structuredContent: {
 						status: "completed",
@@ -332,6 +348,8 @@ export function createAgentToolDefinitions(
 						agentId: result.agentId,
 						threadKey: result.threadKey,
 						eventId: result.eventId,
+						delivery: result.delivery,
+						...(result.activeEventId ? { activeEventId: result.activeEventId } : {}),
 						finalMessage: result.finalMessage,
 					},
 					details: result,
