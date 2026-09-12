@@ -982,6 +982,36 @@ test("cold-start ramps remain bounded across rooms and do not activate historica
  }
 });
 
+test("runtime capacity reports bounded cold-start phases for ready and failed initialization", async () => {
+ const fixture = createFakeRuntimeFixture({ runtimeCapacity: { coldStarts: 1, maxRuntimes: 20 } });
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ const original = adapter.openSession.bind(adapter);
+ fixture.store.create({ id: "ps_phase_ready", channel: "test", kind: "chat", profile: "router-fake-profile", workspace: process.cwd(), runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" }, metadata: { chatRoomId: "room-phase" } });
+ fixture.store.create({ id: "ps_phase_failed", channel: "test", kind: "chat", profile: "router-fake-profile", workspace: process.cwd(), runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" }, metadata: { chatRoomId: "room-phase" } });
+ try {
+  adapter.openSession = async (input) => { await delay(25); return original(input); };
+  await fixture.router.emit({ type: "message", piboSessionId: "ps_phase_ready", id: "phase-ready", text: "ready" });
+  const ready = fixture.router.getRuntimeCapacityStatus().recentInitializations.at(-1);
+  assert.equal(ready.sessionId, "ps_phase_ready");
+  assert.equal(ready.outcome, "ready");
+  assert.ok(ready.waitMs >= 0);
+  assert.ok(ready.totalMs >= 20);
+  assert.deepEqual(Object.keys(ready.phases), ["bindingAndProfileMs", "portableHistoryMs", "resourcesAndToolsMs", "adapterOpenAndBindingMs"]);
+  for (const value of Object.values(ready.phases)) assert.ok(Number.isFinite(value) && value >= 0);
+  assert.ok(ready.phases.adapterOpenAndBindingMs >= 20, "adapter opening is measured independently from optional bootstrap reads");
+
+  adapter.openSession = async () => { await delay(5); throw new Error("fixture native open failed"); };
+  await assert.rejects(fixture.router.emit({ type: "message", piboSessionId: "ps_phase_failed", id: "phase-failed", text: "fail" }), /fixture native open failed/);
+  const failed = fixture.router.getRuntimeCapacityStatus().recentInitializations.at(-1);
+  assert.equal(failed.sessionId, "ps_phase_failed");
+  assert.equal(failed.outcome, "failed");
+  assert.ok(failed.totalMs >= 4);
+  assert.ok(Object.keys(failed.phases).length >= 3, "failed starts retain every completed phase without claiming readiness");
+ } finally {
+  await fixture.router.disposeAll();
+ }
+});
+
 test("provider-free actions stay responsive while an independent runtime cold start is blocked", async () => {
  const fixture = createFakeRuntimeFixture({ runtimeCapacity: { coldStarts: 1, coldStartsPerRoom: 1, maxRuntimes: 20 } });
  const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
