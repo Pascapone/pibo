@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-12T21:40:05Z"
+  at: "2026-09-12T22:20:00Z"
 sources:
   - id: "pibo2-investigations"
     resource: "scope: Pibo2 investigations on 2026-09-11 and 2026-09-12, candidate 0fe71c72a1d3bcb3b0d06295d323317a452b367a, consolidated controller report /tmp/pibo2-multiagent-0912/REPORT.md"
@@ -18,7 +18,7 @@ sources:
   - id: "continuation-evidence"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
     title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
-implementation_state: "implemented; acceptance partially blocked"
+implementation_state: "implemented; physical-device and final-candidate soak acceptance open"
 ---
 
 # 1. Kontext und Ziel
@@ -56,13 +56,15 @@ Die spätere autorisierte Fortsetzung ersetzt den oben konservierten Stop-Snapsh
 
 | Paket | Abschlussstand und Evidenzgrenze |
 |---|---|
-| AP-01/02 | Lifecycle-Generationen, Suspend-/Resume-Fencing, Signalepochen, begrenzte Statusarbeit und Receipt-Reconciliation sind implementiert und regressionsgeprüft. Die headful Desktop-/390×844- und sichtbare Recovery-Abnahme gehört zum älteren Kandidaten `09375bbb`; ein neuer headful Slotlauf auf `722883c4` blieb durch Better Auth blockiert. |
+| AP-01/02 | Lifecycle-Generationen, Suspend-/Resume-Fencing, Signalepochen, begrenzte Statusarbeit und Receipt-Reconciliation sind implementiert und regressionsgeprüft. Auf `722883c4` bestand die authentifizierte öffentliche headful Abnahme bei 1.440×900 und 390×844 sowie eine 60,061 Sekunden hidden/frozen Recovery mit erhaltener Signalepoche, fortgeschrittener Signalversion, Trace-Catch-up, erneut verbundenen Event-/Signalstreams und erhaltenem Composer-Entwurf. |
 | AP-03 | Prozessübergreifende Strukturänderungen werden über ein begrenztes Journal inkrementell reconciliert; Scan-Fallback bleibt auf Migration, Rennen, Lücke oder Overflow begrenzt. Auf `722883c4` lag der Foreign-Write-Status-p95 bei 20,53 ms für 3.250 und 13,32 ms für 10.000 Sessions. |
 | AP-04/05/06/08 | Kollisionsklassifikation, Deadline-Grace und Epochen-Fencing, monotone Wakeups sowie begrenzte Receipt-/Audit-Reconciliation sind implementiert. Die exakte 476-Dateien-Abdeckung des finalen Kandidaten schließt die zugehörigen Regressionen ein. |
-| AP-07 | Providerfreie `/status`-, `/session`- und `/thinking`-Aktionen umgehen Kaltstart-Admission; Katalogerkennung ist begrenzt und funktioniert auch für Adapter mit `listModels()` ohne `peekModelCatalog`. Der echte `codex-native`-Luna/medium-Toolsmoke bestand auf `722883c4`; die Same-Room-/Different-Room-/Warm-Kaltstartmatrix bleibt korrekt `09375bbb` zugeordnet. |
+| AP-07 | Providerfreie `/status`-, `/session`- und `/thinking`-Aktionen umgehen Kaltstart-Admission; Katalogerkennung ist begrenzt und funktioniert auch für Adapter mit `listModels()` ohne `peekModelCatalog`. Im öffentlichen headful Lauf antworteten die Aktionen in 16,69 bis 19,33 ms; `/thinking` wechselte im zweiten begrenzten Versuch von `loading` zu sieben verfügbaren Stufen, während `runtimeActive` vor und nach dem Lauf `false` blieb. Der echte `codex-native`-Luna/medium-Toolsmoke bestand auf `722883c4`; die Same-Room-/Different-Room-/Warm-Kaltstartmatrix bleibt korrekt `09375bbb` zugeordnet. |
 | AP-09 | Der unabhängig nutzbare Core-Bootstrap und die nachgelagerten Kataloge sind implementiert. Die authentifizierte Pibo2-Messung mit 102.527 Bytes und p95 54,9 ms gehört zu `09375bbb` und wird nicht auf `722883c4` umetikettiert. |
-| AP-10 | `722883c4` besitzt Build, gehashtes Paket, exakte 476/476-Dateipfadabdeckung, AP-03-Foreign-Write-Pass, einen geschützten 3.250-Admission-Pass, echte Luna/medium-Toolarbeit, einen 6-Parent-/12-Child-Endzustand und einen 31-minütigen Modell/MCP-Workflow. Der 7.201,62-Sekunden-Soak gehört zu `09375bbb`; das exakte 10.000-Admission-Gate wurde auf `722883c4` durch unveränderten Host-I/O-PSI-Schutz gestoppt. Physisches Gerät und neuer headful Better-Auth-Login bleiben extern offen. |
+| AP-10 | `722883c4` besitzt Build, gehashtes Paket, exakte 476/476-Dateipfadabdeckung, AP-03-Foreign-Write-Pass, den für die Servereinstellung freigegebenen geschützten 3.250-Admission-Pass, authentifizierte headful Desktop-/Mobile-/Recovery-Evidenz, echte Luna/medium-Toolarbeit, einen 6-Parent-/12-Child-Endzustand und einen 31-minütigen Modell/MCP-Workflow. Der frühere 10.000-Admission-Schutzstopp bleibt als Ressourcengrenze dokumentiert, ist nach der ausdrücklichen Freigabe von 3.250 aber kein offenes Gate mehr. Der 7.201,62-Sekunden-Soak gehört zu `09375bbb`; physisches Gerät und ein neuer Zwei-Stunden-Soak auf `722883c4` bleiben offen. |
 | AP-11 | Der echte `TelemetryCaptureWriter` wurde in sechs wechselnden Capture-on/off-Läufen ohne Writer-Fehler, Rejects oder Expiries verglichen. Dieser Pibo2-Nachweis gehört zu `09375bbb`; `722883c4` ändert nur die AP-03-Strukturreconciliation. |
+
+Der abschließende öffentliche Browserlauf verwendete die erneuerte isolierte Pibo2-Lease `lease_8b448039c94bde2e01` und den ausschließlich dieser Session zugeordneten headful Browser-Slot `pibo-chat-slot-002`. Der Machine-Session-Cookie authentifizierte die öffentliche App ohne Fake-Auth. `/status`, `/session` und `/thinking` waren sichtbar bedienbar; Desktop und 390×844 hatten keinen horizontalen Overflow und einen aktiven Composer. Während der 60-Sekunden-Recovery blieb der Entwurf erhalten, Trace und Signalversion holten auf, und die Live-Streams verbanden sich erneut. Ein zusätzlich angebotener Pi-Providerturn erreichte wegen `openai-codex` `disconnected/configured=false` im frischen Pi-Store keine Modellausführung. Er blieb bei genau einem `interrupted` Receipt, wurde nicht wiederholt und nach read-only Prüfung über Dry-run ausdrücklich als `failed` reconciliert; die Queue war danach gesund und die vollständige Dead-Letter-Traversierung leer. Dieser getrennte Providerzustand entwertet weder die providerfreie Browserabnahme noch die bereits abgeschlossene echte Luna/medium-Evidenz.
 
 Die offizielle isolierte Provideranmeldung wurde schließlich im tatsächlichen fingerprintgebundenen Native-Store durchgeführt. Der genuine Native-Smoke verwendete Codex CLI 0.153.2, `openai-codex/gpt-5.6-luna`, Reasoning `medium`, einen erfolgreichen `codex_command` und einen terminalen Trace ohne Fehlerknoten. Weil der Pibo2-Dockerhost unprivilegierte User-Namespaces für Bubblewrap nicht zuließ, nutzten ausschließlich dieser Native-Smoke und der Native-Portfolio-Parent vorübergehend `permissionMode: "yolo"`. Das war eine enge Sandbox-Ausnahme, keine unveränderte Schutzabnahme. Der normale Pi-/MCP-Lauf blieb isoliert.
 
@@ -70,7 +72,7 @@ Der kurze Portfolio-Lauf darf nicht als 18 gleichzeitig aktive Agents beschriebe
 
 Die Last- und Testsuite-Nacharbeit behielt sämtliche Schutzgrenzen bei. Der 10.000-Admission-Versuch wurde bei Host-I/O-Full-PSI 11,12 nach 5.132 Admissions als nicht gatefähig beendet; das reduzierte Profil bestand mit 3.250 Admissions, p95 15,22 ms und null Integritätsfehlern. Die unsegmentierte Suite und Teilshards wurden bei I/O-Full-PSI 11,16, 11,05, 10,25 beziehungsweise 11,77 beendet. Danach liefen kleinere geschützte Shards mit `--test-concurrency=1` und `NODE_OPTIONS=--max-old-space-size=1024`. Das kanonische Ledger weist exakt 476 eindeutige erfolgreiche Dateipfade, keine fehlenden oder zusätzlichen Pfade und keine Hashabweichungen aus. Abgebrochene Teilläufe zählen nicht.
 
-Der Plan bleibt `draft`, weil die externen beziehungsweise ressourcenblockierten Gates nicht stillschweigend als bestanden gelten: physisches Zielgerät, neuer headful Better-Auth-Lauf, exakter 10.000-Admission-Lauf und ein erneuter 7.200-Sekunden-Soak auf `722883c4`. Die explizite Pibo2-Lease `lease_0e34ee90319d825b87` wurde am 2026-09-12 um 21:24:14 UTC ordnungsgemäß freigegeben.
+Der Plan bleibt `draft`, weil zwei Abnahmegrenzen nicht stillschweigend als bestanden gelten: das physische Zielgerät und ein erneuter 7.200-Sekunden-Soak auf `722883c4`. Die erfolgreiche 3.250-Admission-Messung entspricht der ausdrücklich freigegebenen Servereinstellung; ein weiterer 10.000-Admission-Lauf wäre daher keine erforderliche Abnahme und wurde nach dem bekannten Host-I/O-Schutzstopp nicht wiederholt. Die erste explizite Pibo2-Lease `lease_0e34ee90319d825b87` wurde am 2026-09-12 um 21:24:14 UTC freigegeben. Die spätere headful Lease `lease_8b448039c94bde2e01` wurde am selben Tag um 22:19:20 UTC freigegeben; Browser-Slot `pibo-chat-slot-002` wurde ebenfalls freigegeben und sein Profil gelöscht.
 
 ## 1.1 Befunde und vollständige Zuordnung
 

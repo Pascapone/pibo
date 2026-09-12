@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T21:40:05Z" }
+generated: { by: "openai/codex", at: "2026-09-12T22:20:00Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -19,14 +19,14 @@ sources:
   - id: "continuation-evidence"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
     title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
-implementation_state: "implemented; acceptance partially blocked"
+implementation_state: "implemented; physical-device and final-candidate soak acceptance open"
 ---
 
 # Abnahmegrenze
 
 Der zentrale [Handoff zur Fortsetzung](/reports/latency-reliability-handoff-2026-09-12.md) verbindet diesen Prüfbericht mit Branches, privaten Artefakten, offenen Paketen und den erforderlichen Workflows.
 
-Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwischenstand; die später autorisierte Fortsetzung schloss die Produktimplementierung auf `722883c4` ab. Die Gesamtabnahme bleibt wegen der unten benannten externen und ressourcenbedingten Gates teilweise offen. Dieser Bericht trennt Ausgangsstand, Zwischenkandidaten und exakte Kandidatenevidenz. Ein grüner Baseline-Test wird nicht als geschlossene neue Anforderung ausgegeben. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
+Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwischenstand; die später autorisierte Fortsetzung schloss die Produktimplementierung auf `722883c4` ab. Die Gesamtabnahme bleibt wegen des externen physischen Geräts und des nicht wiederholten Zwei-Stunden-Soaks teilweise offen. Dieser Bericht trennt Ausgangsstand, Zwischenkandidaten und exakte Kandidatenevidenz. Ein grüner Baseline-Test wird nicht als geschlossene neue Anforderung ausgegeben. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
 
 # Abschluss der Fortsetzung auf Kandidat `722883c4`
 
@@ -42,14 +42,16 @@ Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-late
 | 6+12 Laufzeitportfolio | Endzustand: 6 Parents, 12 Children, 1 Native-Parent; alle Luna/medium, gebunden und terminal; alle Traces `ok`, 0 Fehlerknoten, erfolgreiche Modellinferenz, Tools und Marker | Im kurzen Parallelfenster waren 17 Gateway-Angebote erfolgreich. Die 18. SSH-Anfrage scheiterte vor Admission und bestand erst später; keine Behauptung von 18 gleichzeitig aktiven Agents |
 | 31 Minuten Modell/MCP | `ps_mcp_long2_722883c4`: 7 terminale Luna/medium-Runden und 7 echte 60-Sekunden-MCP-Aufrufe; MCP-Spanne 1.860,856 s | Normale Pi-Isolation, keine `yolo`-Ausnahme. Fünf ältere Preflight-Fehlerknoten im aggregierten Trace sind getrennt von den sieben erfolgreichen Runden |
 | Passive Slash-Latenz unter aktiver Arbeit | Je 49 Proben: `/status` p95 44,91 ms, max 45,53 ms; `/session` p95 75,02 ms, max 89,98 ms; `/thinking` p95 50,07 ms, max 68,95 ms | Direkt während aktiver Modell-/MCP-Arbeit über dieselbe Gatewayverbindung gemessen; providerfreie Aktionen öffneten keine zusätzliche Session |
+| Öffentliche headful Abnahme | Better-Auth-Machine-Session erfolgreich; `/status`, `/session` und `/thinking` sichtbar; CDP-Response 16,69–19,33 ms; `/thinking` im zweiten begrenzten Versuch bereit; `runtimeActive=false`; Desktop 1.440×900 und Mobile 390×844 ohne horizontalen Overflow, Composer aktiv | Exakter Kandidat und öffentlicher Slotpfad; Mobile ist Viewport-Emulation, kein physisches Gerät |
+| Sichtbare Lifecycle-Recovery | 60,061 s hidden/frozen; Entwurf erhalten; Traceversion und Signalversion 1→3 fortgeschritten; Signalepoche stabil; Event-, Signal- und Trace-Timeline-Verbindungen nach Resume erneuert; Zielseite ohne erfassten Core-Network-/Runtime-Fehler | Der absichtlich mitgesendete Modellturn war kein Erfolgsgate und blieb wegen eines nicht angemeldeten frischen Pi-Providerstores `interrupted`; genau ein Receipt, kein Replay, anschließend explizit als fehlgeschlagen reconciliert |
 | Kanonische Testsuite | 476 kanonische Dateien, 476 eindeutige erfolgreiche Dateipfade, 0 fehlende, 0 zusätzliche, 0 Hashabweichungen; Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c` | Pfad-/Hash-Coverage aus disjunkten erfolgreichen Shards und einem fokussierten Wiederholungstest; abgebrochene Logs nicht gezählt |
-| Pibo2-Lease | `lease_0e34ee90319d825b87`, Slot 01, checksumgebundenes Paket; freigegeben am 2026-09-12 um 21:24:14 UTC | Keine laufende Lease oder nachträgliche Remote-Mutation |
+| Pibo2-Leases | `lease_0e34ee90319d825b87` für Provider-/Portfolioarbeit, freigegeben um 21:24:14 UTC; `lease_8b448039c94bde2e01` für die öffentliche headful Abnahme, freigegeben um 22:19:20 UTC | Beide verwendeten Slot 01 und das checksumgebundene Paket; danach `active: 0`, `free: 10` |
 
 ## AP-03-Vorher/Nachher und ressourcenbegrenzte Gates
 
 Der ältere Kandidat `09375bbb8d702d1bc6817ffe1313429fc05e07b3` scheiterte beim 10.000-Session-Foreign-Write-Profil mit p95 273,78 ms. Ursache war die globale `chat_navigation_clock`, die nach jeder fremden Strukturänderung eine vollständige Reprojektion auslöste. `722883c4` ergänzt ein dauerhaftes, auf 4.096 Einträge begrenztes Strukturänderungsjournal, wendet höchstens 1.024 Änderungen je Batch an, nutzt eine 1.025. Zeile als Overflow-Sentinel und fällt bei Migration, Rennen, Lücke oder Overflow konservativ auf einen Vollabgleich zurück. Der exakte Nachher-Lauf bestand mit p95 13,32 ms.
 
-Der geschützte 10.000-Admission-Lauf auf `722883c4` wurde bei Host-I/O-Full-PSI 11,12 an der unveränderten Grenze 10 nach 5.132 Admissions beendet. Er ist nicht gatefähig und wurde nicht identisch wiederholt. Der bestandene reduzierte 3.250-Admission-Lauf senkte Last, Parallelität und Burstgröße, nicht die Schutzgrenzen. Der 7.201,62-Sekunden-Soak mit 22.492 Soak-Commands, 23.512 akzeptierten/verfolgten Commands und null Integritätsfehlern gehört ausschließlich zu `09375bbb`; er wird nicht auf den finalen Kandidaten umetikettiert.
+Der geschützte 10.000-Admission-Lauf auf `722883c4` wurde bei Host-I/O-Full-PSI 11,12 an der unveränderten Grenze 10 nach 5.132 Admissions beendet. Er ist nicht gatefähig und wurde nicht identisch wiederholt. Der bestandene 3.250-Admission-Lauf senkte Last, Parallelität und Burstgröße, nicht die Schutzgrenzen. Der Nutzer hat 3.250 als verbindliche Servereinstellung und Abnahmegröße freigegeben; deshalb ist der 10.000-Admission-Versuch kein offenes Gate mehr. Ein weiterer Lastlauf hätte nur den bekannten Hostschutz erneut beansprucht und keine erforderliche Entscheidung ergänzt. Der 7.201,62-Sekunden-Soak mit 22.492 Soak-Commands, 23.512 akzeptierten/verfolgten Commands und null Integritätsfehlern gehört ausschließlich zu `09375bbb`; er wird nicht auf den finalen Kandidaten umetikettiert.
 
 ## Testsuite, OOM- und I/O-Einordnung
 
@@ -67,16 +69,26 @@ Die daraufhin verwendete temporäre Profiloption `permissionMode: "yolo"` galt n
 
 Der lange MCP-Lauf startete um 20:02:14 UTC und endete um 20:33:29 UTC. Seine realen MCP-Aktivitäten spannten 31:00,856. Alle sieben zeitgesteuerten Runden waren terminal erfolgreich. Die 49 Slash-Proben wurden während der aktiven Tools erhoben. Damit sind Modellarbeit, Toolnutzung und passive Aktionen gemeinsam belegt, ohne die älteren Preflight-Fehler als erfolgreiche Runden zu zählen.
 
+## Exakte öffentliche Browser- und Recovery-Abnahme
+
+Die spätere Lease `lease_8b448039c94bde2e01` installierte dasselbe Paket auf Slot 01. Eine frische Machine-Key-Identity erzeugte eine reguläre Better-Auth-Machine-Session; deren Cookie wurde in den isolierten headful Browser-Slot `pibo-chat-slot-002` importiert. Die öffentliche App zeigte die angemeldete Identität und die eigens angelegte Testsession. Browser Use lieferte die sichtbare Eingabe, DevTools/CDP die Request-, DOM-, Lifecycle- und Screenshot-Evidenz.
+
+`/status` und `/session` erschienen im Terminal. `/thinking` meldete zunächst den begrenzten, wiederholbaren Zustand `loading` und lieferte im zweiten Versuch `off`, `minimal`, `low`, `medium`, `high`, `xhigh` und `max`. Die vier beobachteten Action-Responses lagen zwischen 16,69 und 19,33 ms; vor und nach den Aktionen blieb `runtimeActive=false`. Bei 1.440×900 und 390×844 war der Composer vorhanden und aktiv; `horizontalOverflow` war null.
+
+Für die sichtbare Recovery blieb die Zielseite 60,061 Sekunden hidden und frozen. Währenddessen wurde genau eine Nachricht angenommen. Nach Resume waren Fokus, Composer und Entwurf erhalten; die Traceversion hatte gewechselt, die Signalversion war von 1 auf 3 gestiegen, und die Signalepoche blieb identisch. Der Browser öffnete `/api/chat/events` zweimal sowie `/api/chat/signals/events` und `/api/chat/trace/timeline` je einmal neu. Die Zielseite verzeichnete keine Core-Network- oder Runtime-Ausnahme.
+
+Der zusätzlich angebotene Luna/medium-Turn war bewusst kein erneuter Provider-Login-Smoke. Der frische Pi-Store meldete `openai-codex` als `disconnected` und `configured=false`; der Command erreichte deshalb keine Modellausgabe und endete mit genau einem `interrupted` Receipt. Trace, Messages und Failures wurden read-only geprüft; es gab nur die angenommene Nutzernachricht, null Tracefehler und keine terminale Modellausgabe. Der Command wurde nicht wiederholt. Nach Dry-run wurde ausschließlich diese eigene Testtransaktion als `failed` reconciliert. Die Message-Queue war danach gesund, ohne unterbrochenen Vorgänger oder blockierten Nachfolger; die vollständige scoped Dead-Letter-Traversierung meldete null Einträge und null Identitätskollisionen. Containerlogs enthielten daneben begrenzte Requestfehler für eine andere veraltete Session-ID; deshalb wird nicht behauptet, der gesamte Hostlauf sei fehlerfrei.
+
 ## Ältere, weiterhin gültige, aber nicht umetikettierte Evidenz
 
-Folgende Abnahmen gehören weiterhin ausschließlich zu `09375bbb`: die erste 476/476-Suite, die `codex-native`-Kaltstartmatrix für gleichen Raum, verschiedene Räume und warmen Kontrollpfad, der Public-Core-Bootstrap mit 102.527 Bytes und p95 54,9 ms, der sechsfache echte `TelemetryCaptureWriter`-Capture-on/off-Vergleich, die headful Desktop-/390×844- und sichtbare Lifecycle-Recovery-Abnahme sowie der 7.201,62-Sekunden-Soak. Sie bleiben relevant, werden aber nicht als exakte `722883c4`-Läufe ausgegeben.
+Folgende konkrete Läufe gehören weiterhin ausschließlich zu `09375bbb`: die erste 476/476-Suite, die `codex-native`-Kaltstartmatrix für gleichen Raum, verschiedene Räume und warmen Kontrollpfad, der Public-Core-Bootstrap mit 102.527 Bytes und p95 54,9 ms, der sechsfache echte `TelemetryCaptureWriter`-Capture-on/off-Vergleich, die damaligen headful Desktop-/390×844- und Lifecycle-Recovery-Artefakte sowie der 7.201,62-Sekunden-Soak. Sie bleiben relevant, werden aber nicht als exakte `722883c4`-Läufe ausgegeben. Die oben dokumentierte neue headful Abnahme ist ein eigenständiger Lauf auf `722883c4`.
 
 ## Verbleibende Abnahmegrenzen
 
-- Der neue headful Web-Lauf auf `722883c4` blieb durch Better Auth blockiert: kein Benutzer entsprach `auth.allowedEmails`; der Google-Flow endete mit `redirect_uri_mismatch`.
-- `/api/previews/events` lieferte im älteren Browserlauf 503. Das ist ein separater Preview-SSE-Fehler; es gibt keine Behauptung eines konsolen- oder netzwerkfehlerfreien Laufs.
 - Das physische Zielgerät bleibt extern; Desktop-/Mobile-Viewport-Emulation ersetzt es nicht.
-- Das exakte 10.000-Admission-Profil und ein erneuter 7.200-Sekunden-Soak auf `722883c4` bleiben ressourcenbeziehungsweise zeitbedingt offen. Schutzgrenzen wurden nicht erhöht.
+- Ein erneuter 7.200-Sekunden-Soak auf `722883c4` wurde nicht ausgeführt. Der erfolgreiche ältere Soak bleibt ausschließlich `09375bbb` zugeordnet.
+- `/api/previews/events` lieferte im älteren Browserlauf 503. Das ist ein separater Preview-SSE-Fehler und kein Befund des neuen Zielseiten-Monitors.
+- Der 10.000-Admission-Schutzstopp bleibt historische Ressourcenevidenz, aber nach Freigabe der Servereinstellung 3.250 kein offenes Abnahmegate.
 - GitHub-Issue #1013 ist alleiniger Langzeitort für Reminder-Read/Ack-Discovery; #1016 ist der getrennte Follow-up-Ort für allgemeine Pibo2-Providerauth. Beide liegen außerhalb dieses Produktpatches.
 
 ## Private Kernartefakte
@@ -90,6 +102,10 @@ Folgende Abnahmen gehören weiterhin ausschließlich zu `09375bbb`: die erste 47
 | `finite-3250-admissions-722883c4-paced/sessions-3250/summary.json` | `a5eb0514e46ef9ec7ba8a7648f28a0a775adc7505ae5272b8797df158c5f27c0` |
 | `full-suite-coverage-files-722883c4.tsv` | `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c` |
 | `pibo2-pool-release-722883c4.json` | `3f9bd80fbd41fe7f82acae6e7132d65a2b64d05f187157397d0c2a0dd3a941c8` |
+| `headful-722883c4/headful-acceptance-summary-722883c4.json` | `b14b3c36a0525565b12ca0bd777a7ce3310bbaad7b3ccf3d9cae0f16a1dc8d80` |
+| `headful-722883c4/headful-slash-responsive.json` | `2d5ab3179300078aee3cdfe7b5b74994a1aa7d74fe7a288346f1355d923046a3` |
+| `headful-722883c4/visible-recovery-60s.json` | `423b90f137be50a6b25047e581803deb9a7028afc0c96bdf260b2d51c36e614b` |
+| `headful-722883c4/pibo2-pool-release-final.json` | `9947875e0039821e461b0db538a0a60bef8844156a4b26bca44c761bf89d666f` |
 
 # Historischer Ausführungsverlauf
 
