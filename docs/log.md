@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-12
+
+- **Plugin rebuild execution**: Imported the owner-provided [complete rebuild plan](/plans/unified-plugin-system-rebuild.md) and its [architecture research](/reports/cordis-plugin-architecture-feasibility-2026-09-11.md), and started the [implementation and acceptance ledger](/plans/unified-plugin-system-execution.md). The ledger assigns five parallel implementation streams and retains all integrated acceptance gates as open.
+
 ## 2026-09-09
 
 - **Cache diagnostics review**: Added the [PR 996 review and acceptance record](/reports/cache-observability-pr996-review-2026-09-09.md), documenting the reproduced same-millisecond receipt ordering defect, its correction, and validation.

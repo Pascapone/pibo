@@ -18,6 +18,33 @@
   },
   "records": [
     {
+      "path": "docs/plans/unified-plugin-system-rebuild.md",
+      "state": "conformant",
+      "classification": "owner-approved complete plugin rebuild plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/unified-plugin-system-execution.md",
+      "state": "conformant",
+      "classification": "parallel plugin rebuild execution and acceptance",
+      "type": "Task Ledger",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/cordis-plugin-architecture-feasibility-2026-09-11.md",
+      "state": "conformant",
+      "classification": "plugin architecture feasibility investigation",
+      "type": "Investigation Report",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/run-reminder-admission-validation-2026-09-08.md",
       "state": "conformant",
       "classification": "runtime reminder validation",
