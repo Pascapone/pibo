@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const GENERIC_RUNTIME_FILES = [
+	"src/agent-runtime/auth-contract.ts",
 	"src/agent-runtime/capabilities.ts",
 	"src/agent-runtime/contract.ts",
 	"src/agent-runtime/errors.ts",
