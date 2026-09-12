@@ -1,20 +1,20 @@
 ---
 type: "Task Ledger"
 title: "Unified plugin system implementation and acceptance"
-description: "Tracks delegated implementation, integration ownership and evidence for the complete plugin-system rebuild."
+description: "Tracks the preserved implementation checkpoint, remaining integration and acceptance for the complete plugin-system rebuild."
 tags: ["plugins", "implementation", "migration", "acceptance"]
 status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-12T06:42:00Z"
+  at: "2026-09-12T08:33:48Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
     title: "Owner-approved implementation scope and A01–A37 acceptance matrix"
-  - id: "parallel-execution"
-    resource: "scope:owner instruction 2026-09-12 to complete the full rebuild, corrected to at most five delegated agents total and targeted follow-up work"
-    title: "Parallel execution instruction and revised capacity limit"
+  - id: "current-owner-boundary"
+    resource: "scope:owner instruction 2026-09-12 to preserve and audit the checkpoint; no new or resumed subagents, gateway restarts, deployments, PRs or releases"
+    title: "Latest owner boundary supersedes earlier parallel-dispatch instructions"
 ---
 
 # Goal and completion
@@ -25,15 +25,15 @@ The orchestrator owns integration, package order and final acceptance. The sourc
 
 # Execution boundary
 
-One focused topic branch, `plugin-system-rebuild`, is mounted in the isolated Docker dev worker. Five workers edit disjoint files of the same integrated topic. Only the orchestrator commits the combined result. Builds and suites share a container-local validation lock; code edits and research remain parallel.
+The integrated topic branch is `plugin-system-rebuild`, worktree `/root/code/pibo/.worktrees/plugin-system-rebuild`, mounted as `/workspace` in Docker `pibo-dev-plugin-system-rebuild`. Only the orchestrator committed the combined worker changes. Builds and suites use `/tmp/plugin-system-validation.lock` in that worker. The [checkpoint](/reports/plugin-system-rebuild-checkpoint-2026-09-12.md#übergabe-und-gesicherter-arbeitsstand) records the exact source, environment, recovery bundle and validation commands.
 
-The owner's revised limit is five delegated agents in total. Existing research is reused; additional research waits for a concrete information gap and a free slot. Completed implementation workers receive targeted integration or review follow-ups.
+**Current owner instruction: do not create or resume subagents.** All former child sessions are idle and their available results are preserved. Earlier parallel-dispatch limits and follow-up suggestions are historical, not standing authorization. A subsequent implementing agent owns the remaining integration itself unless the owner explicitly changes this restriction.
 
-The later quota-window instruction stops new agent dispatch. The existing streams finish their current blocks after direct steering; the orchestrator collects and validates a coherent checkpoint. The complete rebuild and acceptance scope remains recorded; unfinished packages are handed off without product acceptance. No new or resumed agent sessions are dispatched in this window.
+The limited implementation window ended with a tested checkpoint. The later handoff audit changes documentation and preservation only. No gateway restart, deployment, Pibo2 installation, PR or release is authorized by this checkpoint. Future acceptance steps below describe remaining requirements; they do not override that boundary.
 
-Controller gateways are outside the development target. Pibo2 receives the exact committed package only after local validation. Merge, release and production installation are separate operations from this implementation.
+# Historical ownership and current responsibility
 
-# Ownership
+The table identifies where the preserved reports came from. These workers are no longer active; there are no outstanding ownership locks or expected uncommitted deliveries. The continuing implementer owns every open package.
 
 | Stream | Owner | Deliverable and boundary |
 |---|---|---|
@@ -42,13 +42,13 @@ Controller gateways are outside the development target. Pibo2 receives the exact
 | Runtime | Runtime/Build Context worker | Real profile/session integration, generation snapshots, portable delivery, controlled hooks and observed context provenance. |
 | Browser | Desktop/browser worker | Browser host, session-owned tabsets, plugin settings, generic Build Context, terminal envelopes and composer hooks. |
 | Designer | Designer/migration worker | Agent selection UI, autosave and API/store contract, independent resources and exact legacy selection migration. |
-| Integration | Orchestrator | Bootstrap, dispatch, package contents, first feature walkthrough, later extraction assignments, reviews, documentation and final evidence. |
+| Integration | Orchestrator | Bootstrap, dispatch, package contents, first feature walkthrough, later extraction, reviews, documentation and final evidence. |
 
 Shared contracts have one writer. Dependent streams import those contracts rather than maintaining local equivalents. Browser types remain free of Node and harness dependencies. Features cannot introduce new fixed settings or context unions as an alternative registry.
 
 # Work packages
 
-Status values are `open`, `in progress`, `blocked` with a concrete cause, and `accepted` with evidence. Implementation in progress does not relax the prerequisites in the owning plan.
+Status values are `open`, `in progress`, `blocked` with a concrete cause, and `accepted` with evidence. Here `in progress` means preserved partial implementation, not an active agent. No package is accepted. Partial implementation does not relax the prerequisites in the owning plan.
 
 | Package | Status | Owner | Acceptance evidence required |
 |---|---|---|---|
@@ -64,9 +64,9 @@ Status values are `open`, `in progress`, `blocked` with a concrete cause, and `a
 | AP09 | in progress | Runtime, browser | Portable tool/input hooks, terminal replay/fallback, composer phases and headful regressions. |
 | AP10 | in progress | Designer | Designer/API roundtrip, autosave, runtime switch and retained independent resources. |
 | AP11 | open | Integration, runtime, browser | Installed Annotations feature including tools, API, tab, settings and Build Context; two-session walkthrough. |
-| AP12 | open | Assigned after AP11 | Every native tool family registered and delivered through its owner plugin. |
-| AP13 | open | Assigned after AP11 | Run/Goal/Subagent contributions preserve execution, persistence and independent child plans. |
-| AP14 | open | Assigned after AP11 | MCP CLI and second adapter use the same contract with explicit runtime limitations. |
+| AP12 | open | Continuing implementer after AP11 | Every native tool family registered and delivered through its owner plugin. |
+| AP13 | open | Continuing implementer after AP11 | Run/Goal/Subagent contributions preserve execution, persistence and independent child plans. |
+| AP14 | open | Continuing implementer after AP11 | MCP CLI and second adapter use the same contract with explicit runtime limitations. |
 | AP15 | in progress | Management, runtime, browser | A17–A21, immutable history, no implicit abort and retained tab/config/build data. |
 | AP16 | in progress | Designer, management, integration | Exact selection migration and recovery; executable Pi-package/discovery paths removed after replacement. |
 | AP17 | open | Browser, integration | Declarative standard and alternative shell/services; remove standalone TUI/VS Code product surfaces. |
@@ -78,8 +78,8 @@ Status values are `open`, `in progress`, `blocked` with a concrete cause, and `a
 1. Reconcile AP00 against the implementation baseline and freeze the AP01 public contracts.
 2. Integrate host, store, resolver, browser and designer along their declared dependencies. Run focused tests as each default path becomes available.
 3. Complete AP11 with ordinary installed Web Annotations, its settings/context views and two independent session tabsets. Record this acceptance before broad extraction.
-4. Assign AP12–AP14 in parallel where files are independent. Finish lifecycle impacts and migration before deleting legacy paths.
-5. Close the complete UI/service inventory and obsolete product surfaces. Review the integrated changes independently, fix findings and run the final local suite.
+4. Implement AP12–AP14 after AP11 acceptance. Finish lifecycle impacts and migration before deleting legacy paths; the current no-subagent instruction remains in force.
+5. Close the complete UI/service inventory and obsolete product surfaces. Review the integrated changes, fix findings and run the final local suite.
 6. Install the same committed, content-addressed package outside the repository and on an isolated Pibo2 target. Complete A01–A37, including real provider execution under each supported adapter.
 7. Reconcile current specifications and operator/plugin authoring guides to tested behavior. Archive this execution record and the owning plan only after every required item is accepted.
 
@@ -95,26 +95,17 @@ No installation foreign key may delete sessions, history, runs, bindings, plugin
 
 Before any migration of non-fixture persistent data, create consistent backups of both stores and associated files. A rollback must either prove old-code readability of the new additive schemas or use a controlled restore that accounts for sessions created after backup. Candidate installation and all remote commands must name their Docker/Pibo2 target explicitly.
 
-# Current evidence
+# Consolidated current evidence
 
-- Baseline fetched and topic worker created on 2026-09-12; no implementation package accepted yet.
-- Five research and five implementation streams dispatched with explicit ownership.
-- Baseline `npm run build` passed in the isolated worker before implementation edits. The existing Vite large-chunk advisory remains; it is not a compilation failure.
-- The focused baseline suite passed 58 tests across plugin registry, agent storage/profiles, runtime portability, Build Context, desktop tab model and routes.
-- `test/fixtures/plugin-system/legacy-builtin-catalog.json` records the actual built-in catalog at the baseline. Custom-agent and global-tab migration fixtures remain required.
-- `npm run docs:validate` passed with zero errors or warnings after supplying an isolated Git-history mirror to the Docker worker. This validates documentation conformance, not implementation acceptance.
-- Initial simultaneous dispatch hit the live gateway's 60-second capacity wait. Implementation requests were retried on their original child threads; current live policy allows five provider requests per room. This operational limit does not alter package scope or acceptance requirements.
-- The five implementation streams resumed on their original threads after regular session-tool credential renewal. No controller gateway restart or credential change was required.
-- The public SDK declaration target and eight focused loader/real Chat Web dispatch tests passed in Docker. They cover import-free graph rejection, verification of every artifact before the first backend import, SDK resolution from a staged package, activation rollback, login/origin enforcement, session-bound tab persistence and stale CAS rejection. These checks do not constitute installed-product or browser acceptance.
-- Browser catalog/assets and stored-versus-preview plan routes are connected to the existing authentication boundary. Root service publication, the pure runtime preview provider, actual generation delivery and complete product composition are still in progress.
-- Integration review identified required follow-up for service-provider revision pinning and controlled host changes. Deactivation of one plugin must not stop unrelated live services; required service owners must appear in the generation plan and admission reservation.
+The [checkpoint report](/reports/plugin-system-rebuild-checkpoint-2026-09-12.md) is the authoritative continuation entrypoint for preserved work and limitations. It links every saved artifact, the complete worker reports/contracts, historical research, code entrypoints, exact commands and failed-test details. Its artifact inventory explains the disposition of temporary material; no private agent context or `/tmp` file is needed to understand the implementation.
 
+- Baseline `cac4dcd03945b9754db7be9ab2ab4324f10c335c`: build and 58 selected regression tests passed before implementation.
+- Source commit `fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd`: full build and Chat UI typecheck passed; all **170 new plugin tests passed**; the combined 19-file legacy suite has **111 passes and 12 failures**. These overlapping stream results must not be added together.
+- The audited source inventory covers all 97 changed product/test/config files without a hash mismatch or missing entry. Later checkpoint/handoff commits change documentation only.
+- `test/fixtures/plugin-system/legacy-builtin-catalog.json` preserves the actual baseline catalog. `legacy-agent-selections.json` now preserves synthetic custom-agent cases derived from the baseline; it is not a production-data export. Complete global tab/settings migration fixtures and the remaining ownership inventory are still required by AP00.
+- Authenticated read dispatch, verification before all backend imports, isolated browser assets, explicit actual-versus-preview routing and service-provider revision pinning were corrected and tested. Service-provider pinning is no longer an open finding.
+- Standard Manager/CLI publication, complete consumer collectors, safe targeted lifecycle changes, Runtime Coordinator injection, pure legacy inspector replacement and Designer v2 dispatcher integration remain open. The new routes return a deliberate unavailable response when required product services are absent.
+- Browser/Designer modules are integrated in source, but ordinary default manifests, shared browser build delivery, navigation and headful behavior are not complete. Fixed UI surfaces were removed before every installed replacement was available; the default product is not deployment-ready.
+- Core ended before its final report; preserved changes and progress notes were reviewed by the orchestrator. Management, Runtime, Browser and Designer completed after closure steering. All ten earlier child sessions were rechecked as idle during the handoff audit; no new child was started or resumed.
 
-# Consolidated development checkpoint
-
-The [checkpoint report](/reports/plugin-system-rebuild-checkpoint-2026-09-12.md) records code, commands and remaining product gaps. Core and Management provide successful module-level evidence; Browser and Designer source is integrated but default manifests, build delivery and web v2 normalization remain incomplete. The default UI is therefore not ready for deployment.
-
-The orchestrator corrected authenticated read dispatch, artifact isolation, explicit actual-versus-preview routing, and service-provider revision pinning. The first broader regression pass also exposed legacy Pi-package/Build-Context expectation changes and test-loader integration issues; these must not be hidden behind successful narrow suites. Final results belong to the checkpoint report, not a claim that all acceptance scenarios passed.
-
-
-Final checkpoint source: `fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd`. Full build and UI typecheck passed; all 170 new plugin tests passed. The combined existing regression suite remains at 111/123 with twelve documented open cases. All previously active workers completed their current turns; no further agents were dispatched. The checkpoint report and preserved contracts are the continuation entrypoint. The service-provider pinning finding is fixed in the shared resolver and forwarded from actual host ownership into Runtime/Designer resolution; safe default lifecycle composition remains open.
+The rough implementation-effort estimate is **30%, with a 25–35% uncertainty range**; this is not a measured percentage or acceptance score. **All AP00–AP19 remain unaccepted and all A01–A37 remain open.** AP11 ordinary installed Annotations is the next complete product milestone after the foundation is connected. Full extraction, migration, obsolete-surface removal and final multi-runtime/headful/Pibo2 acceptance remain required.

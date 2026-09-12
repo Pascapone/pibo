@@ -1,0 +1,609 @@
+Skipping unknown context file "ctx:pibo-docker-development" for custom agent "main-agent"
+Skipping unknown skill "writing-clearly-and-concisely" for custom agent "main-agent"
+✔ custom agent profiles skip unknown context file references (3.93824ms)
+✔ custom agent profiles preserve per-subagent execution settings (1.68241ms)
+✔ custom agent profiles preserve the persisted runtime selection and options (0.468774ms)
+✔ custom agent profiles skip unknown skill references (0.551569ms)
+✔ portable delegated sessions require delivery of generated management context (12.460828ms)
+✔ runtime resources isolate selected skills, context, MCP config, secrets, and verified inventory (897.199044ms)
+✔ runtime resources expose adapter-observed delivery instead of generic capability guesses (10.63632ms)
+✔ native automatic context discovery is independent from Pibo-selected context delivery (3.945864ms)
+✔ explicit context remains injectable when configurable native discovery is disabled (9.109964ms)
+✔ Pi consumes an explicitly selected native context file only through native discovery (100.4584ms)
+✔ runtime resources deduplicate native context through a symlinked workspace (5.744533ms)
+✔ runtime resources deduplicate only the exact native context file selected by runtime precedence (15.940734ms)
+✔ runtime context precedence skips non-file native candidates (9.121636ms)
+✔ runtime context deduplication follows native Codex project-root boundaries (13.495286ms)
+✔ runtime context deduplication follows OMP cwd-only, nearest, ancestor, and repository boundaries (27.603026ms)
+✔ runtime resources reject missing secret references and symlinks that escape a selected skill (17.972952ms)
+✔ runtime resources reject selected MCP transports that the adapter cannot deliver (10.494422ms)
+✔ Pi Bash inherits only the router-owned adapter environment without process-global mutation (94.942047ms)
+✔ router gives tools and resources one generation and disposes isolated state (35.888426ms)
+✔ custom agent store normalizes legacy custom-agent profile names before listing (46.587664ms)
+✔ custom agent store migrates old app-context tables with stable defaults (43.292817ms)
+✔ custom agent store archives and deletes agents (27.3344ms)
+✔ custom agent store rejects deletion while surviving agents target the profile or an alias (43.861078ms)
+✔ custom agent reference checks handle self, chains, unreferenced agents, and missing targets (50.457886ms)
+✔ custom agent deletion rolls back alias removal when deleting the agent fails (24.800727ms)
+✔ custom agent store organizes agents in durable renamable folders (35.156126ms)
+✔ custom agent profile renames leave old session profile names resolvable (44.555476ms)
+✔ custom agent store records agent rename and deletion history (25.16933ms)
+✔ custom agent names are globally unique and lists are app-global across legacy accounts (21.144748ms)
+✔ custom agent store lists all app-global agents (20.732762ms)
+✔ custom agent store migrates duplicate profile names before enforcing global uniqueness (42.612695ms)
+✔ custom agent store defaults goal lifecycle tools on and persists disabling them (23.892004ms)
+✔ custom agent store persists automatic context file setting (25.028095ms)
+✔ custom agent store keeps automatic context concrete while native-subagent overrides remain nullable (24.672565ms)
+✔ custom agent store persists runtime instance selection and adapter options (23.616184ms)
+✔ custom agent store persists selected MCP servers (20.056749ms)
+✔ custom agent store persists selected built-in tools (22.389161ms)
+✔ custom agent store persists thinking, fast, and built-in mode options (18.85831ms)
+✖ custom agent store persists selected registered Pi packages (19.963803ms)
+✔ custom agent store persists ordered main provider fallbacks and legacy subagent model overrides (25.819236ms)
+✔ custom agent store persists per-subagent descriptions, models, thinking levels, and runtime overrides (19.159297ms)
+✔ custom agent request normalization accepts JSON subagent runtime overrides (0.920174ms)
+[pibo] LOCAL AUTH ENABLED — bound to 127.0.0.1. This mode is unsafe if the port is reachable from the public internet. Use authMode=better-auth for production deployments.
+✔ web gateway registry loads custom agent profiles before channels start (113.279226ms)
+[pibo] LOCAL AUTH ENABLED — bound to 127.0.0.1. This mode is unsafe if the port is reachable from the public internet. Use authMode=better-auth for production deployments.
+✔ web gateway registry loads duplicate legacy custom agents after migration (111.99215ms)
+[pibo] LOCAL AUTH ENABLED — bound to 127.0.0.1. This mode is unsafe if the port is reachable from the public internet. Use authMode=better-auth for production deployments.
+✔ stale custom agent tool references do not break the profile catalog (71.906987ms)
+✔ Agent Designer context-file scope exposes its label and pressed state (5.865601ms)
+✔ Agent Designer and PATCH API persist explicit description clears (528.002343ms)
+✔ Agent Designer keeps browsing and explicit session creation separate from the new-session default (1.954491ms)
+✖ only the Sessions new-session dropdown updates the persisted profile preference (2.256031ms)
+✔ Agent Designer drops only model selections unsupported by the selected runtime (130.415481ms)
+✔ Agent Designer serializes cleared model selections so PATCH removes persisted overrides (116.318092ms)
+✔ agent PATCH normalization preserves explicit null model clears (500.388597ms)
+✖ Agent Designer uses the standard responsive sidebar contract (2.888482ms)
+✔ Agent picker exposes folder creation, rename, assignment, and empty-folder deletion (0.478081ms)
+✔ Agent drafts preserve folder assignment without changing runtime behavior (133.290709ms)
+✔ Agent Designer edits description, model, thinking, and runtime overrides per subagent (124.593322ms)
+✔ Agent Designer selects an existing agent initially and only creates drafts explicitly (177.900046ms)
+✖ default base context build does not select Pibo native tooling context (2.470434ms)
+✖ generated tool origins remain inspector-only parent metadata (2.015679ms)
+✔ portable runtime context build explains degraded native-tool inspection (2.536108ms)
+✖ portable runtime manifest uses materialized callable names for fixed and factory profile tools (2.071041ms)
+✖ portable runtime manifest excludes controller-backed Codex browser tools when no controller exists (3.431436ms)
+✔ portable runtime context build exposes selected Pibo subagents through MCP delivery (1.912764ms)
+✖ context build exposes one shared agent surface and the available name-description catalog (1.404115ms)
+✖ context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate (7.295645ms)
+✖ runtime context exposes app context and resource ids without partition fields (1.268459ms)
+✖ context build skill node exposes only the prompt-entry XML, not the full body (5.998001ms)
+✖ context build still warns when a skill file cannot be read for inspection (0.715699ms)
+✔ model catalog groups models by provider and carries auth state (5.337617ms)
+✔ load model catalog returns empty providers when service creation fails (0.351973ms)
+✔ portable tool sessions share one frozen tool selection across direct and MCP delivery (120.509438ms)
+✔ default plugin registry builds core and native Codex capabilities without retired aliases (15.778609ms)
+✔ gateway producer profile is available only through its parked registry (3.639518ms)
+✔ capability catalog exposes installed pibo tool context hints (5.374716ms)
+✔ capability catalog keeps user skills separate from plugin skills (3.389416ms)
+✔ capability catalog exposes registered Pi packages without activating them (4.584668ms)
+✔ plugins can register profiles, gateway actions, and event listeners (1.670116ms)
+✔ product events add metadata, preserve explicit fields, and isolate listeners (0.788665ms)
+✔ plugin registry rejects duplicate registrations (2.610328ms)
+✔ cross-runtime profile projection drops source-runtime model, options, and native feature overrides (3.765925ms)
+✔ portable history is bounded, checkpointed, role-aware, and secret-redacted (52.724657ms)
+✔ portable history retains a contiguous most-recent suffix (72.579174ms)
+✔ portable history scopes provider-local tool ids by turn across SQLite restart (62.739977ms)
+✔ portable history truncation pairs reused tool ids within their turns (982.530167ms)
+✔ portable history enforces its aggregate serialized handoff bound (934.037003ms)
+✔ portable history remains aggregate-bounded after unmatched tool-call normalization (583.209468ms)
+✔ Pi portable-history import appends role-aware native messages without fabricating a turn (0.882954ms)
+✔ runtime rebind persists a retry-safe handoff and imports it before opening the target session (156.500628ms)
+✔ cross-runtime rebind clears source model selection across restart while same-runtime rebind preserves it (69.840635ms)
+✔ runtime rebind quiesces the source before taking its portable-history checkpoint (65.036223ms)
+✔ runtime rebind retries the same persisted handoff checkpoint after target startup failure (81.29718ms)
+✔ generic routed orchestration queues and correlates a non-Pi fake adapter (63.781719ms)
+✔ generic routed session preserves output identities across successful compaction (7.276449ms)
+✔ generic model switching preserves Pibo reasoning when a runtime reapplies its own default (2.056545ms)
+✔ generic routed orchestration tries ordered provider fallbacks and restores the primary model (6.902074ms)
+✔ provider fallback does not retry context or runtime failures (7.029434ms)
+✔ generic routed requests remain cancellable during asynchronous message preflight (9.259356ms)
+✔ generic router rejects profile selections the runtime cannot deliver (4.391324ms)
+✔ generic routed controls reject unadvertised adapter capabilities explicitly (5.748ms)
+✔ fork identity reads and transitions reject queued or active routed work (25.123304ms)
+✔ running-safe fork controls snapshot completed history without interrupting the source turn (10.136528ms)
+✔ fork-candidate page reads serialize accepted message drain behind OMP-style idle work (17.86542ms)
+✔ adapter-shared auth mutations recycle every affected configured runtime session (11.812627ms)
+✔ runtime login and model menus use the active adapter's real auth status without hiding unauthenticated models (9.508704ms)
+✔ cold-start ramps remain bounded across rooms and do not activate historical sessions (164.726587ms)
+✔ bounded active runtime pool evicts idle generations and can reopen their durable sessions (5.757438ms)
+✔ abort cancels a provider capacity wait without entering the provider or borrowing its active slot (10.077767ms)
+✔ abort acknowledges a blocked cold start before adapter initialization settles (7.987149ms)
+✔ queue clear persists the same ingress-plus-runtime count that its caller receives (3.376261ms)
+[pibo] LOCAL AUTH ENABLED — bound to 127.0.0.1. This mode is unsafe if the port is reachable from the public internet. Use authMode=better-auth for production deployments.
+[pibo] LOCAL AUTH ENABLED — bound to 127.0.0.1. This mode is unsafe if the port is reachable from the public internet. Use authMode=better-auth for production deployments.
+[pibo] LOCAL AUTH ENABLED — bound to 127.0.0.1. This mode is unsafe if the port is reachable from the public internet. Use authMode=better-auth for production deployments.
+✔ web gateway binds publicly when auth base URL is not loopback (1.563556ms)
+✔ web gateway keeps loopback bind for local auth base URL (0.253798ms)
+✔ web gateway respects explicit web host (0.230475ms)
+✔ web gateway rebases loopback auth base URL when explicit web port is supplied (1.631884ms)
+✔ web gateway keeps public auth base URL when explicit bind port is supplied (0.809686ms)
+✔ fallback gateway uses dedicated public ports (1.12997ms)
+✔ gateway web fails closed when legacy dev auth env is set (0.590012ms)
+✔ gateway web does not enable dev auth by default (0.239041ms)
+✔ gateway web selects dev auth when authMode=local and bind is loopback (1.123817ms)
+✔ gateway web rejects authMode=local on a non-loopback host bind (0.41922ms)
+✔ gateway web accepts authMode=local on the default loopback bind (0.336343ms)
+✔ gateway web accepts the legacy devAuth alias with loopback bind (0.30255ms)
+✔ gateway web rejects the legacy devAuth alias on a non-loopback bind (0.373674ms)
+✔ isLoopbackHost detects 127.0.0.1, ::1, and localhost (0.181241ms)
+ℹ tests 123
+ℹ suites 0
+ℹ pass 111
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32823.801106
+
+✖ failing tests:
+
+test at test/agent-store.test.mjs:657:1
+✖ custom agent store persists selected registered Pi packages (19.963803ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at file:///workspace/test/agent-store.test.mjs:677:10
+      at withCwd (file:///workspace/test/agent-store.test.mjs:21:16)
+      at TestContext.<anonymous> (file:///workspace/test/agent-store.test.mjs:659:8)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Unknown Pi package "missing-package"/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-agent-designer-new-session-default.test.mjs:15:1
+✖ only the Sessions new-session dropdown updates the persisted profile preference (2.256031ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  1 !== 2
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-agent-designer-new-session-default.test.mjs:17:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-agent-designer-sidebar-folders.test.mjs:13:1
+✖ Agent Designer uses the standard responsive sidebar contract (2.888482ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /initialAgentFolders=\{bootstrap\.agentFolders\}/. Input:
+
+  'import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";\n' +
+    'import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";\n' +
+    'import { useBlocker, useNavigate } from "@tanstack/react-router";\n' +
+    'import { flushSync } from "react-dom";\n' +
+    'import { RefreshCw, X } from "lucide-react";\n' +
+    'import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";\n' +
+    'import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";\n' +
+    'import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";\n' +
+    'import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";\n' +
+    'import { listUserSkills } from "./api-agent-designer";\n' +
+    'import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot, UserSkill } from "./types";\n' +
+    'import { countRender } from "./renderMetrics";\n' +
+    'import {\n' +
+    '\tchatStreamEvent,\n' +
+    '\teventShouldRefreshNavigation,\n' +
+    '\tliveSessionStatusFromEvent,\n' +
+    '} from "./tracing/chat-stream-events";\n' +
+    'import { ContextFilesView } from "./context/ContextFilesView";\n' +
+    'import { BasePromptView } from "./context/BasePromptView";\n' +
+    'import { CompactionPromptView } from "./context/CompactionPromptView";\n' +
+    'import { PiboToolsView } from "./context/PiboToolsView";\n' +
+    'import { McpToolsView } from "./context/McpToolsView";\n' +
+    'import { ContextBuildView } from "./context/ContextBuildView";\n' +
+    'import { ContextSidebar } from "./context/ContextSidebar";\n' +
+    'import type { ContextPanel } from "./context/types";\n' +
+    'import { CronArea } from "./CronArea";\n' +
+    'import { LoopArea } from "./LoopArea";\n' +
+    'import { AgentsView } from "./agents/AgentsView";\n' +
+    'import { SessionTracePane } from "./session-trace-pane";\n' +
+    'import { SessionSidebar } from "./session-sidebar";\n' +
+    'import { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";\n' +
+    'import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model";\n' +
+    'import { getChatSessionView } from "./session-views/registry";\n' +
+    'import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";\n' +
+    'import {\n' +
+    '\treadStoredToolMetricThresholds,\n' +
+    '\twriteStoredToolMetricThresholds,\n' +
+    '\ttype ToolMetricThresholds,\n' +
+    '} from "./tool-metric-settings";\n' +
+    'import {\n' +
+    '\tclearStoredSelection,\n' +
+    '\treadStoredComposerDraft,\n' +
+    '\treadStoredExpandThinking,\n' +
+    '\treadStoredNewSessionProfile,\n' +
+    '\treadStoredSelection,\n' +
+    '\treadStoredSessionView,\n' +
+    '\treadStoredShowArchivedRooms,\n' +
+    '\treadStoredShowArchivedSessions,\n' +
+    '\treadStoredDebugMode,\n' +
+    '\treadStoredDebugFeatures,\n' +
+    '\treadStoredShowThinking,\n' +
+    '\treadStoredToolDisplayMode,\n' +
+    '\tremoveStoredNewSessionProfile,\n' +
+    '\tremoveStoredRoomSelection,\n' +
+    '\twriteStoredComposerDraft,\n' +
+    '\twriteStoredExpandThinking,\n' +
+    '\twriteStoredNewSessionProfile,\n' +
+    '\twriteStoredSelection,\n' +
+    '\twriteStoredSessionView,\n' +
+    '\twriteStoredShowArchivedRooms,\n' +
+    '\twriteStoredShowArchivedSessions,\n' +
+    '\twriteStoredDebugMode,\n' +
+    '\twriteStoredDebugFeatures,\n' +
+    '\twriteStoredShowThinking,\n' +
+    '\twriteStoredToolDisplayMode,\n' +
+    '} from "./app-storage";\n' +
+    'import {\n' +
+    '\taddRoomToBootstrap,\n' +
+    '\taddSessionNodeToBootstrap,\n' +
+    '\tapplyBootstrapUpdateForRoom,\n' +
+    '\tcreateBootstrapMutationSnapshot,\n' +
+    '\tcreateOptimisticRoom,\n' +
+    '\tcreateOptimisticSessionNode,\n' +
+    '\treplaceOptimisticSessionNode,\n' +
+    '\treorderRoomRootsInBootstrap,\n' +
+    '\treorderSessionRootsInBootstrap,\n' +
+    '\treplaceRoomInBootstrap,\n' +
+    '\tremoveRoomsFromBootstrap,\n' +
+    '\tresolveOptimisticSessionCreateOutcome,\n' +
+    '\trollbackOptimisticSessionNode,\n' +
+    '\trestoreBootstrapSelection,\n' +
+    '\tsessionNodeFromSession,\n' +
+    '\tsetRoomPinnedInBootstrap,\n' +
+    '\tsetSessionPinnedInBootstrap,\n' +
+    '\tupdateRoomInBootstrap,\n' +
+    '\tupdateSessionFromPiboSession,\n' +
+    '\tupdateSessionNodeInBootstrap,\n' +
+    '\ttype BootstrapMutationSnapshot,\n' +
+    '\ttype OptimisticSessionCreateOutcome,\n' +
+    '} from "./app-bootstrap-mutations";\n' +
+    'import {\n' +
+    '\tchatBootstrapQueryKey,\n' +
+    '\tchatSessionNavigationGeneration,\n' +
+    '\tchatSessionPageQueryKey,\n' +
+    '\tinvalidateChatSessionNavigationCache,\n' +
+    '\tloadChatSessionNavigationQueryData,\n' +
+    '\ttracePageQueriesForSession,\n' +
+    '\ttraceSummaryQueriesForSession,\n' +
+    '} from "./cache";\n' +
+    'import {\n' +
+    '\trecordStreamingDebugTraceRefreshEnd,\n' +
+    '\trecordStreamingDebugTraceRefreshStart,\n' +
+    '} from "./streamingDebug";\n' +
+    'import {\n' +
+    '\tcountUnreadRooms,\n' +
+    '\tfallbackRoomIdWhenHidingArchived,\n' +
+    '\tfindRoomById,\n' +
+    '\tisArchivedRoom,\n' +
+    '\tresolveRoomContextLabel,\n' +
+    '\tlimitSessionNodesForSidebar,\n' +
+    '\tsplitSessionNodesByArchive,\n' +
+    '} from "./session-sidebar-helpers";\n' +
+    'import {\n' +
+    '\tcreateClientTxnId,\n' +
+    '\tdefaultProfileFromBootstrap,\n' +
+    '\tfindSessionNode,\n' +
+    '\tfindSessionPath,\n' +
+    '\tidentityFromBootstrap,\n' +
+    '\tisSessionComposerDisabled,\n' +
+    '\tresolveSessionActiveModelLabel,\n' +
+    '} from "./app-session-model";\n' +
+    'import {\n' +
+    '\tcommandActionParams,\n' +
+    '\tgetResultPiboSessionId,\n' +
+    '\tnormalizeDownloadCommandPath,\n' +
+    '\tparseForkActionResponse,\n' +
+    '} from "./app-command-actions";\n' +
+    'import { availableSkillsForSession, buildSlashCommands } from "./app-command-catalog";\n' +
+    'import {\n' +
+    '\thasExplicitSessionsRouteSelection,\n' +
+    '\trouteSelectionRequest,\n' +
+    '\tsessionsRouteCanonicalSelection,\n' +
+    '\tshouldSkipRouteSelectionLoad,\n' +
+    '} from "./app-route-selection";\n' +
+    'import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";\n' +
+    'import { errorMessage } from "./error-message";\n' +
+    'import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";\n' +
+    'import { SettingsSidebar } from "./settings/SettingsSidebar";\n' +
+    'import { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";\n' +
+    'import { SettingsView } from "./settings/SettingsView";\n' +
+    'import type { SettingsPanel } from "./settings/types";\n' +
+    'import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";\n' +
+    'import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";\n' +
+    'import { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";\n' +
+    'import { PluginWorkspaceProvider, PluginWorkspaceTabs } from "./plugins/plugin-workspace";\n' +
+    'import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";\n' +
+    'import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";\n' +
+    'import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";\n' +
+    'import {\n' +
+    '\tapplySelectedSignalPatch,\n' +
+    '\tapplySignalPatchToBootstrap,\n' +
+    '\tapplySignalSnapshotToBootstrap,\n' +
+    '\tapplySignalStatusPatch,\n' +
+    '\tapplySignalStatusPatchToBootstrap,\n' +
+    '\tapplySignalStatusSnapshotToBootstrap,\n' +
+    '\tretainSelectedSignalSnapshot,\n' +
+    '\tshouldCommitSelectedSignalSnapshot,\n' +
+    '\tshouldCommitSignalStatusSnapshot,\n' +
+    '\tshouldReconcileSelectedSignalTree,\n' +
+    '\tsignalLegacyStatus,\n' +
+    '\tsignalSnapshotIncludesSession,\n' +
+    '} from "./app-signal-status";\n' +
+    'import { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";\n' +
+    'import {\n' +
+    '\tremoveAgentCatalogUserSkill,\n' +
+    '\tupdateAgentCatalogMcpServer,\n' +
+    '\tupsertAgentCatalogUserSkill,\n' +
+    '} from "./app-agent-catalog-mutations";\n' +
+    'import { useAppDeleteActions } from "./app-delete-actions";\n' +
+    'import { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";\n' +
+    'import { selectedSessionBackendId } from "./selected-session-backend";\n' +
+    'import {\n' +
+    '\tDesktopTabSidebar,\n' +
+    '\tactivateTabInDesktopTabs,\n' +
+    '\tdesktopTabTool,\n' +
+    '\topenTargetInDesktopTabs,\n' +
+    '\tuseDesktopTabWorkspace,\n' +
+    '} from "./desktop-tabs";\n' +
+    'import {\n' +
+    '\tactiveDesktopTab,\n' +
+    '\tapplyGuardedDesktopTabTransition,\n' +
+    '\tcloseDesktopTab,\n' +
+    '\ttype DesktopSessionTool,\n' +
+    '\ttype DesktopTab,\n' +
+    '\ttype DesktopTabTarget,\n' +
+    '} from "./desktop-tabs-model";\n' +
+    '\n' +
+    'export type { ChatAppRoute } from "./app-routes";\n' +
+    '\n' +
+    'type LoadBootstrapOptions = {\n' +
+    '\tselectSession?: boolean;\n' +
+    '\tforce?: boolean;\n' +
+    '\tsignal?: AbortSignal;\n' +
+    '};\n' +
+    '\n' +
+    'type LoadNavigationOptions = {\n' +
+    '\tforce?: boolean;\n' +
+    '\treadSessionId?: string;\n' +
+    '\tsignal?: AbortSignal;\n' +
+    '};\n' +
+    '\n' +
+    'const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;\n' +
+    'const SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000;\n' +
+    'const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000;\n' +
+    'const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;\n' +
+    'const SESSION_PAGE_SIZE = 120;\n' +
+    'const ARCHIVED_SESSION_PAGE_SIZE = 60;\n' +
+    'const EMPTY_SESSION_PATH_IDS = new Set<string>();\n' +
+    '\n' +
+    'type ChatDownloadStatus = ChatDownloadProgress & {\n' +
+    '\tkey: string;\n' +
+    '\tstatus: "starting" | "running" | "completed" | "failed";\n' +
+    '\tduplicateAttempted?: boolean;\n' +
+    '\terror?: string;\n' +
+    '};\n' +
+    '\n' +
+    'function fallbackDownloadFilename(path: string): string {\n' +
+    '\tconst normalized = path.trim().replace(/\\\\/g, "/");\n' +
+    '\treturn normalized.split("/").filter(Boolean).pop() ?? "download";\n' +
+    '}\n' +
+    '\n' +
+    'function formatDownloadBytes(bytes: number): string {\n' +
+    '\tif (!Number.isFinite(bytes) || bytes <= 0) return "0 B";\n' +
+    '\tconst units = ["B", "KB", "MB", "GB", "TB"];\n' +
+    '\tlet value = bytes;\n' +
+    '\tlet unitIndex = 0;\n' +
+    '\twhile (value >= 1024 && unitIndex < units.length - 1) {\n' +
+    '\t\tvalue /= 1024;\n' +
+    '\t\tunitIndex += 1;\n' +
+    '\t}\n' +
+    '\tconst precision = value >= 10 || unitIndex === 0 ? 0 : 1;\n' +
+    '\treturn `${value.toFixed(precision)} ${units[unitIndex]}`;\n' +
+    '}\n' +
+    '\n' +
+    'function downloadProgressLabel(status: ChatDownloadStatus): string {\n' +
+    '\tif (status.status === "starting") return "Preparing download…";\n' +
+    '\tif (status.status === "failed") return status.error ?? "Download failed";\n' +
+    '\tif (status.totalBytes && status.totalBytes > 0) {\n' +
+    '\t\tconst percent = Math.min(100, Math.floor((status.receivedBytes / status.totalBytes) * 100));\n' +
+    '\t\treturn `${percent}% · ${formatDownloadBytes(status.receivedBytes)} of ${formatDownloadBytes(status.totalBytes)}`;\n' +
+    '\t}\n' +
+    '\treturn status.receivedBytes > 0 ? `${formatDownloadBytes(status.receivedBytes)} received` : "Waiting for bytes…";\n' +
+    '}\n' +
+    '\n' +
+    'function isAbortError(value: unknown): boolean {\n' +
+    '\treturn value instanceof DOMException && value.name === "AbortError";\n' +
+    '}\n' +
+    '\n' +
+    'function streamIdFromEventSourceId(lastEventId: string): number | undefined {\n' +
+    '\tconst streamId = Number(lastEventId.split(":", 1)[0]);\n' +
+    '\treturn Number.isFinite(streamId) ? streamId : undefined;\n' +
+    '}\n' +
+    '\n' +
+    'async function loadBootstrapQueryData(\n' +
+    '\tqueryClient: QueryClient,\n' +
+    '\tinput: {\n' +
+    '\t\tpiboSessionId?: string;\n' +
+    '\t\tincludeArchived?: boolean;\n' +
+    '\t\troomId?: string;\n' +
+    '\t\tmarkRead?: boolean;\n' +
+    '\t\tforce?: boolean;\n' +
+    '\t\tsignal?: AbortSignal;\n' +
+    '\t},\n' +
+    '): Promise<BootstrapData> {\n' +
+    '\tconst queryKey = chatBootstrapQueryKey(input.piboSessionId, inp'... 84889 more characters
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-agent-designer-sidebar-folders.test.mjs:15:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";\nimport { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";\nimport { useBlocker, useNavigate } from "@tanstack/react-router";\nimport { flushSync } from "react-dom";\nimport { RefreshCw, X } from "lucide-react";\nimport { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";\nimport { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";\nimport { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";\nimport { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";\nimport { listUserSkills } from "./api-agent-designer";\nimport type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot, UserSkill } from "./types";\nimport { countRender } from "./renderMetrics";\nimport {\n\tchatStreamEvent,\n\teventShouldRefreshNavigation,\n\tliveSessionStatusFromEvent,\n} from "./tracing/chat-stream-events";\nimport { ContextFilesView } from "./context/ContextFilesView";\nimport { BasePromptView } from "./context/BasePromptView";\nimport { CompactionPromptView } from "./context/CompactionPromptView";\nimport { PiboToolsView } from "./context/PiboToolsView";\nimport { McpToolsView } from "./context/McpToolsView";\nimport { ContextBuildView } from "./context/ContextBuildView";\nimport { ContextSidebar } from "./context/ContextSidebar";\nimport type { ContextPanel } from "./context/types";\nimport { CronArea } from "./CronArea";\nimport { LoopArea } from "./LoopArea";\nimport { AgentsView } from "./agents/AgentsView";\nimport { SessionTracePane } from "./session-trace-pane";\nimport { SessionSidebar } from "./session-sidebar";\nimport { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";\nimport { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model";\nimport { getChatSessionView } from "./session-views/registry";\nimport type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";\nimport {\n\treadStoredToolMetricThresholds,\n\twriteStoredToolMetricThresholds,\n\ttype ToolMetricThresholds,\n} from "./tool-metric-settings";\nimport {\n\tclearStoredSelection,\n\treadStoredComposerDraft,\n\treadStoredExpandThinking,\n\treadStoredNewSessionProfile,\n\treadStoredSelection,\n\treadStoredSessionView,\n\treadStoredShowArchivedRooms,\n\treadStoredShowArchivedSessions,\n\treadStoredDebugMode,\n\treadStoredDebugFeatures,\n\treadStoredShowThinking,\n\treadStoredToolDisplayMode,\n\tremoveStoredNewSessionProfile,\n\tremoveStoredRoomSelection,\n\twriteStoredComposerDraft,\n\twriteStoredExpandThinking,\n\twriteStoredNewSessionProfile,\n\twriteStoredSelection,\n\twriteStoredSessionView,\n\twriteStoredShowArchivedRooms,\n\twriteStoredShowArchivedSessions,\n\twriteStoredDebugMode,\n\twriteStoredDebugFeatures,\n\twriteStoredShowThinking,\n\twriteStoredToolDisplayMode,\n} from "./app-storage";\nimport {\n\taddRoomToBootstrap,\n\taddSessionNodeToBootstrap,\n\tapplyBootstrapUpdateForRoom,\n\tcreateBootstrapMutationSnapshot,\n\tcreateOptimisticRoom,\n\tcreateOptimisticSessionNode,\n\treplaceOptimisticSessionNode,\n\treorderRoomRootsInBootstrap,\n\treorderSessionRootsInBootstrap,\n\treplaceRoomInBootstrap,\n\tremoveRoomsFromBootstrap,\n\tresolveOptimisticSessionCreateOutcome,\n\trollbackOptimisticSessionNode,\n\trestoreBootstrapSelection,\n\tsessionNodeFromSession,\n\tsetRoomPinnedInBootstrap,\n\tsetSessionPinnedInBootstrap,\n\tupdateRoomInBootstrap,\n\tupdateSessionFromPiboSession,\n\tupdateSessionNodeInBootstrap,\n\ttype BootstrapMutationSnapshot,\n\ttype OptimisticSessionCreateOutcome,\n} from "./app-bootstrap-mutations";\nimport {\n\tchatBootstrapQueryKey,\n\tchatSessionNavigationGeneration,\n\tchatSessionPageQueryKey,\n\tinvalidateChatSessionNavigationCache,\n\tloadChatSessionNavigationQueryData,\n\ttracePageQueriesForSession,\n\ttraceSummaryQueriesForSession,\n} from "./cache";\nimport {\n\trecordStreamingDebugTraceRefreshEnd,\n\trecordStreamingDebugTraceRefreshStart,\n} from "./streamingDebug";\nimport {\n\tcountUnreadRooms,\n\tfallbackRoomIdWhenHidingArchived,\n\tfindRoomById,\n\tisArchivedRoom,\n\tresolveRoomContextLabel,\n\tlimitSessionNodesForSidebar,\n\tsplitSessionNodesByArchive,\n} from "./session-sidebar-helpers";\nimport {\n\tcreateClientTxnId,\n\tdefaultProfileFromBootstrap,\n\tfindSessionNode,\n\tfindSessionPath,\n\tidentityFromBootstrap,\n\tisSessionComposerDisabled,\n\tresolveSessionActiveModelLabel,\n} from "./app-session-model";\nimport {\n\tcommandActionParams,\n\tgetResultPiboSessionId,\n\tnormalizeDownloadCommandPath,\n\tparseForkActionResponse,\n} from "./app-command-actions";\nimport { availableSkillsForSession, buildSlashCommands } from "./app-command-catalog";\nimport {\n\thasExplicitSessionsRouteSelection,\n\trouteSelectionRequest,\n\tsessionsRouteCanonicalSelection,\n\tshouldSkipRouteSelectionLoad,\n} from "./app-route-selection";\nimport { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";\nimport { errorMessage } from "./error-message";\nimport { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";\nimport { SettingsSidebar } from "./settings/SettingsSidebar";\nimport { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";\nimport { SettingsView } from "./settings/SettingsView";\nimport type { SettingsPanel } from "./settings/types";\nimport { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";\nimport { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";\nimport { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";\nimport { PluginWorkspaceProvider, PluginWorkspaceTabs } from "./plugins/plugin-workspace";\nimport { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";\nimport { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";\nimport { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";\nimport {\n\tapplySelectedSignalPatch,\n\tapplySignalPatchToBootstrap,\n\tapplySignalSnapshotToBootstrap,\n\tapplySignalStatusPatch,\n\tapplySignalStatusPatchToBootstrap,\n\tapplySignalStatusSnapshotToBootstrap,\n\tretainSelectedSignalSnapshot,\n\tshouldCommitSelectedSignalSnapshot,\n\tshouldCommitSignalStatusSnapshot,\n\tshouldReconcileSelectedSignalTree,\n\tsignalLegacyStatus,\n\tsignalSnapshotIncludesSession,\n} from "./app-signal-status";\nimport { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";\nimport {\n\tremoveAgentCatalogUserSkill,\n\tupdateAgentCatalogMcpServer,\n\tupsertAgentCatalogUserSkill,\n} from "./app-agent-catalog-mutations";\nimport { useAppDeleteActions } from "./app-delete-actions";\nimport { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";\nimport { selectedSessionBackendId } from "./selected-session-backend";\nimport {\n\tDesktopTabSidebar,\n\tactivateTabInDesktopTabs,\n\tdesktopTabTool,\n\topenTargetInDesktopTabs,\n\tuseDesktopTabWorkspace,\n} from "./desktop-tabs";\nimport {\n\tactiveDesktopTab,\n\tapplyGuardedDesktopTabTransition,\n\tcloseDesktopTab,\n\ttype DesktopSessionTool,\n\ttype DesktopTab,\n\ttype DesktopTabTarget,\n} from "./desktop-tabs-model";\n\nexport type { ChatAppRoute } from "./app-routes";\n\ntype LoadBootstrapOptions = {\n\tselectSession?: boolean;\n\tforce?: boolean;\n\tsignal?: AbortSignal;\n};\n\ntype LoadNavigationOptions = {\n\tforce?: boolean;\n\treadSessionId?: string;\n\tsignal?: AbortSignal;\n};\n\nconst SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;\nconst SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000;\nconst SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000;\nconst NAVIGATION_FALLBACK_REFRESH_MS = 30_000;\nconst SESSION_PAGE_SIZE = 120;\nconst ARCHIVED_SESSION_PAGE_SIZE = 60;\nconst EMPTY_SESSION_PATH_IDS = new Set<string>();\n\ntype ChatDownloadStatus = ChatDownloadProgress & {\n\tkey: string;\n\tstatus: "starting" | "running" | "completed" | "failed";\n\tduplicateAttempted?: boolean;\n\terror?: string;\n};\n\nfunction fallbackDownloadFilename(path: string): string {\n\tconst normalized = path.trim().replace(/\\\\/g, "/");\n\treturn normalized.split("/").filter(Boolean).pop() ?? "download";\n}\n\nfunction formatDownloadBytes(bytes: number): string {\n\tif (!Number.isFinite(bytes) || bytes <= 0) return "0 B";\n\tconst units = ["B", "KB", "MB", "GB", "TB"];\n\tlet value = bytes;\n\tlet unitIndex = 0;\n\twhile (value >= 1024 && unitIndex < units.length - 1) {\n\t\tvalue /= 1024;\n\t\tunitIndex += 1;\n\t}\n\tconst precision = value >= 10 || unitIndex === 0 ? 0 : 1;\n\treturn `${value.toFixed(precision)} ${units[unitIndex]}`;\n}\n\nfunction downloadProgressLabel(status: ChatDownloadStatus): string {\n\tif (status.status === "starting") return "Preparing download…";\n\tif (status.status === "failed") return status.error ?? "Download failed";\n\tif (status.totalBytes && status.totalBytes > 0) {\n\t\tconst percent = Math.min(100, Math.floor((status.receivedBytes / status.totalBytes) * 100));\n\t\treturn `${percent}% · ${formatDownloadBytes(status.receivedBytes)} of ${formatDownloadBytes(status.totalBytes)}`;\n\t}\n\treturn status.receivedBytes > 0 ? `${formatDownloadBytes(status.receivedBytes)} received` : "Waiting for bytes…";\n}\n\nfunction isAbortError(value: unknown): boolean {\n\treturn value instanceof DOMException && value.name === "AbortError";\n}\n\nfunction streamIdFromEventSourceId(lastEventId: string): number | undefined {\n\tconst streamId = Number(lastEventId.split(":", 1)[0]);\n\treturn Number.isFinite(streamId) ? streamId : undefined;\n}\n\nasync function loadBootstrapQueryData(\n\tqueryClient: QueryClient,\n\tinput: {\n\t\tpiboSessionId?: string;\n\t\tincludeArchived?: boolean;\n\t\troomId?: string;\n\t\tmarkRead?: boolean;\n\t\tforce?: boolean;\n\t\tsignal?: AbortSignal;\n\t},\n): Promise<BootstrapData> {\n\tconst queryKey = chatBootstrapQueryKey(input.piboSessionId, inp'... 84889 more characters,
+    expected: /initialAgentFolders=\{bootstrap\.agentFolders\}/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at test/context-build-inspector.test.mjs:31:1
+✖ default base context build does not select Pibo native tooling context (2.470434ms)
+  TypeError: Cannot read properties of undefined (reading 'id')
+      at file:///workspace/test/context-build-inspector.test.mjs:35:57
+      at findNode (file:///workspace/test/context-build-inspector.test.mjs:24:7)
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:35:21)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at test/context-build-inspector.test.mjs:44:1
+✖ generated tool origins remain inspector-only parent metadata (2.015679ms)
+  AssertionError [ERR_ASSERTION]: expected generated tool runtime
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:67:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/context-build-inspector.test.mjs:114:1
+✖ portable runtime manifest uses materialized callable names for fixed and factory profile tools (2.071041ms)
+  AssertionError [ERR_ASSERTION]: inspection materializes each profile factory once
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:170:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/context-build-inspector.test.mjs:189:1
+✖ portable runtime manifest excludes controller-backed Codex browser tools when no controller exists (3.431436ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + [
+  +   'browser_use_open_tabs',
+  +   'browser_use_take_screenshot',
+  +   'browser_use_browser_use',
+  +   'node_repl_js',
+  +   'node_repl_js_reset',
+  +   'pibo_run_start',
+  +   'pibo_run_list',
+  +   'pibo_run_status',
+  +   'pibo_run_wait',
+  +   'pibo_run_read',
+  +   'pibo_run_cancel',
+  +   'pibo_run_ack'
+  + ]
+  - []
+
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:224:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'browser_use_open_tabs', 'browser_use_take_screenshot', 'browser_use_browser_use', 'node_repl_js', 'node_repl_js_reset', 'pibo_run_start', 'pibo_run_list', 'pibo_run_status', 'pibo_run_wait', 'pibo_run_read', 'pibo_run_cancel', 'pibo_run_ack' ],
+    expected: [],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/context-build-inspector.test.mjs:301:1
+✖ context build exposes one shared agent surface and the available name-description catalog (1.404115ms)
+  TypeError: Cannot read properties of undefined (reading 'schemaJson')
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:333:31)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at test/context-build-inspector.test.mjs:382:1
+✖ context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate (7.295645ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(snapshot.summary.totalNodes > snapshot.summary.topLevelNodes)
+
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:404:9)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at test/context-build-inspector.test.mjs:428:1
+✖ runtime context exposes app context and resource ids without partition fields (1.268459ms)
+  TypeError: Cannot read properties of undefined (reading 'hydratedText')
+      at TestContext.<anonymous> (file:///workspace/test/context-build-inspector.test.mjs:447:30)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at test/context-build-skills-tokens.test.mjs:30:1
+✖ context build skill node exposes only the prompt-entry XML, not the full body (5.998001ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'skills/token-fix-fixture/SKILL.md'
+  - '/tmp/pibo-skill-tokens-YAcvdJ/skills/token-fix-fixture/SKILL.md'
+
+      at TestContext.<anonymous> (file:///workspace/test/context-build-skills-tokens.test.mjs:59:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'skills/token-fix-fixture/SKILL.md',
+    expected: '/tmp/pibo-skill-tokens-YAcvdJ/skills/token-fix-fixture/SKILL.md',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/context-build-skills-tokens.test.mjs:104:1
+✖ context build still warns when a skill file cannot be read for inspection (0.715699ms)
+  AssertionError [ERR_ASSERTION]: skills parent should exist even with no skills
+      at TestContext.<anonymous> (file:///workspace/test/context-build-skills-tokens.test.mjs:128:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

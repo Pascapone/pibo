@@ -1,0 +1,408 @@
+BACKEND_TSC_EXIT:0
+UI_TSC_EXIT:0
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ rendered plugin toggles preserve mandatory state and exact session/settings scopes; stale preview cannot retarget (431.995034ms)
+✔ legacy standard: exact contribution/tool sets and independent resources (31.586515ms)
+✔ legacy subset: exact contribution/tool sets and independent resources (10.530703ms)
+✔ legacy pi-only: exact contribution/tool sets and independent resources (10.459156ms)
+✔ legacy codex-native: exact contribution/tool sets and independent resources (11.096838ms)
+✔ legacy omp: exact contribution/tool sets and independent resources (10.010041ms)
+✔ legacy manual: exact contribution/tool sets and independent resources (13.116223ms)
+✔ legacy run: exact contribution/tool sets and independent resources (22.574976ms)
+✔ legacy resources: exact contribution/tool sets and independent resources (8.904047ms)
+✔ legacy mcp: exact contribution/tool sets and independent resources (9.702302ms)
+✔ legacy unknown-pi-package: exact contribution/tool sets and independent resources (9.221555ms)
+✔ legacy unknown-tool: exact contribution/tool sets and independent resources (8.825961ms)
+✔ fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run) (3.967826ms)
+✔ required subset mismatch and runtime incompatibility never gain tools (4.503296ms)
+✔ migration crash after AgentStore commit before journal checkpoint resumes after reopen (64.898552ms)
+✔ migration refuses concurrent source edits; raw unknown fields remain in backup (10.404063ms)
+✔ SQL CAS protects parallel connections, archive and missing references survive metadata edits (26.998441ms)
+✔ API v2 rejects legacy/version/required manipulation; unchanged unresolved metadata is saveable (23.781448ms)
+✔ preview route ignores forged runtime capabilities, is read-only, and catalog hides artifact paths (8.743644ms)
+✔ Designer snapshots preserve missing selections, optional exclusions and revision across model changes (1.729609ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 976.537919
+DESIGNER_NEW_TEST_EXIT:0
+Skipping unknown context file "ctx:pibo-docker-development" for custom agent "main-agent"
+Skipping unknown skill "writing-clearly-and-concisely" for custom agent "main-agent"
+✔ custom agent profiles skip unknown context file references (3.243352ms)
+✔ custom agent profiles preserve per-subagent execution settings (2.399542ms)
+✔ custom agent profiles preserve the persisted runtime selection and options (0.542442ms)
+✔ custom agent profiles skip unknown skill references (0.603397ms)
+✔ custom agent store normalizes legacy custom-agent profile names before listing (44.56519ms)
+✔ custom agent store migrates old app-context tables with stable defaults (40.346111ms)
+✔ custom agent store archives and deletes agents (23.574189ms)
+✔ custom agent store rejects deletion while surviving agents target the profile or an alias (38.566075ms)
+✔ custom agent reference checks handle self, chains, unreferenced agents, and missing targets (41.220088ms)
+✔ custom agent deletion rolls back alias removal when deleting the agent fails (25.953501ms)
+✔ custom agent store organizes agents in durable renamable folders (32.962128ms)
+✔ custom agent profile renames leave old session profile names resolvable (38.219463ms)
+✔ custom agent store records agent rename and deletion history (28.230392ms)
+✔ custom agent names are globally unique and lists are app-global across legacy accounts (22.621834ms)
+✔ custom agent store lists all app-global agents (22.498371ms)
+✔ custom agent store migrates duplicate profile names before enforcing global uniqueness (44.523521ms)
+✔ custom agent store defaults goal lifecycle tools on and persists disabling them (22.013548ms)
+✔ custom agent store persists automatic context file setting (19.783337ms)
+✔ custom agent store keeps automatic context concrete while native-subagent overrides remain nullable (25.271297ms)
+✔ custom agent store persists runtime instance selection and adapter options (22.707965ms)
+✔ custom agent store persists selected MCP servers (21.191337ms)
+✔ custom agent store persists selected built-in tools (18.030733ms)
+✔ custom agent store persists thinking, fast, and built-in mode options (20.660309ms)
+✖ custom agent store persists selected registered Pi packages (19.465377ms)
+✔ custom agent store persists ordered main provider fallbacks and legacy subagent model overrides (26.613395ms)
+✔ custom agent store persists per-subagent descriptions, models, thinking levels, and runtime overrides (22.01466ms)
+✔ custom agent request normalization accepts JSON subagent runtime overrides (1.21514ms)
+✔ Agent Designer context-file scope exposes its label and pressed state (6.387194ms)
+✔ Agent Designer and PATCH API persist explicit description clears (685.153033ms)
+✔ Agent Designer keeps browsing and explicit session creation separate from the new-session default (1.697939ms)
+✖ only the Sessions new-session dropdown updates the persisted profile preference (3.748824ms)
+✔ Agent Designer drops only model selections unsupported by the selected runtime (183.204544ms)
+✔ Agent Designer serializes cleared model selections so PATCH removes persisted overrides (113.419814ms)
+✔ agent PATCH normalization preserves explicit null model clears (648.963284ms)
+✖ Agent Designer uses the standard responsive sidebar contract (3.474066ms)
+✔ Agent picker exposes folder creation, rename, assignment, and empty-folder deletion (0.533746ms)
+✔ Agent drafts preserve folder assignment without changing runtime behavior (139.761347ms)
+✔ Agent Designer edits description, model, thinking, and runtime overrides per subagent (151.806874ms)
+✔ Agent Designer selects an existing agent initially and only creates drafts explicitly (155.337126ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 36
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3092.617749
+
+✖ failing tests:
+
+test at test/agent-store.test.mjs:657:1
+✖ custom agent store persists selected registered Pi packages (19.465377ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+      at file:///workspace/test/agent-store.test.mjs:677:10
+      at withCwd (file:///workspace/test/agent-store.test.mjs:21:16)
+      at TestContext.<anonymous> (file:///workspace/test/agent-store.test.mjs:659:8)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Unknown Pi package "missing-package"/,
+    operator: 'throws',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-agent-designer-new-session-default.test.mjs:15:1
+✖ only the Sessions new-session dropdown updates the persisted profile preference (3.748824ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  1 !== 2
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-agent-designer-new-session-default.test.mjs:17:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/chat-ui-agent-designer-sidebar-folders.test.mjs:13:1
+✖ Agent Designer uses the standard responsive sidebar contract (3.474066ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /initialAgentFolders=\{bootstrap\.agentFolders\}/. Input:
+
+  'import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";\n' +
+    'import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";\n' +
+    'import { useBlocker, useNavigate } from "@tanstack/react-router";\n' +
+    'import { flushSync } from "react-dom";\n' +
+    'import { RefreshCw, X } from "lucide-react";\n' +
+    'import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";\n' +
+    'import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";\n' +
+    'import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";\n' +
+    'import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";\n' +
+    'import { listUserSkills } from "./api-agent-designer";\n' +
+    'import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot, UserSkill } from "./types";\n' +
+    'import { countRender } from "./renderMetrics";\n' +
+    'import {\n' +
+    '\tchatStreamEvent,\n' +
+    '\teventShouldRefreshNavigation,\n' +
+    '\tliveSessionStatusFromEvent,\n' +
+    '} from "./tracing/chat-stream-events";\n' +
+    'import { ContextFilesView } from "./context/ContextFilesView";\n' +
+    'import { BasePromptView } from "./context/BasePromptView";\n' +
+    'import { CompactionPromptView } from "./context/CompactionPromptView";\n' +
+    'import { PiboToolsView } from "./context/PiboToolsView";\n' +
+    'import { McpToolsView } from "./context/McpToolsView";\n' +
+    'import { ContextBuildView } from "./context/ContextBuildView";\n' +
+    'import { ContextSidebar } from "./context/ContextSidebar";\n' +
+    'import type { ContextPanel } from "./context/types";\n' +
+    'import { CronArea } from "./CronArea";\n' +
+    'import { LoopArea } from "./LoopArea";\n' +
+    'import { AgentsView } from "./agents/AgentsView";\n' +
+    'import { SessionTracePane } from "./session-trace-pane";\n' +
+    'import { SessionSidebar } from "./session-sidebar";\n' +
+    'import { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";\n' +
+    'import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model";\n' +
+    'import { getChatSessionView } from "./session-views/registry";\n' +
+    'import type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";\n' +
+    'import {\n' +
+    '\treadStoredToolMetricThresholds,\n' +
+    '\twriteStoredToolMetricThresholds,\n' +
+    '\ttype ToolMetricThresholds,\n' +
+    '} from "./tool-metric-settings";\n' +
+    'import {\n' +
+    '\tclearStoredSelection,\n' +
+    '\treadStoredComposerDraft,\n' +
+    '\treadStoredExpandThinking,\n' +
+    '\treadStoredNewSessionProfile,\n' +
+    '\treadStoredSelection,\n' +
+    '\treadStoredSessionView,\n' +
+    '\treadStoredShowArchivedRooms,\n' +
+    '\treadStoredShowArchivedSessions,\n' +
+    '\treadStoredDebugMode,\n' +
+    '\treadStoredDebugFeatures,\n' +
+    '\treadStoredShowThinking,\n' +
+    '\treadStoredToolDisplayMode,\n' +
+    '\tremoveStoredNewSessionProfile,\n' +
+    '\tremoveStoredRoomSelection,\n' +
+    '\twriteStoredComposerDraft,\n' +
+    '\twriteStoredExpandThinking,\n' +
+    '\twriteStoredNewSessionProfile,\n' +
+    '\twriteStoredSelection,\n' +
+    '\twriteStoredSessionView,\n' +
+    '\twriteStoredShowArchivedRooms,\n' +
+    '\twriteStoredShowArchivedSessions,\n' +
+    '\twriteStoredDebugMode,\n' +
+    '\twriteStoredDebugFeatures,\n' +
+    '\twriteStoredShowThinking,\n' +
+    '\twriteStoredToolDisplayMode,\n' +
+    '} from "./app-storage";\n' +
+    'import {\n' +
+    '\taddRoomToBootstrap,\n' +
+    '\taddSessionNodeToBootstrap,\n' +
+    '\tapplyBootstrapUpdateForRoom,\n' +
+    '\tcreateBootstrapMutationSnapshot,\n' +
+    '\tcreateOptimisticRoom,\n' +
+    '\tcreateOptimisticSessionNode,\n' +
+    '\treplaceOptimisticSessionNode,\n' +
+    '\treorderRoomRootsInBootstrap,\n' +
+    '\treorderSessionRootsInBootstrap,\n' +
+    '\treplaceRoomInBootstrap,\n' +
+    '\tremoveRoomsFromBootstrap,\n' +
+    '\tresolveOptimisticSessionCreateOutcome,\n' +
+    '\trollbackOptimisticSessionNode,\n' +
+    '\trestoreBootstrapSelection,\n' +
+    '\tsessionNodeFromSession,\n' +
+    '\tsetRoomPinnedInBootstrap,\n' +
+    '\tsetSessionPinnedInBootstrap,\n' +
+    '\tupdateRoomInBootstrap,\n' +
+    '\tupdateSessionFromPiboSession,\n' +
+    '\tupdateSessionNodeInBootstrap,\n' +
+    '\ttype BootstrapMutationSnapshot,\n' +
+    '\ttype OptimisticSessionCreateOutcome,\n' +
+    '} from "./app-bootstrap-mutations";\n' +
+    'import {\n' +
+    '\tchatBootstrapQueryKey,\n' +
+    '\tchatSessionNavigationGeneration,\n' +
+    '\tchatSessionPageQueryKey,\n' +
+    '\tinvalidateChatSessionNavigationCache,\n' +
+    '\tloadChatSessionNavigationQueryData,\n' +
+    '\ttracePageQueriesForSession,\n' +
+    '\ttraceSummaryQueriesForSession,\n' +
+    '} from "./cache";\n' +
+    'import {\n' +
+    '\trecordStreamingDebugTraceRefreshEnd,\n' +
+    '\trecordStreamingDebugTraceRefreshStart,\n' +
+    '} from "./streamingDebug";\n' +
+    'import {\n' +
+    '\tcountUnreadRooms,\n' +
+    '\tfallbackRoomIdWhenHidingArchived,\n' +
+    '\tfindRoomById,\n' +
+    '\tisArchivedRoom,\n' +
+    '\tresolveRoomContextLabel,\n' +
+    '\tlimitSessionNodesForSidebar,\n' +
+    '\tsplitSessionNodesByArchive,\n' +
+    '} from "./session-sidebar-helpers";\n' +
+    'import {\n' +
+    '\tcreateClientTxnId,\n' +
+    '\tdefaultProfileFromBootstrap,\n' +
+    '\tfindSessionNode,\n' +
+    '\tfindSessionPath,\n' +
+    '\tidentityFromBootstrap,\n' +
+    '\tisSessionComposerDisabled,\n' +
+    '\tresolveSessionActiveModelLabel,\n' +
+    '} from "./app-session-model";\n' +
+    'import {\n' +
+    '\tcommandActionParams,\n' +
+    '\tgetResultPiboSessionId,\n' +
+    '\tnormalizeDownloadCommandPath,\n' +
+    '\tparseForkActionResponse,\n' +
+    '} from "./app-command-actions";\n' +
+    'import { availableSkillsForSession, buildSlashCommands } from "./app-command-catalog";\n' +
+    'import {\n' +
+    '\thasExplicitSessionsRouteSelection,\n' +
+    '\trouteSelectionRequest,\n' +
+    '\tsessionsRouteCanonicalSelection,\n' +
+    '\tshouldSkipRouteSelectionLoad,\n' +
+    '} from "./app-route-selection";\n' +
+    'import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";\n' +
+    'import { errorMessage } from "./error-message";\n' +
+    'import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";\n' +
+    'import { SettingsSidebar } from "./settings/SettingsSidebar";\n' +
+    'import { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";\n' +
+    'import { SettingsView } from "./settings/SettingsView";\n' +
+    'import type { SettingsPanel } from "./settings/types";\n' +
+    'import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";\n' +
+    'import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";\n' +
+    'import { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";\n' +
+    'import { PluginWorkspaceProvider, PluginWorkspaceTabs } from "./plugins/plugin-workspace";\n' +
+    'import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";\n' +
+    'import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";\n' +
+    'import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";\n' +
+    'import {\n' +
+    '\tapplySelectedSignalPatch,\n' +
+    '\tapplySignalPatchToBootstrap,\n' +
+    '\tapplySignalSnapshotToBootstrap,\n' +
+    '\tapplySignalStatusPatch,\n' +
+    '\tapplySignalStatusPatchToBootstrap,\n' +
+    '\tapplySignalStatusSnapshotToBootstrap,\n' +
+    '\tretainSelectedSignalSnapshot,\n' +
+    '\tshouldCommitSelectedSignalSnapshot,\n' +
+    '\tshouldCommitSignalStatusSnapshot,\n' +
+    '\tshouldReconcileSelectedSignalTree,\n' +
+    '\tsignalLegacyStatus,\n' +
+    '\tsignalSnapshotIncludesSession,\n' +
+    '} from "./app-signal-status";\n' +
+    'import { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";\n' +
+    'import {\n' +
+    '\tremoveAgentCatalogUserSkill,\n' +
+    '\tupdateAgentCatalogMcpServer,\n' +
+    '\tupsertAgentCatalogUserSkill,\n' +
+    '} from "./app-agent-catalog-mutations";\n' +
+    'import { useAppDeleteActions } from "./app-delete-actions";\n' +
+    'import { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";\n' +
+    'import { selectedSessionBackendId } from "./selected-session-backend";\n' +
+    'import {\n' +
+    '\tDesktopTabSidebar,\n' +
+    '\tactivateTabInDesktopTabs,\n' +
+    '\tdesktopTabTool,\n' +
+    '\topenTargetInDesktopTabs,\n' +
+    '\tuseDesktopTabWorkspace,\n' +
+    '} from "./desktop-tabs";\n' +
+    'import {\n' +
+    '\tactiveDesktopTab,\n' +
+    '\tapplyGuardedDesktopTabTransition,\n' +
+    '\tcloseDesktopTab,\n' +
+    '\ttype DesktopSessionTool,\n' +
+    '\ttype DesktopTab,\n' +
+    '\ttype DesktopTabTarget,\n' +
+    '} from "./desktop-tabs-model";\n' +
+    '\n' +
+    'export type { ChatAppRoute } from "./app-routes";\n' +
+    '\n' +
+    'type LoadBootstrapOptions = {\n' +
+    '\tselectSession?: boolean;\n' +
+    '\tforce?: boolean;\n' +
+    '\tsignal?: AbortSignal;\n' +
+    '};\n' +
+    '\n' +
+    'type LoadNavigationOptions = {\n' +
+    '\tforce?: boolean;\n' +
+    '\treadSessionId?: string;\n' +
+    '\tsignal?: AbortSignal;\n' +
+    '};\n' +
+    '\n' +
+    'const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;\n' +
+    'const SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000;\n' +
+    'const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000;\n' +
+    'const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;\n' +
+    'const SESSION_PAGE_SIZE = 120;\n' +
+    'const ARCHIVED_SESSION_PAGE_SIZE = 60;\n' +
+    'const EMPTY_SESSION_PATH_IDS = new Set<string>();\n' +
+    '\n' +
+    'type ChatDownloadStatus = ChatDownloadProgress & {\n' +
+    '\tkey: string;\n' +
+    '\tstatus: "starting" | "running" | "completed" | "failed";\n' +
+    '\tduplicateAttempted?: boolean;\n' +
+    '\terror?: string;\n' +
+    '};\n' +
+    '\n' +
+    'function fallbackDownloadFilename(path: string): string {\n' +
+    '\tconst normalized = path.trim().replace(/\\\\/g, "/");\n' +
+    '\treturn normalized.split("/").filter(Boolean).pop() ?? "download";\n' +
+    '}\n' +
+    '\n' +
+    'function formatDownloadBytes(bytes: number): string {\n' +
+    '\tif (!Number.isFinite(bytes) || bytes <= 0) return "0 B";\n' +
+    '\tconst units = ["B", "KB", "MB", "GB", "TB"];\n' +
+    '\tlet value = bytes;\n' +
+    '\tlet unitIndex = 0;\n' +
+    '\twhile (value >= 1024 && unitIndex < units.length - 1) {\n' +
+    '\t\tvalue /= 1024;\n' +
+    '\t\tunitIndex += 1;\n' +
+    '\t}\n' +
+    '\tconst precision = value >= 10 || unitIndex === 0 ? 0 : 1;\n' +
+    '\treturn `${value.toFixed(precision)} ${units[unitIndex]}`;\n' +
+    '}\n' +
+    '\n' +
+    'function downloadProgressLabel(status: ChatDownloadStatus): string {\n' +
+    '\tif (status.status === "starting") return "Preparing download…";\n' +
+    '\tif (status.status === "failed") return status.error ?? "Download failed";\n' +
+    '\tif (status.totalBytes && status.totalBytes > 0) {\n' +
+    '\t\tconst percent = Math.min(100, Math.floor((status.receivedBytes / status.totalBytes) * 100));\n' +
+    '\t\treturn `${percent}% · ${formatDownloadBytes(status.receivedBytes)} of ${formatDownloadBytes(status.totalBytes)}`;\n' +
+    '\t}\n' +
+    '\treturn status.receivedBytes > 0 ? `${formatDownloadBytes(status.receivedBytes)} received` : "Waiting for bytes…";\n' +
+    '}\n' +
+    '\n' +
+    'function isAbortError(value: unknown): boolean {\n' +
+    '\treturn value instanceof DOMException && value.name === "AbortError";\n' +
+    '}\n' +
+    '\n' +
+    'function streamIdFromEventSourceId(lastEventId: string): number | undefined {\n' +
+    '\tconst streamId = Number(lastEventId.split(":", 1)[0]);\n' +
+    '\treturn Number.isFinite(streamId) ? streamId : undefined;\n' +
+    '}\n' +
+    '\n' +
+    'async function loadBootstrapQueryData(\n' +
+    '\tqueryClient: QueryClient,\n' +
+    '\tinput: {\n' +
+    '\t\tpiboSessionId?: string;\n' +
+    '\t\tincludeArchived?: boolean;\n' +
+    '\t\troomId?: string;\n' +
+    '\t\tmarkRead?: boolean;\n' +
+    '\t\tforce?: boolean;\n' +
+    '\t\tsignal?: AbortSignal;\n' +
+    '\t},\n' +
+    '): Promise<BootstrapData> {\n' +
+    '\tconst queryKey = chatBootstrapQueryKey(input.piboSessionId, inp'... 84889 more characters
+
+      at TestContext.<anonymous> (file:///workspace/test/chat-ui-agent-designer-sidebar-folders.test.mjs:15:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";\nimport { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";\nimport { useBlocker, useNavigate } from "@tanstack/react-router";\nimport { flushSync } from "react-dom";\nimport { RefreshCw, X } from "lucide-react";\nimport { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";\nimport { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";\nimport { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";\nimport { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";\nimport { listUserSkills } from "./api-agent-designer";\nimport type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot, UserSkill } from "./types";\nimport { countRender } from "./renderMetrics";\nimport {\n\tchatStreamEvent,\n\teventShouldRefreshNavigation,\n\tliveSessionStatusFromEvent,\n} from "./tracing/chat-stream-events";\nimport { ContextFilesView } from "./context/ContextFilesView";\nimport { BasePromptView } from "./context/BasePromptView";\nimport { CompactionPromptView } from "./context/CompactionPromptView";\nimport { PiboToolsView } from "./context/PiboToolsView";\nimport { McpToolsView } from "./context/McpToolsView";\nimport { ContextBuildView } from "./context/ContextBuildView";\nimport { ContextSidebar } from "./context/ContextSidebar";\nimport type { ContextPanel } from "./context/types";\nimport { CronArea } from "./CronArea";\nimport { LoopArea } from "./LoopArea";\nimport { AgentsView } from "./agents/AgentsView";\nimport { SessionTracePane } from "./session-trace-pane";\nimport { SessionSidebar } from "./session-sidebar";\nimport { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";\nimport { DESKTOP_COLLAPSED_SIDEBAR_WIDTH } from "./desktop-session-sidebar-model";\nimport { getChatSessionView } from "./session-views/registry";\nimport type { ChatSessionViewId, ToolDisplayMode } from "./session-views/types";\nimport {\n\treadStoredToolMetricThresholds,\n\twriteStoredToolMetricThresholds,\n\ttype ToolMetricThresholds,\n} from "./tool-metric-settings";\nimport {\n\tclearStoredSelection,\n\treadStoredComposerDraft,\n\treadStoredExpandThinking,\n\treadStoredNewSessionProfile,\n\treadStoredSelection,\n\treadStoredSessionView,\n\treadStoredShowArchivedRooms,\n\treadStoredShowArchivedSessions,\n\treadStoredDebugMode,\n\treadStoredDebugFeatures,\n\treadStoredShowThinking,\n\treadStoredToolDisplayMode,\n\tremoveStoredNewSessionProfile,\n\tremoveStoredRoomSelection,\n\twriteStoredComposerDraft,\n\twriteStoredExpandThinking,\n\twriteStoredNewSessionProfile,\n\twriteStoredSelection,\n\twriteStoredSessionView,\n\twriteStoredShowArchivedRooms,\n\twriteStoredShowArchivedSessions,\n\twriteStoredDebugMode,\n\twriteStoredDebugFeatures,\n\twriteStoredShowThinking,\n\twriteStoredToolDisplayMode,\n} from "./app-storage";\nimport {\n\taddRoomToBootstrap,\n\taddSessionNodeToBootstrap,\n\tapplyBootstrapUpdateForRoom,\n\tcreateBootstrapMutationSnapshot,\n\tcreateOptimisticRoom,\n\tcreateOptimisticSessionNode,\n\treplaceOptimisticSessionNode,\n\treorderRoomRootsInBootstrap,\n\treorderSessionRootsInBootstrap,\n\treplaceRoomInBootstrap,\n\tremoveRoomsFromBootstrap,\n\tresolveOptimisticSessionCreateOutcome,\n\trollbackOptimisticSessionNode,\n\trestoreBootstrapSelection,\n\tsessionNodeFromSession,\n\tsetRoomPinnedInBootstrap,\n\tsetSessionPinnedInBootstrap,\n\tupdateRoomInBootstrap,\n\tupdateSessionFromPiboSession,\n\tupdateSessionNodeInBootstrap,\n\ttype BootstrapMutationSnapshot,\n\ttype OptimisticSessionCreateOutcome,\n} from "./app-bootstrap-mutations";\nimport {\n\tchatBootstrapQueryKey,\n\tchatSessionNavigationGeneration,\n\tchatSessionPageQueryKey,\n\tinvalidateChatSessionNavigationCache,\n\tloadChatSessionNavigationQueryData,\n\ttracePageQueriesForSession,\n\ttraceSummaryQueriesForSession,\n} from "./cache";\nimport {\n\trecordStreamingDebugTraceRefreshEnd,\n\trecordStreamingDebugTraceRefreshStart,\n} from "./streamingDebug";\nimport {\n\tcountUnreadRooms,\n\tfallbackRoomIdWhenHidingArchived,\n\tfindRoomById,\n\tisArchivedRoom,\n\tresolveRoomContextLabel,\n\tlimitSessionNodesForSidebar,\n\tsplitSessionNodesByArchive,\n} from "./session-sidebar-helpers";\nimport {\n\tcreateClientTxnId,\n\tdefaultProfileFromBootstrap,\n\tfindSessionNode,\n\tfindSessionPath,\n\tidentityFromBootstrap,\n\tisSessionComposerDisabled,\n\tresolveSessionActiveModelLabel,\n} from "./app-session-model";\nimport {\n\tcommandActionParams,\n\tgetResultPiboSessionId,\n\tnormalizeDownloadCommandPath,\n\tparseForkActionResponse,\n} from "./app-command-actions";\nimport { availableSkillsForSession, buildSlashCommands } from "./app-command-catalog";\nimport {\n\thasExplicitSessionsRouteSelection,\n\trouteSelectionRequest,\n\tsessionsRouteCanonicalSelection,\n\tshouldSkipRouteSelectionLoad,\n} from "./app-route-selection";\nimport { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";\nimport { errorMessage } from "./error-message";\nimport { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";\nimport { SettingsSidebar } from "./settings/SettingsSidebar";\nimport { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";\nimport { SettingsView } from "./settings/SettingsView";\nimport type { SettingsPanel } from "./settings/types";\nimport { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";\nimport { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";\nimport { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";\nimport { PluginWorkspaceProvider, PluginWorkspaceTabs } from "./plugins/plugin-workspace";\nimport { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";\nimport { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";\nimport { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";\nimport {\n\tapplySelectedSignalPatch,\n\tapplySignalPatchToBootstrap,\n\tapplySignalSnapshotToBootstrap,\n\tapplySignalStatusPatch,\n\tapplySignalStatusPatchToBootstrap,\n\tapplySignalStatusSnapshotToBootstrap,\n\tretainSelectedSignalSnapshot,\n\tshouldCommitSelectedSignalSnapshot,\n\tshouldCommitSignalStatusSnapshot,\n\tshouldReconcileSelectedSignalTree,\n\tsignalLegacyStatus,\n\tsignalSnapshotIncludesSession,\n} from "./app-signal-status";\nimport { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";\nimport {\n\tremoveAgentCatalogUserSkill,\n\tupdateAgentCatalogMcpServer,\n\tupsertAgentCatalogUserSkill,\n} from "./app-agent-catalog-mutations";\nimport { useAppDeleteActions } from "./app-delete-actions";\nimport { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";\nimport { selectedSessionBackendId } from "./selected-session-backend";\nimport {\n\tDesktopTabSidebar,\n\tactivateTabInDesktopTabs,\n\tdesktopTabTool,\n\topenTargetInDesktopTabs,\n\tuseDesktopTabWorkspace,\n} from "./desktop-tabs";\nimport {\n\tactiveDesktopTab,\n\tapplyGuardedDesktopTabTransition,\n\tcloseDesktopTab,\n\ttype DesktopSessionTool,\n\ttype DesktopTab,\n\ttype DesktopTabTarget,\n} from "./desktop-tabs-model";\n\nexport type { ChatAppRoute } from "./app-routes";\n\ntype LoadBootstrapOptions = {\n\tselectSession?: boolean;\n\tforce?: boolean;\n\tsignal?: AbortSignal;\n};\n\ntype LoadNavigationOptions = {\n\tforce?: boolean;\n\treadSessionId?: string;\n\tsignal?: AbortSignal;\n};\n\nconst SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;\nconst SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000;\nconst SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000;\nconst NAVIGATION_FALLBACK_REFRESH_MS = 30_000;\nconst SESSION_PAGE_SIZE = 120;\nconst ARCHIVED_SESSION_PAGE_SIZE = 60;\nconst EMPTY_SESSION_PATH_IDS = new Set<string>();\n\ntype ChatDownloadStatus = ChatDownloadProgress & {\n\tkey: string;\n\tstatus: "starting" | "running" | "completed" | "failed";\n\tduplicateAttempted?: boolean;\n\terror?: string;\n};\n\nfunction fallbackDownloadFilename(path: string): string {\n\tconst normalized = path.trim().replace(/\\\\/g, "/");\n\treturn normalized.split("/").filter(Boolean).pop() ?? "download";\n}\n\nfunction formatDownloadBytes(bytes: number): string {\n\tif (!Number.isFinite(bytes) || bytes <= 0) return "0 B";\n\tconst units = ["B", "KB", "MB", "GB", "TB"];\n\tlet value = bytes;\n\tlet unitIndex = 0;\n\twhile (value >= 1024 && unitIndex < units.length - 1) {\n\t\tvalue /= 1024;\n\t\tunitIndex += 1;\n\t}\n\tconst precision = value >= 10 || unitIndex === 0 ? 0 : 1;\n\treturn `${value.toFixed(precision)} ${units[unitIndex]}`;\n}\n\nfunction downloadProgressLabel(status: ChatDownloadStatus): string {\n\tif (status.status === "starting") return "Preparing download…";\n\tif (status.status === "failed") return status.error ?? "Download failed";\n\tif (status.totalBytes && status.totalBytes > 0) {\n\t\tconst percent = Math.min(100, Math.floor((status.receivedBytes / status.totalBytes) * 100));\n\t\treturn `${percent}% · ${formatDownloadBytes(status.receivedBytes)} of ${formatDownloadBytes(status.totalBytes)}`;\n\t}\n\treturn status.receivedBytes > 0 ? `${formatDownloadBytes(status.receivedBytes)} received` : "Waiting for bytes…";\n}\n\nfunction isAbortError(value: unknown): boolean {\n\treturn value instanceof DOMException && value.name === "AbortError";\n}\n\nfunction streamIdFromEventSourceId(lastEventId: string): number | undefined {\n\tconst streamId = Number(lastEventId.split(":", 1)[0]);\n\treturn Number.isFinite(streamId) ? streamId : undefined;\n}\n\nasync function loadBootstrapQueryData(\n\tqueryClient: QueryClient,\n\tinput: {\n\t\tpiboSessionId?: string;\n\t\tincludeArchived?: boolean;\n\t\troomId?: string;\n\t\tmarkRead?: boolean;\n\t\tforce?: boolean;\n\t\tsignal?: AbortSignal;\n\t},\n): Promise<BootstrapData> {\n\tconst queryKey = chatBootstrapQueryKey(input.piboSessionId, inp'... 84889 more characters,
+    expected: /initialAgentFolders=\{bootstrap\.agentFolders\}/,
+    operator: 'match',
+    diff: 'simple'
+  }
+DESIGNER_REGRESSION_EXIT:1

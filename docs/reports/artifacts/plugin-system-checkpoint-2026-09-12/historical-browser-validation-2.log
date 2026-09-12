@@ -1,0 +1,34 @@
+✔ tabs require a session and effective pinned view, not just installation (2.536891ms)
+✔ same view deduplicates only within session; state and subview are retained (1.196344ms)
+✔ multiple instance identities, close neighbor, and schema mismatch preserve saved state (0.350821ms)
+✔ A→B→A / reload persists active tab, settings subview, independent state and layout (1.493754ms)
+✔ late A autosave stays A while B is selected; serialized edits are not lost (0.855622ms)
+✔ two-browser CAS conflict preserves losing local state and never overwrites server (0.741598ms)
+✔ cross-session server responses and attempted tab movement are rejected (0.578169ms)
+✔ deep links encode the owning session, tab and subview (0.677275ms)
+✔ configuration URL fixes app/agent/session target independently from tab ownership (0.412947ms)
+✔ host imports only effective pinned browser modules and injects shared React/SDK (1.3106ms)
+✔ setup failure rolls back renderers, hooks and views (0.591615ms)
+✔ undeclared executable browser registrations fail without affecting other owners (0.442674ms)
+✔ late module resolution after dispose never mounts executable contributions (0.380617ms)
+✔ ordered input transforms retain provenance and exact session (0.994324ms)
+✔ input rejection, timeout and cancellation do not send fallback text (13.063336ms)
+✔ session request cannot escape plugin API namespace (0.575474ms)
+✔ catalog strips all server source paths, secrets and service objects (0.423838ms)
+✔ asset serving uses immutable revision and denies traversal/symlink/backend escapes (42.38072ms)
+✔ session plan route checks access and never reads another session (1.349734ms)
+✔ build evidence reads only saved nodes, never synthesizes current catalog nodes (0.355911ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 371.925854
+
+> @pasko70/pibo@1.7.2 chat-ui:typecheck
+> tsc -p src/apps/chat-ui/tsconfig.json --noEmit
+
+src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx(37,10): error TS2741: Property 'onAutosaveHandlerChange' is missing in type '{ agents: AgentProfile[]; initialCustomAgents: CustomAgent[]; initialAgentFolders: CustomAgentFolder[]; initialCatalog: AgentCatalog | undefined; ... 9 more ...; surface: "tab"; }' but required in type '{ agents: AgentProfile[]; initialCustomAgents: CustomAgent[]; initialAgentFolders: CustomAgentFolder[]; initialCatalog?: AgentCatalog | undefined; ... 13 more ...; surface?: PaneSurface | undefined; }'.
+src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx(37,380): error TS2339: Property 'piboSessionId' does not exist on type 'CreateSessionData'.

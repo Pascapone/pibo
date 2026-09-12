@@ -1,0 +1,582 @@
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1:import { Readable } from "node:stream";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2:import { BoundedEventStream } from "./bounded-event-stream.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3:import { boundedMessageBytes } from "../../data/bounded-worker-client.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4:import { TraceResponseCache } from "./trace-response-cache.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5:import { AsyncChatReadQueries } from "../../data/async-chat-reads.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6:import { MessageCommandDispatcher } from "./message-command-dispatcher.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:7:import { piboHomePath } from "../../core/pibo-home.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:8:import { AsyncChatStorage } from "../../data/async-chat-storage.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:9:import { createHash, randomUUID } from "node:crypto";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:10:import os from "node:os";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:11:import { dirname, join } from "node:path";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:12:import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:13:import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:14:import { OutputRenderSequencer, validRenderSequence } from "../../core/output-render-sequence.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:15:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:20:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:24:import { AgentRuntimeBindingMissingError } from "../../agent-runtime/errors.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:25:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:30:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:36:import { PiboRuntimeResourceService } from "../../agent-runtime/resource-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:37:import { summarizeSessionSignalStatus } from "../../signals/status.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:38:import type { PiboSessionSignalStatus, PiboSignalPatch, PiboSignalStatusPatch } from "../../signals/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:39:import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:40:import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../../web/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:41:import type { PiboSession } from "../../sessions/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:42:import { OutputCompactor } from "./output-compactor.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:43:import { isLiveOnlyOutputEvent, isPersistableOutputEvent, isPiboOutputEvent } from "./output-event-policy.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:44:import type { ChatEventAppendInput, ChatEventListInput, StoredChatEvent } from "./types/event-store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:45:import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "./types/read-model.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:46:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:63:import { chatStreamFramesFromOutputEvent, createChatStreamState, nextTransientChatStreamFrameId, type ChatStreamEvent } from "./stream.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:64:import { buildSessionNodes, buildTraceView, TRACE_PROJECTION_VERSION, type PiboSessionTraceView, type PiboWebSessionNode, type PiboWebSessionStatus } from "./trace.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:65:import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:66:import type { ChatWebStoredEvent, PiboSessionTraceSummary, PiboTraceNode, TraceTimelinePage } from "../../shared/trace-types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:67:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:82:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:97:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:105:import { withWorkflowSessionKind } from "../../sessions/workflow-session-kind.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:106:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:116:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:120:import { inspectPiboContextBuild, type PiboContextBuildRuntimeInfo, type PiboContextBuildSnapshot } from "../../core/context-build.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:121:import { isPiboThinkingLevel } from "../../core/thinking.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:122:import { loadPiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:123:import { disposeTelemetryRetentionMaintenance, isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:124:import { loadModelCatalog } from "./model-catalog.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:125:import { createCustomAgentProfileDefinition, createCustomAgentRuntimeValidationProfile } from "./agent-profiles.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:126:import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:127:import { listMcpServerInfos } from "../../mcp/agent-context.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:128:import { getDefaultPiboWorkspace } from "../../core/workspace.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:129:import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:130:import { ScopedUserSkillManager } from "../../user-skills/manager.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:131:import { ChatDataIngestService, legacyOutputIdempotencyKey, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:132:import { ChatEventCommandService } from "./data/event-command-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:133:import { ChatReadStateService } from "./data/read-state-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:134:import { ChatRoomService, PiboRoomHierarchyCycleError } from "./data/room-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:135:import { ChatSessionQueryService } from "./data/session-query-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:136:import { ChatTimelineQueryService } from "./data/timeline-query-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:137:import { ChatHistoryQueryService, type ChatProductHistoryCoverage } from "./data/history-query-service.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:138:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:143:import { migrateLegacyProjects } from "./data/legacy-project-migration.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:144:import { PiboDataStore } from "../../data/pibo-store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:145:import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:146:import { createDefaultPiboLoopStore, type PiboLoopStore } from "../../loops/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:147:import { handleChatCronApiRequest } from "./cron-api.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:148:import { handleChatLoopApiRequest } from "./loop-api.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:149:import { prepareWebAnnotationMessageAttachments, type PreparedWebAnnotationAttachments } from "../../web-annotations/attachments.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:150:import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:151:import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell, CHAT_VSCODE_MOUNT_PATH, isVscodeAppPath, responseBuiltVscodeAsset, responseVscodeAppShell } from "./static-assets.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:152:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:158:import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, resolveImagePreviewPath, resolveImagePreviewPathWithinRoots, responseChatFileDownload, responseChatImagePreview, responseChatTraceImage, saveUploadedChatFiles } from "./chat-files.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:159:import { codexImageArtifactPath, codexImageArtifactRoot } from "../../tools/codex-image-artifacts.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:160:import { responseChatTranscription, responseChatTranscriptionProviders } from "./chat-transcription.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:161:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:167:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:173:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:178:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:184:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:204:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:243:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:267:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:277:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:284:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:309:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:319:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:323:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:327:import { validateJsonSchemaObjectLike } from "./workflow-json-schema-validation.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:328:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:338:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:344:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:436:	createRoom(input: CreatePiboRoomInput): PiboRoom;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:718:	const encoder = new TextEncoder();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:724:	controller.enqueue(new TextEncoder().encode(`: ${comment}\n\n`));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:728:	const encoder = new TextEncoder();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:765:		throw new PiboWebHttpError(`Content-Type must be ${expectedContentType}`, 415);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:770:		throw new PiboWebHttpError("Origin header is required", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:773:	if (origin !== new URL(request.url).origin) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:774:		throw new PiboWebHttpError("Origin is not allowed", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:817:	defaultChatWebAnnotationStore ??= createDefaultWebAnnotationStore();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:836:		throw new PiboWebHttpError(message, status);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:851:	if (error instanceof Error) throw new PiboWebHttpError(error.message, 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:852:	throw new PiboWebHttpError("Room is not available for this user", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:855:function createAgentStore(path?: string): CustomAgentStore {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:856:	return path ? new CustomAgentStore(path) : createDefaultCustomAgentStore();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:863:function createReliabilityStore(path?: string): PiboReliabilityStore {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:864:	return path ? new PiboReliabilityStore(path) : createDefaultPiboReliabilityStore();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:867:function createDataStore(options: ChatWebAppOptions): PiboDataStore {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:868:	return new PiboDataStore(options.dataStorePath, { payloadRootDir: options.dataPayloadRootDir });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:882:		const parsed = new URL(trimmed, `${configurationOrigin}/`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:889:	throw new Error("VS Code Web URL must be a same-origin absolute path beginning with /");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:904:function createPersistenceMetrics(): ChatPersistenceMetrics {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:908:function createResourceMetrics(): ChatGatewayResourceMetrics {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:926:	metrics.lastErrorAt = new Date().toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:937:	metrics.recentWarnings.push({ at: new Date().toISOString(), message });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1010:function createFastTraceV2Version(input: {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1029:	return createHash("sha1")
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1070:				recordPersistenceError(state.persistenceMetrics, new Error("runtime_output_event_invalid"));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1084:				state.sessionQuery.recordEvent(liveEvent, session, undefined, new Date(transient.createdAtMs).toISOString());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1104:				state.outputPersistenceRetries.enqueue(createWebOutputPersistenceJob({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1124:		if (!persistenceState) throw new Error(`Invalid durable output persistence job ${job.key}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1125:		return createWebOutputPersistenceJob({ state, context, persistenceState });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1129:function createWebOutputPersistenceJob(input: {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1155:	if (!persistenceState) throw new Error("Invalid durable web output persistence state");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1157:	if (!session) throw new Error(`No session available for ${persistenceState.piboSessionId}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1164:			throw new WebOutputPersistenceCheckpointError(error);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1170:				const createdAt = new Date().toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1187:					throw new Error(`Missing V2 event ${ingested.streamId} for ${delivery.deliveryId}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1226:					if (!persisted || persisted.streamId !== stored.streamId) throw new Error("Persisted output unavailable for live delivery");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1255:		throw new AggregateError(errors, `Failed to persist one or more output deliveries: ${messages.join("; ")}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1270:	if (!delivery.v2) throw new Error(`Missing V2 phase for ${outputPersistenceDeliveryKey(delivery.event)}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1406:	const streams = state.activeEventStreams.get(piboSessionId) ?? new Set<string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1449:const sharedSessionSnapshots=new Map<PiboWebAppContext["channelContext"],{revision:number;profiles:string;sessions:PiboSession[];bytes:number}>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1497:	const byId = new Map(sessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1506:	const ids = new Set(sessionsInRoom(sessions, roomId).map((session) => session.id));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1603:		throw new PiboWebHttpError("Archived room has no sessions", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1605:	return createSharedChatSession(context, webSession, defaultProfile, room);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1638:		throw new PiboWebHttpError("Archived rooms are read-only", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1643:function createSharedChatSession(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1651:	return context.channelContext.createSession({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1663:function createWorkflowSession(input: {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1675:	const session = input.context.channelContext.createSession({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1706:		throw new PiboWebHttpError("Workflow id is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1710:	if (options.requireExplicitVersion && !workflowVersion) throw new PiboWebHttpError("Workflow version is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1713:	if (!selected) throw new PiboWebHttpError(`Unknown workflow version: ${workflowId}${workflowVersion ? `@${workflowVersion}` : ""}`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1714:	if (selected.status === "archived") throw new PiboWebHttpError(`Workflow version '${selected.id}@${selected.version}' is archived and cannot create a Workflow Session`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1715:	if (selected.status !== "published") throw new PiboWebHttpError(`Workflow version '${selected.id}@${selected.version}' is not published`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1720:	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("Workflow id is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1726:	if (typeof value !== "string" || !value.trim()) throw new PiboWebHttpError("Workflow version must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1732:	if (typeof value !== "string") throw new PiboWebHttpError("Workflow archive reason must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1739:	if (typeof source !== "string") throw new PiboWebHttpError("Workflow title must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1741:	if (!title) throw new PiboWebHttpError("Workflow title is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1742:	if (title.length > 160) throw new PiboWebHttpError("Workflow title is too long", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1749:	if (typeof source !== "string") throw new PiboWebHttpError("Workflow description must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1752:	if (description.length > 1000) throw new PiboWebHttpError("Workflow description is too long", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1758:	if (!Array.isArray(source)) throw new PiboWebHttpError("Workflow tags must be an array of strings", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1759:	return [...new Set(source.map((tag) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1760:		if (typeof tag !== "string") throw new PiboWebHttpError("Workflow tags must be strings", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1769:	if (typeof source !== "string") throw new PiboWebHttpError("Workflow id must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1771:	if (!workflowId) throw new PiboWebHttpError("Workflow id is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1773:		throw new PiboWebHttpError("Workflow id may contain only letters, numbers, dots, underscores, and dashes", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1785:		throw new PiboWebHttpError(`Type "${workflowId}" to delete this workflow.`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1841:	if (!/^\d+$/.test(raw)) throw new PiboWebHttpError(`${name} must be a non-negative integer`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1843:	if (!Number.isSafeInteger(parsed) || parsed > max) throw new PiboWebHttpError(`${name} must be between 0 and ${max}`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1851:	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError(`${name} must be a positive integer`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1859:		context.channelContext.upsertProfile(createCustomAgentProfileDefinition(agent));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1877:	if (!folder) throw new PiboWebHttpError("Agent folder not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1883:	if (conflict) throw new PiboWebHttpError(`Agent folder "${name}" already exists`, 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1891:const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1955:	const profile = createCustomAgentRuntimeValidationProfile(agent);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1971:	throw new PiboWebHttpError(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1980:	const knownNames = new Set(catalog.nativeTools.map((tool) => tool.name));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1987:	const knownKeys = new Set(catalog.contextFiles.map((contextFile) => contextFile.key));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2001:			throw new PiboWebHttpError(`Agent name "${profileName}" already exists`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2007:	if (matchedProfile && matchedProfile.name !== currentAgent?.profileName) throw new PiboWebHttpError(`Agent name "${profileName}" conflicts with an existing profile`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2012:		throw new PiboWebHttpError("Agent not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2072:	const allCustomProfileNames = new Set(customAgents.map((agent) => agent.profileName));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2073:	const archivedCustomAgents = new Map(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2208:	if (markdown === undefined) throw new PiboWebHttpError("Workflow prompt asset markdown is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2212:		throw new PiboWebHttpError("Only managed UI prompt assets can receive new revisions", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2215:		throw new PiboWebHttpError(`Workflow prompt asset '${sourceRefId}' is not registered`, 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2231:function createWorkflowDraftIdentity(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2245:	const now = new Date().toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2249:		: createEmptyWorkflowDraftDefinition({ workflowId, title, description, tags });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2286:	if (!isJsonObject(value)) throw new PiboWebHttpError("Workflow definition must be a JSON object", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2296:	if (state.workflowTombstoneStore.getWorkflowTombstone(workflowId)) throw new PiboWebHttpError("Workflow id has been deleted", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2299:		throw new PiboWebHttpError(`Workflow '${workflowId}' already exists`, 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2320:function createEmptyWorkflowDraftDefinition(input: { workflowId: string; title: string; description?: string; tags: string[] }): PiboJsonObject {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2426:	if (!published) throw new PiboWebHttpError("Published workflow version not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2432:	const now = new Date().toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2443:		definition: createDraftDefinitionFromPublishedWorkflow(published),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2475:function createNextVersionDraftFromPublishedWorkflow(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2484:	if (!published) throw new PiboWebHttpError("Published workflow version not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2486:		throw new PiboWebHttpError("Code workflow projections are read-only; duplicate them to a UI draft before editing", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2494:	const now = new Date().toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2507:		definition: createNextVersionDraftDefinitionFromPublishedWorkflow(published, targetWorkflowVersion),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2550:	if (!workflow) throw new PiboWebHttpError("Workflow not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2552:		throw new PiboWebHttpError("Code workflow projections are read-only; duplicate them to a UI draft before archiving", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2571:	if (!archivedWorkflow) throw new PiboWebHttpError("Archived workflow not found", 500);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2585:	if (!workflow) throw new PiboWebHttpError("Workflow not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2587:		throw new PiboWebHttpError("Code workflow projections are read-only; duplicate them to a UI draft before deleting", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2637:	const definition = createPublishedWorkflowDefinition(workflow, profileId);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2651:function createStarterWorkflowDraft(webSession: PiboWebSession): WorkflowDraftRecord {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2652:	const now = new Date().toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2690:function createDraftDefinitionFromPublishedWorkflow(workflow: WorkflowPublishedVersionSelection): PiboJsonObject {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2701:function createNextVersionDraftDefinitionFromPublishedWorkflow(workflow: WorkflowPublishedVersionSelection, targetWorkflowVersion: string): PiboJsonObject {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2735:		tags: [...new Set([...input.tags, ...existingTags])],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2756:		record = createStarterWorkflowDraft(webSession);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2768:	if (!record) throw new PiboWebHttpError("Workflow draft not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2770:		throw new PiboWebHttpError("Workflow has been deleted", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2807:	if (!triggerNodeId) throw new PiboWebHttpError("Manual trigger node id is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2808:	if (typeof body.input !== "string") throw new PiboWebHttpError("Manual trigger input must be text", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2809:	if (body.roomId !== undefined && typeof body.roomId !== "string") throw new PiboWebHttpError("Room id must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2892:	validateWorkflowInitialLike(definition.initial, new Set(nodeIds), diagnostics);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3196:	const nodeIds = new Set(Object.keys(nodes));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3329:	const aliases = new Set([packageId, ...(pkg ? [pkg.id, pkg.name] : [])]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3343:		throw new PiboWebHttpError("Type the agent name to permanently delete it.", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3356:	const error = new CustomAgentTargetReferenceError(agent.profileName, dependents.map((dependent) => dependent.profileName));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3360:	throw new PiboWebHttpError(message, 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3370:	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3372:	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3373:	const profileNameSet = new Set(profileNames);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3374:	const ids = new Set(ownedSessions.filter((session) => profileNameSet.has(session.profile)).map((session) => session.id));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3404:	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3406:	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3407:	const ids = new Set([rootSession.id]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3437:	if (isDefaultPiboRoom(room)) throw new PiboWebHttpError("Default chat cannot be deleted", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3438:	if (!isPiboRoomArchived(room)) throw new PiboWebHttpError("Archive the room before permanently deleting it.", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3439:	if (confirmName !== room.name) throw new PiboWebHttpError(`Type "${room.name}" to permanently delete this room.`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3441:	if (!deleteSession) throw new PiboWebHttpError("Session deletion is not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3444:	const roomIdSet = new Set(roomIds);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3446:	const sessionsById = new Map(ownedSessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3447:	const ids = new Set(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3499:		throw new PiboWebHttpError("Session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3507:			return context.channelContext.createProfile(defaultProfile).runtimeInstanceId;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3520:				return context.channelContext.createProfile?.(session.profile).runtimeInstanceId;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3538:		throw new PiboWebHttpError("Session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3542:	if (roomId && selectedRoom.id !== roomId) throw new PiboWebHttpError("Session is not available in this room", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3553:	if (!createProfile) throw new PiboWebHttpError("Profile inspection is not available", 503);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3554:	if (!input.piboSessionId) throw new PiboWebHttpError("piboSessionId is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3558:	const configuredProfile = input.context.channelContext.getSessionRuntimeProfile?.(selectedSession.id) ?? createProfile(selectedSession.profile);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3597:	const resourceService = new PiboRuntimeResourceService();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3598:	const resources = await resourceService.createSession({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3681:	if (!runtime) throw new PiboWebHttpError(`Unknown agent runtime instance "${runtimeInstanceId}"`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3711:		throw new PiboWebHttpError("Only top-level rooms can be reordered", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3714:		throw new PiboWebHttpError("Shared Chat cannot be reordered", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3717:		throw new PiboWebHttpError("Archived rooms cannot be reordered", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3721:		throw new PiboWebHttpError("Pinned and unpinned rooms cannot be reordered together", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3728:	if (movedIndex < 0 || targetIndex < 0) throw new PiboWebHttpError("Room ordering target not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3738:		if (!updated) throw new PiboWebHttpError("Room not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3758:		throw new PiboWebHttpError("Only top-level sessions can be reordered", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3761:		throw new PiboWebHttpError("Archived sessions cannot be reordered", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3765:	if (!roomId || roomId !== targetRoomId) throw new PiboWebHttpError("Sessions must belong to the same room", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3768:		throw new PiboWebHttpError("Pinned and unpinned sessions cannot be reordered together", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3771:	if (!updateSession) throw new PiboWebHttpError("Session updates are not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3777:	if (movedIndex < 0 || targetIndex < 0) throw new PiboWebHttpError("Session ordering target not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3787:		if (!updated) throw new PiboWebHttpError("Session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3801:	const subtree = new Map<string, PiboSession>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3821:	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3825:	if(state.readQueries)return new Map(await state.readQueries.navigation.unreadCountsPage({piboSessionIds:visibleSessionIds}));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3835:	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3846:	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3847:	const result = new Set<string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3851:		const visited = new Set<string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3898:	sessionUnreadErrors: ReadonlySet<string> = new Set(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3904:	const bySessionId = new Map(indexItems.map((item) => [item.piboSessionId, item]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3938:	const counts = new Map<string, number>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3939:	const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4041:	if (!Number.isFinite(parsed) || parsed <= 0) throw new PiboWebHttpError("Trace cursor must be tail, runtime-history, or a positive sequence", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4052:			throw new PiboWebHttpError("Invalid legacy transcript trace cursor", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4059:		if (payload.v !== 1) throw new Error("unsupported version");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4061:			if (value !== undefined && typeof value !== "string") throw new Error("invalid field");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4065:		throw new PiboWebHttpError(`Invalid runtime history trace cursor: ${error instanceof Error ? error.message : String(error)}`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4088:		throw new PiboWebHttpError("Runtime history cursor belongs to a different Pibo session", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4091:		throw new PiboWebHttpError("Runtime history cursor belongs to a different runtime instance", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4094:		throw new PiboWebHttpError("Runtime history cursor belongs to a different runtime adapter", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4244:		return new Date(event.createdAtMs).toISOString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4250: const stream=new BoundedEventStream(reason=>{state.boundedStreams.delete(stream);if(reason.startsWith("slow")||reason==="error")state.boundedStreamDisconnects++;onClose();});
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4254:function createEventStream(input: {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4271: const controller=stream.writer;const streamState=createChatStreamState();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4307: return new Response(stream.stream,{headers:{"content-type":"text/event-stream; charset=utf-8","cache-control":"no-cache, no-transform","x-accel-buffering":"no",connection:"keep-alive"}});
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4327:	if (!link) throw new PiboWebHttpError("Workflow session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4342:		lifecycleEvents: [...new Map([
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4352:	if (!workflowSession) throw new PiboWebHttpError("Workflow session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4395:	if (requestedRoomId && room.id !== requestedRoomId) throw new PiboWebHttpError("Session is not available in this room", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4396:	if (isPiboRoomArchived(room)) throw new PiboWebHttpError("Archived rooms are read-only", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4495:			textBytes: new TextEncoder().encode(finalText).length,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4496:			reasoningBytes: new TextEncoder().encode(finalReasoning).length,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4511:		if (!found) throw new PiboWebHttpError("Session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4515:		if (requestedRoomId && requestedRoomId !== room.id) throw new PiboWebHttpError("Session is not available in this room", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4526:		throw new PiboWebHttpError("Archived room has no sessions", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4528:	return { session: createSharedChatSession(context, webSession, defaultProfile, room), room };
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4547:	if (input.body.admissionVersion !== undefined && !durable) throw new PiboWebHttpError("Unsupported message admission version",400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4548:	if (durable && !input.state.asyncStorage) throw new PiboWebHttpError("Durable admission requires file-backed storage",503);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4560:		throw new PiboWebHttpError("Session is not available in this room", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4563:		throw new PiboWebHttpError("Archived rooms are read-only", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4629:		input.state.commandDispatcher ??= new MessageCommandDispatcher(input.state.asyncStorage!,input.context.channelContext);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4668:			throw new PiboWebHttpError(error.message, 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4684:		if (code === "room_not_found") throw new PiboWebHttpError("Room not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4685:		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4692:export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4697:	const dataStore = createDataStore(options);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4698:	const reliabilityStore = createReliabilityStore(options.reliabilityStorePath);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4699:	const workflowService = new ChatWorkflowSessionService(workflowStorePath(options, dataStore));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4707:		sessionQuery: new ChatSessionQueryService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4708:		timelineQuery: new ChatTimelineQueryService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4709:		boundedStreams:new Set(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4711:		readQueries: dataStore.path === ":memory:" ? undefined : new AsyncChatReadQueries(dataStore.path, options.dataPayloadRootDir ?? piboHomePath("payloads")),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4712:		historyQuery: new ChatHistoryQueryService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4713:		eventCommands: new ChatEventCommandService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4714:		readState: new ChatReadStateService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4715:		roomService: new ChatRoomService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4717:		agentStore: createAgentStore(options.agentStorePath),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4719:		cronStore: createDefaultPiboCronStore({ path: options.cronStorePath }),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4720:		loopStore: createDefaultPiboLoopStore({ path: options.ralphStorePath }),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4722:		asyncStorage: dataStore.path === ":memory:" ? undefined : new AsyncChatStorage(dataStore.path, options.dataPayloadRootDir ?? piboHomePath("payloads")),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4723:		ingestService: new ChatDataIngestService(dataStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4724:		traceCache: new Map(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4725:		traceTimelinePageCache: new Map(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4726:		outputCompactor: new OutputCompactor(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4727:		outputPersistenceRetries: new OutputPersistenceRetryQueue({ durableStore: reliabilityStore }),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4728:		outputRenderSequencer: new OutputRenderSequencer(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4729:		liveListeners: new Set(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4733:		transientReplayEvictedBeforeByScope: new Map(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4734:		activeEventStreams: new Map(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4735:		activeTraceSessions: new Set(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4736:		persistenceMetrics: createPersistenceMetrics(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4737:		resourceMetrics: createResourceMetrics(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4739:		userSkillManager: new ScopedUserSkillManager({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4743:		workflowDraftStore: new ChatWorkflowDraftStore(workflowCatalogStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4744:		workflowPublishedVersionStore: new ChatWorkflowPublishedVersionStore(workflowCatalogStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4745:		workflowArchiveStore: new ChatWorkflowArchiveStore(workflowCatalogStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4746:		workflowTombstoneStore: new ChatWorkflowTombstoneStore(workflowCatalogStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4747:		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(workflowCatalogStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4748:		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(workflowCatalogStore),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4753:	const earlyTraceCache=new TraceResponseCache();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4767:			if (state.asyncStorage) state.commandDispatcher ??= new MessageCommandDispatcher(state.asyncStorage,context.channelContext);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4802:			const url = new URL(request.url);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4803:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/auth-check` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4805:				return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4842:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/upload` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4848:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/image-preview` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4855:					if (requestedPath || generatedToolCallId) throw new PiboWebHttpError("Exact trace image requests cannot include fallback sources", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4857:					if (!parsed) throw new PiboWebHttpError("Invalid trace payload ref", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4858:					if (!requestedSessionId || requestedSessionId !== parsed.piboSessionId) throw new PiboWebHttpError("Trace image session does not match the payload ref", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4860:					if (!nodeId || parsed.nodeId !== nodeId || parsed.payloadKind !== "output") throw new PiboWebHttpError("Trace image node does not match the payload ref", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4867:					})) throw new PiboWebHttpError("Trace image is not attached to the requested node", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4876:						throw new PiboWebHttpError("Exact trace image is unavailable", status);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4881:				if (!requestedSessionId) throw new PiboWebHttpError("Image preview session is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4882:				if (requestedPath && generatedToolCallId) throw new PiboWebHttpError("Image preview source is ambiguous", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4883:				if (!requestedPath && !generatedToolCallId) throw new PiboWebHttpError("Image preview source is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4896:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription/providers` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4901:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/speech/providers` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4906:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/speech/sessions` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4912:			const speechSessionMatch = url.pathname.match(/^\/api\/chat\/speech\/sessions\/([^/]+)(?:\/(speak))?$/);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4925:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4931:			if (url.pathname === CHAT_WEB_API_PREFIX + "/download" && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4934:				if (!path) throw new PiboWebHttpError("Download path is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4949:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/navigation` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5005:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/bootstrap` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5068:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/context-build` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5106:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflow-sessions` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5120:				const created = createWorkflowSession({ state, context, room, workspace, profile, workflow, title: normalizeSessionTitle(body.title) ?? undefined, configuration });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5121:				const snapshot = state.workflowService.saveWorkflowSessionSnapshot(createWorkflowSessionSnapshot({ webSession, session: created.session, workflow: published, baseDefinition, configuration, validation }));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5141:				if (!workflowSession) throw new PiboWebHttpError("Workflow session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5143:				if (!snapshot) throw new PiboWebHttpError("Workflow session snapshot not found", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5152:				const started = state.workflowService.startWorkflowSessionRun({ piboSessionId: session.id, runId: `wfr_${randomUUID()}`, workflowId: snapshot.workflow.id, workflowVersion: snapshot.workflow.version, snapshotId: snapshot.id, effectiveDefinitionHash: snapshot.workflow.effectiveDefinitionHash, current: createWorkflowRunCurrent(snapshot.effectiveDefinition), inputValues: snapshot.inputValues, validation: validation.validation as unknown as PiboJsonObject });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5159:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/statuses` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5162:					throw new PiboWebHttpError("Signal registry is not available", 503);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5167:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/status-events` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5170:					throw new PiboWebHttpError("Signal registry is not available", 503);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5196:				return new Response(stream, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5208:				if (!snapshot) throw new PiboWebHttpError("Signal registry is not available", 503);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5212:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/signals/events` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5215:				if (!rootPiboSessionId) throw new PiboWebHttpError("rootPiboSessionId is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5223:					throw new PiboWebHttpError("Signal registry is not available", 503);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5258:				return new Response(stream, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5263:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflows` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5269:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflows` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5273:				return responseJson(createWorkflowDraftIdentity(state, context, webSession, body), { status: 201 });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5307:				if (!asset) throw new PiboWebHttpError("Workflow prompt asset not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5311:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflows/prompt-assets` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5498:				const { draft, reused } = createNextVersionDraftFromPublishedWorkflow(state, webSession, nextDraftWorkflowId, body.version);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5510:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/workflows/lifecycle-events` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5582:				throw new PiboWebHttpError(`Workflow picker '${pickerKind}' is not implemented`, 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5585:			if ((url.pathname === `${CHAT_WEB_API_PREFIX}/agent-catalog` || url.pathname === `${CHAT_WEB_API_PREFIX}/catalog`) && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5587:				if (url.pathname === `${CHAT_WEB_API_PREFIX}/catalog`) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5650:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agent-folders` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5655:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agent-folders` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5661:				const folder = state.agentStore.createFolder(name);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5684:				if (assignedAgent) throw new PiboWebHttpError("Move agents out of this folder before deleting it.", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5690:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5696:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/agents` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5700:				const input = normalizeCreateRuntimeFeatureOverrides(createAgentInput(body), context);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5705:				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5716:				const rawUpdate = createAgentUpdate(body);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5739:					context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(sharedAgent));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5749:				if (!agent.archivedAt) throw new PiboWebHttpError("Archive the agent before permanently deleting it.", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5753:					throw new PiboWebHttpError(`Type "${agent.profileName}" to permanently delete this agent and its sessions.`, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5760:					if (error instanceof CustomAgentTargetReferenceError) throw new PiboWebHttpError(error.message, 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5768:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/session` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5782:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/sessions` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5814:					new Map(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5829:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/sessions` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5838:				const created = createSharedChatSession(context, webSession, profile, room);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5843:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/rooms` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5856:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/rooms` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5862:				const room = state.roomService.createRoom({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5884:						new Map(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5896:					throw new PiboWebHttpError("targetRoomId is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5899:					throw new PiboWebHttpError("position must be before or after", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5913:					throw new PiboWebHttpError("Only top-level rooms can be pinned", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5916:					throw new PiboWebHttpError("Archived rooms cannot be pinned", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5918:				const update = createRoomUpdate(existingRoom, body);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5939:						throw new PiboWebHttpError(error.message, 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5943:				if (!room) throw new PiboWebHttpError("Room not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6019:				if (!binding) throw new PiboWebHttpError("Runtime binding not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6027:					throw new PiboWebHttpError("Session fork candidates are not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6037:					throw new PiboWebHttpError("Runtime binding repair is not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6041:					throw new PiboWebHttpError("runtimeInstanceId is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6044:					throw new PiboWebHttpError("expectedRevision must be a positive integer", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6047:					throw new PiboWebHttpError("nativeSessionId must be a string", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6050:					throw new PiboWebHttpError("state must be unbound or bound", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6053:					throw new PiboWebHttpError("startFresh must be a boolean", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6056:				const locatorKinds = new Set(["local-file", "local-directory", "uri", "remote", "adapter-resolved"]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6066:					throw new PiboWebHttpError("locator must contain a supported kind and optional string value", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6083:					throw new PiboWebHttpError(message, status);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6093:					throw new PiboWebHttpError("targetPiboSessionId is required", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6096:					throw new PiboWebHttpError("position must be before or after", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6118:					throw new PiboWebHttpError("Session updates are not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6121:					throw new PiboWebHttpError("Session profile can only be changed before the first message.", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6124:					throw new PiboWebHttpError("Only top-level sessions can be pinned", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6127:					throw new PiboWebHttpError("Archived sessions cannot be pinned", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6129:				const update = createSessionUpdate(context, selectedSession, body);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6152:						throw new PiboWebHttpError(message, status);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6156:				if (!updated) throw new PiboWebHttpError("Session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6169:					throw new PiboWebHttpError("Archive the session before permanently deleting it.", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6174:					throw new PiboWebHttpError('Type "Delete this session" to permanently delete this session.', 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6193:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/summary` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6213:				const version = createFastTraceV2Version({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6233:					return new Response(null, { status: 304, headers });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6248:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/timeline` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6282:				const baseVersion = createFastTraceV2Version({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6305:					return new Response(null, { status: 304, headers: baseHeaders });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6325:							throw new PiboWebHttpError("Runtime history is unavailable for this gateway", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6336:							throw new PiboWebHttpError("Runtime history could not be read for this page", 502);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6469:				if (!parsed) throw new PiboWebHttpError("Invalid trace payload ref", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6473:					if (!payload) throw new PiboWebHttpError("Trace payload not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6475:					return new Response(body as ReadableStream<Uint8Array>, { headers: {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6483:				if (!chunk) throw new PiboWebHttpError("Trace payload not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6487:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace/raw-events` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6490:				if (rawCursor.kind === "history") throw new PiboWebHttpError("Raw event cursor must be tail or a positive sequence", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6513:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/trace` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6554:				const baseVersion = createFastTraceV2Version({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6579:					return new Response(null, { status: 304, headers: { ...baseHeaders, ...serverTiming(cached ? "hit" : "miss") } });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6642:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/persistence` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6651:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/resources` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6659:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/trace-at-sequence` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6666:					throw new PiboWebHttpError("Missing piboSessionId or eventSequence", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6669:				if (!session) throw new PiboWebHttpError("Session not found", 404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6689:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/debug/streaming-fixture` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6696:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/message-receipts` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6699:				if (!sessionId) throw new PiboWebHttpError("Session ID required",400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6707:				if (!receipt) throw new PiboWebHttpError("Message receipt not found",404);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6712:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/message` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6719:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/provider-auth` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6730:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/provider-auth` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6748:				if (!mappedAction) throw new PiboWebHttpError("Unsupported provider authentication action", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6754:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/status` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6764:					throw new PiboWebHttpError("Session status snapshots are not available", 501);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6774:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/action` && request.method === "POST") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6795:						throw new PiboWebHttpError("Provider authentication target conflicts with the selected session runtime", 409);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6799:						throw new PiboWebHttpError("Provider authentication requires an explicit runtimeInstanceId or a valid bound Pibo Session", 400);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6819:					throw new PiboWebHttpError("Archived rooms are read-only", 403);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6834:			if (url.pathname === `${CHAT_WEB_API_PREFIX}/events` && request.method === "GET") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6855:				return createEventStream({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:6872:      const url=new URL(request.url);const sid=url.searchParams.get("piboSessionId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:1:import { randomUUID } from "node:crypto";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:2:import { createServer, type Server, type Socket } from "node:net";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:3:import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:4:import type { PiboOutputEvent } from "../core/events.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:5:import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:6:import type { PiboPluginRegistry } from "../plugins/registry.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:7:import { PiboSessionRouter } from "../core/session-router.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:8:import { createLoopMessagePreflight } from "../loops/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:9:import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:10:import { ResourceReaperService, type ResourceReaperServiceOptions } from "../resources/reaper.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:11:import { InMemoryPiboSessionStore, type PiboSessionStore } from "../sessions/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:12:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:23:import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:84:		throw new Error("Invalid JSON frame");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:104:function createConnection(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:138:		socket.destroy(new Error("Gateway client closed because its send backlog exceeded the backpressure limit"));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:199:async function createGatewaySessionStore(options: GatewayServerOptions): Promise<PiboSessionStore> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:202:		return new SqlitePiboSessionStore(options.sessionDbPath);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:204:	if (options.persistSession === false) return new InMemoryPiboSessionStore();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:205:	const { createDefaultPiboDataSessionStore } = await import("../sessions/pibo-data-store.js");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:206:	return createDefaultPiboDataSessionStore();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:218:	private readonly connections = new Set<GatewayConnection>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:227:		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:228:		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:236:		this.sessionStore = this.options.sessionStore ?? (await createGatewaySessionStore(this.options));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:241:		this.router = new PiboSessionRouter({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:246:			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:251:		this.server = createServer((socket) => this.handleSocket(socket));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:254:		await new Promise<void>((resolve, reject) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:266:			this.resourceReaper = new ResourceReaperService(this.options.resourceReaper);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:286:			await new Promise<void>((resolve, reject) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:302:			[...new Set([this.pluginRegistry, this.compatibilityRuntimeRegistry].filter((registry): registry is PiboPluginRegistry => Boolean(registry)))]
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:314:		const connection = createConnection(socket, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:367:			connection.send(errorResponse("invalid", new Error("Invalid request frame")));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:406:		const context = this.createChannelContext();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:419:				throw new Error(`Channel "${channel.name}" requires auth, but no auth service is registered`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:431:	private createChannelContext(): PiboChannelContext {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:436:			createSession: (input) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:438:				const profileContext = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, profile);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:441:				if (!runtimeAdapter) throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:469:				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:471:				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:504:				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:506:				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:510:					throw new Error(`Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history.`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:535:			createProfile: (name) => this.pluginRegistry.createProfile(name),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:569:		if (!this.router) throw new Error("Gateway router is not started");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:574:		if (!this.sessionStore) throw new Error("Gateway session store is not started");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:598:		server = new PiboGatewayServer({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:1:import { randomUUID } from "node:crypto";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:2:import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:3:import type { Socket } from "node:net";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:4:import type { Duplex } from "node:stream";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:5:import { PiboAuthError } from "../auth/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:6:import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:7:import { handleSimpleAgentApiRequest } from "../api/simple-agent-api.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:8:import { requireWebSession } from "./auth.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:9:import { PiboWebHttpError, nodeRequestToWebRequest, responseHtml, responseJson, sendWebResponse } from "./http.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:10:import type { PiboWebAppContext } from "./types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:43:	return new Response(null, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:50:	return pathname === prefix || pathname.startsWith(`${prefix}/`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:57:function createAppContext(channelContext: PiboChannelContext): PiboWebAppContext {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:76:		return new URL(`http://${authority}`).hostname.toLowerCase();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:108: * Return a new Request that includes the TCP socket peer address in the
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:114:	const headers = new Headers(request.headers);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:116:	return new Request(request.url, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:133:	const headers = new Headers(response.headers);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:135:	return new Response(response.body, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:142:function createRequestBaseURL(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:150:		const canonical = new URL(canonicalBaseURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:182:	const seen = new Set<string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:207:function createGatewayRuntimeStatuses(channelContext: PiboChannelContext): unknown[] {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:220:async function createGatewayStatusResponse(channelContext: PiboChannelContext, options: WebHostChannelOptions, generation: string): Promise<Response> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:234:		runtimeQueue: { layer:"runtime-session",statuses:createGatewayRuntimeStatuses(channelContext) },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:235:		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:243:function createCanonicalRedirect(request: Request, canonicalBaseURL: string | undefined): Response | undefined {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:245:	const url = new URL(request.url);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:246:	const canonical = new URL(canonicalBaseURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:251:	return redirect(new URL(`${url.pathname}${url.search}`, canonical.origin).toString());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:325:	return await new Promise<boolean>((resolve, reject) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:348:export function createWebHostChannel(options: WebHostChannelOptions = {}): WebHostChannel {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:354:		throw new Error("Web channel shutdown drain timeout must be a non-negative finite number");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:360:	const sockets = new Set<Socket>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:361:	const eventStreamControllers = new Map<ServerResponse, AbortController>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:364:		if (!context) throw new Error("Web channel is not started");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:377:		const eventStreamController = isEventStreamResponse(webResponse) ? new AbortController() : undefined;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:388:		const requestController = new AbortController();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:389:		const abortRequest = () => requestController.abort(new Error("HTTP client disconnected"));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:396:			const baseURL = createRequestBaseURL(nodeRequest, host, port, options.canonicalBaseURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:397:			const requestURL = new URL(nodeRequest.url ?? "/", baseURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:405:				await hostApp.handleNodeRequest(nodeRequest, nodeResponse, createAppContext(ctx), requestURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:415:			const url = new URL(request.url);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:416:			const canonicalRedirect = createCanonicalRedirect(request, options.canonicalBaseURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:422:			if (url.pathname === "/health") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:433:			if (url.pathname === "/gateway/status") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:434:				await sendResponse(nodeResponse, await createGatewayStatusResponse(requireContext(), options, generation));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:438:			if (url.pathname.startsWith("/api/auth/")) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:455:				const response = await app.handleRequest(request, createAppContext(ctx));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:460:			if (url.pathname === "/") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:465:					throw new Error(`Configured landing web app "${options.landingAppName}" is not registered`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:501:			const requestURL = new URL(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:503:				createRequestBaseURL(nodeRequest, host, port, options.canonicalBaseURL),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:513:			await app.handleUpgrade(nodeRequest, socket, head, createAppContext(ctx), requestURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:534:			for (const app of channelContext.getWebApps()) await app.initialize?.(createAppContext(channelContext));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:535:			server = createServer((request, response) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:559:			await new Promise<void>((resolve, reject) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/web/channel.ts:581:					const closePromise = new Promise<void>((resolve, reject) => {

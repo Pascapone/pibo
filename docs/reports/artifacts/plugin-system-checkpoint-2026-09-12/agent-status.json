@@ -1,0 +1,66 @@
+{
+  "checkedAt": "2026-09-12 08:30:09 UTC",
+  "source": "pibo_agents_list_agents, read-only; no dispatch",
+  "agents": [
+    {
+      "agentId": "ps_d11c30ae-1981-4431-865e-eaefb2cb9ec9",
+      "stream": "plugin-worker-runtime",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T06:51:30.232Z"
+    },
+    {
+      "agentId": "ps_566cfb10-e9ba-4f83-b9c0-0a44a76275ec",
+      "stream": "plugin-worker-designer",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T06:47:01.500Z"
+    },
+    {
+      "agentId": "ps_425a875d-dade-443f-be41-5107bf44eaa8",
+      "stream": "plugin-worker-browser",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T06:41:08.220Z"
+    },
+    {
+      "agentId": "ps_05253aec-2d7e-4b72-a6b3-28b88e4898c0",
+      "stream": "plugin-worker-management",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T06:34:31.382Z"
+    },
+    {
+      "agentId": "ps_bc862da1-9786-44aa-a0c8-4f2887614bbc",
+      "stream": "plugin-worker-core",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T06:13:31.181Z"
+    },
+    {
+      "agentId": "ps_7a4a7134-1d88-4c26-9ca0-6843b79f55d9",
+      "stream": "plugin-research-acceptance",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T05:40:27.904Z"
+    },
+    {
+      "agentId": "ps_c387c65d-59b0-4870-8739-e54c39e50cc7",
+      "stream": "plugin-research-desktop",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T05:37:34.170Z"
+    },
+    {
+      "agentId": "ps_e745f174-243b-46d1-83fc-23d6d6f987a3",
+      "stream": "plugin-research-management",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T05:22:51.702Z"
+    },
+    {
+      "agentId": "ps_ba73501f-74b3-4676-9a8c-20386a67b454",
+      "stream": "plugin-research-core",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T05:19:12.804Z"
+    },
+    {
+      "agentId": "ps_38d9c97f-9f05-43d8-9bb2-765d57eb064f",
+      "stream": "plugin-research-runtime",
+      "status": "idle",
+      "lastUpdatedAt": "2026-09-12T05:18:42.962Z"
+    }
+  ]
+}

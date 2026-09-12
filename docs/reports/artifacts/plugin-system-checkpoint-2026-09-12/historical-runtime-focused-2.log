@@ -1,0 +1,25 @@
+✔ legacy Build Context and Pi profile inspection never create runtime, MCP, factories or executable extensions (3.379748ms)
+✔ actual build persists immutable plan/delivery and all no-context contributions; preview remains separately identified (124.676311ms)
+✔ actual capture rejects cross-session and cross-generation resources (54.696608ms)
+✔ hooks order by order then qualified identity; transformations revalidate before tool execution (16.622169ms)
+✔ invalid required pre transform and missing provenance fail closed, no external call (1.745418ms)
+✔ optional failing observer is recorded; post failure never rewrites successful external execution (0.982421ms)
+✔ hook timeout aborts hook signal and blocks required pre execution (15.764603ms)
+✔ already cancelled input does not invoke hook; identity is host scoped and values cannot mutate input (0.84916ms)
+✔ default tool assembly applies hooks to controlled tools but not native harness definitions (1.542105ms)
+✔ pi: effective selection controls real portable tool definitions, config and excluded Pi factory (12.252626ms)
+✔ codex-native: effective selection controls real portable tool definitions, config and excluded Pi factory (1.746341ms)
+✔ omp: effective selection controls real portable tool definitions, config and excluded Pi factory (1.542697ms)
+✔ required Pi-only contribution rejects before reading host implementation (1.829928ms)
+✔ coordinator reserves pinned generation, survives retirement until explicit disposal release and freezes selection (89.585745ms)
+✔ registration removal rejects referenced drivers and never aborts live runtime sessions (2.225292ms)
+✔ Pi discovery policy blocks implicit packages/extensions without mutating user settings and preserves explicit factories/context/skills (60.570476ms)
+✔ real router reserves before async adapter setup, pins active config, captures build and releases only after disposal (89.378353ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2960.991602

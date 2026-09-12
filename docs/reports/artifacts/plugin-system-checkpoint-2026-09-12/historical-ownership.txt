@@ -1,0 +1,27 @@
+# Unified plugin rebuild: integration ownership
+
+Authoritative implementation root: `/root/code/pibo/.worktrees/plugin-system-rebuild`.
+Base: `cac4dcd03945b9754db7be9ab2ab4324f10c335c` (`upstream/dev`, fetched 2026-09-12).
+The controller checkout `/root/code/pibo` is a different, dirty historical branch. Research against it must be checked against the implementation root before use.
+Worker: `pibo-dev-plugin-system-rebuild`, source `/workspace`. All compilation, tests and gateway work run there. A baseline build was started at 05:15 UTC, log `/tmp/pibo-plugin-rebuild-baseline-build.log`.
+
+## Shared contract owners
+
+| Owner | Files and responsibility | Early handoff |
+|---|---|---|
+| core | `src/plugins/{types,registry,manifest,sdk,contributions,schema,host,scope,services,selection,resolution}.ts` and clearly named core additions; AP01/02/04 | `contract-core.md` |
+| management | New plugin store, journal, source, manager, operations, CLI and management routes; additive `src/data/{schema,pibo-store}.ts` changes; AP03/05/15 | `contract-management.md` |
+| runtime | `src/core/{profiles,session-router,context-build}.ts`, `src/plugins/chat-custom-agents.ts`, `src/apps/chat/agent-profiles.ts`, runtime/adapter trees, tool contract/session files; AP06 and runtime hooks | `contract-runtime.md` |
+| browser | Chat UI except Designer-owned files; new plugin browser routes; AP07/08/09 and AP11/17 UI | `contract-browser.md` |
+| designer | `agents/**`, `agent-designer-model.ts`, `api-agent-designer*.ts`, AgentStore, capability/API route helpers; AP10 and agent migration | `contract-designer.md` |
+| orchestrator | `src/gateway/web.ts`, `src/apps/chat/web-app.ts`, `src/bin/pibo.ts`, `src/index.ts`, package/build metadata, plan/docs/index/log/ledger and integration; builtin/extraction ownership assigned at AP11 | `integration-notes.md` |
+
+## Working agreement
+
+Everyone edits only their owned files in this one isolated topic worktree. No Git commits or branch operations by workers. The orchestrator commits integrated milestones. Never overwrite another worker's edits. Publish exact exports and proposed integration patches for shared files instead.
+
+Use `/tmp/plugin-system-validation.lock` inside the Docker worker with `flock` for commands that compile, write dist or execute suites. Keep edits parallel. Gateway/browser readiness is coordinated with the orchestrator. No controller gateway or Pibo2 mutation by workers.
+
+Early contract files describe real chosen APIs; do not invent a second manifest, selection, config, persistence or runtime resolution model. Read other owners' handoffs as they become available and resolve differences in your own layer.
+
+The full plan is copied under `docs/plans/unified-plugin-system-rebuild.md`. AP11 must pass before broad AP12–14 extraction. Preparation and fixtures may be researched earlier. Retirement never aborts runs or deletes sessions. User resources and manual subagents remain independent. A written module is not an accepted package; evidence must reach the default product path.

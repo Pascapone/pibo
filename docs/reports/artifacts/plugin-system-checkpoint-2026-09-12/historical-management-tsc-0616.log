@@ -1,0 +1,1 @@
+src/apps/chat/web-app.ts(4841,110): error TS2339: Property 'roomId' does not exist on type 'PiboSession'.

@@ -1,0 +1,351 @@
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:1:import { CHAT_WEB_APP_NAME } from "../apps/chat/web-app.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:2:import { createDefaultPiboPlugins } from "../plugins/builtin.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:3:import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:4:import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:5:import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:6:import { createPiboChatVscodeWebPlugin } from "../plugins/chat-vscode-web.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:7:import type { ContextFilesPluginOptions } from "../plugins/context-files.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:8:import { createPiboUserProfileResourcePlugins } from "../plugins/user-profile-resources.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:9:import { createPiboPreviewPlugin } from "../previews/plugin.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:10:import { createPiboCronPlugin } from "../cron/plugin.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:11:import { createPiboLoopPlugin } from "../loops/plugin.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:12:import { createPiboDevAuthPlugin } from "../plugins/dev-auth.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:13:import { PiboPluginRegistry } from "../plugins/registry.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:14:import { createPiboWebHostPlugin } from "../plugins/web.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:15:import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:16:import { loadPiboConfig } from "../config/config.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:17:import { PiboGatewayServer, resolveGatewayResourceReaperOptions, type GatewayServerOptions } from "./server.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:18:import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:20:export type WebGatewayAuthMode = "better-auth" | "local";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:22:export type WebGatewayServerOptions = GatewayServerOptions & {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:43:const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:49:export function isLoopbackHost(value: string | undefined): boolean {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:69:	throw new Error(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:84:export function resolveWebGatewayAuthMode(options: WebGatewayServerOptions = {}): "better-auth" | "dev-auth" {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:90:		throw new Error(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:113:		const parsed = new URL(baseURL);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:137:		const hostname = new URL(baseURL).hostname;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:144:export function resolveWebGatewayServerOptions(options: WebGatewayServerOptions = {}): WebGatewayServerOptions {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:167:			if (new URL(baseURL).hostname.startsWith("dev.")) return "dev";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:175:export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {}): PiboPluginRegistry {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:180:			...createDefaultPiboPlugins(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:181:			useDevAuth ? createPiboDevAuthPlugin() : createPiboBetterAuthPlugin(resolvedOptions.auth),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:182:			createPiboWebHostPlugin({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:189:			createPiboCronPlugin({ cronStorePath: resolvedOptions.chat?.cronStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:190:			...createPiboUserProfileResourcePlugins({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:198:			createPiboLoopPlugin({ loopStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:199:			createPiboPreviewPlugin(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:200:			createPiboChatWebPlugin(resolvedOptions.chat),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:201:			createPiboChatVscodeWebPlugin(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:206:function createChatAppURL(options: WebGatewayServerOptions, host: string, port: number): string {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:214:			return new URL("/apps/chat", baseURL).toString();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:222:export async function runWebGatewayServer(options: WebGatewayServerOptions = {}): Promise<void> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:238:		const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:239:		server = new PiboGatewayServer({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:254:	console.error(`pibo chat app available at ${createChatAppURL(resolvedOptions, host, port)}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:1:import { dirname, resolve } from "node:path";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:2:import { fileURLToPath } from "node:url";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:3:import { createPiboGatewayToolProfiles } from "../gateway/tool.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:4:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:14:import { InitialSessionContextBuilder, type InitialSessionContext } from "../core/profiles.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:15:import { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:16:import { parsePiboThinkingLevel } from "../core/thinking.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:17:import { createWebSearchToolProfile } from "../tools/web-search.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:18:import { CODEX_BROWSER_TOOL_NAMES, createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:19:import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:20:import { createHashlineToolProfile } from "../tools/hashline.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:21:import { loadModelCatalog } from "../apps/chat/model-catalog.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:22:import { piboCodexCompatPlugin } from "./codex-compat.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:23:import { piboCodexNativePlugin } from "./codex-native.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:24:import { addPiboNativeToolingContext, registerPiboNativeTooling } from "./native-tooling.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:25:import { piboWebAnnotationsPlugin } from "./web-annotations.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:26:import { piboOmpPlugin } from "./omp.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:27:import { piboOpenAiChatGptTranscriptionPlugin } from "./openai-chatgpt-transcription.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:28:import { piboOpenAiTranscriptionPlugin } from "./openai-transcription.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:29:import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:30:import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:31:import { PI_AGENT_RUNTIME_DRIVER } from "../agent-runtimes/pi/adapter.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:33:export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:34:export {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:39:export {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:61:		throw new Error("session.fork requires params.entryId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:69:		throw new Error("session.tree_navigate requires params.entryId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:83:		throw new Error("session.switch requires params.sessionFile");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:94:	if (typeof raw.level !== "string") throw new Error("thinking requires params.level to be a string");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:101:		throw new Error("runtime.approval.respond requires params.requestId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:104:		throw new Error("runtime.approval.respond requires params.decision");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:112:		throw new Error("runtime.user_input.respond requires params.requestId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:115:		throw new Error("runtime.user_input.respond requires params.answers");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:126:		throw new Error("login.start requires params.provider");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:129:		throw new Error("login.start params.method must be device_code or browser_oauth");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:137:		throw new Error("login.complete requires params.provider");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:140:		throw new Error("login.complete params.code must be a string when provided");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:147:	if (!flowId) throw new Error("login.complete requires params.flowId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:154:		throw new Error("login.cancel requires params.provider");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:161:	if (!flowId) throw new Error("login.cancel requires params.flowId");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:168:		throw new Error("login.apikey requires params.provider");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:171:		throw new Error("login.apikey requires params.apiKey");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:179:		throw new Error("logout requires params.provider");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:184:function createBaseProfileBuilder(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:189:		new InitialSessionContextBuilder(profileName)
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:196:export const piboCorePlugin = definePiboPlugin({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:199:	register(api) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:200:		api.registerAgentRuntimeDriver(PI_AGENT_RUNTIME_DRIVER);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:201:		api.registerAgentRuntimeInstance({ id: "pi", adapterId: "pi", displayName: "Pi Coding Agent" });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:202:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:207:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:212:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:217:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:222:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:227:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:232:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:237:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:242:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:247:		api.registerSkill({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:252:		api.registerTool(createWebSearchToolProfile());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:253:		api.registerTool(createRuntimeToolProfile());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:254:		api.registerTool(createHashlineToolProfile());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:255:		api.registerTools(createCodexBrowserToolProfiles());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:256:		api.registerCapabilityPackage({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:261:		registerPiboNativeTooling(api);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:262:		api.registerProfile({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:266:				return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:269:					.createSession();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:272:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:280:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:290:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:300:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:310:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:318:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:326:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:335:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:343:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:351:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:360:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:377:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:387:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:395:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:403:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:411:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:419:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:427:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:435:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:442:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:449:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:469:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:477:					let authStatuses = new Map<string, boolean>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:481:						authStatuses = new Map(statuses.map((status) => [status.id, status.configured]));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:485:					const providers = new Map<string, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:526:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:535:					throw new Error(`Provider "${params.provider}" does not expose an interactive login method.`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:537:				const result = await context.startRuntimeAuth({ providerId: params.provider, method });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:553:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:565:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:572:					...(await context.startRuntimeAuth({ providerId: params.provider, method: "api_key", apiKey: params.apiKey })),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:577:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:589:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:603:		api.registerGatewayAction({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:618:export const piboGatewayProducerPlugin = definePiboPlugin({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:621:	register(api) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:622:		api.registerTools(createPiboGatewayToolProfiles());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:623:		api.registerProfile({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:628:				return createBaseProfileBuilder("pibo-gateway-producer", context)
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:630:					.createSession();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:636:export function createDefaultPiboPlugins(): PiboPlugin[] {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:640:export function createGatewayProducerPiboPluginRegistry(): PiboPluginRegistry {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:646:export function createDefaultPiboPluginRegistry(): PiboPluginRegistry {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:647:	return PiboPluginRegistry.create({ plugins: createDefaultPiboPlugins() });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:650:export function selectDefaultPiboProfileName(registry: PiboPluginRegistry): string {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:655:export function resolvePiboProfileNameFromRegistryOrDefault(registry: PiboPluginRegistry, profileName?: string): string {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:666:export function createPiboProfileFromRegistryOrDefault(registry: PiboPluginRegistry, profileName?: string): InitialSessionContext {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:669:		return createDefaultPiboProfile();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:671:	return registry.createProfile(resolvedProfileName);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:674:export function createGatewayProducerPiboProfile(): InitialSessionContext {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:675:	return createGatewayProducerPiboPluginRegistry().createProfile("pibo-gateway-producer");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:1:import { randomUUID } from "node:crypto";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:2:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:10:import { normalizeToolProfile } from "../core/profiles.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:11:import type { PiboOutputEvent } from "../core/events.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:12:import type { PiboChannel } from "../channels/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:13:import type { PiboAuthService } from "../auth/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:14:import type { PiboWebApp } from "../web/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:15:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:21:import {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:31:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:47:import { listInstalledCliToolAgentContexts } from "../tools/registry.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:48:import { listPiPackages } from "../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:49:import { AgentRuntimeAdapterRegistry } from "../agent-runtime/registry.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:50:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:62:export type PiboPluginRegistryOptions = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:99:	const promise = new Promise<void>((resolvePromise) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:121:	return new PiboSpeechError(message, "aborted", { cause: signal.reason });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:133:			new Promise<never>((_resolve, reject) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:145:	if (!Number.isSafeInteger(selected) || selected <= 0) throw new Error(`${name} must be a positive safe integer`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:154:			new Promise<void>((resolve) => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:178:		throw new Error(`Web app "${appName}" ${label} must start with "/"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:181:		throw new Error(`Web app "${appName}" ${label} must not end with "/"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:191:	if (!tool.createDefinition) return true;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:193:		return tool.createDefinition({}).portable !== false;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:199:export class PiboPluginRegistry {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:203:	private readonly agentRuntimes = new AgentRuntimeAdapterRegistry();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:204:	private readonly tools = new Map<string, ToolProfile>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:205:	private readonly subagents = new Map<string, SubagentProfile>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:206:	private readonly skills = new Map<string, SkillProfile>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:207:	private readonly contextFiles = new Map<string, ContextFileProfile>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:208:	private readonly profiles = new Map<string, PiboProfileDefinition>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:209:	private readonly profileAliases = new Map<string, string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:210:	private readonly gatewayActions = new Map<string, PiboGatewayAction>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:211:	private readonly gatewaySlashCommands = new Map<string, string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:212:	private readonly channels = new Map<string, PiboChannel>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:214:	private readonly transcriptionProviders = new Map<string, PiboTranscriptionProvider>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:215:	private readonly speechProviders = new Map<string, PiboSpeechProvider>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:216:	private readonly pendingSpeechStarts = new Map<string, PendingSpeechStart>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:217:	private readonly speechSessions = new Map<string, ActiveSpeechSession>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:220:	private readonly webApps = new Map<string, PiboWebApp>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:221:	private readonly capabilityPackages = new Map<string, PiboCapabilityPackageInfo>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:222:	private readonly eventListeners = new Set<PiboPluginEventListener>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:223:	private readonly productEventListeners = new Set<PiboProductEventListener>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:224:	private readonly loopStopConditions = new Map<string, { definition: PiboLoopStopConditionDefinition; pluginId?: string }>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:225:	private readonly pluginIds = new Set<string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:226:	private readonly pluginNames = new Map<string, string>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:236:		const registry = new PiboPluginRegistry(options);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:238:			registry.registerPlugin(plugin);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:243:	registerPlugin(plugin: PiboPlugin): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:245:			throw new Error(`Plugin "${plugin.id}" is already registered`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:250:		plugin.register(this.createApi(plugin.id));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:253:	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:254:		this.agentRuntimes.registerDriver(driver);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:257:	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): AgentRuntimeAdapter {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:258:		return this.agentRuntimes.registerInstance(instance);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:285:	startAgentRuntimeAuth(runtimeInstanceId: string, input: StartAgentRuntimeAuthInput) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:286:		return this.agentRuntimes.startAuth(runtimeInstanceId, input);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:309:	registerTool(tool: ToolProfileRegistration): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:314:	registerTools(tools: readonly ToolProfileRegistration[]): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:316:			this.registerTool(tool);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:320:	registerSubagent(subagent: SubagentProfile): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:324:	registerSubagents(subagents: readonly SubagentProfile[]): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:326:			this.registerSubagent(subagent);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:330:	registerSkill(skill: SkillProfile): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:334:	unregisterSkill(name: string): boolean {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:342:	registerContextFile(contextFile: ContextFileProfile): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:354:	registerProfile(profile: PiboProfileDefinition): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:356:		this.registerProfileAliases(profile);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:364:		this.registerProfileAliases(profile);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:375:	registerGatewayAction(action: PiboGatewayAction): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:383:	registerChannel(channel: PiboChannel): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:387:	registerAuthService(service: PiboAuthService): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:389:			throw new Error(`Auth service "${this.authService.name}" is already registered`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:394:	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:414:	registerSpeechProvider(provider: PiboSpeechProvider): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:433:	async startSpeechSession(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:439:		if (this.speechProvidersDisposed) throw new PiboSpeechError("Speech providers are shutting down.", "aborted");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:441:			throw new PiboSpeechError("Too many speech sessions are active. Try again shortly.", "capacity_exceeded");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:445:		const controller = new AbortController();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:451:			controller.abort(new PiboSpeechError("Speech session startup timed out.", "provider_error"));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:470:			.then(() => provider.startSession(input, { signal: controller.signal }))
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:492:				throw new PiboSpeechError("Speech provider returned a duplicate session.", "provider_error");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:534:		if (!entry) throw new PiboSpeechError("Speech session was not found.", "session_not_found");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:559:			const shutdownError = new PiboSpeechError("Speech providers are shutting down.", "aborted");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:582:	registerWebApp(app: PiboWebApp): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:584:			throw new Error(`Duplicate web app "${app.name}"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:590:	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:594:	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition, pluginId?: string): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:595:		if (!condition.type.trim()) throw new Error('Loop stop condition type is required');
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:596:		if (!condition.name.trim()) throw new Error(`Loop stop condition "${condition.type}" name is required`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:597:		if (condition.phases.length === 0) throw new Error(`Loop stop condition "${condition.type}" must support at least one phase`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:601:	registerRalphStopCondition(condition: PiboLoopStopConditionDefinition, pluginId?: string): void { this.registerLoopStopCondition(condition, pluginId); }
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:635:	createProfile(name: string): InitialSessionContext {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:638:		if (!profile) throw new Error(`Unknown profile "${name}"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:640:		return profile.create(this.createProfileBuildContext());
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:648:		const context = this.createProfileBuildContext();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:691:				hasDefinition: tool.definition !== undefined || tool.createDefinition !== undefined,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:761:			throw new Error(`Unknown profile "${name}". Available profiles: ${this.getProfileNames().join(", ")}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:810:			createdAt: input.createdAt ?? new Date().toISOString(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:822:	private createApi(pluginId: string): PiboPluginApi {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:850:			registerAgentRuntimeDriver: (driver) => this.registerAgentRuntimeDriver(driver),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:851:			registerAgentRuntimeInstance: (instance) => this.registerAgentRuntimeInstance(instance),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:852:			registerTool: (tool) => this.registerTool(withPluginToolContext(tool)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:853:			registerTools: (tools) => this.registerTools(tools.map(withPluginToolContext)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:854:			registerSubagent: (subagent) => this.registerSubagent(subagent),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:855:			registerSubagents: (subagents) => this.registerSubagents(subagents),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:856:			registerSkill: (skill) => this.registerSkill(withPluginSkillContext(skill)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:857:			registerContextFile: (contextFile) => this.registerContextFile(withPluginContext(contextFile)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:860:			registerProfile: (profile) => this.registerProfile(profile),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:862:			registerGatewayAction: (action) => this.registerGatewayAction(action),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:863:			registerChannel: (channel) => this.registerChannel(channel),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:864:			registerAuthService: (service) => this.registerAuthService(service),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:865:			registerTranscriptionProvider: (provider) => this.registerTranscriptionProvider(withPluginTranscriptionProviderContext(provider)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:866:			registerSpeechProvider: (provider) => this.registerSpeechProvider(withPluginSpeechProviderContext(provider)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:867:			registerWebApp: (app) => this.registerWebApp(app),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:868:			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:869:			registerLoopStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:870:			registerRalphStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:877:	private createProfileBuildContext(): PiboProfileBuildContext {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:891:			throw new Error(`Unknown ${label} "${key}"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:896:	private registerProfileAliases(profile: PiboProfileDefinition): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:900:				throw new Error(`Profile alias "${alias}" is already registered`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:908:			throw new Error(`Duplicate ${label} "${key}"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:922:						throw new Error(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:936:				throw new Error(`Invalid slash command "${slashCommand}" for gateway action "${action.name}"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:940:				throw new Error(
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:945:				throw new Error(`Duplicate slash command "${slashCommand}" for gateway action "${action.name}"`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:957:export function definePiboPlugin(plugin: PiboPlugin): PiboPlugin {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:1:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:14:import type { CompactionResult } from "@earendil-works/pi-coding-agent";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:15:import type { ContextUsage } from "@earendil-works/pi-coding-agent";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:16:import type { PiboThinkingLevel } from "../core/thinking.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:17:import type { PiboChannel } from "../channels/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:18:import type { PiboAuthService } from "../auth/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:19:import type { PiboWebApp } from "../web/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:20:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:33:import type { PiboPiPackageInfo } from "../pi-packages/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:34:import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:35:import type { PiboTranscriptionProvider } from "../transcription/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:36:import type { PiboSpeechProvider } from "../speech/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:37:import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:38:import type {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:50:export type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:52:export type PiboRalphStopConditionDefinition = PiboLoopStopConditionDefinition;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:54:export type PiboRalphStopConditionInfo = PiboLoopStopConditionInfo;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:56:export type PiboProfileBuildContext = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:65:export type PiboProfileDefinition = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:72:export type PiboProfileInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:103:export type PiboNativeToolInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:115:export type PiboSkillInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:123:export type PiboSubagentInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:133:export type PiboContextFileInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:144:export type PiboCapabilityPackageInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:152:export type PiboCliToolContextInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:158:export type PiboMcpServerInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:167:export type PiboCapabilityCatalog = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:182:export type PiboProductEventSource = "core" | "plugin" | "web" | "filesystem" | "agent";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:184:export type PiboProductEventInput = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:193:export type PiboProductEvent = PiboProductEventInput & {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:198:export type PiboGatewayActionContext = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:208:	startRuntimeAuth(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:237:export type PiboGatewayAction = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:245:export type PiboGatewayActionInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:251:export type PiboPluginEventListener = (event: PiboOutputEvent) => void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:252:export type PiboProductEventListener = (event: PiboProductEvent) => void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:254:export type PiboPluginApi = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:255:	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:256:	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:257:	registerTool(tool: ToolProfileRegistration): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:258:	registerTools(tools: readonly ToolProfileRegistration[]): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:259:	registerSubagent(subagent: SubagentProfile): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:260:	registerSubagents(subagents: readonly SubagentProfile[]): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:261:	registerSkill(skill: SkillProfile): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:262:	registerContextFile(contextFile: ContextFileProfile): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:265:	registerProfile(profile: PiboProfileDefinition): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:267:	registerGatewayAction(action: PiboGatewayAction): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:268:	registerChannel(channel: PiboChannel): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:269:	registerAuthService(service: PiboAuthService): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:270:	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:271:	registerSpeechProvider(provider: PiboSpeechProvider): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:272:	registerWebApp(app: PiboWebApp): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:273:	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:274:	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:275:	/** @deprecated Use registerLoopStopCondition. */
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:276:	registerRalphStopCondition(condition: PiboLoopStopConditionDefinition): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:282:export type PiboPlugin = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:285:	register(api: PiboPluginApi): void;

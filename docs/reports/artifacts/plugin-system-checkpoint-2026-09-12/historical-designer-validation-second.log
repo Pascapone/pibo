@@ -1,0 +1,37 @@
+✔ legacy standard: exact contribution/tool sets and independent resources (40.091794ms)
+✔ legacy subset: exact contribution/tool sets and independent resources (14.655606ms)
+✔ legacy pi-only: exact contribution/tool sets and independent resources (12.755225ms)
+✔ legacy codex-native: exact contribution/tool sets and independent resources (13.772302ms)
+✔ legacy omp: exact contribution/tool sets and independent resources (13.226092ms)
+✔ legacy manual: exact contribution/tool sets and independent resources (13.180617ms)
+✔ legacy run: exact contribution/tool sets and independent resources (13.502001ms)
+✔ legacy resources: exact contribution/tool sets and independent resources (12.62009ms)
+✔ legacy mcp: exact contribution/tool sets and independent resources (14.851254ms)
+✔ legacy unknown-pi-package: exact contribution/tool sets and independent resources (14.970148ms)
+✔ legacy unknown-tool: exact contribution/tool sets and independent resources (13.089594ms)
+✔ fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run) (5.760234ms)
+✔ required subset mismatch and runtime incompatibility never gain tools (6.413164ms)
+✔ migration crash after AgentStore commit before journal checkpoint resumes after reopen (78.100564ms)
+✔ migration refuses concurrent source edits; raw unknown fields remain in backup (11.767653ms)
+✔ SQL CAS protects parallel connections, archive and missing references survive metadata edits (32.238827ms)
+✔ API v2 rejects legacy/version/required manipulation; unchanged unresolved metadata is saveable (30.464895ms)
+✔ preview route ignores forged runtime capabilities, is read-only, and catalog hides artifact paths (8.504315ms)
+✔ Designer snapshots preserve missing selections, optional exclusions and revision across model changes (1.914919ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1108.420662
+src/apps/chat-ui/src/App.tsx(28,15): error TS2305: Module '"./agents/agent-designer-model"' has no exported member 'PiPackageCatalogItem'.
+src/apps/chat-ui/src/app-agent-catalog-mutations.ts(2,15): error TS2305: Module '"./agents/agent-designer-model"' has no exported member 'PiPackageCatalogItem'.
+src/apps/chat-ui/src/context/McpToolsView.tsx(3,10): error TS2305: Module '"../api-agent-designer"' has no exported member 'patchMcpServerDescription'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(24,27): error TS2305: Module '"../api-agent-designer"' has no exported member 'deletePiPackage'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(24,93): error TS2305: Module '"../api-agent-designer"' has no exported member 'patchPiPackage'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(24,109): error TS2305: Module '"../api-agent-designer"' has no exported member 'postPiPackage'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(28,10): error TS2305: Module '"../agents/agent-designer-model"' has no exported member 'piPackageMeta'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(28,30): error TS2305: Module '"../agents/agent-designer-model"' has no exported member 'PiPackageCatalogItem'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(29,82): error TS2305: Module '"../agents/designer-ui"' has no exported member 'PiPackageDetails'.
+src/apps/chat-ui/src/settings/SettingsView.tsx(1491,42): error TS7006: Parameter 'diagnostic' implicitly has an 'any' type.

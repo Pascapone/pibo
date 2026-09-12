@@ -1,0 +1,281 @@
+# Recherche: Runtime, Designer, Ressourcen und Kontext im Unified-Plugin-Umbau
+
+Stand: 12. September 2026. Read-only-Quellprüfung, keine Implementierung und kein Testlauf.
+
+## 1. Auftrag, Evidenz und Baseline
+
+Untersucht: Runtime-Integration, Profile/Designer, unabhängige User-Ressourcen, Subagents, portable Beiträge, Context Composition/Build Context und Generation-Pinning. Grundlage: `/root/code/pibo-cordis-analysis/docs/plans/unified-plugin-system-rebuild.md`, insbesondere PLG-SEL-001/002, PLG-RT-001, PLG-CTX-001, PLG-DATA-001 sowie AP04, AP06, AP10, AP13–16. Der Plan beschreibt Zielverhalten, keine fertige Implementierung.
+
+Alle nachfolgenden relativen Quell-/Testpfade beziehen sich auf `/root/code/pibo`. Gelesen: `AGENTS.md`, `GLOSSARY.md`, `docs/index.md`, `docs/project/documentation-profile.md` und die einschlägigen Schreib-/Dokumentationsskills. Der Bericht liegt bewusst außerhalb des OKF-Bundles; keine Index-/Log-/Ledger-Änderungen.
+
+**Wichtiger Baseline-Konflikt:** Quellrepo-HEAD ist `2cd45f171ca615c11927a8719819aff05f20e1fd` (Release 3.2.4, #894). Der lokal vorhandene Ref `upstream/dev` zeigt auf den Plancommit `cac4dcd03945b9754db7be9ab2ab4324f10c335c`. Kein Fetch durchgeführt. HEAD darf daher nicht mit aktuellem upstream oder dem Planstand gleichgesetzt werden. Der lokale Vergleich Plancommit→HEAD zeigt unter anderem 345 berührte Zeilen in `src/core/session-router.ts`, 241 in `src/agent-runtime/routed-session.ts`, Unterschiede in Subagent-Observation und Runtime-Capabilities. Die folgenden Zeilenanker gelten für HEAD; vor Umsetzung Symbole auf dem tatsächlichen Worker-Baseline prüfen.
+
+Im Quellrepo bestanden bereits Änderungen/ungelistete Dokumentationsartefakte; sie wurden nicht verändert. Verwendet wurden ausschließlich Datei-/Such-/Git-Leseoperationen sowie das Schreiben dieses Berichts. Keine Dienste, Browser, Builds, Tests, Worker oder Subagents gestartet; keine Produktdatenbanken geöffnet. Keine externen Quellen notwendig.
+
+## 2. Wichtigste Befunde
+
+1. **Generation-Isolation existiert bereits für Tools und Ressourcen, aber nicht als vollständiger persistierter Pluginplan.** `src/core/session-router.ts:1554–1688` erzeugt eine UUID für beide Services, reicht sie an Adapter weiter und räumt Fehlerpfade auf. Das ist der richtige Integrationspunkt, nicht ein zweiter Runtime-Host.
+2. **Build Context ist heute eine erneute Inspektion, keine historische Generationsprojektion.** `src/apps/chat/web-app.ts:3520–3635` baut eine `inspection-*`-Resource-Session. `src/core/context-build.ts:469` erstellt dafür sogar eine Pi-Runtime. Der HTTP-Lesepfad setzt `verifyMcp: false` nicht; MCP-Verifikation ist im Resource-Service standardmäßig aktiv. Damit ist dieser Weg kein geeigneter side-effect-freier Zielvertrag.
+3. **Der Designer speichert flache Legacy-Auswahl.** `nativeTools`, `skills`, `contextFiles`, `subagents`, `mcpServers`, `piPackages`, `runControl`, `goalControl` ziehen sich durch Store, Profilbuilder, API und UI. Plugin-Auswahl muss diese Wege koordiniert ersetzen; nur eine UI-Umschaltung genügt nicht.
+4. **Autosave ist nicht gleich serverseitiges CAS.** Der vorhandene Agent-PATCH enthält keine erwartete Revision; `CustomAgentStore.update` schreibt mit `WHERE id = ?`. AP10s Formulierung „Autosave/CAS erhalten“ darf nicht als Nachweis eines vorhandenen Agent-CAS gelesen werden. Runtime-Bindings besitzen hingegen einen expliziten CAS-Vertrag.
+5. **Manuelle Subagents benötigen Run-Infrastruktur auch ohne vollständiges Run-Control-Paket.** `createPiboSessionToolDefinitions` gibt den Send-Tool nur als yielded Ziel frei und erzeugt dafür Run-Control. Dies muss als Infrastrukturabhängigkeit erhalten bleiben, ohne sämtliche Run-/Toolbeiträge zu aktivieren.
+6. **OMP unterstützt portable Pibo-Tools, aber keine ausgewählten externen MCP-Server.** Interne Codex-Tool-MCP-Bridge und externes MCP-CLI-Plugin dürfen nicht denselben Uninstall-Owner erhalten.
+7. **Ressourcenherkunft und Pflichtstatus sind noch nicht ausreichend modelliert.** Skills sind namensbasiert, Kontext verwendet `plugin|managed`, Subagents besitzen im Profil keinen Plugin-Owner. Ausgewählte Skill-/Dateibeiträge werden im Resource-Service pauschal required. Das ersetzt keine manifestbasierte Pflicht-/Optionalauflösung.
+
+## 3. Bestehende Integrationskette und Dateibesitz
+
+### 3.1 Profil → Runtime
+
+| Stufe | Existierender Einstieg | Vertrag / Umbaugrenze |
+|---|---|---|
+| Persistierter Agent | `src/apps/chat/agent-store.ts`: `CustomAgentDefinition`, `CreateCustomAgentInput`, `UpdateCustomAgentInput`, `previewCustomAgentCreate`, `previewCustomAgentUpdate`, `CustomAgentStore` | Eigentümer der gewünschten Agent-Auswahl. Kein eigener Plugin-Katalog und keine Runtime-Ausführung im Store. |
+| Registry-Profil | `src/apps/chat/agent-profiles.ts`: `createCustomAgentProfileDefinition`, `createCustomAgentRuntimeValidationProfile` | Heute Namensauflösung gegen Registry; künftig gemeinsame Resolverprojektion. |
+| Startup-Registrierung | `src/plugins/chat-custom-agents.ts`: `createPiboChatCustomAgentProfilesPlugin` | Liest Store und `upsertProfile`; Loader/Ownership gehört AP02. |
+| Profilobjekt | `src/core/profiles.ts`: `InitialSessionContext`, Builder, `ToolProfile`, `SkillProfile`, `ContextFileProfile`, `SubagentProfile` | Portable Daten dürfen keine Pi-SDK-Typen erhalten. Neues Plan-Handle ergänzen statt zweiten Auswahlsatz pflegen. |
+| Sessionprofil | `src/core/session-router.ts:1015`: `getSessionRuntimeProfile` | Ruft die aktuelle Registry-Profildefinition erneut auf; nicht automatisch ein historischer Snapshot. |
+| Binding | `src/sessions/runtime-binding.ts`, `runtime-binding-persistence.ts`; `src/agent-runtime/types.ts:141` | Instanz/Adapter/native Session und Revision erhalten; Binding ist nicht Plugin-Revision und nicht Live-Generation. |
+| Start | `src/core/session-router.ts:1476–1688` | Validierung vor Open, gemeinsame Tools-/Resources-Generation, Fehlercleanup, `openAgentRuntimeSession`. Ein zentraler Owner für diesen Abschnitt. |
+| Adapter | `src/agent-runtime/types.ts`: `AgentRuntimeAdapter`, `OpenAgentRuntimeSessionInput`, `AgentRuntimeOpenServices`; `src/agent-runtime/registry.ts` | Adapter erhält gebundenes Profil, Produktidentität, Portable-Tools-/Resources-Service. Resolver entscheidet Beitragssupport vor ausführbarem Import. |
+
+`InitialSessionContext` kopiert viele Werte, ist aber kein tief eingefrorener, serialisierbarer Plugin-Snapshot: Tools können Funktionen tragen, Skill-/Kontextarrays kopieren Einträge nicht durchgängig tief. Aus `readonly` allein folgt kein Inhalts-Pinning.
+
+### 3.2 Portable Tools
+
+- `src/tools/contract.ts`: `PiboToolDefinition`, `PiboToolExecutionContext`, `PiboToolResult`, Normalisierung alter Pi-shaped Definitionen. Vorhandene Abbruch-/Progress-/Ergebnissemantik beibehalten.
+- `src/tools/session-tool-set.ts`: `materializePiboProfileTools`, `createPiboSessionToolDefinitions`. Hier liegen harte Sonderzweige für Code Runtime, Codex Browser, Codex Compat, Goal, Agents und Run-Control.
+- `src/tools/session-service.ts`: `PiboPortableToolSession`, gefrorene Sitzungsauswahl, MCP-Ausgabe, Credential-Erneuerung/-Widerruf und Dispose. Ab hier darf ein Plugin-Update den Tool-Satz einer aktiven Generation nicht verändern.
+- `src/tools/mcp-bridge.ts`, `src/tools/credential-registry.ts`: Session-/Generation-gebundene Bridge und Autorisierung. Keine Roh-Credentials in Snapshot, UI-Katalog oder Export.
+- `src/agent-runtimes/pi/tool-compiler.ts`: Pi-Liefergrenze; `src/agent-runtimes/codex-native/adapter.ts` und `resource-delivery.ts`: externe Harness-Lieferung; `src/agent-runtimes/omp/adapter.ts`: Host-Bridge-Integration.
+
+**Ziel, nicht vorhanden:** transportübergreifend geordnete Plugin-Pre-/Post-Hooks mit erneuter Inputvalidierung und Provenienz. Nicht nur im MCP-HTTP-Handler einhängen: direkte Pi-/OMP-Aufrufe und yielded Ausführung müssen dieselbe Policy erhalten. Harness-native Beobachtung ist kein garantierter Pre-Hook.
+
+### 3.3 Adaptermatrix
+
+| Adapter | Vorhandene Integration | Umbauanforderung |
+|---|---|---|
+| Pi | `src/agent-runtimes/pi/adapter.ts` (`PI_AGENT_RUNTIME_CAPABILITIES`), `runtime.ts`; direkte portable Tools, Ressourcenloader und Extension-Factories | Explizit erlaubte Pi-Beiträge erst nach Resolverprüfung importieren. Native Discovery separat auditieren. |
+| Codex Native | `src/agent-runtimes/codex-native/adapter.ts`, `resource-delivery.ts`; session-scoped MCP für Pibo-Tools, materialisierte Ressourcen | Native Prompt-/Toolhoheit beibehalten; Compat nicht als Ersatz oder Alias einsetzen. |
+| OMP | `src/agent-runtimes/omp/adapter.ts:135–160`, `resource-delivery.ts`; Pibo-Tools direct/Host-Bridge, Skills materialisiert, Kontext via append-system-prompt | Externes MCP explizit unsupported. Pflichtbeitrag blockiert, optionaler wird mit Grund ausgelassen. Kein CLI-Fallback. |
+
+Pi-Package-Aktivierung sitzt nicht im kleinen `src/core/runtime.ts` allein: tatsächlich `src/agent-runtimes/pi/runtime.ts:401–412` mit `getPiPackageRuntimeOptions`, `resourceLoaderOptions`, `extensionFactories`; außerdem `src/pi-packages/runtime.ts`. Entfernung nur dort reicht nicht als Nachweis, dass native User-/Workspace-Extensions unterbunden sind. AP16 braucht negative Discovery-Fixtures gegen den tatsächlich eingesetzten Pi-Loader.
+
+## 4. Designer und unabhängige Ressourcen
+
+### 4.1 Profil- und Save-Verträge
+
+`src/apps/chat/agent-profiles.ts` übernimmt Runtime-/Model-/Thinking-/Fast-Overrides, Built-ins, `autoContextFiles`, `nativeSubagents`, MCP, Packages und Subagent-Definitionen. Fehlende Skills/Kontextdateien werden als Warnung/Diagnostic ausgelassen; fehlende Tools werden im geprüften Pfad nur gewarnt. Diese Legacy-Toleranz darf erforderliche fehlende Pluginbeiträge nicht verschweigen. Gleichzeitig müssen fehlende Referenzen im Draft gespeichert bleiben.
+
+`goalControl` wird im Builder mit `agent.goalControl ?? true` wirksam; `src/tools/session-tool-set.ts` erzeugt Goal-Tools bei `!== false`. Migration darf ein vorhandenes explizites false nicht verlieren. `runControl === true` erweitert die yielded Ziele, während Delegation ihren Mindestweg separat erhält.
+
+UI-Einstiege:
+
+- `src/apps/chat-ui/src/agents/AgentsView.tsx`: Autosave, Runtime-/Modelauswahl, Ressourcen und Subagenteditor.
+- `src/apps/chat-ui/src/agents/agent-designer-model.ts`: `AgentDraft`, `agentDraftToSaveInput`, `createBlankAgentDraft`, `agentToDraft`, `profileToDraft`, Kopien, Runtime-kompatible Modelle und Kataloggruppierung.
+- `src/apps/chat-ui/src/api-agent-designer.ts`: `SaveCustomAgentInput`, `saveCustomAgentDraft`, `patchCustomAgent`, `getAgentCatalog`, `getContextBuild`.
+- `src/apps/chat/web-app.ts:5800–5966`: Katalog, Agentmutation, Preview und Runtimevalidierung.
+
+**Neue Pflicht:** AP03 liefert revisionsgeprüfte Agent-/Plugin-Konfiguration. AP10 muss Entwurf, Autosave, Rückkehr, Kopieren und fehlende Referenzen auf dieselbe Revision beziehen. Ein Sessionwechsel darf ein bereits gestartetes Save nicht auf einen anderen Agent-/Settingsscope umhängen. Servervalidierung muss Pflichtbeiträge erzwingen, nicht bloß deaktivierte Checkboxen.
+
+### 4.2 User-Skills
+
+- `src/user-skills/types.ts`, `store.ts`, `manager.ts`, `installer.ts` besitzen Dateien, Auswahl-/Installationsmetadaten und Scope.
+- `src/plugins/chat-user-skills.ts` registriert aktivierte User-Skills. Im geprüften Startup-Pfad gewinnt workspace bei gleichem Namen gegenüber global; doppelte Registry-Skillnamen werden toleriert, indem die Doppelregistrierung übersprungen wird.
+- `src/apps/chat/chat-user-skill-routes.ts` synchronisiert den Katalog; fremde/built-in Skillnamen werden reserviert, damit User-Skills diese nicht überschreiben.
+
+**Planabweichung:** Zielherkunft `user` muss unabhängig von Plugininstallation bleiben. Bestehende Namensprecedence nicht unbemerkt als neue qualifizierte Identität übernehmen. Exakte Doppelreferenz versus verschiedene gleichnamige Inhalte explizit entscheiden und migrieren. Pluginressourcen als User-Kopie bearbeiten, nicht Paketbytes überschreiben.
+
+### 4.3 Kontextdateien
+
+- `src/plugins/context-files.ts`: Verwaltung, Web-App, Quellenverknüpfung, Revisionen und Events; `src/plugins/context-files-store.ts`: Metadaten-/Revisionsstore, Hash/Diff.
+- Bestehende Profilfelder: `key`, `path`, `scope: global|agent`, `source: plugin|managed`, `pluginId`, `agentProfileName`.
+- Bestehende UI: `src/apps/chat-ui/src/api-context-files.ts`; separate App `src/apps/context-files-ui/`.
+
+Verwaltungsdienst als mitgeliefertes Plugin ist mit unabhängigen User-Dateien vereinbar. Dateibesitz ist nicht ausführbare Plugininstallation. Uninstall darf weder Managed/User-Dateien noch Revisionen löschen. Bestehende `link-from-plugin`, `reset-to-source`, `adopt-source`-Semantik auf unveränderliche Paketstände und explizite Userkopien abgleichen.
+
+## 5. Subagents: unabhängige Auflösung und Infrastruktur
+
+Verträge und Pfade:
+
+- `src/core/profiles.ts`: `SubagentProfile` mit `targetProfile`, Model-/Fallback-/Thinking-/Runtime-Overrides, `maxDepth`; `timeoutMs` ist deprecated und begrenzt Delegationslaufzeit nicht.
+- `src/subagents/tool.ts`: `PiboAgentsController`, gemeinsame Tooldefinitionen, Vorbereitung/Validierung.
+- `src/subagents/runtime-selection.ts`: effektive Target-/Override-Auflösung.
+- `src/subagents/context.ts`: generierter Delegationskontext.
+- `src/core/session-router.ts:2236ff`: Controller-Send; `:2582ff`: `resolveSubagentSession`, Zielprofil, Thread-Wiederverwendung und initiale Overrides.
+- `src/subagents/observations.ts`, `observation-query.ts`: Beobachtungsprojektion; nicht als Lifecycle-Wahrheit ersetzen.
+- `src/runs/tools.ts`, `src/loops/tools.ts`: Run- und Goal-Integration.
+
+Bestehend: `pibo_agents_send_message` ist kein direkt ausgeliefertes Agenttool, sondern Ziel von `pibo_run_start`; direkte Managementtools verbleiben. Ein Parent kann einen Child mit anderem Adapter öffnen. Binding und Overrides des Child werden unabhängig bestimmt. Natürlicher Parent-Turnabschluss und Wait-Timeout sind keine implizite Child-Cancellation.
+
+**Benötigter Kernvertrag:** Der Delegationsstart löst einen neuen Child-Generationsplan gegen das Zielprofil auf und erhält einen Admission-/Lifecycle-Lease; er kopiert nicht den Parent-Pluginplan. Thread-Reuse muss klären, ob bereits aktive Childgeneration weiterbenutzt wird oder eine neue Generation nach Retirement/Reconfigure zulässig ist. Plugin-Uninstall beendet keine Runs implizit. Manuelle Subagents brauchen sichtbare Infrastrukturabhängigkeiten, keine Aktivierung aller Agenttools des Infrastrukturplugins. Plugin-Subagents benötigen qualifizierte Provenienz zusätzlich zu manuellen Definitionen.
+
+## 6. Context Composition und Build Context
+
+### 6.1 Bestehender Ressourcenvertrag
+
+`src/agent-runtime/resources.ts` definiert:
+
+- `AgentRuntimeContextContribution`: ID, kind/source/intent, required, order, Pfade, Text, byteSize, nativeDiscovered, materializedPath.
+- `AgentRuntimeDeliveryReport`: contributionId, delivered/degraded/unsupported/failed, mode, exact/equivalent/lossy/none, target, diagnostic.
+- `PiboRuntimeResourceSession`: gemeinsame Generation, getContextContributions/getSkillPaths, isoliertes MCP, sensitive Adapterumgebung, `recordAdapterDelivery`, sichere Inspection und Dispose.
+- `AgentRuntimeResourceInspection` entfernt den Kontexttext bewusst aus der Standardprojektion.
+
+`src/agent-runtime/resource-service.ts` hydriert und materialisiert, prüft Secrets/Skillpfade und native Discovery. Konkrete Reihenfolge im geprüften Code:
+
+| Beitrag | Reihenfolge |
+|---|---:|
+| Automatische Discovery-Metadaten | 0 |
+| Pibo-Sessionkontext | 100 |
+| Ausgewählte Kontextdateien in Profilreihenfolge | 200 + Index |
+| Delegated-Agent-Management | 250 |
+| Installierte CLI-Tool-Snippets | 300 |
+| MCP-Kontext | 400 |
+
+Sortierung ist numerisch, dann ID. Bei vielen Kontextdateien kann `200 + Index` die festen nachfolgenden Slots erreichen/überschreiten. Migration braucht reale Reihenfolge-Fixtures, nicht nur die Annahme „alle Dateien vor Delegation“. Namens-/Pfad-IDs wie `skill:<name>` und `context:<key-or-path>` sind keine qualifizierten Plugin-IDs.
+
+Native Discovery wird adapterabhängig gegen reale/kanonische Pfade geprüft, einschließlich Symlinks und Git-/Home-Grenzen. Genau diese Deduplizierung behalten; nicht durch rein sichtbare Namen ersetzen. Skills werden als Ressourcen/Paths geliefert; ihr kompletter Body ist nicht automatisch injizierter Prompttext.
+
+### 6.2 Bestehende Inspectorflächen und Lücken
+
+- `src/core/context-build.ts`: `PiboContextBuildSnapshot`, Node-Kinds/States, `PiboRuntimeResolutionManifest`, `inspectPiboContextBuild`, modell-/toolbezogene Pi-Inspektion.
+- `src/agent-runtime/context-build.ts`: `buildPortableRuntimeContextSnapshot`, `profileWithRuntimeInstance`, Delivery-Projektion für andere Runtimes.
+- `src/apps/chat/web-app.ts:3520`: Requests mit verpflichtender Pibo-Session-ID; Profil-/Bindingbezug, aber erneute Resource-Session.
+- `src/apps/chat-ui/src/context/ContextBuildView.tsx`: Darstellung; `api-agent-designer.ts`: teilweise separater Client-Snapshottyp.
+- `src/apps/chat-ui/src/context/{types.ts,ContextSidebar.tsx,McpToolsView.tsx,PiboToolsView.tsx}` und `settings/{types.ts,SettingsSidebar.tsx,SettingsView.tsx}`: bestehende feste Navigation. AP08/AP17 besitzen deren Auflösung; AP06 liefert Daten, nicht zusätzliche Feature-Unions.
+
+**Nicht als vorhanden behaupten:** unveränderliche Plugin-/Konfigurationsrevision pro Snapshot, vollständige Ausschlussgründe, jede Service-/UI-Kontextwirkung, persistierte Turntransformationen oder vollständiger tatsächlicher Wire-Prompt. Der aktuelle Snapshot kombiniert aktuelle Quellen/Defaults und Inspektion. Reine Read-Refreshes können Ressourcen materialisieren und MCP verifizieren; Pi-Inspektion eröffnet temporär Runtime-Infrastruktur. Es wurde in dieser Recherche ausdrücklich kein solcher Endpoint aufgerufen.
+
+### 6.3 Erforderliche neue Datenkette
+
+Resolver-Ergebnis → persistierter Generationsplan → Runtime-/Deliverybeobachtungen → Build-/Turnbefund → reine Queryprojektion → UI/Export.
+
+Die Vorschau verwendet denselben Resolver, aber keine ausführbaren Factory-/Hook-/MCP-Verifikationsaufrufe. Nicht statisch bestimmbare Stufen heißen „noch nicht beobachtet“. Tatsächliche Befunde bleiben nach Profiländerung und Uninstall erhalten. Große Inhalte über begrenzte Payloadreferenzen; bestehende Retention muss ihren historischen Nachweis tatsächlich tragen. Secrets werden vor Persistenz redigiert und die Redaktion markiert. Tool-Schemas, Diagnosemetadaten, Skillindex und tatsächlicher Prompttext sind getrennte Repräsentationen. Tokens als Messung oder Schätzung kennzeichnen.
+
+## 7. Verträge, die dieser Arbeitsblock vom Kern benötigt
+
+Folgende Namen sind **Vorschläge zur AP01-Abstimmung**, nicht existierende Exporte.
+
+| Kernlieferung | Benötigter Inhalt / Garantie | Konsumenten |
+|---|---|---|
+| Versionierter Manifest-/Contributionvertrag | Plugin-ID, Revision/Hash, lokale und qualifizierte Beitrags-ID, Art, app/agent-Scope, Pflicht/optional/default, Dependencies, Runtimeprädikate, explizite Ersetzung, Kontextwirkung oder keine | Runtime, Designer, Inspector |
+| `ResolvedAgentContributionPlan` | Immutable, serialisierbar; Profil-/Konfigurationsrevision, ausgewählte und ausgeschlossene Beiträge mit Grund, effektive Konfiguration, User-/Manualherkunft, Reihenfolge, Runtimebindung; keine Funktionen/Secrets | AP06, AP10, AP08 |
+| Resolvermodus und Snapshotidentität | preview versus generation/observed; Previewidentität + Configrevision; validiert Pflichtteile serverseitig; keine ausführbaren Imports zum Prüfen inkompatibler Beiträge | Save, Sessionstart, Context Build |
+| Generationspersistenz | piboSessionId + generation als Schlüssel, Pluginrevisionsreferenzen/Tombstones, historisch immutable; atomare bzw. recoverbare Aktivierung mit Binding-/Planrevision | Router, Recovery, Uninstall |
+| Admission-/Retirement-Lease | Keine neue abhängige Aktivierung nach Retirement; aktive Generation hält Revision/Ressourcen bis Drain; Startup-Rollback und genau einmaliges Reverse-Cleanup | Router, Subagents, Tools |
+| Scope/Ownership | Pluginhost besitzt appweite Instanzen; Router besitzt Generation-Unterinstanzen; Registrar ist abgeleitete Fassade; keine getrennte Aktivierungsregistry | Alle Adapter und Features |
+| Config-CAS | App-/Agent-/Session-Scope, Owner-ID, expectedRevision, Conflictantwort; Migration/unknown refs über Save erhalten | Designer und Pluginsettings |
+| Provenienz-/Beobachtungsvertrag | IDs, Revisionen, Ursache/Vorgänger, Auswahlstatus, tatsächliche Reihenfolge, Transformation, Deliverystatus/-zeit, Payloadref, Redaktions-/Sichtbarkeitsgrenze | Runtime, Hookworker, Build Context |
+| Resource-Artefaktvertrag | Unveränderlicher aktivierter Paketstand; lesbare Ressourcereferenz und Hash; User-Dateisnapshot separat; keine Pfadänderung unter gleicher Revision | Pi/Codex/OMP |
+| Tool-Ausführungs-/Hookvertrag | Gemeinsamer Ablauf über direct/MCP/OMP/yielded, Revalidation, Cancellation, Fehlerpolicy; Postfehler darf externe Aktion nicht ungeschehen deklarieren | AP06/AP09/AP13 |
+| Safe Sessionplan Query | Autorisierte Sessionbindung, Runtime-/Aktivierungsrevision, verfügbare Views/Aktionen, keine Secrets/Services; keine Aktivierung durch Lesen | AP07/AP08/AP10 |
+
+Vor paralleler Implementierung konkret festlegen: Was wird vor Open persistiert, was nach erfolgreichem Open committed, wie wird failed-start markiert? Wer hält den Lease bei Child-Reuse? Wie werden nicht vorhandene Legacy-Snapshots als unknown zurückgegeben? Ohne diese Antworten würden Runtime und Persistenz verschiedene Lifecycle-Wahrheiten bauen.
+
+## 8. Paketgrenzen für bis zu fünf Worker
+
+Diese Aufteilung ist eine Empfehlung für den Orchestrator, keine gestartete Arbeit. AP-Abhängigkeiten gelten weiterhin; fünf Worker sind kein Grund, AP11 zu überspringen.
+
+1. **Kern/Resolver (AP01/02/04):** `src/plugins/*` neue Manifest-/Host-/Scope-/Resolvermodule. Liefert feste DTOs, pure Auswahl und Leases. Keine Agent-UI und keine parallele Runtime-Registry.
+2. **Persistenz/Migration (AP03, später AP15/16):** `src/data/*`, Binding-/Generationpersistenz, Agent-CAS-Schema, Journale und Tombstones. Exklusiver Owner der Store-Schemaänderungen. Designerworker konsumiert Store-API statt selbst SQL zu ändern.
+3. **Runtime/Context (dieser Block, AP06):** `src/agent-runtime/{resources,resource-service,context-build}.ts`, Adapterlieferung, zentrale Toolschnittstellen und Router-Open-Integration. Liefert read-only Snapshotqueries und neue Befunde. Keine Plugininstallation und keine Tabpersistenz.
+4. **Designer/User-Ressourcen (AP10 nach AP04/05/07):** `agent-profiles.ts`, Designer-Model/View/Clienttypen und Ressourcenintegration. Eigene Userdaten erhalten, Pflichtregeln nur anzeigen; der Resolver bleibt serverseitiger Owner. Kontextdateiverwaltung nicht als Paketmanager neu bauen.
+5. **Webhost/Tab-/Featureintegration (AP07/08/09, später AP11/13):** Browserkatalog, Sessiontabs, Settingsnavigation, Renderer. Subagent-/Run-Extraktion erst nach AP11; die Runtimegruppe liefert vorher die neutralen Controller-/Lease-Anschlüsse.
+
+**Hotspots mit Merge-/Ownershiprisiko:** `src/core/session-router.ts`, `src/apps/chat/web-app.ts`, `src/plugins/types.ts`, `src/core/profiles.ts`, `src/apps/chat/agent-store.ts`, `src/tools/session-tool-set.ts`, `src/apps/chat-ui/src/api-agent-designer.ts`, `App.tsx`. Pro Integrationsphase genau einen Writer benennen. Neue spezialisierte Route-/DTO-Module reduzieren Konflikte; ein anderer Worker liefert Patchanforderungen statt gleichzeitiger Änderungen derselben großen Datei.
+
+Reihenfolge: Verträge/Persistenz → Auswahl → Runtime+Browserhost → Designer+Tabs → AP11-Durchstich → breite Featureextraktion → Uninstall/Migration/Entfernung. Run-/Subagent-, MCP- und Toolfamilien sollten erst nach stabiler gemeinsamer Lieferung getrennt extrahiert werden.
+
+## 9. Produkt- und API-Einstiege
+
+| Produktaktion | Existierender API-/Quellpfad |
+|---|---|
+| Agentkatalog | GET `/api/chat/agent-catalog`, Alias `/api/chat/catalog`; `web-app.ts:5800` |
+| Agents | GET/POST `/api/chat/agents`, PATCH/DELETE `/api/chat/agents/:id`; `api-agent-designer.ts`, `web-app.ts:5915ff` |
+| Ordner | `/api/chat/agent-folders`, `/api/chat/agent-folders/:id` |
+| Build Context | GET `/api/chat/context-build?piboSessionId=ps_…`; `web-app.ts:5055`, `buildContextBuildSnapshotForRequest` |
+| User-Skills | `/api/chat/user-skills`, `/:id`, POST `/install`; `chat-user-skill-routes.ts` |
+| MCP-Beschreibung | PATCH `/api/chat/mcp-servers/:name/description`; `chat-capability-routes.ts` |
+| Alte Pi-Packages | `/api/chat/pi-packages`, `/:id`; nach Migration keine reguläre ausführbare API mehr |
+| Kontextdateien | `/api/context-files`, `/:key`, `/events`; GET/PUT/PATCH/DELETE plus `link-from-plugin`, `reset-to-source`, `restore-revision`, `revisions`, `diff`, `adopt-source` in `src/plugins/context-files.ts:1093–1190` |
+| Separate Kontext-App | `/apps/context-files`; künftig registrierte View behalten/zuordnen |
+| Operator-Ressourcen/Profile | Tests `test/resources-cli.test.mjs`, `test/profile-cli.test.mjs`, `test/profile-default-compat.test.mjs`; CLI-Kompatibilität vor Entfernung flacher Felder prüfen |
+
+Achtung: Die vorhandene Agent-Delete-Clientantwort enthält `deletedSessionIds`. Dies ist kein erlaubter Vorbildvertrag für Plugin-Uninstall. PLG-LIFE verlangt ausdrücklich Sessionerhalt und separate Auswirkungs-/Bestätigungsoperationen.
+
+## 10. Vorhandene Tests und konkrete Einstiege
+
+Nur gelesen/gefunden, nicht ausgeführt. Viele Runtime-Tests importieren `../dist/*`; ein alter Build wäre keine Evidenz zum Workerquellstand. `package.json` definiert `npm test` als Build plus `scripts/run-test-suite.mjs`, daneben `npm run typecheck` und `npm run chat-ui:typecheck`. Gezielte `node --test test/<name>.test.mjs` erst nach passendem Workerbuild. Keine dieser Aktionen wurde hier durchgeführt.
+
+### Runtime, Isolation, Ressourcen
+
+- `test/pibo-portable-tool-session.test.mjs:17`: „portable tool sessions share one frozen tool selection across direct and MCP delivery“.
+- `test/agent-runtime-resource-service.test.mjs:154`: isolierte Skills/Kontexte/MCP-Konfiguration/Secrets/Inventar.
+- Dasselbe `:292`: adapterbeobachtete Delivery statt Capability-Vermutungen; `:335–608`: automatische Discovery, explizite Dateien, Symlinks, Codex-/OMP-Grenzen.
+- Dasselbe `:677`: fehlende Secrets/ausbrechende Skillsymlinks; `:723`: unsupported MCP; `:760`: Pi-Umgebung ohne globales process.env-Mutieren; `:807`: gemeinsame Routergeneration und Dispose.
+- `test/pibo-tool-contract.test.mjs`, `test/pibo-tool-mcp-bridge.test.mjs`, `test/runtime-portability.test.mjs`.
+- `test/codex-native-resources.test.mjs`, `test/omp-resources.test.mjs`, `test/omp-runtime.test.mjs`; OMP-Ressourcentest `:47` append-system-prompt, `:174` wahrheitsgemäße Capabilities.
+
+### Designer, Profile und User-Ressourcen
+
+- `test/agent-profiles.test.mjs:49,99,134`: Subagent-Overrides, Runtimeauswahl, fehlende Skills.
+- `test/agent-store.test.mjs:480`: Goaldefault/false; `:549`: Runtimeoptionen; `:579`: MCP; `:596`: Built-ins; `:657`: Packages; `:686,727`: Fallback-/Subagent-Overrides.
+- `test/chat-custom-agent-profiles.test.mjs`, `test/chat-ui-agent-designer-runtime-switch.test.mjs`, `test/chat-ui-agent-designer-subagents.test.mjs`, `test/chat-ui-agent-designer-broken-tools.test.mjs`.
+- `test/chat-ui-agent-designer-autosave.test.mjs`: Debounce, serialisierte Writes, wiederherstellbare Entwürfe, Navigationsguard. **Wichtige Evidenzgrenze:** dieser Test liest TSX-Quelltexte und prüft Muster; kein Nachweis von Browserrace-Verhalten oder serverseitigem CAS.
+- `test/chat-ui-agent-designer-catalog-selection-accessibility.test.mjs`, `test/chat-ui-app-agent-catalog-mutations.test.mjs`.
+- `test/user-skills.test.mjs`, `test/chat-user-skill-profiles.test.mjs`: Registrierung vor Custom Agents, malformed Store, Sync und Schutz gegen built-in Shadowing.
+- `test/context-files-web.test.mjs`, `test/base-prompt-web.test.mjs`, `test/base-prompt.test.mjs`, `test/compaction-prompt.test.mjs`.
+
+### Subagents / Runs
+
+- `test/codex-native-subagents.test.mjs:99,275`: Codex-MCP-Delegation zu anderer Runtime und Pi→Codex Child-Reuse.
+- `test/subagents.test.mjs:399`: Kontextreihenfolge; `:539`: Inputvorbereitung vor Run-Admission; `:764`: maxDepth; `:921`: gefrorene Child-Overrides.
+- Dasselbe `:1116,1157`: Legacy-/persistiertes Thread-Reuse; `:1519`: Teilfehlercleanup; `:1566`: Parentabort; `:1674,1791`: aktive versus queued Cancellation; `:1993`: Wait cancelt nicht und Reuse bleibt; `:2063`: Subagents erzeugen Run-Control.
+- `test/subagent-observation-restart.test.mjs`, `test/runs.test.mjs`, `test/loop-goal-tools.test.mjs`.
+
+### Context Build
+
+- `test/context-build-inspector.test.mjs:44`: generierte Toolherkunft bleibt Inspector-Metadatum.
+- Dasselbe `:88`: degraded native-tool inspection; `:114`: tatsächliche callable Namen; `:229`: portable Subagents; `:382`: keine Final-Prompt-Duplikation.
+- `test/context-build-skills-tokens.test.mjs`, `test/chat-ui-context-build-origin.test.mjs`, `test/mcp-agent-context.test.mjs`.
+
+### Neue Akzeptanztests aus dem Plan (nicht als existierend verifiziert)
+
+`test/plugin-system-selection.test.mjs`, `plugin-system-runtime.test.mjs`, `plugin-system-context-build.test.mjs`, `plugin-system-session-recovery.test.mjs`, `plugin-system-migration.test.mjs`, `plugin-system-hooks.test.mjs`.
+
+Priorisierte neue Fälle:
+
+1. Zwei Sessions desselben Profils halten unterschiedliche, unveränderte Generationen nach Profilupdate; aktive Tools, Delivery und Inspector stimmen jeweils überein.
+2. Required Pi-only unter Codex/OMP scheitert vor Import; optionaler Beitrag bleibt als ausgeschlossen sichtbar.
+3. Inspector GET führt keine Factory, Hook, MCP-Verbindung, Runtimeöffnung, Installation oder neue Generationsaktivierung aus.
+4. Actual-Snapshot bleibt nach Profiländerung/Uninstall identisch; Preview besitzt eigene Revision und zeigt Unterschiede; unbekannte Legacy-Historie wird nicht nachgebaut.
+5. User-/Plugin-Namenskonflikt, genaue Doppelreferenz, Kontextreihenfolge einschließlich vieler Dateien und manuelle Overrides ohne Mehrbefugnisse migrieren.
+6. Ein manipulierter Save kann Pflichtbeiträge nicht deaktivieren; CAS-Konflikt zwischen zwei Browsern verliert keine Referenzen.
+7. Parent und Child nutzen verschiedene Pluginpläne/Adapter; Retirement blockiert neue abhängige Arbeit, nicht Historienlesen; Waittimeout cancelt keine Arbeit.
+8. Gemeinsamer Generation-Failure-Rollback beseitigt Credentials, Dateien und Scopes; Cleanupfehler bleiben sichtbar.
+9. Native Pi-Discovery-Negativfixture bleibt inaktiv, explizit ausgewählter Pi-Pluginbeitrag funktioniert.
+10. Delivery-Fidelity, redigierte Payloads, progressive Skills und nicht einsehbarer Harnessinput bleiben bei generischem Renderer verständlich.
+
+## 11. Risiken und Handoffentscheidungen
+
+**P0 – Baseline:** Orchestrator muss HEAD versus Plan-/upstream-Stand explizit vereinheitlichen. Die Recherche ist nicht gegen den späteren Workercommit getestet.
+
+**P0 – Historische Wahrheit:** Aktuelle Profile und frisch hydrierte Dateien dürfen nicht als tatsächlicher alter Build erscheinen. Generationpinning braucht persistierte Revisionen und beobachtete Lieferbefunde, nicht nur eine UUID.
+
+**P0 – Inspektionsnebenwirkungen:** Vorhandenen Context-Build-Endpoint nicht einfach unter einen Plugin-Tab hängen und als read-only erklären. Temporäre Runtimeöffnung/MCP-Verifikation müssen aus dem Querypfad verschwinden.
+
+**P0 – Aufnahme versus Retirement:** Resolverprüfung ohne Host-Lease hat eine Race zwischen Prüfung und Runtimeöffnung. Dasselbe gilt für neue Childs und wiederverwendete Threads.
+
+**P1 – Auswahlwachstum:** Goaldefault, Run-Control-Infrastruktur, pluginweite Pflichtbeiträge und fehlende Legacyrefs können unbemerkt Tools hinzufügen oder entfernen. Alt-/Neu-Fixtures müssen den effektiven callable/yielded Satz vergleichen.
+
+**P1 – Ressourcennamen:** Global/workspace-Präzedenz und nicht qualifizierte Registry-IDs stehen dem Zielkonfliktmodell entgegen. Herkunft früh festlegen; Migration braucht sichtbare Konflikte statt silent override.
+
+**P1 – Parallelisierung:** Router, web-app, Profiltypen und Store sind zentrale gemeinsame Dateien. Eigentümer und DTO-Gates vor fünf parallelen Arbeitern festlegen.
+
+**P1 – Persistenz/CAS:** Runtimebinding-CAS existiert, Agent-CAS im geprüften Saveweg nicht. Cross-Store-Migration benötigt Journal/Recovery statt behaupteter SQLite-Gesamttransaktion.
+
+**P1 – Sicherheits-/Supportwahrheit:** Trusted Plugin bedeutet nicht freie Session-Credentials und nicht vollständige Harness-Interception. OMP-MCP-Lücke und native Beobachtungsgrenzen bleiben explizit.
+
+**P2 – Testqualität:** Quelltextmusterprüfungen im Designer ergänzen echte API-/Browserfälle nicht. Spätere Implementierungsakzeptanz benötigt isolierte Workerbuilds und die im Plan geforderten Browser-/Pibo2-Belege; sie wurden hier weder gestartet noch vorweggenommen.
+
+### Empfohlener erster Handoff an den Kern
+
+Vor AP06/API-Umbau die serialisierbaren Plan-/Provenienztypen, Config-CAS, Generation-Store und Admission-/Scope-Vertrag festlegen. Danach genau einen Runtimepfad und eine unabhängige Userressource durch Resolver → tatsächliche Lieferung → persistierten Inspector nachweisen. Erst mit diesem Durchstich Designerwahl, Subagents und Featureextraktionen verbreitern. Kein zweiter Capability-Package-Lifecycle und kein unabhängiger statischer Inspector-Katalog.

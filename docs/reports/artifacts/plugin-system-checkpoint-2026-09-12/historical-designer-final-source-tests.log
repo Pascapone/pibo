@@ -1,0 +1,31 @@
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ rendered plugin toggles preserve mandatory state and exact session/settings scopes; stale preview cannot retarget (437.136479ms)
+✔ legacy standard: exact contribution/tool sets and independent resources (35.746191ms)
+✔ legacy subset: exact contribution/tool sets and independent resources (11.120683ms)
+✔ legacy pi-only: exact contribution/tool sets and independent resources (9.917867ms)
+✔ legacy codex-native: exact contribution/tool sets and independent resources (11.732496ms)
+✔ legacy omp: exact contribution/tool sets and independent resources (15.064213ms)
+✔ legacy manual: exact contribution/tool sets and independent resources (10.931968ms)
+✔ legacy run: exact contribution/tool sets and independent resources (11.071861ms)
+✔ legacy resources: exact contribution/tool sets and independent resources (9.176099ms)
+✔ legacy mcp: exact contribution/tool sets and independent resources (10.06807ms)
+✔ legacy unknown-pi-package: exact contribution/tool sets and independent resources (11.143586ms)
+✔ legacy unknown-tool: exact contribution/tool sets and independent resources (9.996806ms)
+✔ fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run) (5.105089ms)
+✔ required subset mismatch and runtime incompatibility never gain tools (4.970555ms)
+✔ migration crash after AgentStore commit before journal checkpoint resumes after reopen (65.025088ms)
+✔ migration refuses concurrent source edits; raw unknown fields remain in backup (11.225972ms)
+✔ SQL CAS protects parallel connections, archive and missing references survive metadata edits (28.140531ms)
+✔ API v2 rejects legacy/version/required manipulation; unchanged unresolved metadata is saveable (31.418628ms)
+✔ preview route ignores forged runtime capabilities, is read-only, and catalog hides artifact paths (8.469959ms)
+✔ Designer snapshots preserve missing selections, optional exclusions and revision across model changes (1.601969ms)
+✔ v2 normalizer adapters preserve model clears and never reinsert old Goal/Tool/Package defaults (1.534451ms)
+✔ unresolved inactive migration is a blocked preview, not a valid empty activation (3.320206ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 980.526856

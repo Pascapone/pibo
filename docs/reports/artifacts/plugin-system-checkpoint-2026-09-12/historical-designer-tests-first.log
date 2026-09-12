@@ -1,0 +1,373 @@
+✖ legacy standard: exact contribution/tool sets and independent resources (47.192466ms)
+✖ legacy subset: exact contribution/tool sets and independent resources (12.467483ms)
+✖ legacy pi-only: exact contribution/tool sets and independent resources (12.221289ms)
+✖ legacy codex-native: exact contribution/tool sets and independent resources (11.004997ms)
+✖ legacy omp: exact contribution/tool sets and independent resources (4.525968ms)
+✖ legacy manual: exact contribution/tool sets and independent resources (20.167953ms)
+✖ legacy run: exact contribution/tool sets and independent resources (11.731065ms)
+✖ legacy resources: exact contribution/tool sets and independent resources (9.908381ms)
+✖ legacy mcp: exact contribution/tool sets and independent resources (10.845105ms)
+✖ legacy unknown-pi-package: exact contribution/tool sets and independent resources (10.216993ms)
+✖ legacy unknown-tool: exact contribution/tool sets and independent resources (12.451223ms)
+✔ fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run) (6.366848ms)
+✔ required subset mismatch and runtime incompatibility never gain tools (5.251976ms)
+✔ migration crash after AgentStore commit before journal checkpoint resumes after reopen (66.442911ms)
+✔ migration refuses concurrent source edits; raw unknown fields remain in backup (10.06703ms)
+✔ SQL CAS protects parallel connections, archive and missing references survive metadata edits (31.051972ms)
+✖ API v2 rejects legacy/version/required manipulation; unchanged unresolved metadata is saveable (3.161617ms)
+✔ preview route ignores forged runtime capabilities, is read-only, and catalog hides artifact paths (41.956941ms)
+✔ Designer snapshots preserve missing selections, optional exclusions and revision across model changes (2.341312ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 7
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1395.574863
+
+✖ failing tests:
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy standard: exact contribution/tool sets and independent resources (47.192466ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: 'e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394',
+      backupPath: '/tmp/designer-migration-OURydt/e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394.backup',
+      completed: [
+        'agent:agent_8977430d-303a-4f80-b593-3f9d9123a2d1'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_8977430d-303a-4f80-b593-3f9d9123a2d1:e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394',
+      revision: 4,
+      stages: [
+        'agent:agent_8977430d-303a-4f80-b593-3f9d9123a2d1'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: 'e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394', backupPath: '/tmp/designer-migration-OURydt/e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394.backup', completed: [ 'agent:agent_8977430d-303a-4f80-b593-3f9d9123a2d1' ], id: 'agent-plugins-v1:agent_8977430d-303a-4f80-b593-3f9d9123a2d1:e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394', revision: 4, stages: [ 'agent:agent_8977430d-303a-4f80-b593-3f9d9123a2d1' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_8977430d-303a-4f80-b593-3f9d9123a2d1:e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394', revision: 4, state: 'complete', stages: [ 'agent:agent_8977430d-303a-4f80-b593-3f9d9123a2d1' ], completed: [ 'agent:agent_8977430d-303a-4f80-b593-3f9d9123a2d1' ], backupPath: '/tmp/designer-migration-OURydt/e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394.backup', backupHash: 'e8e402a4955a80b5bd06681370e8466a0fa8352949f19a24bc4b6433c3cb7394', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy subset: exact contribution/tool sets and independent resources (12.467483ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: '7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a',
+      backupPath: '/tmp/designer-migration-NafUw0/7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a.backup',
+      completed: [
+        'agent:agent_e7b8bed6-95ca-4303-b17c-7872151ce544'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_e7b8bed6-95ca-4303-b17c-7872151ce544:7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a',
+      revision: 4,
+      stages: [
+        'agent:agent_e7b8bed6-95ca-4303-b17c-7872151ce544'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: '7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a', backupPath: '/tmp/designer-migration-NafUw0/7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a.backup', completed: [ 'agent:agent_e7b8bed6-95ca-4303-b17c-7872151ce544' ], id: 'agent-plugins-v1:agent_e7b8bed6-95ca-4303-b17c-7872151ce544:7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a', revision: 4, stages: [ 'agent:agent_e7b8bed6-95ca-4303-b17c-7872151ce544' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_e7b8bed6-95ca-4303-b17c-7872151ce544:7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a', revision: 4, state: 'complete', stages: [ 'agent:agent_e7b8bed6-95ca-4303-b17c-7872151ce544' ], completed: [ 'agent:agent_e7b8bed6-95ca-4303-b17c-7872151ce544' ], backupPath: '/tmp/designer-migration-NafUw0/7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a.backup', backupHash: '7f907592d8c672d380a945bb35d19d90bea70e1eca8e3d5b35add0d18f35512a', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy pi-only: exact contribution/tool sets and independent resources (12.221289ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: 'f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5',
+      backupPath: '/tmp/designer-migration-uwLdGp/f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5.backup',
+      completed: [
+        'agent:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b:f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5',
+      revision: 4,
+      stages: [
+        'agent:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: 'f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5', backupPath: '/tmp/designer-migration-uwLdGp/f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5.backup', completed: [ 'agent:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b' ], id: 'agent-plugins-v1:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b:f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5', revision: 4, stages: [ 'agent:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b:f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5', revision: 4, state: 'complete', stages: [ 'agent:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b' ], completed: [ 'agent:agent_3f1256f9-c282-43d5-be2a-11fe5b33ac3b' ], backupPath: '/tmp/designer-migration-uwLdGp/f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5.backup', backupHash: 'f1af363adca111f143c8c9da4e7fba545988280844fc72aa2cf335022d8904c5', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy codex-native: exact contribution/tool sets and independent resources (11.004997ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: '5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9',
+      backupPath: '/tmp/designer-migration-SDSifi/5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9.backup',
+      completed: [
+        'agent:agent_838a401b-f34e-4422-9a82-8d767d52a42f'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_838a401b-f34e-4422-9a82-8d767d52a42f:5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9',
+      revision: 4,
+      stages: [
+        'agent:agent_838a401b-f34e-4422-9a82-8d767d52a42f'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: '5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9', backupPath: '/tmp/designer-migration-SDSifi/5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9.backup', completed: [ 'agent:agent_838a401b-f34e-4422-9a82-8d767d52a42f' ], id: 'agent-plugins-v1:agent_838a401b-f34e-4422-9a82-8d767d52a42f:5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9', revision: 4, stages: [ 'agent:agent_838a401b-f34e-4422-9a82-8d767d52a42f' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_838a401b-f34e-4422-9a82-8d767d52a42f:5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9', revision: 4, state: 'complete', stages: [ 'agent:agent_838a401b-f34e-4422-9a82-8d767d52a42f' ], completed: [ 'agent:agent_838a401b-f34e-4422-9a82-8d767d52a42f' ], backupPath: '/tmp/designer-migration-SDSifi/5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9.backup', backupHash: '5dfdfe4ab718ef9016b7bb7b691226ecac3c006dc3d2399206ecb9c9a085d3c9', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy omp: exact contribution/tool sets and independent resources (4.525968ms)
+  TypeError: Cannot read properties of undefined (reading 'adapterId')
+      at runtime (file:///workspace/test/plugin-system-agent-designer.test.mjs:18:137)
+      at prepare (file:///workspace/test/plugin-system-agent-designer.test.mjs:35:92)
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:48:57)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy manual: exact contribution/tool sets and independent resources (20.167953ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: 'eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169',
+      backupPath: '/tmp/designer-migration-wG8xv0/eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169.backup',
+      completed: [
+        'agent:agent_e169b536-98ed-4142-b098-7c0ad0fe674e'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_e169b536-98ed-4142-b098-7c0ad0fe674e:eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169',
+      revision: 4,
+      stages: [
+        'agent:agent_e169b536-98ed-4142-b098-7c0ad0fe674e'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: 'eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169', backupPath: '/tmp/designer-migration-wG8xv0/eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169.backup', completed: [ 'agent:agent_e169b536-98ed-4142-b098-7c0ad0fe674e' ], id: 'agent-plugins-v1:agent_e169b536-98ed-4142-b098-7c0ad0fe674e:eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169', revision: 4, stages: [ 'agent:agent_e169b536-98ed-4142-b098-7c0ad0fe674e' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_e169b536-98ed-4142-b098-7c0ad0fe674e:eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169', revision: 4, state: 'complete', stages: [ 'agent:agent_e169b536-98ed-4142-b098-7c0ad0fe674e' ], completed: [ 'agent:agent_e169b536-98ed-4142-b098-7c0ad0fe674e' ], backupPath: '/tmp/designer-migration-wG8xv0/eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169.backup', backupHash: 'eaae6e24acbc0207d9894933a91a7da6763169e68bdcbcc5de43fb3b0501f169', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy run: exact contribution/tool sets and independent resources (11.731065ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: 'ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd',
+      backupPath: '/tmp/designer-migration-ruIBQa/ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd.backup',
+      completed: [
+        'agent:agent_1b69d717-5096-4f90-80df-39ecb3acf632'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_1b69d717-5096-4f90-80df-39ecb3acf632:ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd',
+      revision: 4,
+      stages: [
+        'agent:agent_1b69d717-5096-4f90-80df-39ecb3acf632'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: 'ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd', backupPath: '/tmp/designer-migration-ruIBQa/ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd.backup', completed: [ 'agent:agent_1b69d717-5096-4f90-80df-39ecb3acf632' ], id: 'agent-plugins-v1:agent_1b69d717-5096-4f90-80df-39ecb3acf632:ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd', revision: 4, stages: [ 'agent:agent_1b69d717-5096-4f90-80df-39ecb3acf632' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_1b69d717-5096-4f90-80df-39ecb3acf632:ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd', revision: 4, state: 'complete', stages: [ 'agent:agent_1b69d717-5096-4f90-80df-39ecb3acf632' ], completed: [ 'agent:agent_1b69d717-5096-4f90-80df-39ecb3acf632' ], backupPath: '/tmp/designer-migration-ruIBQa/ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd.backup', backupHash: 'ec19d4518172d9122c0c5fc1a7fd1575ab5d5bf798335bc4326cc4ff1e32f4dd', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy resources: exact contribution/tool sets and independent resources (9.908381ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: '3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0',
+      backupPath: '/tmp/designer-migration-9Tt1zU/3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0.backup',
+      completed: [
+        'agent:agent_edf41a45-d38f-4736-910d-facdb0785493'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_edf41a45-d38f-4736-910d-facdb0785493:3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0',
+      revision: 4,
+      stages: [
+        'agent:agent_edf41a45-d38f-4736-910d-facdb0785493'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: '3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0', backupPath: '/tmp/designer-migration-9Tt1zU/3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0.backup', completed: [ 'agent:agent_edf41a45-d38f-4736-910d-facdb0785493' ], id: 'agent-plugins-v1:agent_edf41a45-d38f-4736-910d-facdb0785493:3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0', revision: 4, stages: [ 'agent:agent_edf41a45-d38f-4736-910d-facdb0785493' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_edf41a45-d38f-4736-910d-facdb0785493:3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0', revision: 4, state: 'complete', stages: [ 'agent:agent_edf41a45-d38f-4736-910d-facdb0785493' ], completed: [ 'agent:agent_edf41a45-d38f-4736-910d-facdb0785493' ], backupPath: '/tmp/designer-migration-9Tt1zU/3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0.backup', backupHash: '3d7415bf90572e0cef4e6bc99b80bcf52729bae88ef8c46de2eb7db7495081b0', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy mcp: exact contribution/tool sets and independent resources (10.845105ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: '35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679',
+      backupPath: '/tmp/designer-migration-cLpqFl/35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679.backup',
+      completed: [
+        'agent:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806:35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679',
+      revision: 4,
+      stages: [
+        'agent:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: '35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679', backupPath: '/tmp/designer-migration-cLpqFl/35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679.backup', completed: [ 'agent:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806' ], id: 'agent-plugins-v1:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806:35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679', revision: 4, stages: [ 'agent:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806:35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679', revision: 4, state: 'complete', stages: [ 'agent:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806' ], completed: [ 'agent:agent_f9b05fee-ede5-4483-bbdf-e4fb8a57b806' ], backupPath: '/tmp/designer-migration-cLpqFl/35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679.backup', backupHash: '35fc181d39f5e971d027453633274fe24e65c28a6be94279551392661d7be679', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy unknown-pi-package: exact contribution/tool sets and independent resources (10.216993ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: '356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180',
+      backupPath: '/tmp/designer-migration-EzEkG1/356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180.backup',
+      completed: [
+        'agent:agent_d0623f38-cffc-450c-b98e-568ff0122e57'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_d0623f38-cffc-450c-b98e-568ff0122e57:356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180',
+      revision: 4,
+      stages: [
+        'agent:agent_d0623f38-cffc-450c-b98e-568ff0122e57'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: '356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180', backupPath: '/tmp/designer-migration-EzEkG1/356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180.backup', completed: [ 'agent:agent_d0623f38-cffc-450c-b98e-568ff0122e57' ], id: 'agent-plugins-v1:agent_d0623f38-cffc-450c-b98e-568ff0122e57:356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180', revision: 4, stages: [ 'agent:agent_d0623f38-cffc-450c-b98e-568ff0122e57' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_d0623f38-cffc-450c-b98e-568ff0122e57:356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180', revision: 4, state: 'complete', stages: [ 'agent:agent_d0623f38-cffc-450c-b98e-568ff0122e57' ], completed: [ 'agent:agent_d0623f38-cffc-450c-b98e-568ff0122e57' ], backupPath: '/tmp/designer-migration-EzEkG1/356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180.backup', backupHash: '356f7edb80202acd7b948b5ae03232e3b08da72ea68fc1ce8e39223f6e858180', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:43:39
+✖ legacy unknown-tool: exact contribution/tool sets and independent resources (12.451223ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    {
+      backupHash: '5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e',
+      backupPath: '/tmp/designer-migration-Hb6frQ/5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e.backup',
+      completed: [
+        'agent:agent_835605dd-7850-46da-94e6-be3126a4b7de'
+      ],
+  -   currentStage: undefined,
+  -   diagnostic: undefined,
+      id: 'agent-plugins-v1:agent_835605dd-7850-46da-94e6-be3126a4b7de:5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e',
+      revision: 4,
+      stages: [
+        'agent:agent_835605dd-7850-46da-94e6-be3126a4b7de'
+      ],
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { backupHash: '5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e', backupPath: '/tmp/designer-migration-Hb6frQ/5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e.backup', completed: [ 'agent:agent_835605dd-7850-46da-94e6-be3126a4b7de' ], id: 'agent-plugins-v1:agent_835605dd-7850-46da-94e6-be3126a4b7de:5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e', revision: 4, stages: [ 'agent:agent_835605dd-7850-46da-94e6-be3126a4b7de' ], state: 'complete' },
+    expected: { id: 'agent-plugins-v1:agent_835605dd-7850-46da-94e6-be3126a4b7de:5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e', revision: 4, state: 'complete', stages: [ 'agent:agent_835605dd-7850-46da-94e6-be3126a4b7de' ], completed: [ 'agent:agent_835605dd-7850-46da-94e6-be3126a4b7de' ], backupPath: '/tmp/designer-migration-Hb6frQ/5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e.backup', backupHash: '5a31ed38215b516f3db13553de3e004b4cd0c61e2be9f5e35514f5017dfe062e', currentStage: undefined, diagnostic: undefined },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/plugin-system-agent-designer.test.mjs:156:1
+✖ API v2 rejects legacy/version/required manipulation; unchanged unresolved metadata is saveable (3.161617ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /missing|installed/i. Input:
+
+  "TypeError: Cannot read properties of undefined (reading 'adapterId')"
+
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:167:9)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: TypeError: Cannot read properties of undefined (reading 'adapterId')
+        at runtime (file:///workspace/test/plugin-system-agent-designer.test.mjs:18:137)
+        at file:///workspace/test/plugin-system-agent-designer.test.mjs:167:142
+        at getActual (node:assert:611:5)
+        at strict.throws (node:assert:759:24)
+        at TestContext.<anonymous> (file:///workspace/test/plugin-system-agent-designer.test.mjs:167:9)
+        at Test.runInAsyncScope (node:async_hooks:227:14)
+        at Test.run (node:internal/test_runner/test:1201:25)
+        at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+        at Test.postRun (node:internal/test_runner/test:1330:19)
+        at Test.run (node:internal/test_runner/test:1258:12),
+    expected: /missing|installed/i,
+    operator: 'throws',
+    diff: 'simple'
+  }

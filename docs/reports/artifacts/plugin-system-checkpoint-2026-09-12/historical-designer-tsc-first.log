@@ -1,0 +1,1 @@
+src/apps/chat/plugin-management-routes.ts(47,34): error TS2344: Type 'T' does not satisfy the constraint 'object'.

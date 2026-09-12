@@ -1,0 +1,3 @@
+src/web/http.ts(86,3): error TS2322: Type 'Buffer<ArrayBufferLike> | undefined' is not assignable to type 'BodyInit | null | undefined'.
+  Type 'Buffer<ArrayBufferLike>' is not assignable to type 'BodyInit | null | undefined'.
+    Type 'Buffer<ArrayBufferLike>' is missing the following properties from type 'URLSearchParams': size, append, delete, get, and 2 more.

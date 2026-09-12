@@ -1,0 +1,53 @@
+✔ portable delegated sessions require delivery of generated management context (16.310672ms)
+✖ runtime resources isolate selected skills, context, MCP config, secrets, and verified inventory (116.472875ms)
+✔ runtime resources expose adapter-observed delivery instead of generic capability guesses (17.318992ms)
+✔ native automatic context discovery is independent from Pibo-selected context delivery (4.814942ms)
+✔ explicit context remains injectable when configurable native discovery is disabled (27.357666ms)
+✔ Pi consumes an explicitly selected native context file only through native discovery (110.537811ms)
+✔ runtime resources deduplicate native context through a symlinked workspace (5.80052ms)
+✔ runtime resources deduplicate only the exact native context file selected by runtime precedence (16.402144ms)
+✔ runtime context precedence skips non-file native candidates (10.204908ms)
+✔ runtime context deduplication follows native Codex project-root boundaries (16.061222ms)
+✔ runtime context deduplication follows OMP cwd-only, nearest, ancestor, and repository boundaries (34.378414ms)
+✔ runtime resources reject missing secret references and symlinks that escape a selected skill (19.400043ms)
+✔ runtime resources reject selected MCP transports that the adapter cannot deliver (14.092101ms)
+✔ Pi Bash inherits only the router-owned adapter environment without process-global mutation (135.438749ms)
+✔ router gives tools and resources one generation and disposes isolated state (42.032847ms)
+✔ model catalog groups models by provider and carries auth state (3.409063ms)
+✔ load model catalog returns empty providers when service creation fails (0.523977ms)
+✔ portable tool sessions share one frozen tool selection across direct and MCP delivery (114.323604ms)
+✔ generic routed orchestration queues and correlates a non-Pi fake adapter (103.471838ms)
+✔ generic routed session preserves output identities across successful compaction (8.371564ms)
+✔ generic model switching preserves Pibo reasoning when a runtime reapplies its own default (5.309433ms)
+✔ generic routed orchestration tries ordered provider fallbacks and restores the primary model (8.569678ms)
+✔ provider fallback does not retry context or runtime failures (6.996934ms)
+✔ generic routed requests remain cancellable during asynchronous message preflight (22.708848ms)
+✔ generic router rejects profile selections the runtime cannot deliver (3.76252ms)
+✔ generic routed controls reject unadvertised adapter capabilities explicitly (5.348308ms)
+✔ fork identity reads and transitions reject queued or active routed work (25.347358ms)
+✔ running-safe fork controls snapshot completed history without interrupting the source turn (9.855239ms)
+✔ fork-candidate page reads serialize accepted message drain behind OMP-style idle work (18.430696ms)
+✔ adapter-shared auth mutations recycle every affected configured runtime session (9.327987ms)
+✔ runtime login and model menus use the active adapter's real auth status without hiding unauthenticated models (6.836632ms)
+✔ cold-start ramps remain bounded across rooms and do not activate historical sessions (161.879036ms)
+✔ bounded active runtime pool evicts idle generations and can reopen their durable sessions (7.012444ms)
+✔ abort cancels a provider capacity wait without entering the provider or borrowing its active slot (11.479309ms)
+✔ abort acknowledges a blocked cold start before adapter initialization settles (9.524606ms)
+✔ queue clear persists the same ingress-plus-runtime count that its caller receives (3.720068ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 35
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4090.452798
+
+✖ failing tests:
+
+test at test/agent-runtime-resource-service.test.mjs:154:1
+✖ runtime resources isolate selected skills, context, MCP config, secrets, and verified inventory (116.472875ms)
+  TypeError: Cannot read properties of undefined (reading 'metadata')
+      at TestContext.<anonymous> (file:///workspace/test/agent-runtime-resource-service.test.mjs:255:35)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)

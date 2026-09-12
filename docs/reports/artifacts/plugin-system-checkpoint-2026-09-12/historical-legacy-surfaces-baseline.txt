@@ -1,0 +1,580 @@
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:README.md:161:npm run tui:routed -- codex
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:README.md:174:pibo pi-packages  # register Pi Coding Agent packages
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:README.md:179:pibo tui:routed   # start the routed Pibo TUI
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:README.md:189:- `docs/pi-packages.md` documents Pi package registration.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/guides/pibo-vscode-ext-quickstart.md:220:Chat-vscode-SPA über `window.location.replace('http://127.0.0.1:4788/...')`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/installation-profiles.md:26:Planning and staging work wherever the Pibo CLI runs. Host apply currently targets Linux with systemd and one of `apt-get`, `dnf`, or `pacman`. The pinned code-server download supports Linux amd64 and arm64. Containers and other service managers should use Vanilla plan JSON or a staged tree as the integration contract instead of `--apply`.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/installation-profiles.md:28:Vanilla adds only the gateway service and Caddy beyond the installed npm package. Batteries Included also downloads a 235 MB code-server archive, installs Chromium and two isolated browser-tool runtimes, and installs isolated MCP packages. Exact extracted size and memory depend on the distribution and workload; budget several gigabytes of disk and at least 2 GiB of available memory for a practical BI workstation. Browser sessions and IDE extension hosts add workload-dependent processes.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/installation-profiles.md:82:Real host mutation requires both `--apply` and `--yes`, requires root, validates pinned code-server downloads with SHA-256, and uses `pibo gateway web restart` instead of bypassing the gateway's active-session safety check.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/installation-profiles.md:120:Stop the manually managed code-server unit, archive its unit and Caddy configuration outside `/etc`, and then apply the profile. Setup deliberately refuses to overwrite an unmanaged or locally modified target file. This makes ownership transfer explicit instead of silently deleting unrelated proxy sites or service customizations. Reuse the existing workspace root with `--workspace-root`; the installer does not copy or delete workspace data. Existing browser templates under Pibo Home also remain in place.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/okf-migration-ledger.json:1122:      "path": "docs/legacy/pi-packages.md",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/okf-migration-ledger.json:1132:        "source_path": "docs/legacy/pi-packages.md",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/okf-migration-ledger.json:10830:      "path": "docs/reports/cron-test-reports/2026-05-10-1658-pi-packages.md",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/okf-migration-ledger.json:10840:        "source_path": "docs/reports/cron-test-reports/2026-05-10-1658-pi-packages.md",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/okf-migration-ledger.json:12852:      "path": "docs/specs/resources/external-mcp-and-pi-packages.md",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/okf-migration-ledger.json:13620:      "path": "src/apps/chat-vscode/README.md",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:30:| npm `@pasko70/pibo` | automated via `npm publish` (or the release script's `--publish-npm` flag) | every `main` commit that includes a version bump | the `pibo` CLI, the gateway, the WebView bundle at `dist/apps/chat-vscode-web/` |
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:31:| VS Code Marketplace `pibo.pibo-vscode` | **maintainer uploads the VSIX manually** via <https://marketplace.visualstudio.com/manage> | every release that needs the extension UI updated | the `.vsix` produced by `npm run vscode:package` |
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:33:The npm package and the Marketplace extension are versioned together. The release script bumps both `package.json` (npm) and `src/apps/chat-vscode/package.json` (extension) in one go so the published artifacts stay in lockstep.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:40:- The extension's `src/apps/chat-vscode/package.json#version` is the Marketplace version. It is kept equal to the npm version (the release script enforces this).
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:65:4. Runs `npm run vscode:package` to produce `dist/apps/vscode-artifacts/pibo-vscode-1.3.0.vsix` and a stable `latest.vsix` copy.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:73:git add package.json src/apps/chat-vscode/package.json
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:153:Confirm that `status` reports `pibo.pibo-vscode@1.3.0` installed via the expected `code` binary, and that the WebView loads the gateway at `http://127.0.0.1:4788/apps/chat-vscode/`.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:167:- `dist/` — the compiled server, the gateway plugins, the WebView bundles (chat-ui, context-files-ui, chat-vscode-web).
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/operations/vscode-extension-release.md:185:The extension's WebView loads from `http://<gateway>/apps/chat-vscode/`, not from the `.vsix`. The gateway serves the bundle out of `dist/apps/chat-vscode-web/`. If the bundle were not in the npm package, the gateway would return 404 for the WebView and the extension would be unusable.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:34:- The initial folder is a convenience, not a filesystem sandbox. The code-server process account and its operating-system permissions remain the access boundary.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:40:Run code-server on a loopback-only port and expose it through the same HTTPS origin as Pibo:
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:46:      -> /apps/vscode/*  -> code-server on 127.0.0.1
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:93:Run code-server without its own login only when both conditions hold:
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:101:code-server \
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:110:The integration accepts VS Code's standard light, dark, and high-contrast themes. To match Pibo's dark shell and avoid a visible color transition during startup, provision the code-server user settings with VS Code's current dark default rather than relying on the browser or operating-system color scheme:
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:119:For the service layout above, store this as `<user-data-dir>/User/settings.json` before starting code-server.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:127:The embedded IDE has the filesystem and terminal permissions of its server process. Treat access to the VS Code tab as equivalent to shell access for that operating-system account. Scope the process user and accessible workspace roots accordingly; do not expose an unauthenticated code-server port publicly.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/project/vscode-web-integration.md:129:The iframe is an unsandboxed same-origin application so Pibo can inspect workbench readiness and support normal IDE behavior. Treat code-server and its installed extensions as part of Pibo's trusted web origin, keep them patched, and never proxy an untrusted IDE service under that origin.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:40:          symbol: "scripts.vscode:webview:build"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:42:          symbol: "scripts.vscode:package"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:63:        - path: "src/apps/chat-vscode/extension/webview/vite.config.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:76:        - "npm run vscode:package"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:263:        - path: "src/apps/chat-vscode/package.json"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:265:        - path: "src/apps/chat-vscode/package.json"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:267:        - path: "src/apps/chat-vscode/package.json"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:332:- npm run build|typecheck|prepack|postpack|vscode:package|release.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:358:- Node >=24, a package files allowlist, production shrinkwrap, exact selected dependency pins plus lockfile resolution, private setup files, checksummed code-server downloads, and public Better Auth validation constrain delivery.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:368:- Standalone Docker uses node:24-slim and installs x64/arm64-independent Debian packages, while setup's code-server download supports only x64 and arm64.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:378:- Exact source evidence: `package.json:54` — `scripts.build`; `package.json:50` — `scripts.workflows:build`; `package.json:45` — `scripts.web-ui:build`; `package.json:47` — `scripts.vscode:webview:build`; `package.json:49` — `scripts.vscode:package`; `package.json:25` — `bin`; `tsconfig.json:2` — `compilerOptions`; `tsconfig.json:15` — `include`; `tsconfig.json:16` — `exclude`; `packages/workflows/package.json:16` — `scripts.build`; `packages/workflows/package.json:7` — `main`; `packages/workflows/package.json:8` — `types`; `packages/workflows/package.json:9` — `exports`; `src/apps/chat-ui/vite.config.ts:9` — `export default defineConfig({`; `src/apps/context-files-ui/vite.config.ts:9` — `export default defineConfig({`; `src/apps/chat-vscode/extension/webview/vite.config.ts:9` — `export default defineConfig({`; `src/bin/pibo.ts:5` — `await runPiboCli()`; `src/bin/rg.ts:6` — `const child = spawn`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:380:- Public surfaces: `npm run build`; `npm run vscode:package`; `pibo and rg binaries`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:469:- Exact source evidence: `scripts/release.mjs` — `parseArgs`, `currentGitCommit`, `currentGitTag`, and `runInherit`; `scripts/create-github-release.mjs` — `createRelease`, `preflightReleaseAsset`, and `ASSET_MAX_BYTES`; `scripts/vscode-package.mjs` — `expectedFilename`, `targetPath`, and `latestPath`; `src/apps/chat-vscode/package.json` — `version`, `publisher`, and `name`; `package.json` — `version`, `scripts.release`, and `scripts.release:github`; `docs/project/operations/vscode-extension-release.md` and `docs/project/guides/pibo-vscode-ext-quickstart.md` — release operation guidance.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:498:- npm run build|typecheck|prepack|postpack|vscode:package|release.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/delivery/package-build-install-deploy-release.md:527:13. Reject claims that root build packages the extension host or VSIX; it builds only the VS Code webview. vscode:package separately bundles the extension and creates VSIX files.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/gateway/local-tui-and-simple-agent-api.md:39:        - path: "src/local/extension.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/gateway/local-tui-and-simple-agent-api.md:41:        - path: "src/local/tui.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/operator-cli.md:39:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/operator-cli.md:194:- Registered root surface: auth, mcp, tools, pi-packages, debug, data, gateway, compute, resources, preview, setup, skills, cron, loop, ralph, vscode, config, profile, tui, tui:routed, tui:sessions, router, gateway:web, client. Root discovery currently prints all except compatibility router.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/operator-cli.md:233:- Tests: `test/mcp-cli.test.mjs` — “pibo without args prints compact discovery”; `test/resources-cli.test.mjs` — “root discovery includes resources and resources help exposes only immediate actions”; `test/cli-ui-session-app.test.mjs` — “pibo tui:sessions command help and root discovery describe the new UI without hiding existing TUI commands”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:39:        - path: test/cli-ui-ink-renderer.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:64:        - path: test/cli-ui-ink-renderer.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:76:        - path: src/apps/cli-ui/InkSessionApp.ts
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:78:        - path: src/apps/cli-ui/cliSessionsCommand.ts
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:83:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:85:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:87:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:89:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:91:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:93:        - path: test/cli-ui-input-cursor.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:109:        - path: src/apps/cli-ui/cliSessionsCommand.ts
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:120:        - path: test/cli-ui-session-app.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:159:- pibo tui is direct Pi TUI; pibo tui:routed is local routed TUI; pibo tui:sessions is the Ink room/session UI. tui:sessions requires TTY input/output except explicit test seams; --demo selects deterministic fake data and is not default.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:198:- Tests: `test/session-ui-terminal-rows.test.mjs` — “compact row generation covers core terminal row kinds deterministically”; `test/cli-ui-ink-renderer.test.mjs` — “Ink renderer consumes the canonical shared parity fixture”; `test/session-ui-terminal-rows.test.mjs` — “shared terminal view-model source stays renderer-neutral”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:213:- Tests: `test/session-ui-terminal-rows.test.mjs` — “compact terminal row identity survives transcript, event-log, and live tool projection handoffs”; `test/session-ui-terminal-rows.test.mjs` — “tool display modes preserve default output and support hide, slim, and intent views”; `test/cli-ui-ink-renderer.test.mjs` — “Ink long-output rows collapse to five lines and expand full details”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:227:- Source: `src/apps/cli-ui/InkSessionApp.ts` — `InkSessionApp`; `src/apps/cli-ui/cliSessionsCommand.ts` — `runCliSessionsUi`; `src/session-ui/commandCatalog.ts` — `WEB_PARITY_SLASH_COMMANDS`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:228:- Tests: `test/cli-ui-session-app.test.mjs` — “Ink session input reducer captures text, enter, navigation, escape, and slash suggestions”; `test/cli-ui-session-app.test.mjs` — “Slash /model opens provider and model command menus”; `test/cli-ui-session-app.test.mjs` — “Slash /fork-candidates opens a candidate picker and can fork by entry id”; `test/cli-ui-session-app.test.mjs` — “default app viewport bounds large sessions and wraps narrow terminal lines”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:242:- Source: `src/cli-session/sessionSource.ts` — `CliSessionSource`; `src/cli-session/localSessionSource.ts` — `LocalCliSessionSource`; `src/apps/cli-ui/cliSessionsCommand.ts` — `createDefaultLocalCliSessionSource`; `src/cli-session/fakeSessionSource.ts` — `FakeCliSessionSource`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:243:- Tests: `test/cli-session-source.test.mjs` — “local CLI source resolves canonical room titles and hydrates existing room transcripts”; `test/cli-session-source.test.mjs` — “local CLI source writes Web-visible navigation and message read models app-globally”; `test/cli-session-source.test.mjs` — “local CLI close drains the owned router before unsubscribing and closing stores”; `test/cli-ui-session-app.test.mjs` — “exit cleanup closes open session subscriptions and source idempotently”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/operator/terminal-ui.md:299:- node --test test/cli-ui-session-app.test.mjs test/cli-ui-ink-renderer.test.mjs test/session-ui-terminal-rows.test.mjs test/cli-session-source.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:52:        - "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:87:        - "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:120:        - "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:149:        - "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:201:- "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:202:- "InitialSessionContext carries runtime/options, model/fallbacks, thinking/fast settings, tools, skills, subagents, MCP servers, Pi packages, context files, diagnostics, and built-in modes."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/agents-and-profiles.md:212:- "Profiles select runtime/model/options/tools/packages/skills/subagents/context/MCP/Pi packages; user-editable agents add folders, aliases, archive, and audit events."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:70:        - "pibo pi-packages command family"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:109:        - "pibo pi-packages command family"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:119:        - path: "src/pi-packages/store.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:120:          symbol: "listPiPackages"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:121:        - path: "src/pi-packages/store.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:123:        - path: "src/pi-packages/store.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:125:        - path: "src/pi-packages/store.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:127:        - path: "src/pi-packages/runtime.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:129:        - path: "src/pi-packages/metadata.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:130:          symbol: "parsePiPackageSource"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:131:        - path: "src/pi-packages/metadata.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:132:          symbol: "inspectPiPackageSource"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:134:        - path: "test/pi-packages.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:136:        - path: "test/pi-packages.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:138:        - path: "test/pi-packages.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:142:        - "pibo pi-packages command family"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:160:        - path: "src/pi-packages/metadata.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:161:          symbol: "parsePiPackageSource"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:162:        - path: "src/pi-packages/cli.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:163:          symbol: "runPiPackagesCli"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:167:        - path: "test/pi-packages.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:169:        - path: "test/pi-packages.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:170:          name: "pibo pi-packages CLI provides progressive help and local add/list/remove"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:181:        - "pibo pi-packages command family"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:242:- "pibo pi-packages command family"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:253:- "pibo pi-packages command family"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:259:- "Only profile-selected MCP servers and Pi packages enter a runtime; Pi packages remain Pi-only."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:266:Persistence and lifecycle state: MCP config/registry state and pi-packages.json-style store under PIBO_HOME.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:338:- `src/pi-packages/store.ts` — `listPiPackages`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:339:- `src/pi-packages/store.ts` — `upsertPiPackage`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:340:- `src/pi-packages/store.ts` — `removePiPackage`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:341:- `src/pi-packages/store.ts` — `setPiPackageEnabled`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:342:- `src/pi-packages/runtime.ts` — `getPiPackageRuntimeOptions`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:343:- `src/pi-packages/metadata.ts` — `parsePiPackageSource`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:344:- `src/pi-packages/metadata.ts` — `inspectPiPackageSource`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:347:- `test/pi-packages.test.mjs` — `pi package store preserves previous installed package when refresh input is error`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:348:- `test/pi-packages.test.mjs` — `pi package runtime bridge only loads selected registered packages`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:349:- `test/pi-packages.test.mjs` — `pi package runtime skips globally disabled selected packages`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:367:- `src/pi-packages/metadata.ts` — `parsePiPackageSource`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:368:- `src/pi-packages/cli.ts` — `runPiPackagesCli`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:371:- `test/pi-packages.test.mjs` — `pi package source parser rejects non-pi.dev URLs`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:372:- `test/pi-packages.test.mjs` — `pibo pi-packages CLI provides progressive help and local add/list/remove`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:381:Capability IDs: "pibo.resources.mcp-pi-packages".
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:391:- "src/pi-packages/cli.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:392:- "src/pi-packages/metadata.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:393:- "src/pi-packages/runtime.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/external-mcp-and-pi-packages.md:394:- "src/pi-packages/store.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/index.md:7:* [External MCP and Pi Package Management](external-mcp-and-pi-packages.md) - Defines the implemented external mcp and pi package management contract and its current ownership, security, and verification boundaries&#46;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/skills-and-context-files.md:175:    claim: "Selected skills/context/MCP/Pi packages are loaded entirely by the resource specs."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/resources/skills-and-context-files.md:358:- **Rejected claim:** Selected skills/context/MCP/Pi packages are loaded entirely by the resource specs. — Catalog and selection semantics are here; generation materialization is RUN-003 and Pi adapter loading is RUN-004.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/security/private-files-and-http.md:163:        - path: "test/cli-ui-session-app.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/security/private-files-and-http.md:367:- `test/cli-ui-session-app.test.mjs` — `renderCliStatusCardText renders shared status bars and redacts secrets`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:95:        - path: "src/apps/chat-vscode/extension/webview/ChatTerminalApp.tsx"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:112:        - path: "test/chat-vscode/integration.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:113:          name: "inliner produces ~800 KB of HTML for the real chat-vscode bundle"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:114:        - path: "test/chat-vscode/session-selector.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:237:- Root test/*.test.mjs, test/chat-vscode/*.test.mjs, explicit nested tests, and packages/workflows/src/testing/*.test.ts.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:249:- Without explicit paths, the runner sorts and executes only top-level test/*.test.mjs and test/chat-vscode/*.test.mjs, forwards SIGINT/SIGTERM, and removes only its mkdtemp root on child close.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:275:Project validation MUST build before tests, then run sorted top-level and chat-vscode Node tests in an isolated HOME/PIBO_HOME/XDG environment, with Windows-only TEMP/TMP isolation and concurrency four, dangerous environment cleanup, signal forwarding, and exact temporary-root removal.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:323:- Exact source evidence: `src/apps/chat-ui/src/App.tsx:259` — `App`; `src/apps/chat-vscode/extension/webview/ChatTerminalApp.tsx:47` — `ChatTerminalApp`; `scripts/validate-web-annotations-browser.mjs:22` — `main`; `scripts/validate-web-annotations-browser.mjs:57` — `validateStaticFixture`; `scripts/validate-web-annotations-browser.mjs:113` — `validateExistingTargetFixture`; `scripts/validate-web-annotations-browser.mjs:289` — `launchChrome`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:324:- Exact named tests: `test/chat-ui-integration.test.mjs:631` — “live stream simulation: thinking -> assistant -> tool -> finish”; `test/chat-ui-integration.test.mjs:873` — “incremental patch produces same result as full build for 50+ event stream”; `test/chat-ui-form-control-identifiers.test.mjs:12` — “visible Chat Web form controls have stable unique identifiers”; `test/chat-vscode/integration.test.mjs:14` — “inliner produces ~800 KB of HTML for the real chat-vscode bundle”; `test/chat-vscode/session-selector.test.mjs:69` — “renders the right view for the mode prop”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:335:node scripts/run-test-suite.mjs test/chat-ui-integration.test.mjs test/chat-ui-form-control-identifiers.test.mjs test/chat-vscode/integration.test.mjs test/chat-vscode/session-selector.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:400:- Root test/*.test.mjs, test/chat-vscode/*.test.mjs, explicit nested tests, and packages/workflows/src/testing/*.test.ts.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/validation/validation-contract.md:429:22. Reject claims that root npm test runs test/vscode/*.test.mjs or arbitrary nested test directories; only test/chat-vscode is added to top-level tests.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:32:        - path: "src/apps/chat-vscode/package.json"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:34:        - path: "src/apps/chat-vscode/package.json"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:36:        - path: "src/apps/chat-vscode/package.json"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:38:        - path: "src/apps/chat-vscode/extension/src/extension.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:40:        - path: "src/apps/chat-vscode/extension/src/commands.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:42:        - path: "src/apps/chat-vscode/extension/src/auth-bridge.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:61:        - path: "src/apps/chat-vscode/extension/src/room-resolver.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:63:        - path: "src/apps/chat-vscode/extension/src/room-resolver.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:65:        - path: "src/apps/chat-vscode/extension/src/workspace-folder-watcher.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:67:        - path: "src/apps/chat-vscode/extension/webview/SessionSelector.tsx"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:69:        - path: "src/apps/chat-vscode/extension/webview/SessionSelector.tsx"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:72:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:74:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:76:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:78:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:80:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:82:        - path: "test/chat-vscode/session-selector.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:97:        - path: "src/apps/chat-vscode/extension/src/workspace-folder-watcher.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:99:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:101:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:103:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:119:        - path: "src/apps/chat-vscode/extension/src/extension.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:121:        - path: "src/apps/chat-vscode/extension/src/room-resolver.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:123:        - path: "src/apps/chat-vscode/extension/src/room-resolver.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:125:        - path: "src/apps/chat-vscode/extension/src/room-resolver.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:127:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:130:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:132:        - path: "test/chat-vscode/room-resolver.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:134:        - path: "test/chat-vscode/webview-host.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:222:- Exact source evidence: `src/apps/chat-vscode/package.json:22` — `contributes.commands`; `src/apps/chat-vscode/package.json:58` — `contributes.views`; `src/apps/chat-vscode/package.json:18` — `activationEvents`; `src/apps/chat-vscode/extension/src/extension.ts:8` — `activate`; `src/apps/chat-vscode/extension/src/commands.ts:11` — `registerCommands`; `src/apps/chat-vscode/extension/src/auth-bridge.ts:12` — `createAuthBridge`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:234:npm run vscode:typecheck
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:235:node scripts/run-test-suite.mjs test/chat-vscode/integration.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:245:- Exact source evidence: `src/apps/chat-vscode/extension/src/room-resolver.ts:33` — `canonicalizePath`; `src/apps/chat-vscode/extension/src/room-resolver.ts:62` — `resolveRoomForWorkspace`; `src/apps/chat-vscode/extension/src/workspace-folder-watcher.ts:23` — `createWorkspaceFolderWatcher`; `src/apps/chat-vscode/extension/webview/SessionSelector.tsx:18` — `SessionSelector`; `src/apps/chat-vscode/extension/webview/SessionSelector.tsx:161` — `RoomPickerView`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:246:- Exact named tests: `test/chat-vscode/room-resolver.test.mjs:11` — “canonicalizePath returns an absolute path”; `test/chat-vscode/room-resolver.test.mjs:16` — “0 matches → kind: single (auto-create) with 2 calls”; `test/chat-vscode/room-resolver.test.mjs:46` — “2 rooms → kind: multiple, no picker call, no create call”; `test/chat-vscode/room-resolver.test.mjs:71` — “1 room → kind: single, no create call”; `test/chat-vscode/room-resolver.test.mjs:94` — “case-sensitive path matching”; `test/chat-vscode/session-selector.test.mjs:69` — “renders the right view for the mode prop”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:257:node scripts/run-test-suite.mjs test/chat-vscode/room-resolver.test.mjs test/chat-vscode/session-selector.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:267:- Exact source evidence: `src/apps/chat-vscode/extension/src/workspace-folder-watcher.ts:23` — `createWorkspaceFolderWatcher`; `src/apps/chat-vscode/extension/src/webview-host.ts:108` — `createWebviewHost`; `src/apps/chat-vscode/extension/src/webview-host.ts:90` — `STATE_KEY_ROOM_ID`; `src/apps/chat-vscode/extension/src/webview-host.ts:91` — `STATE_KEY_WORKSPACE`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:279:npm run vscode:typecheck
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:280:code --extensionDevelopmentPath=src/apps/chat-vscode
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:290:- Exact source evidence: `src/apps/chat-vscode/extension/src/extension.ts:8` — `activate`; `src/apps/chat-vscode/extension/src/room-resolver.ts:18` — `CookieSource`; `src/apps/chat-vscode/extension/src/room-resolver.ts:42` — `buildAuthHeaders`; `src/apps/chat-vscode/extension/src/room-resolver.ts:62` — `resolveRoomForWorkspace`; `src/apps/chat-vscode/extension/src/webview-host.ts:348` — `wrapCookieSourceAsBridge`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:291:- Exact named tests: `test/chat-vscode/room-resolver.test.mjs:124` — “attaches the dev-auth cookie from a CookieSource to the list and create requests”; `test/chat-vscode/room-resolver.test.mjs:167` — “falls back to no-cookie requests when the CookieSource handshake fails”; `test/chat-vscode/webview-host.test.mjs:442` — “when a cookieSource is provided, the sidecar receives a wrapped bridge and reuses the cookie”; `test/vscode-extension-local-auth.test.mjs:63` — “vs code extension can list rooms without a cookie in local auth mode”; `test/vscode-extension-local-auth.test.mjs:77` — “vs code extension can create a room without a cookie in local auth mode”; `test/vscode-extension-local-auth.test.mjs:94` — “x-pibo-socket-peer header is stripped from the response body”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/extension-and-workspace-routing.md:302:node scripts/run-test-suite.mjs test/chat-vscode/room-resolver.test.mjs test/chat-vscode/webview-host.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:33:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:35:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:37:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:39:        - path: "src/apps/chat-vscode/extension/src/sidecar-auth.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:41:        - path: "src/apps/chat-vscode/extension/src/sidecar-auth.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:43:        - path: "src/apps/chat-vscode/extension/src/sidecar-auth.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:45:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:47:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:49:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:52:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:54:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:56:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:58:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:60:        - path: "test/chat-vscode/sidecar-auth.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:62:        - path: "test/chat-vscode/sidecar-auth.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:77:        - path: "src/apps/chat-vscode/extension/src/inlined-chat-html.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:79:        - path: "src/apps/chat-vscode/extension/src/inlined-chat-html.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:81:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:83:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:85:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:87:        - path: "src/apps/chat-vscode/extension/src/webview-host.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:89:        - path: "src/apps/chat-vscode/extension/src/webview-shell.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:91:        - path: "src/apps/chat-vscode/extension/src/webview-shell.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:93:        - path: "src/apps/chat-vscode/extension/src/postmessage-rpc.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:95:        - path: "src/apps/chat-vscode/extension/webview/ChatTerminalApp.tsx"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:98:        - path: "test/chat-vscode/inlined-chat-html.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:100:        - path: "test/chat-vscode/inlined-chat-html.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:102:        - path: "test/chat-vscode/inlined-chat-html.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:104:        - path: "test/chat-vscode/webview-host.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:106:        - path: "test/chat-vscode/webview-host.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:108:        - path: "test/chat-vscode/webview-host.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:110:        - path: "test/chat-vscode/integration.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:111:          name: "inliner produces ~800 KB of HTML for the real chat-vscode bundle"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:125:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:127:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:129:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:131:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:133:        - path: "src/apps/chat-vscode/extension/src/sidecar.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:135:        - path: "src/apps/chat-vscode/extension/src/sidecar-auth.ts"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:138:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:140:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:142:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:144:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:146:        - path: "test/chat-vscode/sidecar.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:148:        - path: "test/chat-vscode/sidecar-auth.test.mjs"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:217:        - "npm run vscode:package"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:249:- Host setup's code-server-based vscode-web component, which is distinct from this desktop extension.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:265:- Build output is copied to src/apps/chat-vscode/dist/chat-vscode-web and the release VSIX directory.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:300:- Exact source evidence: `src/apps/chat-vscode/extension/src/sidecar.ts:121` — `createSidecar`; `src/apps/chat-vscode/extension/src/sidecar.ts:40` — `DEFAULT_SIDECAR_PORT`; `src/apps/chat-vscode/extension/src/sidecar.ts:41` — `HEALTH_PROBE_TIMEOUT_MS`; `src/apps/chat-vscode/extension/src/sidecar-auth.ts:65` — `createSidecarAuthBridge`; `src/apps/chat-vscode/extension/src/sidecar-auth.ts:25` — `DEV_AUTH_COOKIE_NAME`; `src/apps/chat-vscode/extension/src/sidecar-auth.ts:26` — `DEV_AUTH_HANDSHAKE_TIMEOUT_MS`; `src/apps/chat-vscode/extension/src/webview-host.ts:108` — `createWebviewHost`; `src/apps/chat-vscode/extension/src/webview-host.ts:131` — `stopActiveSidecar`; `src/apps/chat-vscode/extension/src/webview-host.ts:348` — `wrapCookieSourceAsBridge`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:301:- Exact named tests: `test/chat-vscode/sidecar.test.mjs:86` — “start binds to 127.0.0.1 and serves /health from the configured gateway”; `test/chat-vscode/sidecar.test.mjs:111` — “falls back to port 0 when the requested port is busy”; `test/chat-vscode/sidecar.test.mjs:381` — “stop() drains in-flight slow requests”; `test/chat-vscode/sidecar.test.mjs:411` — “createSidecar throws a clear error when no authBridge is provided”; `test/chat-vscode/sidecar-auth.test.mjs:89` — “getCookieHeader runs the handshake lazily on the first call”; `test/chat-vscode/sidecar-auth.test.mjs:115` — “reset clears the cached token so the next call re-handshakes”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:312:node scripts/run-test-suite.mjs test/chat-vscode/sidecar.test.mjs test/chat-vscode/sidecar-auth.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:322:- Exact source evidence: `src/apps/chat-vscode/extension/src/inlined-chat-html.ts:81` — `buildInlinedChatHtml`; `src/apps/chat-vscode/extension/src/inlined-chat-html.ts:230` — `listBundleAssetNames`; `src/apps/chat-vscode/extension/src/webview-host.ts:108` — `createWebviewHost`; `src/apps/chat-vscode/extension/src/webview-host.ts:251` — `renderView`; `src/apps/chat-vscode/extension/src/webview-host.ts:303` — `swapToInlinedView`; `src/apps/chat-vscode/extension/src/webview-host.ts:445` — `attachMessageHandler`; `src/apps/chat-vscode/extension/src/webview-shell.ts:52` — `buildWebviewShellHtml`; `src/apps/chat-vscode/extension/src/webview-shell.ts:8` — `generateNonce`; `src/apps/chat-vscode/extension/src/postmessage-rpc.ts:8` — `isWebViewToHostMessage`; `src/apps/chat-vscode/extension/webview/ChatTerminalApp.tsx:47` — `ChatTerminalApp`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:323:- Exact named tests: `test/chat-vscode/inlined-chat-html.test.mjs:44` — “buildInlinedChatHtml inlines the JS and CSS with a nonce and a <base> tag”; `test/chat-vscode/inlined-chat-html.test.mjs:65` — “escapes </script>, &lt;!&#45;&#45;, and &#45;&#45;&gt; inside the JS body”; `test/chat-vscode/inlined-chat-html.test.mjs:85` — “buildInlinedChatHtml throws when the bundle is missing”; `test/chat-vscode/webview-host.test.mjs:200` — “when the sidecar reports healthy and the bundle is present, serves the inlined HTML with a port-mapped base href”; `test/chat-vscode/webview-host.test.mjs:279` — “when the sidecar fails to start, serves the shell HTML with a diagnostic”; `test/chat-vscode/webview-host.test.mjs:398` — “swapToInlinedView returns a hint when the gateway is reachable but in Better Auth mode (handshake fails)”; `test/chat-vscode/integration.test.mjs:14` — “inliner produces ~800 KB of HTML for the real chat-vscode bundle”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:334:node scripts/run-test-suite.mjs test/chat-vscode/inlined-chat-html.test.mjs test/chat-vscode/webview-host.test.mjs test/chat-vscode/webview-shell.test.mjs test/chat-vscode/integration.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:335:code --extensionDevelopmentPath=src/apps/chat-vscode
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:345:- Exact source evidence: `src/apps/chat-vscode/extension/src/sidecar.ts:121` — `createSidecar`; `src/apps/chat-vscode/extension/src/sidecar.ts:34` — `ALLOWED_ORIGIN_PATTERN`; `src/apps/chat-vscode/extension/src/sidecar.ts:36` — `PROXIED_REQUEST_TIMEOUT_MS`; `src/apps/chat-vscode/extension/src/sidecar.ts:37` — `PROXIED_REQUEST_BODY_LIMIT`; `src/apps/chat-vscode/extension/src/sidecar.ts:38` — `SOCKET_DRAIN_TIMEOUT_MS`; `src/apps/chat-vscode/extension/src/sidecar-auth.ts:162` — `buildProxiedHeaders`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:346:- Exact named tests: `test/chat-vscode/sidecar.test.mjs:163` — “proxies a GET /api/... request to the gateway and forwards the response”; `test/chat-vscode/sidecar.test.mjs:191` — “proxies a POST request with body intact”; `test/chat-vscode/sidecar.test.mjs:223` — “responds to CORS preflight from a vscode-webview:// origin”; `test/chat-vscode/sidecar.test.mjs:256` — “rejects a non-OPTIONS request from a non-vscode-webview origin with 403”; `test/chat-vscode/sidecar.test.mjs:282` — “streams an SSE response 1:1 without buffering”; `test/chat-vscode/sidecar-auth.test.mjs:142` — “buildProxiedHeaders strips hop-by-hop and internal headers and injects the cookie”
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:357:node scripts/run-test-suite.mjs test/chat-vscode/sidecar.test.mjs test/chat-vscode/sidecar-auth.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:369:- Public surfaces: `npm run vscode:package`; `pibo vscode install|status|uninstall`; `dist/apps/vscode-artifacts/*.vsix`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/vscode/sidecar-webview-and-delivery.md:379:npm run vscode:package
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/composer-delivery-files-and-media.md:485:- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/context-settings-and-agent-designer.md:290:Settings MUST expose the implemented panel set—general, concurrency, previews, transcription, speech, shortcuts, maintenance, Pi packages, skills, and providers—and preserve each route's declared scope and bootstrap invalidation behavior.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/context-settings-and-agent-designer.md:387:- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:117:Conditional VS Code navigation, configured/empty/error/ready states, and a constrained same-origin code-server iframe.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:129:- SPC-GW-003 owns route/proxy mount and code-server availability.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:141:No independent durable/cache/stream/file/media contract; the iframe consumes the configured code-server Web surface.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:149:Only configured same-origin code-server URLs are accepted; iframe permissions are constrained to clipboard read/write. No extension transport is specified.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:201:Configured iframe URLs MUST resolve beneath the approved same-origin code-server base path, preserve an optional folder target, and grant only the declared clipboard permissions.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:220:This specification MUST stop at the embedded same-origin code-server area and MUST NOT define VS Code extension webview messaging, sidecar transport, extension lifecycle, or extension-internal authentication.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:249:- SPC-GW-003 owns route/proxy mount and code-server availability.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:256:- Only configured same-origin code-server URLs are accepted; iframe permissions are constrained to clipboard read/write. No extension transport is specified.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:273:- Evidence gap: No real same-origin code-server integration or gateway proxy acceptance.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:278:- Reject: An arbitrary external code-server origin may be embedded.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/embedded-vscode-area.md:289:- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/safe-content-rendering.md:335:- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/streaming-cache-and-live-projection.md:330:- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:docs/specs/web/web-annotations.md:334:- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:45:    "tui:routed": "tsx src/bin/pibo.ts tui:routed",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:55:    "vscode:typecheck": "tsc -p src/apps/chat-vscode/extension/tsconfig.json --noEmit && tsc -p src/apps/chat-vscode/extension/webview/tsconfig.json --noEmit",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:56:    "vscode:webview:build": "vite build --config src/apps/chat-vscode/extension/webview/vite.config.ts",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:57:    "vscode:extension:build": "esbuild src/apps/chat-vscode/extension/src/extension.ts --bundle --platform=node --target=node24 --format=cjs --outfile=src/apps/chat-vscode/dist/extension/extension.cjs --external:vscode --sourcemap=inline",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:58:    "vscode:package": "node scripts/vscode-package.mjs",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:63:    "build": "npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:78:    "typecheck": "npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck && npm run vscode:typecheck",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:package.json:135:    "vscode": "file:src/apps/chat-vscode/extension/vscode-shim",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/ink-cli-v2-pty-smoke.mjs:245:import { InkTerminalView } from "./dist/apps/cli-ui/index.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/ink-cli-v2-pty-smoke.mjs:251:import { InkTerminalView } from "./dist/apps/cli-ui/index.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/ink-cli-web-derived-parity-validate.mjs:13:		command: ["node", "--test", "test/cli-ui-ink-renderer.test.mjs", "test/cli-ui-session-app.test.mjs", "test/cli-session-source.test.mjs"],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/release.mjs:31:const extensionPackageJsonPath = resolve(root, "src/apps/chat-vscode/package.json");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/release.mjs:137:runInherit(npmCommand, ["run", "--silent", "vscode:package"]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/run-test-suite.mjs:20:		...readdirSync(join("test", "chat-vscode"))
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/run-test-suite.mjs:23:			.map((name) => join("test", "chat-vscode", name)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:3://   1. Bundle the WebView with Vite (src/apps/chat-vscode/extension/webview/ → dist/apps/chat-vscode-web/).
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:4://   2. Bundle the Node-side extension entry with esbuild (src/apps/chat-vscode/extension/src/extension.ts → dist/extension.cjs).
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:5://   3. Copy the WebView bundle into the extension's `dist/chat-vscode-web/`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:7://      `context.extensionPath + "/dist/chat-vscode-web/"`.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:8:// The gateway separately serves the same bundle at /apps/chat-vscode/
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:9:// from dist/apps/chat-vscode-web/ for browser users.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:19:const packageDir = resolve(root, "src/apps/chat-vscode");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:23:const webviewOutDir = resolve(root, "dist/apps/chat-vscode-web");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:24:const sidecarBundleOutDir = resolve(packageDir, "dist/chat-vscode-web");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-build.mjs:34:run("node", ["./node_modules/vite/bin/vite.js", "build", "--config", "src/apps/chat-vscode/extension/webview/vite.config.ts"], root);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:5://   1. Run `vscode:webview:build` (vite → dist/apps/chat-vscode-web/).
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:6://   2. Run `vscode:extension:build` (esbuild → src/apps/chat-vscode/dist/extension/extension.cjs).
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:7://   3. Copy the webview bundle into src/apps/chat-vscode/dist/chat-vscode-web/
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:22:const packageDir = resolve(root, "src/apps/chat-vscode");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:24:const sidecarBundleDir = resolve(packageDir, "dist/chat-vscode-web");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:25:const webviewOutDir = resolve(root, "dist/apps/chat-vscode-web");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:39:run(npmCommand, ["run", "--silent", "vscode:webview:build"], root);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:scripts/vscode-package.mjs:40:run(npmCommand, ["run", "--silent", "vscode:extension:build"], root);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:skills/builtin/web-annotations/SKILL.md:68:When the profile selects the `web-annotation-agent-tools` capability package, these tools are available:
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtime/context-build.ts:45:		piPackages: profile.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtime/context-build.ts:238:	if (profile.piPackages.some((pkg) => pkg.enabled !== false)) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtime/context-build.ts:245:			badges: ["PI PACKAGES"],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtime/context-build.ts:246:			notes: input.runtime.adapterId === "pi" ? undefined : ["Pi packages are adapter-specific and require explicit support from the selected runtime."],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtime/context-build.ts:247:			metadata: { packages: profile.piPackages.filter((pkg) => pkg.enabled !== false).map((pkg) => pkg.id) },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/adapter.ts:198:	piPackageStoreCwd?: string;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/adapter.ts:238:		piPackages: profile.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/adapter.ts:789:			piPackageStoreCwd: compatibility?.piPackageStoreCwd,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:56:import { getPiPackageRuntimeOptions } from "../../pi-packages/runtime.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:121:	piPackageStoreCwd?: string;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:191:	piPackages: Array<{ id: string; active: boolean }>;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:408:		const piPackageOptions = getPiPackageRuntimeOptions(options.piPackageStoreCwd ?? runtimeCwd, profile);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:642:		piPackages: profile.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:723:			piPackages: profile.piPackages.map((pkg) => ({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/agent-runtimes/pi/runtime.ts:784:				`Use "npm run tui:routed -- ${profile.profileName}" for local TUI QA.`,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/App.tsx:1888:				sidebar={<SettingsSidebar activePanel={panel} onSelect={(nextPanel) => navigateToRoute({ area: "settings", panel: nextPanel })} piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} />}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/App.tsx:1890:				<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={setShowThinking} expandThinking={expandThinking} setExpandThinking={setExpandThinking} debugMode={debugMode} onDebugModeChange={updateDebugMode} debugFeatures={debugFeatures} onDebugFeaturesChange={updateDebugFeatures} toolMetricThresholds={toolMetricThresholds} onToolMetricThresholdsChange={updateToolMetricThresholds} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} piPackages={bootstrap.agentCatalog?.piPackages} onPiPackageChanged={upsertPiPackageInBootstrap} onPiPackageRemoved={removePiPackageFromBootstrap} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={upsertUserSkillInBootstrap} onUserSkillRemoved={removeUserSkillFromBootstrap} piboSessionId={selectedPiboSessionId} onProviderAuthChanged={refreshAfterProviderAuthChanged} />
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/App.tsx:2233:							piPackageCount={bootstrap.agentCatalog?.piPackages.length ?? 0}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/App.tsx:2353:									piPackages={bootstrap.agentCatalog?.piPackages}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:37:	isPiPackageSelected,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:46:	togglePiPackageSelection,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:507:	const piPackagesUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime?.adapterId !== "pi" ? "Pi packages are available only to Pi-backed runtime instances." : null);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:969:					<PiPackagesDesigner
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:970:						packages={catalog?.piPackages}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:974:						capabilityUnavailableReason={piPackagesUnavailableReason}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:1099:function PiPackagesDesigner({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:1115:	const selectedCount = packageList.filter((pkg) => isPiPackageSelected(draft.piPackages, pkg)).length;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:1127:		<DesignerPanel title="Pi Packages">
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:1136:							const selected = isPiPackageSelected(draft.piPackages, pkg);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:1146:										setDraft((current) => ({ ...current, piPackages: togglePiPackageSelection(current.piPackages, pkg) }));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/AgentsView.tsx:1153:				) : <EmptyCatalog message="No installed and enabled Pi packages available. Manage Pi Packages in Settings." />
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:76:		piPackages: uniqueNames(draft.piPackages),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:107:		piPackages: [],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:173:		piPackages: agent.piPackages ?? [],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:208:		piPackages: profile.piPackages ?? [],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:365:export type PiPackageCatalogItem = AgentCatalog["piPackages"][number];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:546:export function isPiPackageSelected(selected: string[], pkg: PiPackageCatalogItem): boolean {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:550:export function togglePiPackageSelection(selected: string[], pkg: PiPackageCatalogItem): string[] {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:551:	if (isPiPackageSelected(selected, pkg)) return selected.filter((name) => name !== pkg.id && name !== pkg.name);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/agents/agent-designer-model.ts:559:export function piPackageMeta(pkg: AgentCatalog["piPackages"][number]): string {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:76:	piPackages: string[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:178:export async function postPiPackage(source: string): Promise<AgentCatalog["piPackages"][number]> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:179:	return (await requestJson<{ package: AgentCatalog["piPackages"][number] }>("/api/chat/pi-packages", {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:189:): Promise<AgentCatalog["piPackages"][number]> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:190:	return (await requestJson<{ package: AgentCatalog["piPackages"][number] }>(`/api/chat/pi-packages/${encodeURIComponent(id)}`, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:197:export async function deletePiPackage(id: string): Promise<AgentCatalog["piPackages"][number]> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-agent-designer.ts:198:	return (await requestJson<{ removedPackage: AgentCatalog["piPackages"][number] }>(`/api/chat/pi-packages/${encodeURIComponent(id)}`, {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/api-chat-sessions.ts:262:				piPackages: (payload.agentCatalog.piPackages ?? []).map((pkg) => ({ ...pkg, enabled: pkg.enabled !== false })),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-agent-catalog-mutations.ts:19:	const others = data.agentCatalog.piPackages.filter((candidate) => candidate.id !== pkg.id);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-agent-catalog-mutations.ts:24:			piPackages: sortByName([...others, pkg]),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-agent-catalog-mutations.ts:35:			piPackages: data.agentCatalog.piPackages.filter((candidate) => candidate.id !== packageId),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-chrome.tsx:12:	vscode: "VS Code",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-routes.ts:25:type SettingsNavigationTo = "/settings/debug" | "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-routes.ts:43:	| { to: "/settings/pi-packages"; replace: boolean }
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-routes.ts:181:	if (part === "pi-packages") return "pi-packages";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/app-routes.ts:195:	if (panel === "pi-packages") return "/settings/pi-packages";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/main.tsx:112:const settingsPiPackagesRoute = createRoute({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/main.tsx:114:	path: "settings/pi-packages",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/main.tsx:125:	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, vscodeRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsPreviewsRoute, settingsTranscriptionRoute, settingsSpeechRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsPiPackagesRoute, settingsSkillsRoute, settingsProvidersRoute]),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsSidebar.tsx:141:					onClick={() => onSelect("pi-packages")}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsSidebar.tsx:143:						activePanel === "pi-packages"
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsSidebar.tsx:150:						<span className="block truncate text-sm text-slate-200">Pi Packages</span>
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:61:	piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:84:	piPackages?: PiPackageCatalogItem[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:93:	if (activePanel === "pi-packages") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:98:					Pi Packages
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:100:				<PiPackagesSettings packages={piPackages} onPackageChanged={onPiPackageChanged} onPackageRemoved={onPiPackageRemoved} />
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:1019:function PiPackagesSettings({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/SettingsView.tsx:1135:				) : <EmptyCatalog message="No Pi packages registered" />
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/settings/types.ts:1:export type SettingsPanel = "general" | "debug" | "concurrency" | "previews" | "transcription" | "speech" | "shortcuts" | "maintenance" | "pi-packages" | "skills" | "providers";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/types.ts:607:	piPackages?: string[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/types.ts:814:	piPackages: Array<{
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-ui/src/types.ts:871:	piPackages: string[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:37:The WebView bundle is shipped inside the `pibo` npm package at `dist/apps/chat-vscode-web/` and served by the gateway at `http://<gateway>/apps/chat-vscode/`. There is no need to build the WebView from source — it travels with the `pibo` install.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:82:VS Code  ────  WebView (chat-vscode-main.tsx)
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:86:              pibo gateway:web  ── /apps/chat-vscode/  (Vite bundle)
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:96:- open the WebView at `http://<gateway>/apps/chat-vscode/?workspace=…&roomId=…`,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:115:npm run vscode:webview:build   # Vite build for the WebView → dist/apps/chat-vscode-web/
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:116:npm run vscode:extension:build # esbuild bundle for extension.cjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:117:npm run vscode:package         # produce a .vsix and copy to dist/apps/vscode-artifacts/
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:122:- `dist/apps/chat-vscode-web/` — the React + Composer + SessionSelector bundle, served by the gateway at `/apps/chat-vscode/`. This is included in the `pibo` npm package.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:123:- `src/apps/chat-vscode/dist/extension/extension.cjs` — the Node-side extension entry referenced from `src/apps/chat-vscode/package.json#main`. This goes into the `.vsix`.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:126:The standard `npm run build` runs `vscode:webview:build` so the WebView bundle is part of every npm publish.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:138:The script bumps the version in **both** `package.json` (root) and `src/apps/chat-vscode/package.json` (extension) so the two stay in sync. The produced VSIX is the artifact to upload to the VS Code Marketplace. See `docs/project/operations/vscode-extension-release.md` for the full release runbook.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/README.md:143:node --test test/chat-vscode/*.test.mjs
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:1:// Inliner for the chat-vscode Vite bundle.
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:21:export const DEFAULT_BUNDLE_RELATIVE_DIR = "dist/chat-vscode-web";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:27:	 * chat-vscode bundle is read from a fixed subdirectory inside
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:52:	 * prebuilt Vite output. Defaults to `dist/chat-vscode-web`, which
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:77: * Read the Vite-bundled chat-vscode app and emit a single HTML string
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:88:		throw new Error(`chat-vscode bundle index.html not found at ${indexPath}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:95:		throw new Error(`chat-vscode bundle is missing a <script src="..."> tag in ${indexPath}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:98:		throw new Error(`chat-vscode bundle is missing a <link rel="stylesheet" href="..."> tag in ${indexPath}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:104:		throw new Error(`chat-vscode bundle script not found (asset hint: ${scriptAsset})`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:107:		throw new Error(`chat-vscode bundle stylesheet not found (asset hint: ${cssAsset})`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/inlined-chat-html.ts:166: * Resolve a Vite asset URL (e.g. `/apps/chat-vscode/assets/index-XYZ.js`)
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/sidecar.ts:5:// `window.location.replace('http://127.0.0.1:4788/apps/chat-vscode/')`
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/webview-host.ts:81:	 * chat-vscode SPA. Used by the shell when its gateway health probe
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/webview-host.ts:228:			//    chat-vscode bundle. Otherwise fall back to the empty
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/webview-host.ts:425: * so the chat-vscode SPA's router picks up the room selection from
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/src/webview-shell.ts:40: * the inlined chat-vscode SPA via a postMessage round-trip
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/webview/index.html:11:		<script type="module" src="./chat-vscode-main.tsx"></script>
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/webview/vite.config.ts:11:	base: "/apps/chat-vscode/",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/extension/webview/vite.config.ts:18:		outDir: "../../../../../dist/apps/chat-vscode-web",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat-vscode/package.json:94:          "description": "Timeout for the gateway reachability probe that decides between the inlined chat-vscode SPA and the empty-state shell."
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-profiles.ts:82:		.withPiPackages(agent.piPackages.map((id) => ({ id })))
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:9:import { findPiPackage } from "../../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:46:	piPackages: string[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:93:	piPackages?: string[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:140:	pi_packages_json: string;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:181:		piPackages: sanitizePiPackages(input.piPackages ?? []),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:221:		piPackages: input.piPackages ? sanitizePiPackages(input.piPackages) : existing.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:277:				pi_packages_json TEXT NOT NULL DEFAULT '[]',
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:305:		this.migratePiPackagesColumn();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:401:					pi_packages_json = ?,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:432:				JSON.stringify(updated.piPackages),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:522:					pi_packages_json,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:556:				JSON.stringify(agent.piPackages),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:747:	private migratePiPackagesColumn(): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:751:		if (!columns.has("pi_packages_json")) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:752:			this.db.prepare("ALTER TABLE chat_agents ADD COLUMN pi_packages_json TEXT NOT NULL DEFAULT '[]'").run();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:980:		piPackages: parseStringArray(row.pi_packages_json),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/agent-store.ts:1050:function sanitizePiPackages(value: readonly string[]): string[] {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-api-routes.ts:187:	const prefix = `${CHAT_WEB_API_PREFIX}/pi-packages/`;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:2:import { inspectPiPackageSource } from "../../pi-packages/metadata.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:3:import { findPiPackage, listPiPackages, removePiPackage, setPiPackageEnabled, upsertPiPackage } from "../../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:15:	| { kind: "pi-packages-list" }
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:16:	| { kind: "pi-packages-create" }
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:25:	if (pathname === `${CHAT_WEB_API_PREFIX}/pi-packages` && method === "GET") return { kind: "pi-packages-list" };
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:26:	if (pathname === `${CHAT_WEB_API_PREFIX}/pi-packages` && method === "POST") return { kind: "pi-packages-create" };
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:40:	return route.kind !== "pi-packages-list" && route.kind !== "pi-package-read";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:52:		case "pi-packages-list":
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:53:			return responseJson({ packages: listPiPackages() });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:54:		case "pi-packages-create": {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:57:			const pkg = upsertPiPackage(await inspectPiPackageSource(source, cwd), cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-capability-routes.ts:74:				pkg = upsertPiPackage(await inspectPiPackageSource(source, cwd), cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:12:import { listPiPackages } from "../../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:59:	piPackages?: unknown;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:328:export function normalizeRegisteredPiPackages(value: unknown): string[] {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:329:	const names = normalizeNameArray(value, "piPackages");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:330:	const packages = listPiPackages();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:797:		piPackages: normalizeRegisteredPiPackages(body.piPackages),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/chat-request-normalizers.ts:836:	if (body.piPackages !== undefined) update.piPackages = normalizeRegisteredPiPackages(body.piPackages);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/static-assets.ts:9:export const CHAT_VSCODE_MOUNT_PATH = "/apps/chat-vscode";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/static-assets.ts:14:const CHAT_VSCODE_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-vscode-web", import.meta.url)));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:129:import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:369:	piPackageStoreCwd?: string;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:897:		vscode: {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:1900:	"piPackages",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2027:		piPackages: [],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:2060:		piPackages: listPiPackages(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3332:		.filter((agent) => agent.piPackages.some((selected) => aliases.has(selected)));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3550:	piPackageStoreCwd: string;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:3614:				piPackageStoreCwd: input.piPackageStoreCwd,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:4694:	const piPackageStoreCwd = options.piPackageStoreCwd ?? process.cwd();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/chat/web-app.ts:5074:					piPackageStoreCwd,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/apps/cli-ui/cliSessionsCommand.ts:267:  pibo tui:routed
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli-session/fakeSessionSource.ts:827:              "src/apps/cli-ui/InkTerminalRow.ts",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:142:	if (argv[2] === "pi-packages") {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:143:		const { runPiPackagesCli } = await import("./pi-packages/cli.js");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:144:		await runPiPackagesCli([argv[0] ?? "node", "pibo pi-packages", ...argv.slice(3)]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:226:		const { cliSessionsHelpText } = await import("./apps/cli-ui/index.js");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:259:		.command("pi-packages")
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:266:			const { runPiPackagesCli } = await import("./pi-packages/cli.js");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:267:			await runPiPackagesCli([argv[0] ?? "node", "pibo pi-packages", ...args]);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:468:		.command("tui:routed")
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:479:				const { runLocalRoutedTui } = await import("./local/tui.js");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:494:			const { runCliSessionsUi } = await import("./apps/cli-ui/index.js");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:592:  pi-packages  Register Pi Coding Agent packages
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/cli.ts:606:  tui:routed   Start the local routed Pibo TUI
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/context-build.ts:358:		piPackages: profile.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:171:	piPackages?: readonly PiPackageProfile[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:201:	readonly piPackages: readonly PiPackageProfile[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:230:		this.piPackages = [...(options.piPackages ?? [])];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:261:	private piPackages: PiPackageProfile[] = [];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:400:	withPiPackages(packages: readonly PiPackageProfile[]): this {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:401:		this.piPackages = [...packages];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:406:		this.piPackages.push(pkg);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:410:	addPiPackages(packages: readonly PiPackageProfile[]): this {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:411:		this.piPackages.push(...packages);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/profiles.ts:456:			piPackages: this.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/session-model.ts:71:		piPackages: profile.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/session-router.ts:270:		piPackages: baseProfile.piPackages,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/core/session-router.ts:1778:						piPackageStoreCwd: this.options.piPackageStoreCwd,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:41:	piPackageStoreCwd?: string;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/server.ts:243:			piPackageStoreCwd: this.options.piPackageStoreCwd ?? process.cwd(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/gateway/web.ts:6:import { createPiboChatVscodeWebPlugin } from "../plugins/chat-vscode-web.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/index.ts:265:	PiboCapabilityPackageInfo,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/index.ts:328:} from "./local/tui.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/index.ts:335:} from "./local/tui.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:2:import { inspectPiPackageSource, parsePiPackageSource } from "./metadata.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:3:import { findPiPackage, listPiPackages, removePiPackage, upsertPiPackage } from "./store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:5:export async function runPiPackagesCli(argv = process.argv): Promise<void> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:7:		printPiPackagesDiscovery();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:12:	program.name("pibo pi-packages").description("Register Pi Coding Agent packages for Pibo profiles").helpOption(false);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:14:	program.command("list").description("List registered Pi packages").action(() => {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:15:		const packages = listPiPackages();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:17:			console.log("No Pi packages registered.");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:18:			console.log("Next: pibo pi-packages add <source>");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:27:		const pkg = upsertPiPackage(await inspectPiPackageSource(source));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:32:		console.log(`Next: pibo pi-packages inspect ${pkg.id}`);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:56:		const packages = listPiPackages();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:58:			console.log("No Pi packages registered.");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:65:				await parsePiPackageSource(pkg.source);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:71:					await parsePiPackageSource(pkg.installPath);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:89:function printPiPackagesDiscovery(): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:90:	console.log(`pibo pi-packages - registered Pi Coding Agent packages
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/cli.ts:100:  pibo pi-packages list
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/installer.ts:5:import type { ParsedPiPackageSource, PiPackageInstallResult } from "./types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/installer.ts:10:	parsed: ParsedPiPackageSource,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/installer.ts:63:	return resolve(cwd, ".pibo/pi-packages/npm", encodePackageName(packageName));
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/metadata.ts:12:import type { ParsedPiPackageSource, PiboPiPackageDiagnostic, PiboPiPackageInput, PiPackageResourceType } from "./types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/metadata.ts:24:export async function inspectPiPackageSource(source: string, cwd = process.cwd()): Promise<PiboPiPackageInput> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/metadata.ts:25:	const parsed = await parsePiPackageSource(source, cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/metadata.ts:68:export async function parsePiPackageSource(source: string, cwd = process.cwd()): Promise<ParsedPiPackageSource> {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/runtime.ts:17:	for (const selected of profile.piPackages.filter((pkg) => pkg.enabled !== false)) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:3:import type { PiboPiPackageInfo, PiboPiPackageInput, PiboPiPackageStoreData } from "./types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:7:export function defaultPiPackageStorePath(cwd = process.cwd()): string {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:8:	return resolve(cwd, ".pibo/pi-packages.json");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:11:export function ensurePiPackageStorage(cwd = process.cwd()): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:12:	mkdirSync(resolve(cwd, ".pibo/pi-packages/npm"), { recursive: true });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:13:	mkdirSync(resolve(cwd, ".pibo/pi-packages/git"), { recursive: true });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:14:	mkdirSync(resolve(cwd, ".pibo/pi-packages/local"), { recursive: true });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:17:export function loadPiPackageStore(path = defaultPiPackageStorePath()): PiboPiPackageStoreData {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:23:	const data = parsed as Partial<PiboPiPackageStoreData>;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:33:export function savePiPackageStore(data: PiboPiPackageStoreData, path = defaultPiPackageStorePath()): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:38:export function listPiPackages(cwd = process.cwd()): PiboPiPackageInfo[] {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:39:	return loadPiPackageStore(defaultPiPackageStorePath(cwd)).packages;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:44:	return listPiPackages(cwd).find((pkg) => (
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:53:	ensurePiPackageStorage(cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:54:	const path = defaultPiPackageStorePath(cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:55:	const data = loadPiPackageStore(path);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:79:	savePiPackageStore(data, path);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:84:	const path = defaultPiPackageStorePath(cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:85:	const data = loadPiPackageStore(path);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:95:	savePiPackageStore(data, path);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:100:	const path = defaultPiPackageStorePath(cwd);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:101:	const data = loadPiPackageStore(path);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/store.ts:111:	savePiPackageStore(data, path);
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/types.ts:30:export type PiboPiPackageStoreData = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/pi-packages/types.ts:41:export type ParsedPiPackageSource = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/builtin.ts:256:		api.registerCapabilityPackage({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/chat-vscode-web.ts:5:const CHAT_VSCODE_WEB_APP_NAME = "pibo.chat-vscode-web";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/chat-vscode-web.ts:7:export const CHAT_VSCODE_MOUNT_PATH = "/apps/chat-vscode";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/chat-vscode-web.ts:11:		id: "pibo.chat-vscode-web",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:41:	PiboCapabilityPackageInfo,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:48:import { listPiPackages } from "../pi-packages/store.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:221:	private readonly capabilityPackages = new Map<string, PiboCapabilityPackageInfo>();
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:590:	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:591:		this.addUnique(this.capabilityPackages, pkg.name, { ...pkg, toolNames: [...pkg.toolNames] }, "capability package");
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:663:				piPackages: sessionContext.piPackages.filter((pkg) => pkg.enabled !== false).map((pkg) => pkg.id),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:744:				...[...this.capabilityPackages.values()].map((pkg) => ({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:752:			piPackages: listPiPackages(),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:836:		const withPluginPackageContext = (pkg: PiboCapabilityPackageInfo): PiboCapabilityPackageInfo => ({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/registry.ts:868:			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:33:import type { PiboPiPackageInfo } from "../pi-packages/types.js";
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:84:	piPackages: string[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:144:export type PiboCapabilityPackageInfo = {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:173:	packages: PiboCapabilityPackageInfo[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:176:	piPackages: PiboPiPackageInfo[];
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/types.ts:273:	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/plugins/web-annotations.ts:19:		api.registerCapabilityPackage({
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/cli.ts:619:		for (const service of componentNames.has("vscode-web") ? ["pibo-web", "pibo-code-server", "caddy"] : ["pibo-web", "caddy"]) {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/cli.ts:774:	if (installed.has("vscode-web") && !planned.has("vscode-web")) execFileSync("systemctl", ["disable", "--now", "pibo-code-server"], { stdio: "inherit" });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/cli.ts:782:	if (componentNames.has("vscode-web")) execFileSync("systemctl", ["disable", "--now", "pibo-code-server"], { stdio: "inherit" });
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/cli.ts:985:				services: ["pibo-web", ...(manifest.components.some((component) => component.name === "vscode-web") ? ["pibo-code-server"] : []), "caddy"],
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:99:	"vscode-web": { name: "vscode-web", version: CODE_SERVER_VERSION, description: "Embedded code-server workspace", optional: true, sha256: { "linux-amd64": CODE_SERVER_SHA256.x64, "linux-arm64": CODE_SERVER_SHA256.arm64 } },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:131:function gatewayService(options: { piboHome: string; workspaceRoot: string; hasVscode: boolean; hasMcpDefaults: boolean; piboCommand: string }): string {
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:174:ExecStart=/opt/pibo/code-server/${CODE_SERVER_VERSION}/bin/code-server --bind-addr 127.0.0.1:4790 --auth none --disable-telemetry --disable-update-check --disable-workspace-trust ${systemdQuote(workspaceRoot)}
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:250:	return `set -eu; arch=$(uname -m); case "$arch" in x86_64|amd64) asset=amd64; sha=${CODE_SERVER_SHA256.x64};; aarch64|arm64) asset=arm64; sha=${CODE_SERVER_SHA256.arm64};; *) echo "Unsupported architecture: $arch" >&2; exit 2;; esac; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT; curl -fsSL "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-$asset.tar.gz" -o "$tmp/code-server.tgz"; echo "$sha  $tmp/code-server.tgz" | sha256sum -c -; mkdir -p /opt/pibo/code-server/${CODE_SERVER_VERSION}; tar -xzf "$tmp/code-server.tgz" --strip-components=1 -C /opt/pibo/code-server/${CODE_SERVER_VERSION}`;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:290:			{ path: "/etc/systemd/system/pibo-code-server.service", purpose: "Loopback VS Code Web service", content: codeServerService(workspaceRoot) },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:291:			{ path: "/etc/pibo/code-server-default-settings.json", purpose: "Initial Pibo-compatible VS Code Web defaults", content: `${JSON.stringify({ "workbench.colorTheme": "Default Dark Modern", "window.autoDetectColorScheme": false, "telemetry.telemetryLevel": "off" }, null, 2)}\n`, mode: 0o600 },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:292:			{ path: `/opt/pibo/code-server/${CODE_SERVER_VERSION}/.pibo-owned`, purpose: "Ownership marker for the pinned VS Code Web binary", content: `code-server ${CODE_SERVER_VERSION}\n`, mode: 0o600 },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:313:		{ id: "service-account", description: "Create the dedicated VS Code Web account and workspace", command: `id -u pibo-code >/dev/null 2>&1 || { nologin=$(command -v nologin || printf /usr/sbin/nologin); useradd --system --home /var/lib/pibo-code --create-home --shell "$nologin" pibo-code; }; settings=/var/lib/pibo-code/.local/share/code-server/User/settings.json; mkdir -p ${shellQuote(workspaceRoot)} "$(dirname "$settings")"; test -e "$settings" || install -m 600 -o pibo-code -g pibo-code /etc/pibo/code-server-default-settings.json "$settings"; chown -R pibo-code:pibo-code ${shellQuote(workspaceRoot)} /var/lib/pibo-code`, checkCommand: `id -u pibo-code >/dev/null 2>&1 && test -d ${shellQuote(workspaceRoot)} && test -f /var/lib/pibo-code/.local/share/code-server/User/settings.json`, privileged: true },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:314:		{ id: "code-server", description: `Install pinned code-server ${CODE_SERVER_VERSION}`, command: codeServerInstallCommand(), checkCommand: `test -x /opt/pibo/code-server/${CODE_SERVER_VERSION}/bin/code-server`, privileged: true },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:334:		{ id: "systemd", description: "Reload and enable setup-managed services", command: `systemctl daemon-reload && systemctl enable pibo-web${hasVscode ? " && systemctl enable --now pibo-code-server" : ""}`, checkCommand: `systemctl is-enabled --quiet pibo-web${hasVscode ? " && systemctl is-enabled --quiet pibo-code-server && systemctl is-active --quiet pibo-code-server" : ""}`, privileged: true, restartEffect: hasVscode ? "Starts or restarts the loopback VS Code Web service" : "Registers the Pibo gateway service" },
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:352:			name: "code-server",
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:355:				"linux-amd64": `https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-amd64.tar.gz`,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:356:				"linux-arm64": `https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-arm64.tar.gz`,
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:362:			...(hasVscode ? [{ name: "pibo-code-server", bind: "127.0.0.1:4790", public: false, user: "pibo-code" }] : []),
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/setup/installation-profiles.ts:383:	return /(?:\/opt\/pibo\/code-server\/[^/]+|\/setup\/mcp-runtime)\/\.pibo-owned$/.test(path) ? dirname(path) : undefined;
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/tools/contract.ts:129: * It deliberately does not import Pi packages. Registries normalize this shape
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:src/vscode/types.ts:5: * pointing at the gateway-served chat-vscode-web app. The extension itself
+cac4dcd03945b9754db7be9ab2ab4324f10c335c:tsconfig.json:16:  "exclude": ["src/apps/chat-ui/**", "src/apps/context-files-ui/**", "src/apps/chat-vscode/**"]

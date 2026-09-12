@@ -2,6 +2,8 @@
 
 ## 2026-09-12
 
+- **Plugin rebuild handoff audit**: Audited the [checkpoint](/reports/plugin-system-rebuild-checkpoint-2026-09-12.md) against all 97 source hashes, preserved and directly linked historical research, contracts, worker reports, fixtures and complete regression logs, added exact environment/reproduction instructions, and corrected stale dispatch and integration claims in the [execution ledger](/plans/unified-plugin-system-execution.md). The rough effort estimate is 25–35%; all 37 product acceptance scenarios remain open. No product source, agents or deployments changed.
+
 - **Plugin rebuild checkpoint**: Added the [development checkpoint report](/reports/plugin-system-rebuild-checkpoint-2026-09-12.md) and updated the [execution ledger](/plans/unified-plugin-system-execution.md) with the owner's revised concurrency and quota-window limits, focused SDK/package/API evidence, and outstanding service-lifecycle and generation-pinning integration requirements. Full product acceptance remains open.
 
 - **Plugin rebuild execution**: Imported the owner-provided [complete rebuild plan](/plans/unified-plugin-system-rebuild.md) and its [architecture research](/reports/cordis-plugin-architecture-feasibility-2026-09-11.md), and started the [implementation and acceptance ledger](/plans/unified-plugin-system-execution.md). The ledger assigns five parallel implementation streams and retains all integrated acceptance gates as open.

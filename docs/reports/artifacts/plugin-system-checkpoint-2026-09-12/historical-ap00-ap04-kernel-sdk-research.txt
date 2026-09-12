@@ -1,0 +1,342 @@
+# Plugin-Rebuild: AP00–AP04, Kernel, SDK, Lifecycle und Integrationsgrenzen
+
+Stand: 12. September 2026. Read-only-Quellanalyse; keine Implementierungs- oder Testabnahme.
+
+## 1. Auftrag, Evidenz und Grenzen
+
+Plan: `/root/code/pibo-cordis-analysis/docs/plans/unified-plugin-system-rebuild.md`, insbesondere AP00–AP04, PLG-CORE/SEL/HOOK/DATA sowie anschließende AP06/07/09/15/16/18/19. Alle dortigen Zielverträge sind **Planforderungen**, nicht vorhandenes Verhalten.
+
+Untersuchtes Quellrepo: `/root/code/pibo`. Relative Code-/Testpfade in diesem Bericht beziehen sich ausschließlich darauf. Gelesen wurden `GLOSSARY.md`, `AGENTS.md`, Dokumentationsindex/-profil, passende Spec-/Dokumentations-/Schreibskills sowie Docker-Regeln. Keine Unteragents, Dienste, Worker, Builds, Tests, Paketimporte oder CLI-App-Prozesse gestartet. Ausschließlich lesende Datei-/Git-/Suchkommandos und Schreiben dieses Berichts. Keine Remote-Abfrage und kein Fetch: „upstream/dev“ meint unten den lokalen Remote-Tracking-Ref, nicht verifiziert den aktuellen Serverstand.
+
+| Bezug | Erfasster Commit |
+|---|---|
+| Quellcheckout HEAD | `2cd45f171ca615c11927a8719819aff05f20e1fd` — Release 3.2.4 (#894) |
+| Lokaler `upstream/dev` | `cac4dcd03945b9754db7be9ab2ab4324f10c335c` |
+| Planbaseline | ebenfalls `cac4dcd03945b9754db7be9ab2ab4324f10c335c` |
+
+**Wichtig:** Der Checkout ist nicht die Planbaseline. `git diff --stat upstream/dev HEAD` zeigt unter anderem Änderungen an Registry-Typen, Runtime-Verträgen, Router, MCP-Bridge und Toolbestand. `src/tools/hashline.ts` existiert im untersuchten Checkout nicht, obwohl der Plan ihn als Einstieg nennt. `src/plugins/omp.ts` registriert hier die Plugin-ID `pibo.orp`, Runtime-Instanz `omp-native` und Profil `orp`; der Dateiname allein ist keine Plugin-Identität. Diese Befunde dürfen nicht ungeprüft in den Implementierungsstand übertragen werden.
+
+Der Checkout enthielt bereits fremde Änderungen/ungeführte Dateien unter `docs/` und eine ZIP-Datei. Sie wurden nicht verändert. Der Bericht liegt absichtlich außerhalb des OKF-Bundles; keine Index-/Log-/Ledger-Änderungen oder Docs-Validatoren. Keine realen Agent-/Session-Datenbanken gelesen. Fixtures unten sind Vorschläge auf Basis vorhandener Testquellen, keine bereits erzeugten AP00-Fixtures.
+
+## 2. Zusammenfassung für den Orchestrator
+
+1. **Eine Legacy-Registry-Klasse, mehrere Wahrheiten durch Instanzen und Nebenpfade:** `PiboPluginRegistry` in `src/plugins/registry.ts` ist die zentrale Implementierung. Gateway und Router erzeugen bei injizierter Registry zusätzlich eine vollständige Default-Registry als Runtime-Fallback. Ein neuer Host darf diese Fallbacks nicht als unabhängige Aktivierung behalten.
+2. **Der Altvertrag ist ein synchroner Registrar, kein Plugin-Lifecycle:** `PiboPlugin = { id, name?, register(api): void }`. Keine Revision, Manifestprüfung, Dienstabhängigkeit, Start-/Stop-Verträge oder allgemeine Ownership-Disposer. Teilregistrierung bleibt bei Fehlern bestehen.
+3. **AP01 ist die echte Parallelisierungsschranke.** Manifest, Contribution-/Service-Identität, Revisionen, Scope- und Resolver-Ein-/Ausgaben sowie Browser-/Inspector-DTOs müssen vor AP02/AP03/AP07 gemeinsam feststehen.
+4. **Portable Tool- und Runtime-Verträge erhalten:** `PiboToolDefinition`, Runtime-Capabilities, Binding-CAS, gemeinsame Runtime-Generation, Delivery Reports und Credential-Isolation sind brauchbare vorhandene Grenzen. Nicht durch einen neuen Plugin-eigenen Harnessvertrag ersetzen.
+5. **Hooks sind nicht durch `onEvent` erledigt.** Es gibt getrennte Ausführungspfade in Pi-Compiler, MCP-Bridge, OMP-Host-Tools und Run-Control. Ein zentraler Hookpfad muss echte Ausführung abdecken, ohne doppelte Pre-/Post-Hooks für verschachtelte Runs.
+6. **Konfliktarmer erster Kernblock:** neue AP01-Module plus AP02 Host/Scope/Services/Contribution-Index und eigene Tests; keine gleichzeitige Feature-Extraktion aus `builtin.ts`, kein Router-/Web-App-/Designer-Umbau in diesem Block. Die Legacy-Fassade erhält danach einen eindeutig verantwortlichen Integrationsschritt.
+
+## 3. Vollständige gefundene Legacy-Plugin-Implementierungen
+
+Suche in `src/` und `packages/` nach `PiboPlugin`, `definePiboPlugin`, Registry-Klassen und Registrierungsmethoden. „Vollständig“ bezeichnet die gefundenen Quellimplementierungen dieses Checkouts, nicht fremde installierte Pakete oder künftige Baselines.
+
+| Datei | Existierende ID / Symbol | Heutiger Beitrag; Zielbezug |
+|---|---|---|
+| `src/plugins/builtin.ts` | `piboCorePlugin`, `pibo.core` | Pi-Driver/-Instanz, Built-in-Skills, Web Search, Code Runtime, Browser-Tools, Capability-Package, Native-Tooling-Kontext, Basisprofil, Gateway-Actions; AP12/AP13/AP17 aufteilen |
+| dieselbe | `piboGatewayProducerPlugin`, `pibo.gateway-producer` | Gateway-Sendetools und geparktes Producer-Profil; AP12, Produktscope AP17 beachten |
+| `src/plugins/codex-native.ts` | `piboCodexNativePlugin`, `pibo.codex-native` | Native Driver/-Instanz/-Profil und Speech-Provider; AP06/AP17, nicht Compat |
+| `src/plugins/codex-compat.ts` | `piboCodexCompatPlugin`, `pibo.codex-compat` | Compat-Tools, `codex_image_generation`, Kontext; AP12 |
+| `src/plugins/omp.ts` | `piboOmpPlugin`, **`pibo.orp`** | OMP-Driver/-Instanz, Profil `orp`; Identitätsmigration ausdrücklich festlegen |
+| `src/plugins/web-annotations.ts` | `piboWebAnnotationsPlugin`, `pibo.web-annotations` | Tools, Web-App, Capability-Package, Built-in-Skill; AP11 |
+| `src/plugins/openai-transcription.ts` | Factory + Konstante, `pibo.transcription.openai` | Transcription-Provider; AP17 |
+| `src/plugins/openai-chatgpt-transcription.ts` | Factory + Konstante, `pibo.transcription.openai-chatgpt` | Transcription-Provider; AP17 |
+| `src/plugins/better-auth.ts` | `createPiboBetterAuthPlugin`, `pibo.better-auth` | Auth-Service; AP17, Zugriffsschutz erhalten |
+| `src/plugins/dev-auth.ts` | `createPiboDevAuthPlugin`, `pibo.dev-auth` | Worker-Auth-Service; kein Produktions-Fallback |
+| `src/plugins/web.ts` | `createPiboWebHostPlugin`, `pibo.web-host` | Web-Host-Channel; AP02/AP07/AP17 |
+| `src/plugins/chat-web.ts` | `createPiboChatWebPlugin`, `pibo.chat-web` | Chat Web-App; AP07–AP10/AP17 |
+| `src/plugins/chat-vscode-web.ts` | `createPiboChatVscodeWebPlugin`, `pibo.chat-vscode-web` | VS Code Web-App; geordnete Entfernung AP17 |
+| `src/plugins/chat-custom-agents.ts` | `createPiboChatCustomAgentProfilesPlugin`, `pibo.chat-custom-agent-profiles` | Custom-Agent-Profilregistrierung; AP03/AP04/AP10 |
+| `src/plugins/chat-user-skills.ts` | `createPiboChatUserSkillsPlugin`, `pibo.chat-user-skills` | User-Skills als `kind: user`; unabhängige Ressourcennutzung erhalten |
+| `src/plugins/context-files.ts` | `createPiboContextFilesCatalogPlugin`, `pibo.context-files-catalog` | Katalog-/Profilkontext-Registrierung |
+| dieselbe | `createPiboContextFilesPlugin`, `pibo.context-files` | Context-Service plus Web-App; AP04/AP08/AP17 |
+| `src/cron/plugin.ts` | `createPiboCronPlugin`, `pibo.cron` | Cron-Channel; AP17 |
+| `src/loops/plugin.ts` | `createPiboLoopPlugin`, `pibo.loop` | Stop-Conditions, Goal-Gateway-Action, Loop-Channel; AP13/AP17 |
+| `src/ralph/plugin.ts` | `createPiboRalphPlugin`, `pibo.ralph` | Legacy Ralph Stop-Conditions und Channel; keine zweite neue Plugin-Laufzeit |
+| `src/previews/plugin.ts` | `createPiboPreviewPlugin`, `pibo.session-live-previews` | Preview-Web-App; AP17 |
+
+Zusätzliche Registrar-/Kompositionsmodule, keine eigenständigen Plugin-Formate:
+
+- `src/plugins/native-tooling.ts`: `registerPiboNativeTooling`, `addPiboNativeToolingContext`; Kontextbeitrag hängt am übergebenen Registrar.
+- `src/plugins/user-profile-resources.ts`: `createPiboUserProfileResourcePlugins`, `registerPiboUserProfileResources`; baut/registriert User-Ressourcen-Plugins nachträglich.
+- `src/plugins/context-files-store.ts`: Fachpersistenz, kein allgemeiner Plugin-Store.
+- `src/plugins/registry.ts`: `definePiboPlugin` ist nur Identity-Helper (um Zeile 956), kein Loader.
+
+### 3.1 Sämtliche relevanten Registry-Einstiege und Nebenregistries
+
+| Pfad / Symbol | Heutige Rolle | Umbauentscheidung |
+|---|---|---|
+| `src/plugins/registry.ts:199`, `PiboPluginRegistry` | Zentrale Maps und direkte Mutatoren | AP02 abgeleitete Fassade; AP18 Legacy-Registrar entfernen |
+| `src/plugins/builtin.ts:634ff`, `createDefaultPiboPlugins`, `createDefaultPiboPluginRegistry` | Statische Standardliste und Registry-Fabrik | Deklarative Zusammenstellung über denselben Host |
+| `src/plugins/builtin.ts`, `createGatewayProducerPiboPluginRegistry` | Separate geparkte Standardkomposition | Nicht versehentlich als Default-Agent aktivieren |
+| `src/gateway/web.ts:175ff`, `createWebPiboPluginRegistry` | Statische Backendkomposition aus Defaults, Auth, Channels, Ressourcen, Chat, VS Code | AP02 Integrationsnaht; AP17 Endkomposition |
+| `src/gateway/server.ts:225–228` | Hauptregistry + `compatibilityRuntimeRegistry` | Doppelten Aktivierungs-/Providerbesitz beseitigen |
+| `src/core/session-router.ts:589–592,1762ff` | Hauptregistry + eigener Default-Runtime-Fallback | Sonst kann ein nicht aktivierter Runtime-Provider weiter verfügbar sein |
+| `src/agent-runtime/registry.ts:306`, `AgentRuntimeAdapterRegistry` | Driver-, Instance-, Definition-Maps, Validierung/Auth/Lifecycle von Runtime-Sessions | Fachindex erhalten, aber Owner/Unregister/Scope unter Host; kein Paketloader |
+| `src/apps/chat-ui/src/session-views/registry.tsx` | Statische Built-in-View-Liste und Map | AP07/AP09/AP17 in Browser-Contributions überführen |
+| `src/tools/registry.ts` | Curated CLI Tools und Agent-Kontext-Snippets | Nicht mit Native Tool Registry verwechseln; AP12/AP14/AP17 Ownership klären |
+| `src/mcp/registry.ts` | MCP Registry-/Install-Kommandos | MCP-Fachintegration AP14, nicht zweiter Plugin-Lifecycle |
+| `src/tools/runtime/registry.ts` | Code-Runtime-Fachregistrierung | Gehört zur Code-Runtime-Familie, nicht globaler Plugin-Katalog |
+| `src/runs/registry.ts` | Laufende/persistierte Yielded Runs | Fachzustand erhalten, keine Plugin-Registry ersetzen |
+| `src/signals/registry.ts` | Session-/Tree-Signalzustand | Fachzustand erhalten; Ownership bei Subscription/Cleanup |
+
+Weitere Konsumenten, die eine reine Umstellung von `gateway/web.ts` nicht erreicht: `src/local/client.ts`, `src/skills/cli.ts`, `src/cli-session/localSessionSource.ts`, `src/apps/cli-ui/cliSessionsCommand.ts`, `src/debug/trace.ts`, `src/debug/output-repair.ts`, `src/agent-runtime/routed-session.ts`, `src/agent-runtimes/pi/adapter.ts`, `src/agent-runtimes/pi/routed-session.ts`, öffentliche Exports in `src/index.ts`. CLI-/Debug-Inspektion darf nach dem Umbau nicht durch eine versteckte Default-Registry wieder Featurecode aktivieren.
+
+## 4. Altverträge versus AP01/AP02-Ziel
+
+### 4.1 SDK und serialisierbare Grenzen
+
+**IST:** `src/plugins/types.ts:253–285` enthält `PiboPluginApi` und `PiboPlugin`. API umfasst Runtime-Driver/-Instanzen, Tools, Subagents, Skills, Context Files, Profiles, Gateway Actions, Channels, Auth, Transcription/Speech, Web Apps, Capability Packages, Loop/Ralph Stop Conditions sowie Output-/Product-Events.
+
+`PiboProfileBuildContext` löst flache Namen; `PiboProfileDefinition.create()` führt Code aus. `PiboProfileInfo` und `PiboCapabilityCatalog` transportieren alte `nativeTools`, `packages`, `piPackages`, `runControl`/`goalControl` und CLI-Snippets. Der Katalog ist kein unveränderlicher Installationskatalog.
+
+`src/index.ts:251–280` exportiert Legacy-Registry/-Typen. `package.json` verwendet `main: ./dist/index.js`, `types: ./dist/index.d.ts`; es gibt hier keine explizite SDK-Subpath-Exports-Map. Der Monolith `plugins/types.ts` importiert sogar Pi-`CompactionResult`/`ContextUsage` sowie Node-/Web-/Auth-/Featuretypen indirekt. **Nicht als browserfähigen SDK-Barrel wiederverwenden.**
+
+**PLAN AP01:** neue `manifest.ts`, `schema.ts`, `contributions.ts`, `sdk.ts` sind im Checkout nicht vorhanden; ebenso keine Treffer für `PluginManifest`, `PluginHost`, `PluginScope`, `PluginContributionResolver`, `PluginOperationPlan` in `src/`/`test/`.
+
+**Empfohlene präzise Grenze (Entwurf, keine existierende API):**
+
+- `manifest.ts`/`schema.ts`: ausschließlich JSON-Daten, Schema-/SDK-Version, IDs, Revision/Hash/Quelle, Backend-/Browser-Einstieg, Service-Anforderungen, Contribution-Metadaten. Manifestinspektion importiert keine Factory.
+- `contributions.ts`: qualifizierte IDs, app-/agentbezogene Auswahl, Pflicht/Optional/Default, Abhängigkeiten, Runtime-Prädikate, explizite Ersetzung, Kontextwirkung oder ausdrücklich keine; UI- und Settings-Metadaten.
+- `sdk.ts`: bewusst kleiner öffentlicher Vertrag; browserfähige DTOs separat von Backend-Factories/Node-Adaptern exportieren. Öffentlicher Importpfad und Packaging-Test in AP01 festlegen; nicht zwangsläufig neues npm-Workspace anlegen.
+- Laufzeit-Serviceobjekte/Funktionen stehen im Aktivierungs-API, nicht im serialisierten Manifest oder Browser-Katalog.
+- Dienst-ID und Version des Dienstvertrags von Plugin-Version trennen; mehrere Provider erlauben nur mit explizit ausgewähltem exklusivem Provider bzw. klar additivem Vertrag.
+- Eigentümer wird aus Host/Scope vergeben. Die heutige Übernahme eines vom Beitrag selbst gesetzten `pluginId` ist keine ausreichende Ownership-Invariante.
+- Bei neuen Beitragsarten erweitert ein Plugin den gemeinsamen Host über einen Dienst; kein neuer Registrar mit eigener aktiver Liste.
+
+### 4.2 Registrierung, Konflikte und Fehler
+
+**IST `registry.ts`:**
+
+- `registerPlugin` (243ff) schreibt zuerst `pluginIds`/`pluginNames`, dann ruft es `plugin.register()` auf. Wirft die Registrierung, bleiben Plugin-ID und vorherige Map-Einträge bestehen. Ein Retry derselben ID wird abgelehnt. Das ist ein durch Kontrollfluss belegtes Risiko; hier nicht ausgeführt.
+- `addUnique` verwirft doppelte flache Schlüssel. Es gibt keine allgemeine „last write wins“-Policy; aber `upsertProfile`/`upsertContextFile` überschreiben absichtlich ohne Ownerprüfung.
+- Profile und Aliase werden nacheinander registriert. Aliasfehler kann einen bereits eingetragenen Profileintrag zurücklassen.
+- `registerTools`/`registerSubagents` arbeiten einzeln; spätere Duplikate rollen frühere Einträge nicht zurück.
+- `registerAuthService` erlaubt genau einen Service, aber keine konfigurierte Ersatzbeziehung.
+- `registerWebApp` prüft Route-/Prefix-Konflikte einschließlich segmentweiser Überlappung. Diesen bestehenden Fehlervertrag erhalten und durch qualifizierte Ownerdiagnosen erweitern.
+- `createApi` (821ff) annotiert Tools/Skills/Context/Packages/Medienprovider, nicht alle Domänen. Subagents, Profiles, Channels, WebApps, Runtime-Driver/-Instanzen besitzen darüber keinen vollständigen Ownernachweis.
+- User-Skills und managed Context Files werden absichtlich nicht zu plugin-eigenen Dateien umetikettiert.
+- `getCapabilityCatalog` (685ff) injiziert Run-/Goal-Packages hartcodiert, liest installierte CLI-Snippets und Pi-Packages. `toolIsPortable` kann `createDefinition({})` während Inspektion ausführen! AP01/AP06 müssen Inspektion von ausführbarer Materialisierung trennen.
+
+**PLAN AP02:** Aktivierungsgraph vor Ausführung prüfen, deterministische Topologie, atomarer bzw. zurückrollbarer Contribution-Publish, geordnete asynchrone Deaktivierung; Fehlerzustand bei misslungenem Cleanup erhalten. Für einen Ersatzprovider reicht es nicht, den bisherigen `addUnique`-Fehler zu entfernen.
+
+### 4.3 Scope und Lifecycle
+
+**IST:** Keine universelle Plugin-Stop-/Dispose-API. Existierende Lebensdauern sind verteilt:
+
+- `src/channels/types.ts`: `PiboChannel.start(context)` / optional `stop()`.
+- `src/web/types.ts`: `PiboWebApp.dispose`, `handleRequest`, Node-Request-/Upgrade-Handler, `requireSession` im Webkontext.
+- `src/gateway/server.ts:232–314`: Auth, TCP-Server, Channels, Reaper, Router, WebApps und Speech werden handverdrahtet gestartet/gestoppt. Ein früher Stopfehler kann nachfolgende Schritte verhindern; einzelne Bereiche benutzen bereits `Promise.allSettled`.
+- `registry.ts` enthält umfangreiches Speech-Session-Management mit Kapazitäten, Startup-Timeout, Abort, spätem Startresultat, idempotenter Stop-Promise und Provider-Dispose. Das ist wertvolle Fachlogik, aber kein Beleg für allgemeinen Plugin-Lifecycle.
+- `src/agent-runtime/resource-service.ts`: Generationenressourcen und Cleanup, einschließlich Cleanup nach fehlgeschlagener Vorbereitung.
+- `src/tools/session-service.ts`: portable Sessions, Credential-Revoke und Bridge-Close bei Dispose.
+
+**Empfohlener AP02-Scopevertrag:** Eine Plugininstanz besitzt Root-Scope, Service-/Contribution-Registrierungen und optional Session-/Generation-Unterinstanzen. Jeder erfolgreiche Ressourcenerwerb liefert einen Disposer; Reihenfolge wird erfasst. Stop/Dispose teilen eine Promise, schließen Neuregistrierung aus, entsorgen in umgekehrter Reihenfolge und sammeln Fehler. Parent/Child-Cleanup muss eindeutig sein, nicht zweimal unabhängig stoppen. Abbruchsignal/Timeout macht unkooperativen Code nicht automatisch beendet; ungeklärtes Stoppen bleibt `failed`/blockiert statt „entfernt“.
+
+Kern kennt Ressourcenownership, nicht Speech-SDP, Cron-Jobs, MCP-Protokoll oder React-Komponenten. Diese Dienste behalten ihre fachlichen Zustände in Plugins. Drain/Retirement und persistierte Operationen gehören AP05/AP15, nicht als halber Löschpfad in AP02.
+
+## 5. AP03: Datenowner, CAS und Migration
+
+| Vorhandener Einstieg | Vertrag / Evidenz | Geplante Ergänzung |
+|---|---|---|
+| `src/apps/chat/agent-store.ts`, `CustomAgentStore` | Eigene `chat-agents.sqlite`; `CustomAgentDefinition`, Create/Update/Preview; `nativeTools`, Skills, Context, manuelle Subagents, MCP, Pi-Packages, Run/Goal; Zeitstempel | Agent-Plugin-Auswahl und Konfigurationsrevision beim selben Owner |
+| dieselbe, `update` SQL um 388–417 | `UPDATE ... WHERE id = ?`; kein `expectedRevision`-CAS in dieser Mutation gefunden | CAS neu implementieren, nicht „bestehendes Agent-CAS“ voraussetzen |
+| `src/data/pibo-store.ts` | `PiboDataStore`, synchrone `transaction` | Pluginoperationen/Generationsbefunde sinnvoll anbinden, keine Sessionduplikate |
+| `src/data/schema.ts` | Schema-Version hier 7, versionierte Migrationsschritte, sessions/runtime bindings/payloads/events/messages | Additive Tabellen/Erweiterungen für Revisionen, Operationsjournal, Generationenbefunde und Sessiontabsets |
+| `src/data/session-store.ts` | Produkt-Sessionstore | Sessionerhalt, Referenzen und Generationsanbindung |
+| `src/sessions/runtime-binding.ts` | `RuntimeSessionBinding`, `revision`, Transition-/Conflict-Fehler | Bestehendes CAS-Muster wiederverwenden; Binding nicht durch Plugin-Snapshot ersetzen |
+| `src/sessions/runtime-binding-persistence.ts` | Adapterneutrale Binding-Persistenzbrücke | AP06 Anschluss, kein zweiter Bindingsstore |
+| `src/plugins/context-files-store.ts` | Managed Context-Dateien/Revisionen | Fachrevisionen referenzieren statt Dateien duplizieren |
+| `src/apps/chat-ui/src/desktop-tabs-model.ts` | `pibo.chat.desktopTabs.v1` | Nur Migrationsquelle, nicht neue Source of Truth |
+| `src/apps/chat-ui/src/app-storage.ts` | separat `pibo.chat.lastSelection` | Kein Beweis historischer Tabownership |
+
+**AP03-Vertrag vor AP04/AP08 fixieren:** Installationsrevision vs. Aktivierungsrevision vs. Profilkonfigurationsrevision vs. Runtime-Generation vs. Tabsetrevision sind getrennte Identitäten. Referenzen auf deinstallierte Revisionen brauchen Tombstones; kein Cascade-Pfad von Plugininstallation zu Sessions/Messages/Runs/Fachdaten. Tabset-Key ist `piboSessionId`, nicht Agent, Room oder Generation.
+
+Mehrstore-Migration zwischen Agent-DB und Produkt-DB ist keine einzelne atomare Transaktion. Journal mit idempotenten Etappen/Resume, Altbytes-/Exportreferenz, Konfliktstatus und effektiver Alt-/Neu-Auswahl erforderlich. Secrets referenzieren; Hash allein ist kein Geheimnisschutz. Historische Kontextpayloads brauchen Retention-Vertrag, sonst ist „Snapshot vorhanden“ ohne Inhalt kein vollständiger Befund.
+
+## 6. AP04: Resolver und alte Selektionssemantik
+
+**IST:** `src/apps/chat/agent-profiles.ts` enthält zwei unterschiedliche Pfade:
+
+1. `createCustomAgentProfileDefinition`: löst Tools/Skills/Context gegen Registry auf; unbekannte Skills/Context ergeben Diagnosen und werden ausgelassen, unbekannte Tools werden übersprungen und ggf. nur gewarnt. Manuelle Subagents werden direkt übernommen.
+2. `createCustomAgentRuntimeValidationProfile`: erstellt Platzhalter mit Name/Path ohne echte Contributionauflösung.
+
+`createCustomAgentBuilder` übernimmt MCP/Pi-Packages, Runtime-Optionen, Modelle, Subagents und `withToolPackages({ runControl, goalControl })`. `InitialSessionContext` in `src/core/profiles.ts` kopiert Listen, enthält aber keine tief eingefrorene vollständige Pluginrevision-/Konfigurationsauflösung.
+
+**PLAN:** AP04 ersetzt diese parallelen Annäherungen durch eine gemeinsame serverseitige Auswahlfunktion. Fehlende Referenzen im Draft behalten, aber Required-Konflikte vor Runtimeaktivierung ablehnen statt still wegzulassen. Bestehende Auswahl nicht bei Updates mit neuen optionalen Defaults verbreitern.
+
+**Empfohlene Ein-/Ausgabegrenze:**
+
+- Input: geprüfter installierter Katalog/Aktivierungsrevision, persistierte Agent-Auswahl samt Revision, unabhängige User-/Manual-Ressourcen, Runtime-Instanz/Caps und explizites Auflösungsziel (Preview oder Generation).
+- Output: deterministische qualifizierte Beiträge, Required/Optional-/Dependency-Gründe, explizite Auslassungen/Konflikte, Herkunft/Reihenfolge, Konfigurationsreferenzen, Runtime-Lieferanforderungen, referenzierbare Planidentität. Kein Import von Pi-only-Factories beim bloßen Filtern unter Codex/OMP.
+- AP04 berechnet Auswahl, nicht tatsächlichen Delivery-Erfolg. AP06 ergänzt beobachtete Delivery/Transformation. AP07/AP08 projizieren dieselbe Auswahl in Katalog und Sessiontabs, nicht den globalen Installationsbestand.
+- Runtime-/Profiladapter können außerhalb des reinen Resolvers asynchron prüfen; der deterministische Kern sollte keine Datenbanken, Factoryausführung oder Netzverifikation verstecken.
+
+### 6.1 Effektiven Tool-Satz nicht nur aus `nativeTools` ableiten
+
+`src/tools/session-tool-set.ts`, `createPiboSessionToolDefinitions`, ist der wichtigste AP00/AP04/AP06-Knoten:
+
+- `runtime` wird nur mit ausgewähltem Profiltool und Runtimecontroller erzeugt.
+- Browser-Tools werden anhand Auswahl und Browsercontroller gebaut, nicht normal materialisiert.
+- Compat-Tools kommen über `toolPackages.codexCompat` hinzu.
+- Goal-Tools sind standardmäßig an (`goalControl !== false`).
+- Agentmanagement kommt aus dem Agentscontroller; `pibo_agents_send_message` wird aus der direkten Liste entfernt und über Run-Control adressiert.
+- Selbst ohne allgemeinen `runControl`-Schalter kann der delegierte Send-Target Run-Tools erforderlich machen.
+- Yieldable-Listen berücksichtigen native private Tools, Materialisierung, Runtime-, Browser-, Agent- und Compattools.
+
+AP00-Fixtures müssen daher auf **materialisierten effektiven Namen und Controllerverfügbarkeit** beruhen, nicht bloß gespeicherten Listen. Neue Required-Bündel dürfen diese alten Teilmengen nicht heimlich verbreitern.
+
+## 7. Hook-System: AP01/AP02-Vertrag, AP06/AP09-Integration
+
+### 7.1 Was bereits existiert
+
+- `registry.ts:onEvent` sammelt synchrone Output-Listener; kein Unsubscribe im API-Rückgabewert. `notifyEvent` isoliert geworfene Fehler in `eventErrors`.
+- `onProductEvent` liefert Unsubscribe; `emitProductEvent` ergänzt ID/Zeitstempel und isoliert synchrone Listenerfehler. Keine geordnete asynchrone Transformationspipeline, keine Timeouts und kein verpflichtendes Pre-Hook-Ergebnis.
+- `src/core/session-router.ts` besitzt `messagePreflight`; `src/gateway/server.ts` liefert `createLoopMessagePreflight`. Das ist eine konkrete fachliche Vorprüfung, kein allgemeines Plugin-Input-Hooksystem.
+- `PiboToolDefinition.prepareInput` ist eine Tool-eigene Inputvorbereitung, nicht eine registrierbare globale Hookphase.
+
+### 7.2 Tatsächliche Tool-Ausführungspfade
+
+| Pfad / Symbol | Heutiger Aufruf | AP06-Verpflichtung |
+|---|---|---|
+| `src/agent-runtimes/pi/tool-compiler.ts:74–76ff` | `prepareArguments` aus `prepareInput`, direkt `definition.execute` | Pre-/Post über gemeinsamen Ausführungsdienst, Pi-Kontext bleibt privat |
+| `src/tools/mcp-bridge.ts:501,523ff` | Inputvorbereitung und `tool.execute`; Scope/Credentials/Progress/Payloads | Gleiches Hookverhalten ohne Verlust der Zugriffskontrollen |
+| `src/agent-runtimes/omp/host-tools.ts:159–161ff` | Inputvorbereitung und `definition.execute` | Gleicher Contract mit Timeout/Cancel und OMP-Korrelation |
+| `src/runs/tools.ts:89ff,171–174ff` | Yielded-Argumentprüfung, verzögerter `tool.execute` | Tatsächlichen Zielaufruf hooken; Start-Tool vs. Ziel-Tool getrennte Identitäten |
+
+Es existieren hier keine `src/tools/execution.ts` oder `src/tools/compiler.ts`. Ein gemeinsamer Ausführungsdienst wäre **neu**; `session-service.ts` ist primär Materialisierung/Scope/MCP-Service, noch kein alleiniger Executor.
+
+**Vor Implementierung festlegen:** Hook-ID/Owner/Priorität und stabiler Tie-Break; Input-/Outputschema; erneute Tool-Schemavalidierung nach Transformation; Timeout-/Abortsemantik; Required-Pre-Hook fail-closed; optionale Beobachterfehler separat vom bereits ausgeführten externen Effekt; Transformationsbefunde mit Original-/Ergebnisreferenz ohne Secrets. Native Harness-Tools haben nur explizit vom Adapter garantierte Interception. Output-Events nicht als Pre-Tool-Schutz verkaufen.
+
+AP09 besitzt Composer Paste/Drop/Send und benannten Router-Input-Hook. AP06 besitzt Toolausführung und Kontextprovenienz. **Ein gemeinsames Hook-DTO in AP01**, keine zwei unabhängig entworfenen Semantiken. Kernel hält nur Ownership/Ordering, nicht React-Eingabe- oder MCP-Ausführungslogik.
+
+## 8. Runtime-, Kontext- und Browseranschlüsse
+
+### 8.1 Vorhandene Verträge erhalten
+
+- `src/tools/contract.ts`: `PiboToolDefinition`, Execution/DefinitionContext, JSON-Schema, `prepareInput`, AbortSignal, Progress, Text/Image/structuredContent, payloadRefs, Metadaten und Annotations. `LegacyPiToolDefinitionLike` wird `portable: false`; darf nicht über portable MCP gelangen.
+- `src/agent-runtime/capabilities.ts`: getrennte Delivery-/Feature-Capabilities. `src/agent-runtime/types.ts`: Driver, Instance, Adapter, RuntimeSession, OpenServices, Diagnose und Auth. AP01 darf keine neue pauschale „Runtime unterstützt Plugin“-Boolean an ihre Stelle setzen.
+- `src/agent-runtime/registry.ts`: validiert Driver/Instance, Konfiguration, deklarierte History-/Auth-Verträge und Sessionfähigkeiten. `driver.create` läuft heute während Instanzregistrierung. Künftige Manifestinspektion muss davor liegen.
+- `src/agent-runtime/resources.ts`: Contribution-/Skill-/MCP-/Delivery-/Inspection-Daten; `PiboRuntimeResourceSession`.
+- `src/core/session-router.ts:1554ff`: eine UUID für Tools und Ressourcen; Fehlerpfade disponieren portable Sessions; dies ist der Anschluss für immutable Plugin-Generationssnapshots und Child-Scopes.
+- `src/tools/session-service.ts`: Generation-Key aus Session + Generation; Credentials erneuern ohne Scopeausweitung, Revoke/Close bei Dispose. Nicht als Daten für Browserkatalog serialisieren.
+
+### 8.2 Build Context ist Ausgangspunkt, kein fertiger Generationsbeweis
+
+`src/core/context-build.ts`: `PiboContextBuildNode`, `PiboContextBuildSnapshot`, `PiboRuntimeResolutionManifest`, `inspectPiboContextBuild`; `src/agent-runtime/context-build.ts`: `buildPortableRuntimeContextSnapshot`. Bereits vorhandene Herkunft/Delivery-/Grenzdiagnosen erhalten.
+
+Der Pi-Inspector baut eine Runtime zur Inspektion auf und disponiert sie am Ende (`inspectPiboContextBuild`, Dispose um 1036); daher ist dieser Pfad nicht automatisch die vom Plan verlangte rein lesende Sicht auf persistierte historische Befunde. Der Registry-Katalog kann zusätzlich Toolfactories aufrufen. AP06 muss echte Generations-/Turn-Befunde von separater Vorschau unterscheiden und darf beim Öffnen keine Schreib-Hooks erneut ausführen.
+
+Webnaht: `src/apps/chat/web-app.ts` (`buildContextBuildSnapshotForRequest`, `/api/chat/context-build`); Clienttypen und API in `src/apps/chat-ui/src/api-agent-designer.ts`; UI `src/apps/chat-ui/src/context/ContextBuildView.tsx`. AP04 liefert Auswahlgründe und Ausschlüsse, AP06 tatsächliche Lieferung/Transformation, AP03 speichert, AP11 registriert die Inspector-View.
+
+### 8.3 UI-/Konfiguration nicht nachträglich in AP01 vergessen
+
+Plan verlangt bereits für AP01 feste `piboSessionId` an Tabinstanzen, qualifizierte View-IDs, Zustandsschema, Unteransichten und getrennten Konfigurationsscope (App/Agent/Session), Kontextwirkung jedes Beitrags und generische Provenienz-/Delivery-Knoten. Backend-Serviceobjekte, Tokens, Node-/Harness-Imports gehören nicht in den Browserkatalog.
+
+Vorhandene statische Flächen für spätere APs: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `desktop-tabs.tsx`, `app-routes.ts`, `App.tsx`, `main.tsx`, `session-views/types.ts`, `session-views/registry.tsx`, `context/types.ts`, `context/ContextSidebar.tsx`, `context/McpToolsView.tsx`, `context/PiboToolsView.tsx`, `settings/types.ts`, `settings/SettingsSidebar.tsx`, `settings/SettingsView.tsx`. AP08/AP17 müssen beide Renderzweige behandeln. Dieser Bericht nimmt keine visuelle Abnahme vor.
+
+### 8.4 Pi-Package-/Discovery-Audit AP16
+
+`src/pi-packages/types.ts`, `store.ts`, `runtime.ts` und `src/agent-runtimes/pi/runtime.ts` sind konkrete Auditpfade. Letzterer lädt um 401 `getPiPackageRuntimeOptions`, übernimmt ResourceLoader-Optionen, fügt `extensionFactories` hinzu und setzt bereits `noExtensions: true`, `noSkills: true`, `noPromptTemplates: true`, `noThemes: true`.
+
+**Nicht behaupten:** dass heute jede implizite Pi-Extension läuft, oder dass `noExtensions: true` schon den vollständigen AP16-Negativbeweis liefert. Ausdrückliche Factory-/Packagepfade und tatsächliche Loadersemantik der gepinnten Harnessversion müssen separat geprüft werden. AP16 braucht negative User-/Workspace-Discovery-Fixtures und ein positives ausdrücklich gewähltes Pluginfixture. Keine breite Cordis-Recherche erforderlich; der Plan verlangt ausdrücklich keinen Cordis-Laufzeitimport.
+
+## 9. Testeinstiege und konkrete Lücken
+
+Alle folgenden bestehenden Dateien wurden über Dateisuche bzw. Testquellen abgeglichen; **kein Test wurde ausgeführt**. Viele Backendtests importieren `../dist/...`, sodass ein Test gegen veraltetes `dist` nicht den neuen Quellkandidaten nachweist. `npm test` baut das gesamte Produkt; zielgerichtete Tests erst nach Kandidatenbuild im Worker.
+
+| AP / Vertrag | Vorhandene Tests / konkrete Szenarien | Neu erforderlich laut Plan |
+|---|---|---|
+| AP00/AP02 Registry | `test/plugin-registry.test.mjs`: Defaultinventar, geparkter Gatewayproducer, CLI-Kontexthinweise, User-Skill-Herkunft, Pi-Package-Katalog ohne Aktivierung, Profile/Actions/Listener, Product-Event-Metadaten und Listenerisolation, Duplikate | `test/plugin-system-manifest.test.mjs`, `test/plugin-system-lifecycle.test.mjs` |
+| AP02 Channels/Provider | `test/channel-runtime.test.mjs`: Startkontext, depth-adjusted Profil, Disposal vor Sessionlöschung, umgekehrte Stopreihenfolge, Required-Auth ohne Service abweisen; `test/speech-provider.test.mjs`, `test/transcription-provider.test.mjs` | Partial setup/rollback, Async-Cleanupfehler, Doppelstop, Retry, Owner-Unregister, Dienstgraphzyklus, expliziter Ersatzprovider |
+| AP03 Agentdaten | `test/agent-store.test.mjs`: Legacy-Migration, Rename/Aliase, Löschschutz bei Zielreferenzen, Rollback, Goaldefaults und explizit aus, MCP/Pi-Packages, Runtimeoptionen, Subagentoverrides | `test/plugin-system-store.test.mjs`: CAS, Tombstone, Sessionerhalt, Journalunterbrechung zwischen Stores, Tabset-CAS |
+| AP03 Produktdaten | `test/pibo-data-session-store.test.mjs` | Snapshotimmutable, keine Uninstall-Cascade, Retentionreferenzen, unknown Legacy |
+| AP04 | `test/agent-profiles.test.mjs`: unbekannte Context-/Skillreferenzen überspringen, Runtimeauswahl, Subagentsettings; `test/chat-custom-agent-profiles.test.mjs`: Registrierung vor Channelstart, Legacy-Duplikate, stale Tools brechen Katalog nicht | `test/plugin-system-selection.test.mjs`: Pflichtbeitrag/API-Manipulation, optionale Ausschlüsse, Defaults nur neu, Namenskonflikte, missing Draft erhalten, keine Factoryimports beim Filtern |
+| AP06 Tool | `test/pibo-tool-contract.test.mjs`: Pi-Compiler/JSON-Schema und Legacy-private Normalisierung; `test/pibo-tool-mcp-bridge.test.mjs`: Loopback, Hash/Scope/Expiry/Revoke, Isolation, Progress/Content/Error/Korrelation/große Ergebnisse | `test/plugin-system-runtime.test.mjs`, transportübergreifende Hookfälle |
+| AP06 Ressourcen | `test/agent-runtime-resource-service.test.mjs`: isolierte Auswahl/Secrets, beobachtete Delivery, native Discovery vs. expliziter Context, Symlink-/Precedence-Dedupe, MCP unsupported, gemeinsame Generation/Dispose | Pluginrevision/Scope gemeinsam mit Generation, required vs optional vor Import, Snapshotfreeze |
+| AP06 Runtimeverträge | `test/agent-runtime-registry.test.mjs`: Driver/Instance, Config/Caps, private Tools, History/Auth, partielle Sessions/Cleanup, Fake-Lifecycle; `test/runtime-portability.test.mjs`, `test/codex-native-resources.test.mjs`, `test/omp-runtime.test.mjs` | Ein reales harmloses Tool pro Runtime später AP19; Fake ist kein Providerabnahmenachweis |
+| AP06/09 Kontext | `test/context-build-inspector.test.mjs`: generierte Toolherkunft nur Inspectormetadaten, degraded native inspection, materialisierte Namen, fehlender Browsercontroller, Subagentlieferung, kein behaupteter Full Prompt; `test/context-build-skills-tokens.test.mjs`, `test/chat-ui-context-build-origin.test.mjs` | `test/plugin-system-context-build.test.mjs`, `test/plugin-system-hooks.test.mjs`: historische Befunde vs Preview, keine Schreibausführung bei Read, alle Beiträge inkl. UI/no-context/excluded |
+| AP07/08 | `test/chat-ui-desktop-tabs-model.test.mjs`, `test/chat-ui-desktop-tabs-behavior.test.mjs`, `test/chat-ui-desktop-tabs-accessibility.test.mjs` sowie Route-/Storage-Tests aus Plan | `test/plugin-system-web-catalog.test.mjs`, `test/plugin-system-tabs.test.mjs`, `test/plugin-system-settings.test.mjs`; headful Sessionwechsel/Save-Rennen |
+
+Neue `plugin-system-*`-Testdateien sind in diesem Checkout nicht vorhanden.
+
+### 9.1 Deterministische AP00-Fixtures: Mindestset
+
+1. Baseprofil mit exakt gewählten Pi-Built-ins, keinem implizit ausgewählten Native-Tooling-Context; aktuelle Tests als Erwartungsquelle.
+2. Toolteilmenge mit Controller-backed Runtime-/Browsertool plus portablem Tool; Controller vorhanden/fehlend getrennt.
+3. Goaldefault aktiv und explizit deaktiviert; Run-Control aus, aber manueller Subagent mit delegiertem Send-Target; effektive Runschnittstelle festhalten.
+4. Codex Native vs. ausdrücklich Pi-gebundene Compatkonfiguration; keine `codex`-Aliasgleichsetzung.
+5. OMP mit optionalem/erforderlichem externem MCP-Beitrag; unsupported sichtbar statt CLI-Fallback.
+6. Plugin-Skill, unabhängiger User-Skill und managed Context mit identischem sichtbarem Namen/anderem Inhalt; Reihenfolge und Konflikt festhalten.
+7. Missing Tool-/Skill-/Context-/Pluginreferenz; Draft bleibt vollständig, Generationentscheidung getrennt.
+8. Bekanntes und unbekanntes Pi-Package; Metadaten vs ausführbarer Pfad getrennt sichern.
+9. Zwei Sessions desselben Agents, globale Tab-v1-Daten, explizite sessiongebundene Context-Route und ungebundene Alttabs. `lastSelection` beweist nicht die Ownership aller Tabs.
+10. Neue optionale Contribution bei Update und neue Pflichtcontribution mit Migrationskonflikt; kein stiller Funktionszuwachs.
+
+## 10. Konfliktarme Paketgrenzen für höchstens fünf Worker
+
+Dies ist eine Arbeitsaufteilungsempfehlung, kein Startauftrag. Alle Worker verwenden denselben vom Orchestrator fixierten aktuellen `upstream/dev`-Kandidaten; diesen Bericht zuvor gegen dessen Symbole abgleichen. Keine fünf gleichzeitigen Änderungen an Router/Registry/`App.tsx`.
+
+### Phase 0: AP00 und Vertragsfreeze
+
+Orchestrator lässt Baseline/Drift, Zielbesitzer und Fixtures vervollständigen. Ein einzelner Vertragsowner verantwortet AP01; andere Worker können Test-/Integrationsentwürfe vorbereiten, aber keine konkurrierenden öffentlichen DTOs einführen. AP01-Abnahme umfasst ein manifestlesbares Fixture ohne Codeimport, getrennte Backend-/Browsermetadaten und Dienstprovider/-consumer zweier unabhängiger Plugins.
+
+### Phase 1: bis zu fünf getrennte Arbeitsblöcke nach AP01
+
+| Workerblock | Eigene Dateien (neu soweit bezeichnet) | Explizit nicht in diesem Block | Abhängigkeit / Handoff |
+|---|---|---|---|
+| **Kern K** | **neu** `src/plugins/host.ts`, `scope.ts`, `services.ts`, ggf. kleiner gemeinsamer Contribution-Index; `test/plugin-system-lifecycle.test.mjs`; alleiniger Owner der AP02-Fassade in `registry.ts` | Keine Featureextraktion, kein DB-Schema, kein UI, keine Transporthooks | AP01 → graph/scopes/registration handles; Registry-Integration eigener Commit |
+| **Daten D** | Pluginstore/Journal **neu**, `src/data/schema.ts`, `src/data/pibo-store.ts`, vereinbarte Store-Erweiterungen; `src/apps/chat/agent-store.ts`; Storetests | Keine Resolverlogik, keine UI-Tabverwaltung, keine Lifecycleausführung | AP01 → CAS-/Snapshot-/Operation-/Tabset-Repositories; AP02 nicht fürs Schema erforderlich |
+| **Browser B** | **neu** `src/apps/chat-ui/src/plugins/`, Backend-Katalog-/Assetadapter und Webkatalogtests | Kein `App.tsx`-Featureumbau, keine eigene Settingsregistry, keine Daten-CAS-Implementierung | AP01/AP02; vorher nur DTO-/Fixturearbeit; AP08 wartet zusätzlich AP03/AP04 |
+| **Auswahl S** | **neu** `src/plugins/selection.ts`, `resolution.ts`; AP04-Tests; anschließend alleiniger Owner `src/apps/chat/agent-profiles.ts` | Nicht `agent-store.ts`, nicht Tooltransporte, nicht `registry.ts` | AP02/AP03 → gemeinsamer ResolvedPlan mit Ausschlüssen; bis dahin pure Fixture-/Testarbeit |
+| **Runtime R** | Nach AP04: Toolexecutor/Hookintegration und `src/tools/session-tool-set.ts`, `session-service.ts`, `src/agent-runtime/resource-service.ts`, Adapter-Transportnaht; AP06-Tests | Kein paralleler Kernel oder persistierter Installationsstore; Composer bleibt AP09 | AP04 → echte Generation/Delivery; Schnittstellenentwurf vorher möglich, tatsächliche AP06-Integration nicht vorziehen |
+
+AP05 kann nach Daten-/Kernhandshake in einem freigewordenen Slot starten. AP09 folgt AP06/AP07; AP10 folgt AP04/AP05/AP07. **AP12–AP14 nicht sofort als drei unabhängige Featureworker starten:** der Plan bindet sie ausdrücklich an den vollständigen AP11-Durchstich.
+
+### 10.1 Integrationsdateien mit Single-Writer-Regel
+
+- `src/plugins/types.ts`, neue AP01-Dateien, `src/index.ts`, `package.json` und Paket-/Lockdateien: Vertrags-/Integrationsowner.
+- `src/plugins/registry.ts`: Kernowner, kein Featureworker ergänzt neue Map oder Registrar.
+- `src/plugins/builtin.ts`, `src/gateway/web.ts`, `src/gateway/server.ts`: Orchestrator bzw. ein Kompositionsowner; Featureworker liefern Manifest/Factory und Patchanforderung.
+- `src/core/session-router.ts`: Runtime-Integrationsowner. Hier treffen AP02-Lifecycle, AP03-Snapshot, AP04-Auswahl, AP06-Generation und AP15-Retirement zusammen.
+- `src/apps/chat/web-app.ts`, `chat-capability-routes.ts`, `chat-api-routes.ts`: ein Backend-API-Integrator; gesonderte neue Router-/Katalogmodule bevorzugen.
+- `src/apps/chat-ui/src/App.tsx`, `api-agent-designer.ts`: Browser-/Designer-Integrator mit verabredeten Phasen.
+- `src/core/profiles.ts`: AP01/AP04-Vertragsowner; Runtimeworker dürfen keine eigenen Pflicht-/Pluginfelder parallel hinzufügen.
+
+### 10.2 Konkreter erster Kern-Arbeitsblock
+
+**Input:** gefrorene AP01-Manifest-/Service-/Contribution-/Scope-Typen und zwei harmlose lokale Fixtures. **Output:** Hostbibliothek ohne Produktstart, deterministischer Aktivierungsplan, Ownershipindex, Scope-Disposer und belastbare Fehlerdiagnosen.
+
+1. Vor Import fehlende Provider, inkompatible Dienstversionen, Zyklus, doppelte exklusive Provider und ungültige Ersetzung diagnostizieren; geordnete Dependency-Pfade ausgeben.
+2. Scopegebundene Registrierung; Root und Generation-Child unterscheiden; gegen Registrierung nach Dispose schließen.
+3. Setupfehler gibt jede zuvor publizierte Registration frei und hält Cleanupfehler sichtbar. Retry derselben Revision ist nach sauberem Rollback möglich.
+4. Umgekehrtes Async-Cleanup, idempotente gemeinsame Stop-Promise, Fehleraggregation, weiterlaufendes Cleanup nach Einzelfehler.
+5. Additive Contributions und exklusive Provider getrennt auflösen; Toolnamenskonflikte nicht via Importreihenfolge lösen.
+6. Bestehende `PiboPluginRegistry` anschließend nur auf den Hostindex projizieren. Kein gespiegeltes `activePlugins`/`pluginIds` als zweite Wahrheit. Fachservices wie Speech separat erhalten und an Scope binden.
+
+**Abnahme:** A01–A03 und AP02.4; bestehende Registry-/Channel-/Speechregressionen plus neue adversarielle Lifecycletests. Ein isoliert grüner Hosttest schließt AP02 erst ab, wenn die echte Fassade integriert ist. Der vollständige Produktumbau ist damit keinesfalls fertig.
+
+## 11. Priorisierte Risiken und explizite Entscheidungen
+
+| Priorität | Risiko | Konkrete Gegenmaßnahme / Owner |
+|---|---|---|
+| P0 | Falsche Baseline führt zu Rückbau neuer Runtime-/Toolverträge | AP00 Symbol-/Testdrift auf aktuellen gemeinsamen Kandidaten; Hashline/OMP-ID nicht blind übernehmen |
+| P0 | Default-Fallback-Registry hält deaktivierten Provider am Leben | Gateway und Router zusammen mit AP02/AP06 migrieren; negative Aktivierungsprüfung ohne versteckten Fallback |
+| P0 | Required-Auswahl nur im UI, Server überspringt Missing Tools | AP04 einzige Serverauflösung; API-Negativfälle und unveränderte Draftreferenzen |
+| P0 | Pluginsetup bleibt teilweise registriert | AP02 Ownerhandles/Rollback; Fehler nach jeder Registrierungsart testen |
+| P0 | Datenverlust oder heimlicher Abort bei Uninstall | AP03 Tombstones/keine Cascades, AP15 revalidierter Auswirkungsplan/Retirement/Drain; Stop ist nicht Sessionlöschung |
+| P1 | Zentraler Hook läuft nicht über Runs/OMP oder läuft doppelt | AP06 alle vier Executorpfade plus verschachtelte Runs prüfen; tatsächlichen Effektstatus getrennt vom Observerfehler halten |
+| P1 | Inspector importiert Factories / rekonstruiert aktuelle Defaults als Historie | AP01 importfreie Metadaten, AP03 persistierte Befunde, AP06 Previewgrenze; Side-effect-Test |
+| P1 | Session-/Profil-/Plugin-/Tabrevision werden vermischt | AP01 Identitätsschema + AP03 CAS; AP08 verzögerte Saves A→B testen |
+| P1 | Browserbundle zieht Pi/Node-Code über alten Barrel | Getrennte SDK-Exports, Browserimport-/Packaged-Fixturetest; keine `plugins/types.ts`-Gesamtexporte im Client |
+| P1 | Neue Pflichtpakete aktivieren zusätzliche Schreibtools | AP00 materialisierte Auswahlfixtures, AP04 Konflikt statt automatische Expansion, AP16 Dry-run |
+| P1 | Generischer Dispose verdeckt lange lebende Fachzustände | Speech-/Auth-/Run-/MCP-/Ressourcen-Cleanup fachlich erhalten; failed Stop nicht als Updateerfolg |
+| P2 | Registry-Namenssuche löscht Run-/Signal-/CLI-Fachindices | Nur Erweiterungsaktivierungswahrheiten konsolidieren; Fachregistries über Services unterstellen |
+
+Vor Vertragsfreeze entscheiden: qualifiziertes ID-Format; exklusiver Provider-Auswahlschlüssel und Ersatzbeziehung; Manifest-Schemaversion und SDK-Importpfad; semantische Dienstversionierung; Scope-Dispose-/Timeout-Zustände; Hookordering/Ergebnis-/Fehlervertrag; Provenienz-/Payloadreferenzen; CAS-Konflikt-DTO; initiale Required-Bündel für alte Toolteilmengen. Dies sind Konkretisierungen des Plans, keine Erlaubnis für Cordis, Hot Reload, Sandbox oder Mehrversionsbetrieb.
+
+## 12. Abschlussstatus
+
+Recherchebericht persistiert. Quell- und Planbefunde sind getrennt; AP00–AP04 sowie relevante Anschlüsse AP05–AP19 sind kartiert. Keine Arbeitspaketcheckbox gilt dadurch als erledigt. Insbesondere fehlen absichtlich: aktuelle Remote-Baselinebestätigung, neue anonymisierte Fixtures, vollständige per-Tool-/UI-Ownership-Abnahme auf dem Implementierungskandidaten, ausgeführte Tests/Builds, Browser-/Pibo2-/Paketabnahme und Prüfung der tatsächlichen Harness-Discovery auf der Zielversion.
+
+Für den nächsten Schritt genügt nicht „Kernel schreiben“: erst gemeinsame Baseline und AP01-Verträge festhalten, dann Kern/Daten getrennt implementieren und genau einen Owner für Registry-/Router-/Gatewayintegration einsetzen.

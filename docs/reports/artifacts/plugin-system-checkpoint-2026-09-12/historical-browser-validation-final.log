@@ -1,0 +1,31 @@
+✔ tabs require a session and effective pinned view, not just installation (2.543773ms)
+✔ same view deduplicates only within session; state and subview are retained (1.178931ms)
+✔ multiple instance identities, close neighbor, and schema mismatch preserve saved state (0.350771ms)
+✔ A→B→A / reload persists active tab, settings subview, independent state and layout (1.517941ms)
+✔ late A autosave stays A while B is selected; serialized edits are not lost (0.940432ms)
+✔ two-browser CAS conflict preserves losing local state and never overwrites server (0.683768ms)
+✔ cross-session server responses and attempted tab movement are rejected (0.563451ms)
+✔ deep links encode the owning session, tab and subview (0.711982ms)
+✔ configuration URL fixes app/agent/session target independently from tab ownership (1.971936ms)
+✔ host imports only effective pinned browser modules and injects shared React/SDK (1.759586ms)
+✔ setup failure rolls back renderers, hooks and views (0.686273ms)
+✔ undeclared executable browser registrations fail without affecting other owners (0.459867ms)
+✔ late module resolution after dispose never mounts executable contributions (0.362724ms)
+✔ ordered input transforms retain provenance and exact session (1.044098ms)
+✔ input rejection, timeout and cancellation do not send fallback text (11.295072ms)
+✔ session request cannot escape plugin API namespace (0.556127ms)
+✔ catalog strips all server source paths, secrets and service objects (0.362894ms)
+✔ asset serving uses immutable revision and denies traversal/symlink/backend escapes (38.293032ms)
+✔ session plan route checks access and never reads another session (1.339113ms)
+✔ build evidence reads only saved nodes, never synthesizes current catalog nodes (0.257515ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 325.72338
+
+> @pasko70/pibo@1.7.2 chat-ui:typecheck
+> tsc -p src/apps/chat-ui/tsconfig.json --noEmit

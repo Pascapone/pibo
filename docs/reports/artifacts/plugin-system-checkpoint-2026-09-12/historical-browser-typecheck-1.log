@@ -1,0 +1,5 @@
+
+> @pasko70/pibo@1.7.2 chat-ui:typecheck
+> tsc -p src/apps/chat-ui/tsconfig.json --noEmit
+
+src/apps/chat-ui/src/agents/AgentsView.tsx(876,29): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?

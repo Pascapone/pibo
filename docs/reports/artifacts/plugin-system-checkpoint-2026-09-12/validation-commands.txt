@@ -1,0 +1,24 @@
+Reproduction recipe for source fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd
+Commands run on the controller but explicitly target the existing Docker worker.
+Do not run these builds/tests on the controller source checkout.
+
+# Read-only state verification
+git -C /root/code/pibo/.worktrees/plugin-system-rebuild status --short
+git -C /root/code/pibo/.worktrees/plugin-system-rebuild log -4 --oneline
+docker inspect --format '{{.Name}} {{.State.Status}}' pibo-dev-plugin-system-rebuild
+
+# Combined integrated build and new plugin tests (expected: 170 pass, no skips)
+docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock sh -lc 'npm run build && npm run chat-ui:typecheck && env -u PIBO_COMPUTE_WORKER node --test --test-concurrency=1 test/plugin-system-*.test.mjs'
+
+# Selected legacy regressions (known result: 111 pass, 12 fail, exit code 1)
+docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock env -u PIBO_COMPUTE_WORKER node --test --test-concurrency=1 test/plugin-registry.test.mjs test/agent-store.test.mjs test/agent-profiles.test.mjs test/chat-custom-agent-profiles.test.mjs test/runtime-portability.test.mjs test/context-build-inspector.test.mjs test/context-build-skills-tokens.test.mjs test/web-gateway.test.mjs test/agent-runtime-resource-service.test.mjs test/pibo-portable-tool-session.test.mjs test/runtime-routed-session.test.mjs test/model-catalog.test.mjs test/chat-ui-agent-designer-runtime-switch.test.mjs test/chat-ui-agent-designer-description-clear.test.mjs test/chat-ui-agent-designer-new-session-default.test.mjs test/chat-ui-agent-designer-sidebar-folders.test.mjs test/chat-ui-agent-designer-subagents.test.mjs test/chat-ui-agents-initial-draft.test.mjs test/chat-ui-agent-context-scope-accessibility.test.mjs
+
+# Focused backend compile, if needed; the worker has a 2 GiB memory limit
+docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json
+
+# Documentation after changes; use the isolated Git mirror at the same topic HEAD
+docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock sh -lc 'npm run docs:indexes:write && npm run docs:validate && npm run docs:indexes:check && npm run docs:log:check && npm run docs:validator:test'
+
+PIBO_COMPUTE_WORKER is removed only from the test process for simulated controller-binding tests, not from the worker environment or authentication configuration.
+The 170 tests and 19-file selection are NOT the full repository suite.
+Before future product acceptance: follow AP11/AP19 and the appropriate Docker, browser, exact-package and Pibo2 skills. The checkpoint is not authorization to deploy or start/resume subagents.

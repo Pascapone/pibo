@@ -1,0 +1,462 @@
+{
+  "generatedAt": "2026-09-12T08:30:09Z",
+  "scope": "Scratch artifact audit; checkpoint overrides historical instructions. No new or resumed agents authorized.",
+  "entries": [
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/ap00-ap04-kernel-sdk-research.md",
+      "sha256": "42014ce66de8ff4c22f04e2e40e12193b1122b7503d6035f3402cf0164339c35",
+      "bytes": 44603,
+      "disposition": "preserved",
+      "artifact": "historical-ap00-ap04-kernel-sdk-research.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "42014ce66de8ff4c22f04e2e40e12193b1122b7503d6035f3402cf0164339c35"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/baseline-paths.txt",
+      "sha256": "537afd46e34452c4e65d9b12c70f0cad8fcbb2541366ff7cde34fe36f0d48edd",
+      "bytes": 154555,
+      "disposition": "preserved",
+      "artifact": "historical-baseline-paths.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "537afd46e34452c4e65d9b12c70f0cad8fcbb2541366ff7cde34fe36f0d48edd"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/browser-tests-1.log",
+      "sha256": "eeed7a64fa5b4858e6533fc8d338fbed2daad2f015c3e3060dde1f27c37be899",
+      "bytes": 1538,
+      "disposition": "preserved",
+      "artifact": "historical-browser-tests-1.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "eeed7a64fa5b4858e6533fc8d338fbed2daad2f015c3e3060dde1f27c37be899"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/browser-typecheck-1.log",
+      "sha256": "34009abee5b8d66763a3e898e69d6d30ad6b3d7d3dec0e200276dd8796f4015d",
+      "bytes": 211,
+      "disposition": "preserved",
+      "artifact": "historical-browser-typecheck-1.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "34009abee5b8d66763a3e898e69d6d30ad6b3d7d3dec0e200276dd8796f4015d"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/browser-validation-2.log",
+      "sha256": "2e7d87ef4cb5e002625a5e3de7581c1d0d7b099d322f7ec2288b7b255aa9f4b1",
+      "bytes": 2679,
+      "disposition": "preserved",
+      "artifact": "historical-browser-validation-2.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "2e7d87ef4cb5e002625a5e3de7581c1d0d7b099d322f7ec2288b7b255aa9f4b1"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/browser-validation-final.log",
+      "sha256": "28c2e656b4df12100d93d8c9758b88254a956487d5b123358109f531af6faf5e",
+      "bytes": 1996,
+      "disposition": "preserved",
+      "artifact": "historical-browser-validation-final.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "739fff0949237da35920dce572c2967b9a3b61b562d03f32401ed89517c4e922",
+      "normalization": "Text retained with normalized line endings/trailing whitespace and final blank lines; original hash is recorded separately."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/checkpoint-continuation-0628-client.log",
+      "sha256": "a07a9eb09186c6fc399fbce463c900deee8095fe9307007edd1e687516584af6",
+      "bytes": 553,
+      "disposition": "operator-transport-only",
+      "note": "Client delivery transcript omitted; final steering outcome preserved in checkpoint. Not source, research or implementation evidence."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/composition-baseline-lines.txt",
+      "sha256": "32e3b8f3d4df058acf76c9f1243ab69100fb7ffd3d214953be89204f64232f08",
+      "bytes": 44992,
+      "disposition": "preserved",
+      "artifact": "historical-composition-baseline-lines.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "32e3b8f3d4df058acf76c9f1243ab69100fb7ffd3d214953be89204f64232f08"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/continuation-checkpoint-0553.md",
+      "sha256": "49d8596b0d9d06481e2a725788fd0e84b4005d7f88147fd56b97324e37ca7dd1",
+      "bytes": 15910,
+      "disposition": "superseded",
+      "note": "Obsolete continuation instructions; superseded by final checkpoint. Must not restart agents."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/continuation-checkpoint.md",
+      "sha256": "dcaf8779536264606ee0149be1f7aac801eec7435be1756008dbda65c64fb995",
+      "bytes": 5227,
+      "disposition": "superseded",
+      "note": "Superseded by the audited committed checkpoint, including environment and final agent state."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/contract-browser.md",
+      "sha256": "66d061c2c24aecc6773518cca871be63958c4dbec0c457d65ed600d27d773621",
+      "bytes": 6794,
+      "disposition": "already-preserved",
+      "artifact": "contract-browser.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "66d061c2c24aecc6773518cca871be63958c4dbec0c457d65ed600d27d773621"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/contract-core.md",
+      "sha256": "e5477c7fc23279b1a4f65ef05825a6e48bf3f80a25ab0a33dbf315014bb822f1",
+      "bytes": 9470,
+      "disposition": "already-preserved",
+      "artifact": "contract-core.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "e5477c7fc23279b1a4f65ef05825a6e48bf3f80a25ab0a33dbf315014bb822f1"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/contract-designer.md",
+      "sha256": "d8749f5dc1e60242787acbf4d0ed5ab82af560b9cc7ede0c78fb552f29419e54",
+      "bytes": 10966,
+      "disposition": "already-preserved",
+      "artifact": "contract-designer.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "d8749f5dc1e60242787acbf4d0ed5ab82af560b9cc7ede0c78fb552f29419e54"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/contract-management.md",
+      "sha256": "5ca25f931bc4078b33d564aec3a058a389ccc2c2c03a06dae948ff7e5069f1f8",
+      "bytes": 15013,
+      "disposition": "already-preserved",
+      "artifact": "contract-management.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "5ca25f931bc4078b33d564aec3a058a389ccc2c2c03a06dae948ff7e5069f1f8"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/contract-runtime.md",
+      "sha256": "0272d8e8c48883e24eb207a0ad090ad3da3dcb2590397bb2c169e32c99b23477",
+      "bytes": 6294,
+      "disposition": "already-preserved",
+      "artifact": "contract-runtime.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "0272d8e8c48883e24eb207a0ad090ad3da3dcb2590397bb2c169e32c99b23477"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/core-integration-progress.md",
+      "sha256": "7c22d330d563780e54d09f1a0bcaead7a6ac9cce6dbed0225844be75184de768",
+      "bytes": 4346,
+      "disposition": "already-preserved",
+      "artifact": "core-integration-progress.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "7c22d330d563780e54d09f1a0bcaead7a6ac9cce6dbed0225844be75184de768"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-closure-validation.log",
+      "sha256": "b436f3240ae89e4c328616e91b94419c9eed2c14f997ba12b7fda5197e650b8f",
+      "bytes": 2423,
+      "disposition": "preserved",
+      "artifact": "historical-designer-closure-validation.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "b436f3240ae89e4c328616e91b94419c9eed2c14f997ba12b7fda5197e650b8f"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-final-source-tests.log",
+      "sha256": "65439aa3c7df828137d826077bfb9ac9669ec5d8787b89de956a15bcab8124aa",
+      "bytes": 2389,
+      "disposition": "preserved",
+      "artifact": "historical-designer-final-source-tests.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "65439aa3c7df828137d826077bfb9ac9669ec5d8787b89de956a15bcab8124aa"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-final-validation.log",
+      "sha256": "1f4a6629912a6550851d8f754e2b1e169abcbd5ee6b017761a48cf0f6ee8b24a",
+      "bytes": 32170,
+      "disposition": "preserved",
+      "artifact": "historical-designer-final-validation.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "21b4b97a545867e7348ca202c641e35ebc48962c07257be23d92ca2afc7b0731",
+      "normalization": "Text retained with normalized line endings/trailing whitespace; original hash is recorded separately."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-tests-first.log",
+      "sha256": "48085b497af1de79038e97d8de3d677d06b39c928c81438fb671351f39ce9ee3",
+      "bytes": 27494,
+      "disposition": "preserved",
+      "artifact": "historical-designer-tests-first.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "a59b18b1515b7468c1343f28042b391c50b6b8fffb83147d4ed00f2cdd1e5deb",
+      "normalization": "Text retained with normalized line endings/trailing whitespace; original hash is recorded separately."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-tsc-first.log",
+      "sha256": "7779a288642792405b1877af6e6af514f1ae927f7b465e4a6ff0a90d4b0708f9",
+      "bytes": 115,
+      "disposition": "preserved",
+      "artifact": "historical-designer-tsc-first.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "7779a288642792405b1877af6e6af514f1ae927f7b465e4a6ff0a90d4b0708f9"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-ui-tsc-first.log",
+      "sha256": "d58c3fb88384e6556da147fc51f45ffbd6ec033e28298b50d3580b5652d7ab03",
+      "bytes": 366,
+      "disposition": "preserved",
+      "artifact": "historical-designer-ui-tsc-first.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "d58c3fb88384e6556da147fc51f45ffbd6ec033e28298b50d3580b5652d7ab03"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/designer-validation-second.log",
+      "sha256": "8383866f8418137f7fdf1d0840dea0b956d1567c331641d02562310a9044ab67",
+      "bytes": 3424,
+      "disposition": "preserved",
+      "artifact": "historical-designer-validation-second.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "8383866f8418137f7fdf1d0840dea0b956d1567c331641d02562310a9044ab67"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/integration-notes.md",
+      "sha256": "4b3734a4a2fa9f2c684afa8e278346081fae0683435cb0e59db4f17b945e039d",
+      "bytes": 14079,
+      "disposition": "preserved",
+      "artifact": "historical-integration-notes.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "4b3734a4a2fa9f2c684afa8e278346081fae0683435cb0e59db4f17b945e039d"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/legacy-surfaces-baseline.txt",
+      "sha256": "12423f34c38ca3b24988d16c9895b62411d8df478c802c04bfe7963129851e1d",
+      "bytes": 109324,
+      "disposition": "preserved",
+      "artifact": "historical-legacy-surfaces-baseline.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "12423f34c38ca3b24988d16c9895b62411d8df478c802c04bfe7963129851e1d"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/management-source-sha256.txt",
+      "sha256": "6cdad3940cad330ec37d049dbb2a56ae39022d69234ea0892777f9c6e64e15c1",
+      "bytes": 1856,
+      "disposition": "preserved",
+      "artifact": "historical-management-source-sha256.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "6cdad3940cad330ec37d049dbb2a56ae39022d69234ea0892777f9c6e64e15c1"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/management-tests-0616.log",
+      "sha256": "8a1384c821b8b0bf6d6726e6471660d41f60a6d513672ee152f03ed9b7fb7f34",
+      "bytes": 6314,
+      "disposition": "preserved",
+      "artifact": "historical-management-tests-0616.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "8a1384c821b8b0bf6d6726e6471660d41f60a6d513672ee152f03ed9b7fb7f34"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/management-tests-final.log",
+      "sha256": "4a21c1253329221683d59ecae15cdffa007c270a0fe780593c88390f78b9e468",
+      "bytes": 7002,
+      "disposition": "preserved",
+      "artifact": "historical-management-tests-final.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "4a21c1253329221683d59ecae15cdffa007c270a0fe780593c88390f78b9e468"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/management-tsc-0616.log",
+      "sha256": "57f7b539ddd2148e674867abb94f5447ac767412f7fa16775a942c74db520759",
+      "bytes": 106,
+      "disposition": "preserved",
+      "artifact": "historical-management-tsc-0616.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "57f7b539ddd2148e674867abb94f5447ac767412f7fa16775a942c74db520759"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/management-tsc-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "disposition": "preserved",
+      "artifact": "historical-management-tsc-final.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/orchestration-state.json",
+      "sha256": "b89bfb19327437e2453ad02f75ea631988c6c47d3cdcbe52a68f40c90c8a86cd",
+      "bytes": 1794,
+      "disposition": "superseded",
+      "note": "Intermediate run states are stale; final per-stream outcome is recorded in the checkpoint."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/ownership.md",
+      "sha256": "0de97b2c300e3580faa9b602d2b961a089d5c49cc789e18799c538f2aaa027ce",
+      "bytes": 3053,
+      "disposition": "preserved",
+      "artifact": "historical-ownership.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "0de97b2c300e3580faa9b602d2b961a089d5c49cc789e18799c538f2aaa027ce"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/package-state-config-migration.md",
+      "sha256": "c98dc6d14da7b89b9854c19e4d5bca38aba7c4b146fa7b0810a85fa2f57498e1",
+      "bytes": 48282,
+      "disposition": "preserved",
+      "artifact": "historical-package-state-config-migration.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "c98dc6d14da7b89b9854c19e4d5bca38aba7c4b146fa7b0810a85fa2f57498e1"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/registrations-baseline.txt",
+      "sha256": "6273511bb5d1feaf4671151f2f53bb5182d38134f3905778ea982e17b054de7d",
+      "bytes": 33953,
+      "disposition": "preserved",
+      "artifact": "historical-registrations-baseline.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "6273511bb5d1feaf4671151f2f53bb5182d38134f3905778ea982e17b054de7d"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-final-validation.log",
+      "sha256": "cfb47935ecaaa352fe616cb47326e73a5ab2a4b29367902301e03d84a2e86221",
+      "bytes": 5875,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-final-validation.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "cfb47935ecaaa352fe616cb47326e73a5ab2a4b29367902301e03d84a2e86221"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-focused-1.log",
+      "sha256": "8d8490f4e02168ead3eb2b102d7d6ca7aa7f3bbc6694b7f90545be836227a3d8",
+      "bytes": 3428,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-focused-1.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "8d8490f4e02168ead3eb2b102d7d6ca7aa7f3bbc6694b7f90545be836227a3d8"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-focused-2.log",
+      "sha256": "c1bd63b448693552f8b4c9059ee6f9be1b110ae43ca5eae96dd75b78bf346d50",
+      "bytes": 2069,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-focused-2.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "c1bd63b448693552f8b4c9059ee6f9be1b110ae43ca5eae96dd75b78bf346d50"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-profile-context.md",
+      "sha256": "258eacfc36d6a7dd6de1ef8327e3a70c3600b5af98e468f4e88335bc96fd4890",
+      "bytes": 33783,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-profile-context.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "258eacfc36d6a7dd6de1ef8327e3a70c3600b5af98e468f4e88335bc96fd4890"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-regressions.log",
+      "sha256": "8c85171c01850639d89b8fabfd144203e31a0c7d4d674cb8a54a439e437057e5",
+      "bytes": 4245,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-regressions.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "8c85171c01850639d89b8fabfd144203e31a0c7d4d674cb8a54a439e437057e5"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-tsc-1.log",
+      "sha256": "cfa57c34a1775a5cd47e0531511e65c02d735c0dbc757d8a9dafb9d397030580",
+      "bytes": 840,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-tsc-1.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "cfa57c34a1775a5cd47e0531511e65c02d735c0dbc757d8a9dafb9d397030580"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/runtime-tsc-2.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "disposition": "preserved",
+      "artifact": "historical-runtime-tsc-2.log",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/services-api-baseline.txt",
+      "sha256": "357638b77b3fba6beeceba46c44724e64d86497874299f0ec82d3b17eb32fbf5",
+      "bytes": 86782,
+      "disposition": "preserved",
+      "artifact": "historical-services-api-baseline.txt",
+      "note": "Historical input; not current instructions or integrated acceptance.",
+      "artifactSha256": "357638b77b3fba6beeceba46c44724e64d86497874299f0ec82d3b17eb32fbf5"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/steer-browser-0634.log",
+      "sha256": "1a19b466115c4fd4b7080dfda490b810acd1430a42f88a10dee4efa7c3c215e2",
+      "bytes": 622,
+      "disposition": "operator-transport-only",
+      "note": "Client delivery transcript omitted; final steering outcome preserved in checkpoint. Not source, research or implementation evidence."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/steer-designer-0634.log",
+      "sha256": "065f714c396410cdc048e4b7dd815529fced8ac0a5e3811582c15506b175341e",
+      "bytes": 622,
+      "disposition": "operator-transport-only",
+      "note": "Client delivery transcript omitted; final steering outcome preserved in checkpoint. Not source, research or implementation evidence."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/steer-management-0634.log",
+      "sha256": "a0d7b77031793358be25341267a40d4f2f755abc2e66608bc4a0be165bbb3d2f",
+      "bytes": 622,
+      "disposition": "operator-transport-only",
+      "note": "Client delivery transcript omitted; final steering outcome preserved in checkpoint. Not source, research or implementation evidence."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/steer-runtime-0634.log",
+      "sha256": "68c0efedfdeb5fae11c61bbecfe1b3467733f36d68a2ce9c3d3acaefe0dbe5c4",
+      "bytes": 622,
+      "disposition": "operator-transport-only",
+      "note": "Client delivery transcript omitted; final steering outcome preserved in checkpoint. Not source, research or implementation evidence."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/worker-browser.md",
+      "sha256": "6947e66a33d956ee80041d15b0a89d98431703ac3368db8b4dbf96ededb81583",
+      "bytes": 13897,
+      "disposition": "already-preserved",
+      "artifact": "worker-browser.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "6947e66a33d956ee80041d15b0a89d98431703ac3368db8b4dbf96ededb81583"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/worker-designer.md",
+      "sha256": "3dbc01c17d0219bfcceb0fe67898cc00b8bd2662a645414b899a1d183eafd90c",
+      "bytes": 20018,
+      "disposition": "already-preserved",
+      "artifact": "worker-designer.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "3dbc01c17d0219bfcceb0fe67898cc00b8bd2662a645414b899a1d183eafd90c"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/worker-management.md",
+      "sha256": "fd1bcc1b59576c30d9e7a2493c1186d591f8f8af46c536d4db16fd55dd5c8868",
+      "bytes": 21206,
+      "disposition": "already-preserved",
+      "artifact": "worker-management.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "fd1bcc1b59576c30d9e7a2493c1186d591f8f8af46c536d4db16fd55dd5c8868"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-research/worker-runtime.md",
+      "sha256": "94059b6b12d851573b89f8e700652de37999758c6321c6e5741fce281a099039",
+      "bytes": 12424,
+      "disposition": "already-preserved",
+      "artifact": "worker-runtime.txt",
+      "note": "Earlier committed text copy; trailing whitespace normalized.",
+      "artifactSha256": "94059b6b12d851573b89f8e700652de37999758c6321c6e5741fce281a099039"
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-baseline-build.log",
+      "sha256": "6a2d2f609dd76921950e6b631349e8612fd084a7b1448f747e4f6033a9d1cc0d",
+      "bytes": 23499,
+      "disposition": "preserved",
+      "artifact": "historical-pibo-plugin-rebuild-baseline-build.log",
+      "note": "Historical baseline check, not the integrated source commit.",
+      "artifactSha256": "cd8fe3f9ea0143089a34531d7dbf94390e8c5ab663dec5b765f324e10dff99a3",
+      "normalization": "Text retained with normalized line endings/trailing whitespace; original hash is recorded separately."
+    },
+    {
+      "original": "/tmp/pibo-plugin-rebuild-baseline-tests.log",
+      "sha256": "0b8b4846723f649cb6945411151f6b9239d51e9580ba3bdec7b8c581eebcb216",
+      "bytes": 5716,
+      "disposition": "preserved",
+      "artifact": "historical-pibo-plugin-rebuild-baseline-tests.log",
+      "note": "Historical baseline check, not the integrated source commit.",
+      "artifactSha256": "0b8b4846723f649cb6945411151f6b9239d51e9580ba3bdec7b8c581eebcb216"
+    }
+  ]
+}

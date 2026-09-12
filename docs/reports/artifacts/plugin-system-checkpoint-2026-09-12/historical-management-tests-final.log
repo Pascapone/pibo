@@ -1,0 +1,104 @@
+✔ v2 schema migration is idempotent (26.99581ms)
+✔ v13 unread projection migrates from message fragments to completed turn boundaries (61.995961ms)
+✔ pibo data store rejects future schemas without mutating them (16.758038ms)
+✔ schema migration from v5 installs the exact tool lifecycle index (37.20593ms)
+✔ every schema open keeps the interrupted sequence repair on its bounded partial index (35.763241ms)
+✔ schema v8 migrates payload identity without rewriting existing payload files (76.158389ms)
+✔ schema upgrades preserve post-v5 session history metadata (64.685379ms)
+✔ fresh pibo chat schema omits retired room partition structures (19.641202ms)
+✔ payload store writes, reads, and dedupes payloads (46.969216ms)
+✔ payload deduplication keeps incompatible interpretation metadata isolated (51.486659ms)
+✔ application/json payloads serialize primitive strings as valid JSON (34.8123ms)
+✔ event log append is idempotent by idempotency key (28.993614ms)
+✔ message and observation stores support simple insert and list (34.896527ms)
+✔ v2 schema backfills legacy Pi bindings and keeps old-writer Pi updates synchronized (50.775358ms)
+{
+  "from": "/tmp/pibo-data-session-store-Kz6L8o/pibo-sessions.sqlite",
+  "to": "/tmp/pibo-data-session-store-Kz6L8o/pibo.sqlite",
+  "inputExists": true,
+  "read": 0,
+  "inserted": 0,
+  "updated": 0,
+  "skipped": 0
+}
+{
+  "from": "/tmp/pibo-data-session-store-uBUR41/pibo-sessions.sqlite",
+  "to": "/tmp/pibo-data-session-store-uBUR41/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 2,
+  "updated": 0,
+  "skipped": 0
+}
+{
+  "from": "/tmp/pibo-data-session-store-uBUR41/pibo-sessions.sqlite",
+  "to": "/tmp/pibo-data-session-store-uBUR41/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 0,
+  "updated": 0,
+  "skipped": 2
+}
+{
+  "from": "/tmp/pibo-data-session-store-uBUR41/pibo-sessions.sqlite",
+  "to": "/tmp/pibo-data-session-store-uBUR41/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 0,
+  "updated": 1,
+  "skipped": 1
+}
+✔ pibo data session store persists structured session fields (53.345021ms)
+✔ pibo data session store persists monotonic agent observation auto cursors (287.826564ms)
+✔ pibo data migrate sessions-to-v2 rejects a non-legacy source before creating the target (7.303312ms)
+✔ pibo data migrate sessions-to-v2 accepts a valid empty legacy source (45.250989ms)
+✔ pibo data migrate sessions-to-v2 is idempotent and refreshes structured room ids (95.530311ms)
+✔ pibo data migration leaves skipped newer runtime bindings unchanged (75.998417ms)
+✔ installed definition and invalid graph inspection never import executable entries (34.93495ms)
+✔ all artifact hashes are verified before even the first backend import (32.155492ms)
+✔ installed backend resolves the public SDK and shares the actual host ownership scope (29.254575ms)
+✔ invalid installed backend export rolls back earlier plugin resources (56.036181ms)
+✔ SDK linkage cannot silently replace a different package during activation (7.334231ms)
+✔ progressive CLI discovery and JSON install/status/uninstall exercise real persistence (133.819462ms)
+✔ management routes require same-origin mutation and fixed session access/CAS (72.275152ms)
+✔ configuration route rejects late save targeting another session and validates manifest schema (52.158114ms)
+✔ local and versioned package artifacts have identical content identity and inspection never imports (137.690596ms)
+✔ ordinary staged package lazily activates through the real core host and cleans every registration (77.428502ms)
+✔ dry-run creates no installation, operation, staged files or executable effects (38.987797ms)
+✔ SDK, entrypoint, dependency, archive integrity, symlinks and mutable stage failures stay inactive (98.803951ms)
+✔ source edits do not alter staged execution, updates wait for a safe drain (143.677429ms)
+✔ A21 real process death after content staging is recoverable and never imports staged code (183.555581ms)
+✔ failed update staging keeps the old active revision and historical generation unchanged (115.096731ms)
+✔ staging crash and import failure recover without an active partial installation (81.460269ms)
+✔ A23 cross-store write/journal crash is resumed from owner postconditions without duplicate effects (85.43542ms)
+✔ A23 real SIGKILL between two SQLite owner stages resumes without losing old bytes or repeating applied writes (155.106294ms)
+✔ product-state migration preserves explicit scopes and session ownership, and refuses existing independent tabsets (71.096269ms)
+✔ migration dry-run is write-free and changed source/order or corrupted backup fails closed (51.124868ms)
+✔ a process death with running checkpoint is recoverable and failed postconditions cannot complete (48.041536ms)
+✔ A19/A20 exact revision reinstall repairs required dependency; history and snapshots never change (142.449063ms)
+✔ A20 different version/hash needs explicit compatibility; optional missing contributions only degrade (165.598163ms)
+✔ legacy sessions without snapshots remain unknown, readable, and conservatively blocked (34.764118ms)
+✔ installation state CAS persists across independent connections and tombstones (106.251764ms)
+✔ session tabsets use CAS and fixed session identity, never global or agent identity (34.166332ms)
+✔ configuration scopes, CAS and credential references are independently persisted (38.29423ms)
+✔ generation and build snapshots are immutable and lists do not hydrate payloads (60.131668ms)
+✔ uninstall metadata has no cascade into tabsets, config, history, bindings or domain data (45.070188ms)
+✔ A17 unique sessions and required/optional/historical/unknown usage are separate from profiles/runs (5.235325ms)
+✔ A17 wrong text, expired plan, stale revision and unavailable collector mutate nothing (106.030068ms)
+✔ A18 consumers changing after preview and during cleanup require new confirmation (77.199401ms)
+✔ A18 retirement denies new activation, drains rather than aborts, cancellation restores admission (67.513799ms)
+✔ A19 installation tombstone retains tabsets, configuration, snapshots and unrelated records (73.351069ms)
+✔ A21 crashes at drain and cleanup restart idempotently; failed disposal cannot claim success (77.939506ms)
+✔ A21 actual process kill after durable retirement is recovered without deleting product history (172.237435ms)
+✔ A18 persisted generation reservations close the read/async-setup retirement race across connections (65.315938ms)
+✔ cancellation after confirmed cleanup restores the exact prior revision without losing consumers (68.780556ms)
+✔ collector reads existing product sessions and injected owner stores without a duplicate session database (66.588756ms)
+✔ A21 interrupted activation never results in two active revisions or implicit recovery import (65.588992ms)
+ℹ tests 60
+ℹ suites 0
+ℹ pass 60
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1710.099857

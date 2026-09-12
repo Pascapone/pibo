@@ -12,6 +12,6 @@
 * [Pibo: schnelle Nachrichtenannahme und belastbare Parallelität](pibo-performance-and-scalability.md) - Priorisiert den belegten Annahme&#45;Fix und den schrittweisen Umbau zu begrenzter, isolierter und messbar skalierbarer Gateway&#45;Arbeit&#46;
 * [Reconcile Rejected Message Signals](reconcile-rejected-message-signals.md) - Directive plan to audit and close exact rejected&#45;dispatch signal and optimistic&#45;message invariants&#46;
 * [Telemetry Capture and Archive Isolation](telemetry-capture-archive-isolation.md) - Directive plan for opt&#45;in telemetry capture, isolated active stores, inert archives, and bounded maintenance&#46;
-* [Unified plugin system implementation and acceptance](unified-plugin-system-execution.md) - Tracks delegated implementation, integration ownership and evidence for the complete plugin&#45;system rebuild&#46;
+* [Unified plugin system implementation and acceptance](unified-plugin-system-execution.md) - Tracks the preserved implementation checkpoint, remaining integration and acceptance for the complete plugin&#45;system rebuild&#46;
 * [Windows Better Auth Direct Validation Plan](windows-better-auth-direct-validation.md) - Defines the active direct Windows validation work for Better Auth SQLite recovery and packed installation behavior&#46;
 * [Workflow Trigger and Runtime Follow&#45;ups](workflow-trigger-and-runtime-follow-ups.md) - Directive plan for remaining workflow trigger, integrated execution, recovery, and validation gaps&#46;

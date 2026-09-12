@@ -1,0 +1,47 @@
+✔ legacy Build Context and Pi profile inspection never create runtime, MCP, factories or executable extensions (4.764728ms)
+✔ actual build persists immutable plan/delivery and all no-context contributions; preview remains separately identified (89.446984ms)
+✔ actual capture rejects cross-session and cross-generation resources (49.292355ms)
+✔ hooks order by order then qualified identity; transformations revalidate before tool execution (27.363808ms)
+✔ invalid required pre transform and missing provenance fail closed, no external call (6.86272ms)
+✔ optional failing observer is recorded; post failure never rewrites successful external execution (2.010538ms)
+✔ hook timeout aborts hook signal and blocks required pre execution (15.794409ms)
+✔ already cancelled input does not invoke hook; identity is host scoped and values cannot mutate input (18.149486ms)
+✔ default tool assembly applies hooks to controlled tools but not native harness definitions (2.91388ms)
+✖ pi: effective selection controls real portable tool definitions, config and excluded Pi factory (5.474715ms)
+✖ codex-native: effective selection controls real portable tool definitions, config and excluded Pi factory (0.743992ms)
+✖ omp: effective selection controls real portable tool definitions, config and excluded Pi factory (0.60515ms)
+✔ required Pi-only contribution rejects before reading host implementation (3.955914ms)
+✔ coordinator reserves pinned generation, survives retirement until explicit disposal release and freezes selection (111.100022ms)
+✔ registration removal rejects referenced drivers and never aborts live runtime sessions (1.814278ms)
+✔ Pi discovery policy blocks implicit packages/extensions without mutating user settings and preserves explicit factories/context/skills (58.315507ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 13
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2794.621955
+
+✖ failing tests:
+
+test at test/plugin-system-runtime.test.mjs:23:56
+✖ pi: effective selection controls real portable tool definitions, config and excluded Pi factory (5.474715ms)
+  TypeError: Cannot assign to read only property 'disabled' of object '#<Object>'
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-runtime.test.mjs:32:109)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at test/plugin-system-runtime.test.mjs:23:56
+✖ codex-native: effective selection controls real portable tool definitions, config and excluded Pi factory (0.743992ms)
+  TypeError: Cannot assign to read only property 'disabled' of object '#<Object>'
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-runtime.test.mjs:32:109)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at test/plugin-system-runtime.test.mjs:23:56
+✖ omp: effective selection controls real portable tool definitions, config and excluded Pi factory (0.60515ms)
+  TypeError: Cannot assign to read only property 'disabled' of object '#<Object>'
+      at TestContext.<anonymous> (file:///workspace/test/plugin-system-runtime.test.mjs:32:109)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)

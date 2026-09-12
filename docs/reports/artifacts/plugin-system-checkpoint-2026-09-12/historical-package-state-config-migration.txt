@@ -1,0 +1,384 @@
+# Unified Plugin Rebuild: Paketverwaltung, Zustand, Config und Migration
+
+Stand: 12. September 2026. Read-only-Quellanalyse; keine Implementierung und keine Laufzeitabnahme.
+
+## 1. Auftrag, Evidenz und Grenzen
+
+Ausführungsgrundlage vollständig gelesen: `/root/code/pibo-cordis-analysis/docs/plans/unified-plugin-system-rebuild.md` (AP00–AP19, A01–A37). Quellrepo: `/root/code/pibo`. Alle folgenden `src/`, `test/`, `scripts/` und `package.json`-Pfade sind relativ zu diesem absoluten Root. **Ist** bezeichnet quellenbelegtes Verhalten; **Soll** bezeichnet Planforderungen; **Empfehlung** konkretisiert eine Implementierungsgrenze, ohne sie als vorhandenen Vertrag auszugeben.
+
+Gelesene Regeln: `AGENTS.md`, `GLOSSARY.md`, `docs/index.md`, `docs/project/documentation-profile.md`; relevante Teile der Skills `pibo-spec-writing`, `maintain-okf-docs`, `writing-clearly-and-concisely`, `github-server-flow` und `pibo-docker-system`. Wichtig: App Context ist kein Benutzer-Tenant; Login schützt Zugang. Pibo Session ID, Pi Session ID, Room ID, Profil und Runtime-Generation sind verschiedene Identitäten.
+
+Es wurden nur Dateien und lokale Git-Metadaten untersucht. Keine Gateways, Tests, Builds, Installationen, CLI-Anwendungsprozesse, Browser oder Unteragents gestartet; keine Live-Datenbanken geöffnet. Shell-Dateisuche und Git-Leseoperationen dienten ausschließlich der Recherche. Einzige beabsichtigte Schreibausgabe ist dieser Bericht außerhalb beider Repositories. Keine Index-/Log-/Ledgeränderung am OKF-Bundle; dessen Validatoren wurden nicht ausgeführt, weil kein Bundle geändert und Prozessausführung nicht beauftragt wurde.
+
+### Baseline-Drift ist ein Integrationsrisiko
+
+| Gegenstand | Beobachteter Stand |
+|---|---|
+| Quellcheckout HEAD | `2cd45f171ca615c11927a8719819aff05f20e1fd` |
+| Lokal gespeichertes `upstream/dev` | `cac4dcd03945b9754db7be9ab2ab4324f10c335c` = Planbaseline |
+| `git rev-list --left-right --count HEAD...upstream/dev` | `229 346`; keine einfache lineare Rückständigkeit |
+| Quellmanifest | Pibo `3.2.4`, Pi-Abhängigkeiten `0.84.2` |
+| Tatsächlich vorgefundenes `node_modules/@earendil-works/pi-coding-agent/package.json` | `0.85.0` |
+
+Kein Fetch durchgeführt; der Tracking-Ref ist **nicht** als frisch bestätigter Remote-Stand zu verstehen. Die Source-Dateien dieses Berichts stammen aus HEAD/Arbeitskopie, nicht aus dem Planworktree. Lokale fremde Dokumentänderungen und untracked Artefakte wurden nicht verändert. Der Diff umfasst viele Bereiche, darunter Produktdaten, Routing, Projekte/Workflows und UI. Im fokussierten Vergleich waren `src/pi-packages/`, `src/mcp/`, `src/apps/chat/agent-store.ts`, `src/apps/chat/chat-capability-routes.ts` und `src/agent-runtime/resource-service.ts` identisch zwischen HEAD und lokalem `upstream/dev`; bei `src/plugins/` unterscheiden sich `builtin.ts`, `registry.ts`, `types.ts`. Andere Pfade müssen auf dem gewählten Integrationscommit erneut abgeglichen werden.
+
+**Folgerung:** Orchestrator muss einen gemeinsamen Kandidaten festlegen. Kein Worker darf aus dem Hostcheckout oder dessen `node_modules` ungeprüft einen Planbaseline-Testnachweis ableiten. Versionsmismatch ist hier nur dokumentiert, nicht repariert.
+
+## 2. Wichtigste Befunde
+
+1. **Noch kein installierbarer allgemeiner Plugin-Manager:** Das bestehende `PiboPlugin` ist `{ id, name?, register(api): void }`. Keine Manifestrevision, keine Paketquelle, kein allgemeiner Host-Stopvertrag, keine persistierten Installationsoperationen. `PluginManifest`, `PluginHost`, `PluginSourceResolver` und `PluginOperationPlan` sind Zielverträge.
+2. **Drei verschiedene heutige Begriffe nicht vermischen:** statische Pibo-Plugins, Capability-Packages als Toolgruppierung und echte Pi-Pakete mit Installation. Dazu kommen unabhängig verwaltete User-Skills und kuratierte CLI-Tools.
+3. **Pi-Pakete sind tatsächlich ausführbar:** `inspectPiPackageSource` kann npm installieren; Runtime liefert den Paketroot als `additionalExtensionPaths`. Ein Metadatenname wie „inspect“ bedeutet nicht automatisch read-only.
+4. **Scope-Inkonsistenz im Pi-Webpfad:** Create/Source-Update verwenden explizites `cwd`; mehrere Read/List/Enable/Delete-Aufrufe verwenden implizites `process.cwd()`. Ein zukünftiger Import muss Quelle und Root explizit adressieren.
+5. **Uninstall heute nicht vorbildfähig:** CLI entfernt lediglich Registrierung; Web blockiert ausgewählte Custom Agents, aber erstellt keinen versionierten Session-/Run-Auswirkungsplan. Physische Artefakte werden dadurch nicht entfernt.
+6. **Mehrstore-Migration ist zwingend:** Agents in `chat-agents.sqlite`, Produktdaten in `pibo.sqlite`, Runs in `pibo-events.sqlite`, Goals/Loops in `pibo-ralph.sqlite`, Feature-Daten in weiteren Stores; zusätzlich JSON, Dateien und Browserstorage.
+7. **Pi-Discovery-Audit muss über Sessionstart hinausgehen:** Hauptpfad setzt `noExtensions: true`; Modellkatalog ruft `createAgentSessionServices({ cwd })` ohne entsprechende Sperren auf. Lokale Pi-0.85.0-Implementierung lädt dabei Ressourcen. Kein Laufzeitexploit behauptet, aber konkreter AP16-Negativtest nötig.
+8. **Neue Persistenz darf vorhandene Löschdienste nicht wiederverwenden:** Sessionlöschung und Feature-Job-Löschung haben absichtlich destruktive Semantik. Uninstall ist ein anderer Vorgang.
+9. **Globale Tabs sind keine Sessiontabsets:** `DesktopTab` besitzt keine zwingende Session-ID; `desktopTabTargetKey` dedupliziert teilweise nur nach View/Tool. `lastSelection` beweist keine historische Ownership.
+10. **Marketplace ist Zukunft, nicht bestehender Pibo-Lifecycle:** Suchtreffer in Codex-Protokollschemas oder VS-Code-Publishing sind nicht der geforderte Pibo-Plugin-Marketplace.
+
+## 3. Heutiger Plugin-Vertrag und Manager-Oberflächen
+
+### 3.1 Registry und Komposition — Ist
+
+Quellen: `src/plugins/types.ts`, `registry.ts`, `builtin.ts`; `src/gateway/web.ts` (`createWebPiboPluginRegistry`); `src/plugins/user-profile-resources.ts`.
+
+`PiboPluginApi` registriert Runtime-Driver/Instanzen, Tools, Subagents, Skills, Context Files, Profile, Gateway Actions, Channels, Auth, Transcription/Speech, Web Apps, Capability-Packages und Loop-Stopbedingungen. Hinzu kommen Runtime-Events und Product Events. `definePiboPlugin` reicht das Objekt unverändert durch.
+
+`registerPlugin` trägt ID und Namen **vor** `plugin.register(...)` ein. Scheitert das Setup nach Teilregistrierungen, gibt es dort keinen allgemeinen Rollback. Es bestehen einzelne Cleanup-Verträge, etwa für Speech und Runtime-Auth, aber kein PluginScope für alle Ressourcen. `onEvent` liefert keinen Unsubscribe-Handle; `onProductEvent` schon. Viele Registrierungen prüfen Duplikate; Context/Profile besitzen explizite Upsert-Wege. Das ist weder ein genereller „last write wins“-Host noch bereits ein explizites Ersatzprovider-Modell.
+
+Ownership-Metadaten existieren etwa für Tools, Skills, Context, Capability-Packages und Medienprovider. Subagents, Profile, Channels, Gateway Actions und Web Apps werden im API-Wrapper nicht durchgängig mit demselben Owner-Metadatenvertrag ausgestattet. AP02 muss nicht nur Maps verschieben, sondern Ownership und Disposal vereinheitlichen.
+
+`createWebPiboPluginRegistry` setzt das Produkt statisch zusammen: Default-Plugins, Auth, WebHost, Cron, User-Ressourcen/Custom Agents, Loops, Preview, Chat Web und weitere Integrationen. Das ist eine bestehende gute Extraktionsgrenze, aber keine Installation aus `pibo.plugin.json`.
+
+### 3.2 Capability-Katalog — Ist
+
+`PiboCapabilityCatalog` enthält `agentRuntimes`, `nativeTools`, `skills`, `subagents`, `contextFiles`, `packages`, `piboTools`, `mcpServers`, `piPackages`, Loop-/Ralph-Stopbedingungen. `getCapabilityCatalog()` mischt Registry-Einträge mit Festverdrahtung:
+
+- `pibo-run-control`: sieben `pibo_run_*`-Namen;
+- `pibo-goal-control`: `get_goal`, `create_goal`, `update_goal`;
+- `piboTools`: `listInstalledCliToolAgentContexts()` aus `src/tools/registry.ts`;
+- `piPackages`: `listPiPackages()` aus einem cwd-abhängigen JSON-Store;
+- MCP zunächst leer, im Chat-Katalog durch `listMcpServerInfos()` ergänzt (`src/apps/chat/web-app.ts`, `buildAgentCatalog`-Umfeld).
+
+`piboTools` sind **CLI-Kontextsnippets**, keine Liste portabler Pibo Native Tools. Capability-Packages sind **keine** installierbaren Paketrevisionen. AP18 darf abgeleitete Toollisten behalten, muss aber konkurrierende Auswahlwahrheiten entfernen.
+
+### 3.3 CLI/API-Zielgrenze — Soll und Empfehlung
+
+Ein neuer Plugin-CLI-Zweig ist AP05, nicht eine Umbenennung von `pi-packages`. Operator-Einstieg: `src/cli.ts`; progressive Help muss lokale Ebene erklären. Liste/Inspect/Schema/Doctor dürfen Plugin-Code nicht importieren. Plan und Apply verwenden denselben Operationendienst wie HTTP; keine zweite CLI-eigene Zustandsmaschine.
+
+Vorgeschlagene Modulgrenze, **noch nicht vorhanden**:
+
+- `src/plugins/manifest.ts`, `schema.ts`, `sdk.ts`: serialisierbare Verträge (AP01);
+- `src/plugins/host.ts`, `scope.ts`, `services.ts`: Aktivierung und Ownership (AP02);
+- Plugin-Store/Journal (AP03): Commit/CAS/Recovery, keine HTTP- oder npm-Abhängigkeit;
+- Source-/Install-/Operationsmodule und `src/plugins/cli.ts` (AP05): Artefakte und Orchestrierung;
+- schmale Chat-Routenadapter: Auth/Same-Origin, Normalisierung, serverseitiger Planbezug;
+- AP15: Impact/Retirement/Drain/Bestätigung über denselben Dienst.
+
+Genaue Dateinamen, CLI-Syntax und HTTP-Routen erst nach AP01/AP05 verbindlich festlegen. Bis AP15 fertig ist, Uninstall geschlossen verweigern statt provisorisch `rm` anzubieten.
+
+## 4. Pi-Packages: komplette vorhandene Kette
+
+### 4.1 Parsing, Installation, Metadaten
+
+| Datei / Symbol | Ist-Vertrag | Konsequenz |
+|---|---|---|
+| `src/pi-packages/types.ts` | Metadaten zu Quelle, installSpec, Status, Ressourcen | Nicht mit versioniertem Pluginmanifest gleichsetzen |
+| `metadata.ts::parsePiPackageSource` | `https://pi.dev/packages/<name>` oder existierender lokaler Pfad; scoped npm-Namen erlaubt | Kein allgemeiner Git-/Marketplace-/versionierter Artefaktresolver |
+| `installer.ts::installOrResolvePiPackage` | Lokal: Pfadexistenz; npm: `npm install <packageName> --prefix <root> --omit=dev` | Keine immutable Aktivierung, kein vorgeschalteter Plugin-SDK-Check |
+| `installer.ts::npmPackageInstallRoot` | `<cwd>/.pibo/pi-packages/npm/<encodedName>` | Nicht `$PIBO_HOME` als universeller Root |
+| `metadata.ts::inspectPiPackageSource` | Parse → Install/Resolve → npm/local metadata → Pi resource resolution | Schreibend/netzwerkfähig, ungeeignet für neuen read-only Inspector |
+| `metadata.ts::resolvePackageResources` | `DefaultPackageManager`, `SettingsManager.create(cwd,getAgentDir())`, `resolveExtensionSources(...,{temporary:true})` | Harness-Kopplung und Discovery-Semantik nur in Pi-Adapter/Legacy-Leser belassen |
+
+npm-Installation besitzt kein `--ignore-scripts`; diese Option wird hier nur als Befund genannt. Der neue Plan vertraut installiertem Code, verlangt aber trotzdem eine definierte Import-/Aktivierungsgrenze. AP05 muss explizit entscheiden, ob und wann Paket-Lifecycle-Skripte laufen dürfen. „Keine Codeausführung vor Aktivierung“ wäre sonst schon während Stage falsch.
+
+Lokale Verzeichnisse und sogar lokale Dateien werden akzeptiert; eine Datei wird als Extension beschrieben. `ensurePiPackageStorage` legt npm/git/local-Verzeichnisse an, **ohne** dass daraus Git-Quellenunterstützung folgt. Metadaten nennen Extension-, Skill-, Prompt- und Theme-Ressourcen; daraus folgt nicht, dass alle vier in jedem Pibo-Lieferpfad tatsächlich geliefert wurden.
+
+### 4.2 Persistenz und Mutationen
+
+`src/pi-packages/store.ts`:
+
+- `defaultPiPackageStorePath(cwd)` → `<cwd>/.pibo/pi-packages.json`, Formatversion 1.
+- Synchrones JSON-Lesen/-Schreiben; kein Revisions-CAS, keine atomare Mehrdateioperation, kein Journal.
+- `upsertPiPackage` matcht ID **oder Name oder Quelle**. Diese Identitätslogik ist schwächer als eine unveränderliche Plugin-ID.
+- Legacy `installed: true` wird zu `installStatus: installed`; fehlendes `enabled` wird true.
+- Fehlgeschlagener Refresh eines zuvor installierten Pakets erhält den alten Datensatz plus Warnungen. Das schützt Metadaten, beweist aber kein Rollback bereits veränderter npm-Dateien.
+- `removePiPackage` entfernt nur den Datensatz. Keine Artefaktlöschung, keine Tombstones und keine Sessionanalyse.
+
+### 4.3 CLI und HTTP
+
+`src/pi-packages/cli.ts`, Dispatch `src/cli.ts`: `list`, `add`, `inspect`, `remove`, `doctor`. `add` installiert über `inspectPiPackageSource`; CLI-`inspect` liest dagegen gespeicherte Daten. `remove` hat keinen Custom-Agent-/Session-/Run-Guard. `doctor` prüft Quellen/Pfade, ist kein vollständiger Plugin-Integritätsnachweis.
+
+`src/apps/chat/chat-capability-routes.ts`, Routerhelpers `chat-api-routes.ts`, Normalisierer `chat-request-normalizers.ts`:
+
+- GET/POST `/api/chat/pi-packages`;
+- GET/PATCH/DELETE `/api/chat/pi-packages/<packageId>`;
+- PATCH am MCP-Server-Ressourcenpfad für Beschreibung.
+
+Mutationen benötigen laut `chatCapabilityRouteRequiresSameOrigin` Same-Origin; Auth/Dispatch liegt beim Webhost/Chat-Web-App. Dies beim Plugin-Manager erhalten.
+
+Web-DELETE sucht betroffene Custom Agents und antwortet 409 bei Auswahl. Referenzaliasauflösung liegt in `src/apps/chat/web-app.ts` um `agentsSelectingPiPackage`. Keine TTL, keine bestätigte Texteingabe, keine immutable Planrevision, keine aktive Generation oder historische Session in diesem Guard.
+
+**Konkreter Scope-Bug-Kandidat:** Handler erhält `cwd`, verwendet ihn für Create/Source-Patch, aber `listPiPackages()`, `findPiPackage(...)`, `setPiPackageEnabled(...)`, `removePiPackage(...)` an mehreren Stellen ohne `cwd`. Ein nicht-default `piPackageStoreCwd` kann dadurch verschiedene Stores lesen und schreiben. Statischer Befund, nicht live reproduziert. Neue Store-APIs müssen explizite Identität/Root besitzen; Migration darf keine implizite cwd-Suche als vollständige Bestandsaufnahme ausgeben.
+
+### 4.4 Profile und Laufzeit
+
+`src/apps/chat/agent-store.ts`: `pi_packages_json`, `native_tools_json`, `mcp_servers_json`, Skills/Context/Subagents und Run-/Goal-Felder bleiben gespeichert. `agent-profiles.ts::createCustomAgentBuilder` führt diese in `InitialSessionContextBuilder` zusammen. `src/core/profiles.ts` besitzt die regulären Profilfelder; `src/plugins/types.ts` exportiert sie im Katalog.
+
+`src/pi-packages/runtime.ts::getPiPackageRuntimeOptions` prüft ausgewählte IDs, globale Aktivierung, Fehlerstatus und Pfadexistenz; dedupliziert installPaths und reicht sie als `additionalExtensionPaths` weiter. Fehler werden als Diagnostics gesammelt und Pakete häufig übersprungen. Das ist **nicht** das geplante required-fail-closed-Verhalten.
+
+`src/agent-runtimes/pi/runtime.ts` um 401–436 benutzt diesen Pfad bei `createAgentSessionServices`, zusammen mit `extensionFactories`, `noExtensions/noSkills/noPromptTemplates/noThemes: true`, expliziten Skills und Context-Overrides. `noContextFiles` hängt von `autoContextFiles` ab. Unter AP16 die expliziten Plugin-Pi-Beiträge erhalten, den alten Pi-Paketpfad abschalten und nicht pauschal User-Skills/Context Discovery entfernen.
+
+### 4.5 Zusätzliche Pi-Discovery-Flächen
+
+**Source-sicher:** `src/agent-runtimes/pi/model-catalog.ts::loadModelCatalogWithServices` ruft die injizierte Factory lediglich mit `{ cwd }` auf; `loadModelCatalog` reicht `createAgentSessionServices` ein. Es gibt dort keine `noExtensions`-Option. Fehler werden zu einem leeren Modellkatalog abgefangen.
+
+**Lokal dependency-belegt, nicht baseline-identisch:** Vorhandenes Pi `0.85.0`, `node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session-services.js:53–69`, konstruiert `DefaultResourceLoader` und ruft `reload()` auf. `dist/core/resource-loader.js:250–349` löst erst PackageManager-Ressourcen auf und lädt dann Extensions; bei `noExtensions` bleiben explizite CLI/additionalExtensionPaths aktiv. Inline-Factories werden separat geladen. Weitere Discovery-Einstiege stehen um 404ff und 626ff, darunter agentDir-/cwd-Extensionverzeichnisse. PackageManager-Quellen: `dist/core/package-manager.js`, insbesondere `resolve`, `resolveExtensionSources` und Missing-Package-Installation.
+
+**AP16-Auditauftrag:** dieselbe Kette im wirklich gepinnten Pi-Kandidaten prüfen; User/global settings, Projektsettings, agentDir/extensions, Workspace-Discovery, explizite AdditionalPaths, Factories und Modellkatalog erfassen. Negativfixture muss auch Katalog/Bootstrap/Context-Inspektion auslösen, nicht nur einen Sessionturn. Ein gesetztes `noExtensions` beweist allein weder ausbleibende Paketauflösung noch vollständige Nebenwirkungsfreiheit. Positivfixture: derselbe bewusst registrierte Pi-Plugin-Beitrag funktioniert. Kein Harness-Fork als stiller Scope-Zuwachs.
+
+## 5. Datenbanken und Dateieigentümer
+
+Die Tabelle beschreibt **Quelldefaults**, nicht die tatsächlich auf diesem Host vorhandenen Dateien oder deren Datensätze. Konfigurierte Pfade können abweichen.
+
+| Persistenz | Vorhandener Owner / Tabellen | Umbau-/Erhaltungsgrenze |
+|---|---|---|
+| `$PIBO_HOME/pibo.sqlite` | `src/data/pibo-store.ts`, `schema.ts`, `session-store.ts`; `sessions`, `session_runtime_bindings`, `rooms`, `chat_messages`, `event_log`, `observations`, `payloads`, navigation/read-state, Counter/Telemetry, `migration_import_map` | Produkt-/Generationsdaten ergänzen, Sessions nicht duplizieren; Tabsets hier bzw. im vorhandenen Produktstore verankern |
+| `$PIBO_HOME/payloads/` | `src/data/payload-store.ts`, Referenzen in Produktdaten | DB-Backup ohne Payloads ist kein vollständiges Backup; historische Kontextbefunde brauchen Retention |
+| `$PIBO_HOME/chat-agents.sqlite` | `src/apps/chat/agent-store.ts`; `chat_agents`, `chat_agent_folders`, `chat_agent_profile_aliases`, `chat_agent_events` | Agent-Auswahl/Revision beim Agent-Owner; Alias-/Rename-Historie erhalten |
+| `$PIBO_HOME/pibo-events.sqlite` | `src/reliability/store.ts`; `pibo_event_stream`, `pibo_delivery_receipts`, `pibo_event_consumers`, `pibo_jobs`, `pibo_dead_jobs`, `pibo_runs` | Laufende/gespeicherte yielded Runs, Leases und Replay nicht an Installationszeilen kaskadieren |
+| `$PIBO_HOME/pibo-ralph.sqlite` | `src/loops/store.ts`; `pibo_ralph_jobs`, `pibo_ralph_runs`, `pibo_ralph_run_facts` | Heutiger Loop-/Goal-Store trotz Legacy-Dateiname. Nicht löschen, weil „Ralph“ alt klingt |
+| `$PIBO_HOME/pibo-cron.sqlite` | `src/cron/store.ts`; `pibo_cron_jobs` | Jobs und laufende Scheduling-Arbeit in Impact aufnehmen |
+| `$PIBO_HOME/web-annotations.sqlite` | `src/web-annotations/store.ts`; `web_annotation_bindings`, `web_annotations` | AP11-Durchstich, Fachobjekte/Sessionbindung/Screenshotreferenzen erhalten |
+| `$PIBO_HOME/previews.sqlite` oder Override | `src/previews/store.ts`; `preview_exposures`, `preview_tickets`, `preview_browser_sessions` | Feature-Store, Lease-/Serverlebensdauer nicht mit Tab-Unmount gleichsetzen |
+| `$PIBO_HOME/context-files/context-files.sqlite` oder Override | `src/plugins/context-files.ts`, `context-files-store.ts`; `context_files`, `context_file_store_meta`, automatische/manuelle Revisionstabellen | Managed-Dateien, Namen, Working Content und Revisionen bewahren; eigenes Legacy-Journal nicht ersetzen |
+| `$PIBO_HOME/context-files/index.json` bzw. legacy Override | `src/plugins/context-files.ts::resolve...`-Pfadauflösung | Legacy-Importquelle sichern; JSON- und SQLite-Pfade getrennt inventarisieren |
+| `$PIBO_HOME/auth.sqlite` oder Override | `src/auth/better-auth.ts` | Auth bleibt Zugangsgate. Kein Plugin-Selection-Store und keine neuen User-Tenants |
+| `$PIBO_HOME/web-projects.sqlite` am untersuchten HEAD | `src/apps/chat/data/project-service.ts`; Projekte, Sessions, Workflow-Snapshots/Runs/Wait Tokens/Human Actions | **Driftfläche:** am lokalen upstream fehlen diese produktiven Projektpfade zugunsten neuerer Session-Workflows. Vor Migration tatsächliche Baseline festlegen |
+| Workflow-Persistenz | `src/apps/chat/workflow-persistence.ts`, `packages/workflows/src/store/` | Owner-Verträge prüfen, nicht zweite Workflow-/Run-Datenbank für Plugin-Impact erfinden |
+| `<cwd>/.pibo/pi-packages.json` und Paketbäume | `src/pi-packages/store.ts`, `installer.ts` | Rohbytes, Root, Quelle und Hash sichern; nach Migration inaktiv, nicht löschen |
+| `<root>/.pibo/user-skills.json`, `user-skills/` | `src/user-skills/store.ts`, `manager.ts`, `installer.ts`; global/workspace Roots via `src/plugins/chat-user-skills.ts` | Unabhängige User-Ressource, kein Plugin; globalRoot default homedir und workspaceRoot cwd |
+| `$PIBO_HOME/config.json` | `src/config/config.ts` | Auth/Preview-Operatorconfig; nicht bereits generischer Plugin-Settingsstore |
+| `$PIBO_HOME/user-settings.json` | `src/core/user-settings.ts` | Appweite Präferenzen/Featurewerte, keine browserlokale Autorität |
+| cwd `.pibo/base-prompt.json`, `.md`, `SYSTEM.md`; `.pibo/compaction-prompt.json`, `.md` | `src/core/base-prompt.ts`, `compaction-prompt.ts` | Tatsächlichen Workspace-Scope erhalten; nicht globalisieren |
+| MCP-Konfigdateien an mehreren Roots | `src/mcp/config.ts` | Herkunft, Priorität und ungelöste Secrets erhalten, siehe Abschnitt 6 |
+| Browser `pibo.chat.desktopTabs.v1` und `pibo.chat.lastSelection` | `src/apps/chat-ui/src/desktop-tabs-model.ts`, `app-storage.ts`, `desktop-tabs.tsx` | AP03/AP08/AP16: bewusste v1-Migration, kein globales Kopieren in alle Sessions |
+| Pi-native Transkripte/Settings/Auth | Pi-Harness, Pibo-Binding/History-Adapter | JSONL bleibt Resume-State; nicht durch Produktmessages oder Plugin-Snapshot ersetzen |
+
+### 5.1 Bestehende Migrationen und Löschfallen
+
+- `agent-store.ts` migriert zusätzliche Spalten, Profilnamen/Aliase und appweite Eindeutigkeit; `goal_control` Default 1, MCP-/Pi-Listen Default `[]`. Es gibt dort keinen allgemeinen Plugin-Auswahl-CAS-Vertrag. Alte Accounts nicht zu neuen Tenants machen.
+- `context-files-store.ts` besitzt `manual-revisions-v2`, Schemaformprüfung, Recovery aus vorhandenen Dateiinhalten/Revisionen sowie Umbau alter Revisionstabellen. Ein allgemeines Pluginjournal muss diesen Owner respektieren, nicht blind Tabellen neu anlegen.
+- `src/data/schema.ts` enthält vorhandene Schematransformationen und `migration_import_map`. Diese Tabelle ist noch kein Mehrstore-Pluginjournal.
+- `test/chat-data-v2-legacy-guard.test.mjs` schützt den Produktpfad vor erneutem Import alter Chatstores, `web-chat.sqlite` und Rückfall auf `pibo-sessions.sqlite`. Vorhandene Altdateien dürfen als Migrationsinput gesichert werden; nicht als neuer Runtime-Fallback reaktivieren.
+- `src/apps/chat/data/session-query-service.ts` entfernt bei expliziter Sessionlöschung u.a. Observations/Messages/Events und markiert Sessions gelöscht. **Nie aus Plugin-Uninstall aufrufen.**
+- Loop-Run-/Fact-Tabellen besitzen `ON DELETE CASCADE` von ihrem Job. Das ist kein Verstoß gegen den neuen Plan an sich; falsch wäre, beim Plugin-Uninstall diese Jobs zu löschen oder Installations-FKs darüberzulegen.
+- Context-Dateilöschung löscht Revisionen; Skill-Löschung kann Dateien entfernen. Auch diese legitimen User-Aktionen sind keine Uninstall-Implementierung.
+
+## 6. MCP, Config und Marketplace
+
+### 6.1 MCP-Verträge — Ist
+
+`src/mcp/config.ts` trennt stdio (`command`, `args`, `env`, `cwd`) und HTTP (`url`, `headers`, `timeout`). Filter `disabledTools` gewinnt vor `allowedTools`; Glob-Matching ist case-insensitive. Pibo-Metadaten unter `pibo.description` und `descriptionSource`.
+
+`loadConfigUnresolved` merged **serverweise**, nicht feldweise, in folgender Priorität: expliziter Pfad, `MCP_CONFIG_PATH`, cwd `mcp_servers.json`, Home `mcp_servers.json`, Home `.mcp_servers.json`, Home `.config/mcp/mcp_servers.json`; deduplizierte Pfade. Erste Definition eines Servernamens gewinnt komplett. Ein expliziter Pfad schaltet die anderen Quellen beim Merge nicht pauschal aus. Fehlender expliziter/env-Pfad ist Fehler.
+
+`loadConfig` substituiert `${VAR}`. Fehlende Variablen sind standardmäßig Fehler; `MCP_STRICT_ENV=false/0` kann Warnung/leere Werte erlauben. Migration soll `loadConfigUnresolved` bzw. Rohquellen verwenden, **nicht** aufgelöste Secrets persistieren.
+
+`src/mcp/agent-context.ts`: `setMcpServerDescription` schreibt in die tatsächlich gewinnende Quelle; registry-eigene Beschreibungen sind read-only. `listMcpServerInfos` liest Metadaten ohne Serververbindung. Agent-Kontext entsteht nur für ausgewählte beschriebene Server. Damit sind Beschreibung, Auswahl und Toolfilter getrennte Erhaltungsdimensionen.
+
+`src/mcp/runtime-session.ts::scopePiboMcpServerConfig` erzeugt materialisierte Referenzen und session-only Secret-Environment getrennt von resolved config. `verifyPiboMcpServer` kann Server verbinden/starten: nicht in read-only Preview/Inspector ausführen. Daemon-Ownership/Leases/PID/ConfigHash: `src/mcp/daemon.ts`, `daemon-client.ts`, `config.ts`. Temporäre Sockets/PIDs sind keine durable Plugin-Fachdaten, aktive Leases aber relevant für kontrollierten Drain.
+
+### 6.2 MCP-Paketgrenze — Soll
+
+AP14 `pibo.mcp-cli` besitzt externe Serverconfig, CLI, Filter, Beschreibungen, Kontext und Plugin-Tab. Der allgemeine Runtime-Ressourcenvertrag bleibt in `src/agent-runtime/resources.ts`/`resource-service.ts`; Pi, Codex Native und OMP erhalten dieselbe deklarierte Auswahl mit tatsächlichem Delivery-Status.
+
+**Nicht zusammenlegen:** `src/tools/mcp-bridge.ts`, `session-service.ts`, `session-tool-set.ts` sind Pibos interne Session-Tool-Lieferung, insbesondere für Codex Native. Diese Bridge darf nach Deinstallation des externen MCP-CLI-Plugins weiterhin andere portable Plugin-Tools liefern. OMP hat eine eigene Host-Bridge; externe MCP-Unterstützung darf nicht durch stillen CLI-Fallback behauptet werden.
+
+### 6.3 Sonstige Config-Werte
+
+`src/config/config.ts::PiboConfig`/`PIBO_CONFIG_KEYS`: heute feste Auth-/Preview-Keys, private Datei-/Secretbehandlung. `src/core/user-settings.ts`: timezone, Annotations-Shortcut, transcription, speech, previewServers, telemetryStaleThresholds, telemetryRetention. Sanitizer normalisiert unter anderem alten Transcriptionprovider `openai` zu `openai-chatgpt` und kann unbekannte Felder verwerfen.
+
+**Migration:** zuerst Rohbytes sichern, dann normalisierten Istzustand und verwendete Defaults erfassen. Sonst gehen unbekannte Legacy-Werte vor dem eigentlichen Plugin-Mapping verloren. Tab-Owner und Config-Ziel getrennt halten: Ein A-Tab kann globale Config oder fremdes Profil bearbeiten; ausstehender Save muss am ursprünglichen Scope bleiben. Config-Defaultwechsel erzeugt keine rückwirkende Generation.
+
+### 6.4 Marketplace
+
+Die Quellsuche fand keinen implementierten allgemeinen Pibo-Plugin-Marketplace/Manifest-Installer. Vorhandene Fremdflächen:
+
+- Pi-Paketdetail-URLs werden zu npm-Installationen übersetzt;
+- Codex-generated Protocolschemas enthalten `marketplace/*`/Plugin-Typen;
+- VS-Code-Erweiterung dokumentiert Marketplace-Publishing.
+
+Keine davon ist ein Ersatz für AP05. Künftiger Marketplace wird zusätzlicher `PluginSourceResolver`: gleiche Plugin-ID, Manifestversion, Digest und Operationsmaschine. Keine Marketplace-Entwicklung für diesen Umbau; keine Übernahme fremder Pluginidentität als neue Pibo-Autorität.
+
+## 7. Agent-Auswahl, UI und Build Context als Migrationsverbraucher
+
+### Agent-Verträge
+
+`src/apps/chat/agent-store.ts`, `agent-profiles.ts`, `src/core/profiles.ts`, `src/plugins/chat-custom-agents.ts` sind Owner der Auswahl. `createCustomAgentProfileDefinition` überspringt unbekannte Tools mit Warnung; Skills/Context bekommen zusätzlich strukturierte Diagnostics. Das erklärt, warum Legacy-Referenzen nicht zuverlässig aus dem aktuell materialisierten Toolset allein rekonstruiert werden können.
+
+AP04 muss sowohl gespeicherte Referenzen als auch effektive Vorher-Auflösung erfassen. `goalControl` ist standardmäßig an; explizites false erhalten. `runControl`, Toolteilmengen, Built-ins, manuelle Subagents mit Modellen/Limits/runtimeOverrides und Kontextreihenfolge nicht durch breite Plugin-Defaults ersetzen. Fehlende IDs bleiben im Draft, auch wenn andere Felder gespeichert werden.
+
+### UI-Flächen am untersuchten HEAD
+
+- `context/types.ts`: `context-files`, `base-prompt`, `compaction-prompt`, `pibo-tools`, `mcp-tools`, `build-context`.
+- `settings/types.ts`: `general`, `concurrency`, `previews`, `transcription`, `speech`, `shortcuts`, `maintenance`, `pi-packages`, `skills`, `providers`.
+- `App.tsx` enthält zwei Context-Renderzweige, u.a. um 1800 und 2275. Nicht nur Desktopzweig ändern.
+- `desktop-tabs-model.ts::DesktopTab`: id, target, title, timestamps; keine vorgeschriebene Session-ID. `DesktopTabTarget` hat Route, session-tool oder new-tab. session-tool enthält nur Toolname, nicht Session. Deduplizierung für Context/Settings nur route area.
+- `app-storage.ts` persistiert Auswahl separat. Vorhandene explizite Sessionroute ist Evidenz; spätere letzte Auswahl nicht.
+
+Ziel: AP03 persistiert tabset je `piboSessionId` mit Revision, AP08 implementiert Save/Restore/Scopebindung. AP16 importiert nur belegbar gebundene v1-Tabs automatisch; unbekannte Alttabs werden inaktiv gesichert und bewusst zugeordnet. Bereits bestehende Zieltabsets nicht überschreiben; zweiter Browser und Wiederholung brauchen Import-ID/CAS.
+
+### Build Context
+
+Einstiege: `src/core/context-build.ts::inspectPiboContextBuild`; `src/agent-runtime/context-build.ts::buildPortableRuntimeContextSnapshot`; `src/apps/chat/web-app.ts::buildContextBuildSnapshotForRequest` und GET `/api/chat/context-build`; UI `context/ContextBuildView.tsx`; DTOs `api-agent-designer.ts`.
+
+Vorhandene Tests belegen bereits native Beobachtungsgrenzen, inspector-only Toolherkunft und callable Toolnamen. Das ist wertvolle Ausgangsbasis, aber kein persistierter vollständiger Plugin-/Generationsnachweis. AP06 muss actual vs preview, Delivery/Transformationen, Quelle, Revision und Payloadbezug speichern. AP11 liefert generische UI. AP12–14 füllen fachliche Knoten; sie bauen keine eigenen Resolver.
+
+Session-Tool-/Ressourcengeneration und Credentials bereits in `src/tools/session-service.ts`, `src/agent-runtime/resource-service.ts`, `src/core/session-router.ts` verankert. AP03/AP06 sollen diese IDs verwenden, keine parallele Plugin-Sessionidentität erfinden. Persistierte Runtime-Bindings (`src/sessions/runtime-binding.ts`, `runtime-binding-persistence.ts`, `session_runtime_bindings`) sind nicht bereits vollständige Plugin-Snapshots.
+
+## 8. Erhaltungs-, Migrations- und Rollback-Invarianten
+
+Diese Liste ist **Soll/Abnahme**, nicht Behauptung vorhandener Implementierung.
+
+1. **Auswahlgleichheit:** Vorher-/Nachher-Satz auf qualifizierte Beiträge, sichtbare Toolnamen, Optionen, Reihenfolge und Secretreferenzen vergleichen. Kein zusätzliches Schreibtool. Erforderliche neue Beiträge, die nicht zur alten Teilmenge passen, erzeugen Konflikt.
+2. **Datenidentität:** Session-/Room-/Run-/Event-/Objekt-IDs, Runtime-Bindings und Aliasbeziehungen bleiben erhalten. Pluginrevision darf historische Zeilen nicht besitzen, wenn ihr Löschen kaskadiert.
+3. **Tombstones:** deinstallierte Revisionen bleiben referenzierbar; Historie und Fallback lesbar. Legacy ohne Snapshot ist `unknown`, nicht „unbetroffen“.
+4. **Generation:** immutable effektiver Plan; Profiländerung, Update oder Tab-Save ändern keine aktive Generation. Child löst Zielprofil unabhängig auf.
+5. **Impact:** eindeutige Pibo Sessions zählen; aktive, required, optional, historical-only und unknown getrennt. Profile/Plugins/Runtimeinstanzen/Runs zusätzlich anzeigen.
+6. **Bestätigung:** serverseitiger Plan mit TTL, State-/Selection-Revision und Plugin-ID-Texteingabe. Nach materialer Verbrauchermengenänderung neue Bestätigung.
+7. **Retirement:** atomare Admissionssperre vor Drain. Kein neuer abhängiger Verbraucher zwischen Check und Entladen; keine impliziten Abbrüche. Timeout bleibt blockiert; Cancel der Operation stellt Aufnahmebereitschaft nachvollziehbar wieder her.
+8. **Ein aktiver Stand:** höchstens eine aktive Revision pro Plugin-ID/Host. Update erst an bewiesener Drain-Grenze oder kontrolliertem Neustart. Nicht „erfolgreich“, solange Dispose ungeklärt ist.
+9. **Side-effect-freie Inspektion:** Manifest/CLI-Inspect/Preview/Build-Refresh importieren keine Plugins, führen keine Tools/Hooks aus und starten keine MCP-/Pi-Installationen.
+10. **Mehrstore-Journal:** pro Operation Inputrevisionen, Sicherungsreferenzen, Etappen und Ergebnis. Crash nach Agent-Write vor Produkt-Write darf replaybar sein; keine behauptete SQLite-Einzeltransaktion über Dateien.
+11. **Dateibestand:** User-Skills, Context, Promptdateien, fremde lokale Paketquellen und unbekannte Pi-Pakete nicht löschen. Aktivierung lokaler Plugins aus unveränderlichem/digestgeprüftem Stand, nicht mutablem live-Pfad.
+12. **Secrets:** Kataloge/Snapshots/Logs/Exporte redigiert; unresolved references behalten. Rohbackup kann Secrets enthalten und braucht private Rechte; nicht als Browserartefakt veröffentlichen.
+13. **Historische Payloads:** externe Dateiverweise nur verwenden, wenn Retention den Nachweis hält. Andernfalls gesicherte inhaltsadressierte Kopie oder explizit unknown, keine Rekonstruktion aus aktuellem Text.
+14. **UI-Isolation:** A-Saves/Responses bleiben A zugeordnet, auch nach A→B; Tabsetwrites führen keine Aktivierung aus. Globale Präferenz bleibt global, Tabinstanz sessiongebunden.
+
+### Empfohlene Journal-Etappen für AP03/AP16
+
+1. Erfassungsplan: genaue Roots/DBs, Versionen, Legacy-Rohfelder, Aliasauflösung, effektive Auswahl und unbekannte Referenzen.
+2. Konsistente Sicherung aller beteiligten DBs und Dateibäume; SQLite-WAL berücksichtigen, nicht offene DB allein mit Dateikopie als konsistent behaupten.
+3. Additives Schema/Operationsrecord committen, Inputrevisionen sichern.
+4. Agentmapping idempotent schreiben und checkpointen; Konflikte separat erhalten.
+5. Produkt-/Legacy-Snapshotstatus, Configmigration und Import-Mappings schreiben; keine erfundene historische Generation erzeugen.
+6. Browser-v1-Import separat revisionsgesichert; Browserdaten sind nicht vollständig serverseitig erfassbar.
+7. Vorher-/Nachhervergleich, Abschlussmarker erst bei konsistentem Befund; danach reguläre Altlese-/Schreib-/Aktivierungspfade entfernen.
+
+**Rollback:** Additive Schemaänderung garantiert keine alte Schreibkompatibilität: alte JSON-Sanitizer/Agentwrites können neue Auswahl verwerfen. Downgrade nur nach konkretem Roundtriptest. Sonst kontrollierter Restore mit Sicherung/Reconciliation aller seit Backup neu entstandenen Sessions, Messages und Runs. Kein pauschales Zurückkopieren, das neue Arbeit verliert. Pluginrollback braucht festgehaltenes kompatibles Artefakt und dieselbe sichere Aktivierungsgrenze wie Update. npm-Refresh-Erhalt des alten Records ist ausdrücklich kein ausreichender Artefaktrollback.
+
+## 9. AP-Karte und klare Verantwortungsgrenzen
+
+| AP | Abhängigkeit laut Plan | Fokus / Dateien / Handoff |
+|---|---|---|
+| AP00 | – | Baseline, alle Roots, alte Auswahlfixtures, Tests und Discovery-Audit; dieser Bericht ist Rechercheinput, keine fertigen Fixturetests |
+| AP01 | AP00 | Manifest/SDK/Inspector-/Tab-/Configscope-Typen; alleiniger Owner gemeinsamer Vertragstypen |
+| AP02 | AP01 | Registry/Host/Scope/Dependencygraph; `src/plugins/registry.ts`, `types.ts`, `src/gateway/web.ts` |
+| AP03 | AP01 | Agentstore + Produktstore + Installstore/Journal + Tabset-CAS + Kontextbefunde; alleiniger Schemaowner |
+| AP04 | AP02,03 | `profiles.ts`, `agent-profiles.ts`, neuer Resolver; effektive Auswahl und Runtime-Voraussetzungen, keine Installation |
+| AP05 | AP02,03 | Quellen/Stage/Operations/CLI/API; `src/cli.ts`, neue Plugin-Routen, kein eigener Resolver/Store |
+| AP06 | AP04 | Router/Adapter/Tool-/Resource-Service und Kontextprovenienz; Generation/Delivery statt Feature-UI |
+| AP07 | AP01,02 | Browserhost/Katalog/Assets, getrennt vom Backendloader; keine Secretobjekte |
+| AP08 | AP03,04,07 | Sessiontabsets, Routes, Context-/Settingshost; `App.tsx`, desktop-tabs*, app-storage/routes |
+| AP09 | AP06,07 | Terminalrenderer, Composer/Input-Hooks; immutable Envelopes, keine neue Historypersistenz |
+| AP10 | AP04,05,07 | Designer/Draft/API; `AgentsView.tsx`, `agent-designer-model.ts`, `api-agent-designer.ts` |
+| AP11 | AP06,08,09,10 | Web Annotations vollständig inklusive Settings/Build Context; Gate vor breiter Extraktion |
+| AP12 | AP06,10,11 | Runtime/File/WebSearch/Browser/Gateway/CodexCompat-Familien, deren Kontexte und Featuretabs |
+| AP13 | AP06,10,11 | Runs/Goals/Subagents; `runs/`, `loops/`, `subagents/`, bestehende Stores erhalten |
+| AP14 | AP06,10,11 | MCP-CLI und zweiter Adapterfixture, Config/Secrets/Daemon-Ownership |
+| AP15 | AP05,06,08,10,13 | Impact/Confirm/Retire/Drain/Update/Reinstall; kein Sessionlöschdienst |
+| AP16 | AP12,13,14,15 | Journalisierte Bestandsmigration, Pi-Entfernung und negative Discoverytests, Browser-v1 |
+| AP17 | AP08,09,11 | Restkomposition; Auth/Preview/Cron/Loops/Workflows/Medien; TUI/VSCode/Buildtargets entfernen |
+| AP18 | AP16,17 | Alte Auswahl-/Registry/API/UI-Wege endgültig beseitigen, read-only Legacy-Leser explizit begrenzen |
+| AP19 | AP18 | Integrierter installierter Kandidat, A01–A37, Pibo2, Downgrade/Recovery und aktuelle Spezifikationen |
+
+### Fachliche Paketgrenzen
+
+- Kernel: Manifestprüfung, Hostmechanik, Diagnose/Recovery. Nicht heimlich Featurefunktionen als „Core“ ausnehmen.
+- Pluginmanagement: Installationsrevisionen und Operationen. Kein Eigentum an Sessions/Runresultaten/Userdateien.
+- Agentowner: gewünschte Auswahl und Overrides. Resolver liefert immutable effective plan, kein zweiter Katalog.
+- Runtimeowner: Adapterbindung, Generation, Delivery, Credentials und Cleanup.
+- Featureowner: Daten/Config/Tools/View/Context über einen Vertrag; UI-Mount darf Backend-Arbeit nicht ungewollt beenden.
+- Browserowner: Sessiontabset, Navigation/Fokus/View-State. Keine eigenständige Configautorität.
+- `pibo.code-runtime` ≠ Agent Runtime Adapter; `pibo.codex-compat` ≠ `codex-native`; `pibo.mcp-cli` ≠ interne Tool-MCP-Bridge.
+- User-Skills/Context/manual Subagents bleiben Ressourcen, keine installierbaren Ersatzplugins.
+
+## 10. Umsetzung mit höchstens fünf parallelen Workern
+
+Empfehlung für den Orchestrator; hier wurden keine Worker gestartet. Nicht fünf unabhängige Vollumbauten parallel beginnen.
+
+1. **Vertragsphase:** AP00/AP01 zentral integrieren. Andere Slots höchstens für abgegrenzte Inventar-/Fixturearbeit; keine konkurrierenden Manifestentwürfe.
+2. **Fundament:** W1 AP02 Host, W2 AP03 Persistenz. Nach AP02 W3 AP07 Browserhost. Nach AP02+03 W4 AP04 Resolver, W5 AP05 Installation/CLI. Dies sind zeitversetzte Freigaben, keine Missachtung der Abhängigkeiten.
+3. **Produktpfade:** W1 AP06 Runtime/Context; W2 AP08 Tabs/Settings; W3 AP10 Designer. AP09 erst nach AP06/AP07. AP03-Owner bleibt alleiniger Reviewer/Integrator aller Schemaänderungen.
+4. **AP11 gemeinsamer Durchstich:** erst nach allen Voraussetzungen. Nicht parallel mit breiter Extraktion starten. Gemeinsame API-/Browser-/Generationsrevision einfrieren.
+5. **Extraktion:** W1 AP12 Toolfamilien, W2 AP13 Runs/Goals/Subagents, W3 AP14 MCP, W4 AP17 Restkomposition; W5 AP15 erst nach AP13 sowie übrigen Voraussetzungen. Shared App-/Storedateien sequentiell integrieren.
+6. **Migration/Abschluss:** AP16 nach Extraktionen und AP15; AP18 nach AP16+17; AP19 integriert und nicht durch fünf isolierte grüne Suites ersetzen.
+
+### Kollisionsdateien explizit sperren
+
+`src/plugins/types.ts` (AP01), `registry.ts`/`gateway/web.ts` (AP02, spätere Kompositionsintegration), `core/profiles.ts`/`agent-profiles.ts` (AP04), `agent-store.ts`/`data/schema.ts` (AP03), `core/session-router.ts` (AP06), `apps/chat/web-app.ts` (zentraler Routenintegrator), `apps/chat-ui/src/App.tsx` (AP08, AP17 sequenziell), `api-agent-designer.ts` (AP10 mit Vertragabgleich), `package.json`/Lockfile/Exports (AP05/AP17/AP19 koordiniert).
+
+Andere Worker liefern kleine Adaptermodule bzw. Änderungen als abgestimmte Integrationshunks. Keine parallel erfundenen Plugin-IDs oder Datenbankmigrationsnummern. Jeder Handoff: Ausgangscommit, erforderliche Vorläufer, AP/A-IDs, Contractdelta, Tests/Artefakte, offene Gates und Rollbackgrenze.
+
+## 11. Vorhandene Tests und neue Abnahmefälle
+
+**Alle folgenden Tests sind Einstiegspunkte; nichts davon wurde hier ausgeführt.** Insbesondere Quelltextassertions sind keine Runtime-Abnahme.
+
+| Bereich | Existierende Testpfade / konkrete Fälle | Ergänzung durch Umbau |
+|---|---|---|
+| Registry | `test/plugin-registry.test.mjs`: duplicate registrations; profile/actions/listeners; user skills separate; registered Pi packages without activating | Manifest ohne Import, Setuprollback, Reverse cleanup, Replaceprovider, A01–03 |
+| Pi-Pakete | `test/pi-packages.test.mjs`: URLparser, lokale Ressourcen, upsert/remove, failed refresh record, selected-only bridge, enabled defaults, progressive CLI | In read-only Legacy-/Entfernungstests überführen; kein neuer aktiver Pi-Paketweg |
+| Agentstore | `test/agent-store.test.mjs`: stable legacy defaults; aliases/rename; rollback alias removal; goal default-on + disable; MCP/Pi/Built-ins/runtime/subagent options | CAS, unknown refs, gleicher effektiver Satz, Crash zwischen Stores, A22–24 |
+| Profile | `test/agent-profiles.test.mjs`, `chat-custom-agent-profiles.test.mjs`, `chat-user-skill-profiles.test.mjs`, `profile-cli.test.mjs`, `resources-cli.test.mjs` | Pflichtteile serverseitig, fehlendes Plugin, keine Defaultverbreiterung |
+| MCP-Config | `test/mcp-config-merge.test.mjs`, `mcp-config-filter.test.mjs`, `mcp-agent-context.test.mjs`: winner source, registry readonly, no connection for catalog, selected descriptions | Scopes/Secrets/Filter bei Migration und Pluginsettings identisch |
+| MCP-Lifecycle | `test/mcp-cli.test.mjs`, `mcp-daemon.test.mjs`, `mcp-daemon-ownership.test.mjs` | Ownership an Plugin-/Session-Scope, Retirement, zweiter Adapter |
+| Ressourcen | `test/agent-runtime-resource-service.test.mjs`: isolation, exact native dedup, missing secrets, unsupported transport, shared generation cleanup | Pluginrevision/selected plan zu tatsächlicher Delivery, A05/A16/A33–35 |
+| Toolbridge | `test/pibo-tool-mcp-bridge.test.mjs`, `pibo-tool-contract.test.mjs`, `runtime-portability.test.mjs`, `codex-native-resources.test.mjs` | externe MCP-Deinstallation lässt interne Toolbridge intakt; echte harmlose Ausführung auf drei Adaptern |
+| Produktdaten | `test/pibo-data-session-store.test.mjs`, `data-v2-store.test.mjs`, `data-v2-ingest-service.test.mjs`, `chat-data-v2-legacy-guard.test.mjs`, `runtime-restart-recovery.test.mjs` | kein Uninstall-Delete, Tombstones, unknown Legacy, Restartoperationen |
+| Runs/Goals | `test/runs.test.mjs`, `loop-goal-tools.test.mjs`, `loop-goal-mode.test.mjs`, `loop-goal-reopen.test.mjs` | Drain statt Abort, stabile Run-/Child-IDs, Wiederinstallation |
+| Userressourcen | `test/user-skills.test.mjs`, `context-files-web.test.mjs` | Paketdateien immutable, Kopien unabhängig, Uninstall erhält Userdateien |
+| Config | `test/config.test.mjs`, `auth-mode-config.test.mjs`, `better-auth-config.test.mjs` | private Secrets, Scope-/Defaultmigration, keine verlorenen unbekannten Rohfelder |
+| Tabs | `test/chat-ui-desktop-tabs-model.test.mjs`, `chat-ui-desktop-tabs-behavior.test.mjs`, `chat-ui-desktop-tabs-accessibility.test.mjs`, `chat-ui-app-routes.test.mjs`, `chat-ui-app-route-selection.test.mjs`, `chat-ui-app-storage.test.mjs` | A29–31/A36: zwei Sessions desselben Agents, zwei Browser, delayed saves, Deep Link, v1-Import |
+| Designer | `test/chat-ui-agent-designer-autosave.test.mjs`, `chat-ui-agent-designer-runtime-switch.test.mjs`, `chat-ui-agent-designer-subagents.test.mjs`, `chat-ui-agent-designer-catalog-selection-accessibility.test.mjs` | Pluginwahl/required, unresolved refs bewahren, Scopeanzeige |
+| Kontext | `test/context-build-inspector.test.mjs`, `context-build-skills-tokens.test.mjs`, `chat-ui-context-build-origin.test.mjs` | historische Actuals vs Preview, keine Imports/Hooks auf GET, Fallback nach Uninstall |
+| Dependency | `test/pi-runtime-dependency-pin.test.mjs` | Kandidatpin/installed dependency abgleichen, Modellkatalog-Discoverytest |
+
+Neue Tests laut Plan, **noch zu bauen**: `plugin-system-manifest`, `-lifecycle`, `-store`, `-selection`, `-install`, `-cli`, `-runtime`, `-context-build`, `-web-catalog`, `-tabs`, `-settings`, `-terminal`, `-hooks`, `-uninstall`, `-session-recovery`, `-migration` jeweils unter `test/*.test.mjs`.
+
+### Besonders wichtige neue Fixtures
+
+- Pi-Webhandler mit `cwd A` bei Prozesscwd B: Read/Create/Enable/Delete müssen denselben Owner treffen; Legacy-Export muss beide Roots unterscheiden.
+- Failed npm-refresh nach Dateiveränderung: alter Metadatensatz allein ist kein Rollback; neuer Installer muss Artefaktrevision erhalten.
+- Absturz nach Agentcommit vor Produktcommit; nach Retirement vor Stop; nach Artefaktstage vor Catalogcommit; Wiederholung idempotent.
+- Uninstall von Plugin mit required/optional/historical/unknown Sessions sowie aktivem Childrun; eindeutige Sessionzahl, keine Löschung, kein implizites Abort.
+- Materialer neuer Verbraucher zwischen Impact und Apply, sowie nach Retirement: Reconfirm bzw. Admissionblock.
+- Zwei Sessions desselben Agents mit verschiedenen Tabsets; A-Save kommt nach Wechsel B an; globaler Configscope bleibt korrekt sichtbar.
+- User-Skill/Context gleichnamig zu Pluginbeitrag; Reihenfolge/Override erhalten, echte Inhaltskollision erklärt.
+- Pi-Discovery-Sentinel in User-/Projektsettings und Extensionverzeichnis; zusätzlich Modellkatalog/Bootstrap/Inspector aufrufen. Keine Ausführung, keine implizite Installation außerhalb Pluginplan.
+- Kopierte Pluginpakete außerhalb Sourcecheckout: Backendentry, Manifest, Browserassets, Skills/Context und Digest vollständig; keine Node-/Harnessimports im Browser.
+
+### Spätere Befehle im isolierten Worker, hier nicht ausgeführt
+
+```bash
+npm run typecheck
+npm run build
+node scripts/run-test-suite.mjs test/plugin-registry.test.mjs test/pi-packages.test.mjs test/agent-store.test.mjs test/mcp-config-merge.test.mjs test/mcp-agent-context.test.mjs test/agent-runtime-resource-service.test.mjs test/context-build-inspector.test.mjs
+npm test
+```
+
+`scripts/run-test-suite.mjs` setzt isolierte HOME-/PIBO_HOME-Pfade und startet Node-Tests. Build ist für dist-importierende Tests Voraussetzung; `npm test` enthält Build. `package.json` besitzt `prepack` mit Build/Schrumpflock-Vorbereitung und `postpack`-Cleanup: selbst Paketprüfung nicht als schreibfreien Vorgang behandeln. Aktuelle Build-/Typecheck-Skripte enthalten VS-Code-Targets; AP17 muss diese zusammen mit Exporten/Dependencies bereinigen, nicht bloß UI verstecken.
+
+AP19 braucht headful Browser/CDP, echte harmlose Toolausführung unter Pi/Codex Native/OMP und Pibo2 desselben Kandidaten. Aus diesem statischen Bericht folgt weder grüner Teststatus noch Pibo2-Freigabe.
+
+## 12. Offene Punkte vor Implementierungsfreigabe
+
+1. Gemeinsamer Quell-/Lockfile-/Pi-Kandidat festlegen; Projekt-/Workflowdrift nicht versehentlich zurückmigrieren.
+2. AP01 entscheidet exakte IDs/Schemas und die Trennung Paketabhängigkeit/Dienstabhängigkeit/Beitragsabhängigkeit; keine freien Workerinterpretationen.
+3. AP03 entscheidet Installstore-Ablage und Journalprotokoll. Plan verlangt additive Speicherung, benennt aber keine fertigen SQL-Tabellen.
+4. AP05 muss Versionpin/Digest, lokale Snapshots, npm-Lifecycle-Skripte, Assetpfadprüfung und Crashrecovery konkret machen.
+5. AP15 muss echte Drainreferenzen über Router, Runs, Subagents, MCP, Browserabos und appweite Dienste erfassen; ein offener Tab allein ist kein vollständiger Nutzungsbeweis.
+6. AP16 benötigt eine explizite Liste der tatsächlich zu migrierenden Workspaces/Overridepfade. Diese Recherche hat keine privaten Live-Bestände gelesen und behauptet keine vollständige Hostinventur.
+7. Legacy-Dateien ohne eindeutige Herkunft/Sessionbindung nicht raten. Inaktive Sicherung plus sichtbarer Konflikt ist planverträglicher als unbemerkte Aktivierung.
+8. Keine Gesamtfreigabe vor AP18/AP19 und A01–A37. Insbesondere AP11 muss Settings, Sessiontabs und Build Context gemeinsam nachweisen; ein statisch importiertes Annotation-Plugin reicht nicht.

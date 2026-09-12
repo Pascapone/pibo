@@ -1,0 +1,1019 @@
+{
+  "schemaVersion": "pibo.plugin-rebuild.legacy-inventory/1",
+  "baseline": "cac4dcd03945b9754db7be9ab2ab4324f10c335c",
+  "fixtureScope": "Built-in catalog in an isolated Docker worker with no user selection",
+  "plugins": [
+    {
+      "id": "pibo.core",
+      "name": "Pibo Core"
+    },
+    {
+      "id": "pibo.codex-native",
+      "name": "Pibo Native Codex"
+    },
+    {
+      "id": "pibo.codex-compat",
+      "name": "Pibo Codex Compatibility"
+    },
+    {
+      "id": "pibo.web-annotations",
+      "name": "Pibo Web Annotations"
+    },
+    {
+      "id": "pibo.orp",
+      "name": "Pibo Oh My Pi"
+    },
+    {
+      "id": "pibo.transcription.openai-chatgpt",
+      "name": "ChatGPT Subscription Transcription"
+    },
+    {
+      "id": "pibo.transcription.openai",
+      "name": "OpenAI Transcription"
+    }
+  ],
+  "profiles": [
+    "base",
+    "codex-native",
+    "orp"
+  ],
+  "catalog": {
+    "agentRuntimes": [
+      {
+        "id": "pi",
+        "adapterId": "pi",
+        "displayName": "Pi Coding Agent",
+        "enabled": true,
+        "transport": "embedded",
+        "capabilities": {
+          "lifecycle": {
+            "persistent": true,
+            "lazyBinding": false,
+            "resume": true,
+            "attach": true,
+            "listNativeSessions": true,
+            "fork": true,
+            "forkWhileRunning": true,
+            "clone": true,
+            "tree": true
+          },
+          "input": {
+            "text": true,
+            "images": true,
+            "audio": false,
+            "steering": true,
+            "structuredOutput": false
+          },
+          "output": {
+            "assistantDeltas": true,
+            "reasoning": true,
+            "toolEvents": true,
+            "usage": true,
+            "plans": false,
+            "diffs": false,
+            "rawNativeEvents": true
+          },
+          "tools": {
+            "piboManaged": {
+              "support": "direct"
+            },
+            "nativeToolInspection": {
+              "support": "native"
+            },
+            "nativeToolYielding": {
+              "support": "native"
+            },
+            "intentTracing": {
+              "supported": true,
+              "configurable": true,
+              "enabledByDefault": false
+            }
+          },
+          "mcp": {
+            "externalServers": {
+              "support": "materialized",
+              "modes": [
+                "isolated-pibo-mcp-config"
+              ]
+            },
+            "statusInspection": true
+          },
+          "skills": {
+            "support": "native"
+          },
+          "context": {
+            "support": "native"
+          },
+          "contextDiscovery": {
+            "supported": true,
+            "configurable": true,
+            "enabledByDefault": true,
+            "strategy": "filesystem-ancestors",
+            "knownFileNames": [
+              "AGENTS.md",
+              "AGENTS.MD",
+              "CLAUDE.md",
+              "CLAUDE.MD"
+            ]
+          },
+          "nativeSubagents": {
+            "supported": false,
+            "configurable": false,
+            "enabledByDefault": false
+          },
+          "historyImport": true,
+          "auth": {
+            "status": true,
+            "methods": [
+              {
+                "id": "device_code",
+                "completion": "explicit"
+              },
+              {
+                "id": "browser_oauth",
+                "completion": "explicit"
+              },
+              {
+                "id": "api_key",
+                "completion": "immediate"
+              }
+            ],
+            "cancel": true,
+            "logout": true,
+            "credentialScope": "adapter-shared"
+          },
+          "models": {
+            "catalog": true,
+            "switchInSession": true
+          },
+          "reasoning": {
+            "supported": true,
+            "values": [
+              "off",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "approvals": {
+            "supported": false,
+            "structuredUserInput": false
+          },
+          "maintenance": {
+            "compaction": true,
+            "contextUsage": true,
+            "history": true,
+            "health": true
+          }
+        },
+        "configSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "protocol": {
+          "name": "pi-sdk",
+          "supportedRange": "0.85.0"
+        }
+      },
+      {
+        "id": "codex-native",
+        "adapterId": "codex-native",
+        "displayName": "Native Codex App Server",
+        "enabled": true,
+        "transport": "stdio-rpc",
+        "capabilities": {
+          "lifecycle": {
+            "persistent": true,
+            "lazyBinding": false,
+            "resume": true,
+            "attach": true,
+            "listNativeSessions": true,
+            "fork": true,
+            "forkWhileRunning": true,
+            "clone": true,
+            "tree": false
+          },
+          "input": {
+            "text": true,
+            "images": false,
+            "audio": false,
+            "steering": true,
+            "structuredOutput": false
+          },
+          "output": {
+            "assistantDeltas": true,
+            "reasoning": true,
+            "toolEvents": true,
+            "usage": true,
+            "plans": false,
+            "diffs": false,
+            "rawNativeEvents": false
+          },
+          "tools": {
+            "piboManaged": {
+              "support": "mcp",
+              "transports": [
+                "streamable-http"
+              ]
+            },
+            "nativeToolInspection": {
+              "support": "degraded",
+              "mode": "observed-runtime-items",
+              "reason": "Stable Codex App Server 0.153.2 does not expose a complete pre-turn native-tool inventory; Pibo reports selected MCP tools immediately and harness-native tools after stable item notifications prove they are active."
+            },
+            "nativeToolYielding": {
+              "support": "unsupported",
+              "reason": "Codex native tools remain harness-owned and are not wrapped as Pibo yielded tools."
+            },
+            "intentTracing": {
+              "supported": false,
+              "configurable": false,
+              "enabledByDefault": false
+            }
+          },
+          "mcp": {
+            "externalServers": {
+              "support": "mcp",
+              "transports": [
+                "streamable-http",
+                "stdio"
+              ]
+            },
+            "statusInspection": true
+          },
+          "skills": {
+            "support": "materialized",
+            "modes": [
+              "codex-extra-roots"
+            ]
+          },
+          "context": {
+            "support": "materialized",
+            "modes": [
+              "native-project-discovery",
+              "codex-developer-instructions"
+            ]
+          },
+          "contextDiscovery": {
+            "supported": true,
+            "configurable": false,
+            "enabledByDefault": true,
+            "strategy": "codex-project",
+            "knownFileNames": [
+              "AGENTS.override.md",
+              "AGENTS.md"
+            ]
+          },
+          "nativeSubagents": {
+            "supported": true,
+            "configurable": true,
+            "enabledByDefault": true
+          },
+          "historyImport": true,
+          "auth": {
+            "status": true,
+            "methods": [
+              {
+                "id": "device_code",
+                "completion": "notification"
+              },
+              {
+                "id": "api_key",
+                "completion": "immediate"
+              }
+            ],
+            "cancel": true,
+            "logout": true,
+            "credentialScope": "runtime-instance"
+          },
+          "models": {
+            "catalog": true,
+            "switchInSession": true,
+            "optionsSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "serviceTier": {
+                  "type": "string",
+                  "description": "Optional native Codex service tier. Available values are listed in the selected model's options."
+                },
+                "personality": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "friendly",
+                    "pragmatic"
+                  ],
+                  "description": "Optional native Codex response personality for models that support personality selection."
+                },
+                "reasoningSummary": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "concise",
+                    "detailed",
+                    "none"
+                  ],
+                  "description": "Optional native Codex reasoning-summary mode."
+                },
+                "permissionMode": {
+                  "type": "string",
+                  "title": "Permission mode",
+                  "enum": [
+                    "approval",
+                    "yolo",
+                    "plan"
+                  ],
+                  "default": "approval",
+                  "description": "Codex permissions: Approval asks before privileged work, YOLO disables approvals with unrestricted host access, and Plan uses a read-only planning turn."
+                }
+              }
+            }
+          },
+          "reasoning": {
+            "supported": true,
+            "values": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "approvals": {
+            "supported": true,
+            "structuredUserInput": false
+          },
+          "maintenance": {
+            "compaction": true,
+            "contextUsage": true,
+            "history": true,
+            "health": true
+          }
+        },
+        "configSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "executable": {
+              "type": "string",
+              "minLength": 1,
+              "default": "codex"
+            },
+            "homeRoot": {
+              "type": "string",
+              "minLength": 1
+            },
+            "environmentAllowlist": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "uniqueItems": true
+            },
+            "experimentalUserInput": {
+              "type": "boolean",
+              "default": false
+            },
+            "diagnosticTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 5000
+            },
+            "startupTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 10000
+            },
+            "requestTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 120000
+            },
+            "authLoginTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1800000,
+              "default": 900000
+            },
+            "shutdownTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 2000
+            },
+            "killTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 500
+            }
+          }
+        },
+        "protocol": {
+          "name": "codex-app-server-v2",
+          "supportedRange": ">=0.153.2 <0.154.0"
+        }
+      },
+      {
+        "id": "omp-native",
+        "adapterId": "orp",
+        "displayName": "Oh My Pi Native",
+        "enabled": true,
+        "transport": "stdio-rpc",
+        "capabilities": {
+          "lifecycle": {
+            "persistent": true,
+            "lazyBinding": false,
+            "resume": true,
+            "attach": true,
+            "listNativeSessions": true,
+            "fork": true,
+            "forkWhileRunning": false,
+            "clone": false,
+            "tree": false
+          },
+          "input": {
+            "text": true,
+            "images": true,
+            "audio": false,
+            "steering": true,
+            "structuredOutput": false
+          },
+          "output": {
+            "assistantDeltas": true,
+            "reasoning": true,
+            "toolEvents": true,
+            "usage": true,
+            "plans": false,
+            "diffs": false,
+            "rawNativeEvents": false
+          },
+          "tools": {
+            "piboManaged": {
+              "support": "direct"
+            },
+            "nativeToolInspection": {
+              "support": "degraded",
+              "mode": "observed-runtime-items",
+              "reason": "OMP exposes its native tool inventory via get_state.dumpTools and runtime tool_execution items; a complete pre-turn inventory is only partially exposed through RPC."
+            },
+            "nativeToolYielding": {
+              "support": "unsupported",
+              "reason": "OMP native tools remain harness-owned and are not wrapped as Pibo yielded tools."
+            },
+            "intentTracing": {
+              "supported": true,
+              "configurable": false,
+              "enabledByDefault": true
+            }
+          },
+          "mcp": {
+            "externalServers": {
+              "support": "unsupported",
+              "reason": "OMP manages its own MCP; external MCP delivery is not wired in the initial OMP adapter."
+            },
+            "statusInspection": false
+          },
+          "skills": {
+            "support": "materialized",
+            "modes": [
+              "omp-custom-directories"
+            ]
+          },
+          "context": {
+            "support": "materialized",
+            "modes": [
+              "native-project-discovery",
+              "omp-append-system-prompt"
+            ]
+          },
+          "contextDiscovery": {
+            "supported": true,
+            "configurable": false,
+            "enabledByDefault": true,
+            "strategy": "omp-project",
+            "knownFileNames": [
+              "AGENTS.md"
+            ],
+            "knownUserRelativePaths": [
+              ".claude/CLAUDE.md",
+              ".codex/AGENTS.md",
+              ".gemini/GEMINI.md",
+              ".config/opencode/AGENTS.md",
+              ".copilot/copilot-instructions.md"
+            ],
+            "knownCwdRelativePaths": [
+              ".claude/CLAUDE.md",
+              ".gemini/GEMINI.md",
+              ".github/copilot-instructions.md"
+            ],
+            "knownRelativePaths": [
+              ".omp/AGENTS.md"
+            ],
+            "knownAncestorRelativePaths": [
+              ".agent/AGENTS.md",
+              ".agents/AGENTS.md"
+            ]
+          },
+          "nativeSubagents": {
+            "supported": true,
+            "configurable": true,
+            "enabledByDefault": true
+          },
+          "historyImport": true,
+          "auth": {
+            "status": true,
+            "methods": [
+              {
+                "id": "api_key",
+                "completion": "immediate"
+              }
+            ],
+            "cancel": true,
+            "logout": true,
+            "credentialScope": "runtime-instance"
+          },
+          "models": {
+            "catalog": true,
+            "switchInSession": true,
+            "optionsSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "provider": {
+                  "type": "string"
+                },
+                "modelId": {
+                  "type": "string"
+                },
+                "thinkingLevel": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                }
+              }
+            }
+          },
+          "reasoning": {
+            "supported": true,
+            "values": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "approvals": {
+            "supported": false,
+            "structuredUserInput": false
+          },
+          "maintenance": {
+            "compaction": true,
+            "contextUsage": true,
+            "history": true,
+            "health": true
+          }
+        },
+        "configSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bunExecutable": {
+              "type": "string",
+              "minLength": 1,
+              "default": "bun"
+            },
+            "ompEntry": {
+              "type": "string",
+              "minLength": 1
+            },
+            "homeRoot": {
+              "type": "string",
+              "minLength": 1
+            },
+            "environmentAllowlist": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "uniqueItems": true
+            },
+            "apiKeyEnvironment": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "uniqueItems": true
+            },
+            "defaultProvider": {
+              "type": "string",
+              "minLength": 1
+            },
+            "defaultModel": {
+              "type": "string",
+              "minLength": 1
+            },
+            "diagnosticTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 5000
+            },
+            "startupTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 15000
+            },
+            "requestTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 180000
+            },
+            "authLoginTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1800000,
+              "default": 900000
+            },
+            "shutdownTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 2000
+            },
+            "killTimeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600000,
+              "default": 500
+            }
+          }
+        },
+        "protocol": {
+          "name": "omp-rpc",
+          "supportedRange": "2"
+        }
+      }
+    ],
+    "nativeTools": [
+      {
+        "name": "web_search",
+        "description": "Searches the web through the configured provider adapter.",
+        "yieldable": true,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core",
+        "providerTool": {
+          "kind": "web_search",
+          "provider": "openai",
+          "options": {
+            "externalWebAccess": true,
+            "searchContextSize": "medium",
+            "includeSources": true
+          }
+        }
+      },
+      {
+        "name": "runtime",
+        "description": "Run Python/Node code in persistent runtime sessions; exec runs normal scripts.",
+        "yieldable": true,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "hashline",
+        "description": "Pi-only read replacement that prefixes every text line with a short content hash.",
+        "yieldable": false,
+        "hasDefinition": true,
+        "portable": false,
+        "replacesBuiltinTools": [
+          "read"
+        ],
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "browser_use_open_tabs",
+        "description": "List tabs in the persistent Browser Use session (Codex-compatible label: browser_use.open_tabs).",
+        "yieldable": false,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "browser_use_take_screenshot",
+        "description": "Capture a browser tab screenshot (Codex-compatible label: browser_use.take_screenshot).",
+        "yieldable": false,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "browser_use_browser_use",
+        "description": "Control the persistent Browser Use session through structured actions (Codex-compatible label: browser_use.browser_use).",
+        "yieldable": true,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "node_repl_js",
+        "description": "Run JavaScript in a persistent browser-bound Node REPL (Codex-compatible label: node_repl.js).",
+        "yieldable": false,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "node_repl_js_reset",
+        "description": "Reset the persistent browser-bound Node REPL (Codex-compatible label: node_repl.js_reset).",
+        "yieldable": false,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "apply_patch",
+        "description": "Applies a Codex-style patch to workspace files.",
+        "yieldable": true,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.codex-compat",
+        "pluginName": "Pibo Codex Compatibility"
+      },
+      {
+        "name": "view_image",
+        "description": "Reads a local image path and returns it for visual inspection.",
+        "yieldable": true,
+        "hasDefinition": false,
+        "portable": true,
+        "pluginId": "pibo.codex-compat",
+        "pluginName": "Pibo Codex Compatibility"
+      },
+      {
+        "name": "codex_image_generation",
+        "description": "Generate and edit images through the ChatGPT/Codex backend API using openai-codex OAuth.",
+        "yieldable": true,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.codex-compat",
+        "pluginName": "Pibo Codex Compatibility"
+      },
+      {
+        "name": "web_annotations_list",
+        "description": "List bounded web annotations for the current Pibo session.",
+        "yieldable": false,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      },
+      {
+        "name": "web_annotations_get",
+        "description": "Get one authorized web annotation with bounded target metadata.",
+        "yieldable": false,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      },
+      {
+        "name": "web_annotations_watch",
+        "description": "Wait briefly for new web annotations in the current Pibo session.",
+        "yieldable": true,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      },
+      {
+        "name": "web_annotations_acknowledge",
+        "description": "Acknowledge an authorized web annotation.",
+        "yieldable": false,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      },
+      {
+        "name": "web_annotations_resolve",
+        "description": "Resolve an authorized web annotation with an optional summary.",
+        "yieldable": false,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      },
+      {
+        "name": "web_annotations_dismiss",
+        "description": "Dismiss an authorized web annotation with an optional reason.",
+        "yieldable": false,
+        "hasDefinition": true,
+        "portable": true,
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      }
+    ],
+    "skills": [
+      {
+        "name": "pi-agent-harness",
+        "path": "<package>/skills/builtin/pi-agent-harness/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "pibo-agent-runtime-adapter",
+        "path": "<package>/skills/builtin/pibo-agent-runtime-adapter/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "pibo-spec-writing",
+        "path": "<package>/skills/builtin/pibo-spec-writing/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "pibo-docker-system",
+        "path": "<package>/skills/builtin/pibo-docker-system/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "graphify",
+        "path": "<package>/skills/builtin/graphify/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "prd",
+        "path": "<package>/skills/builtin/prd/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "skill-creator",
+        "path": "<package>/skills/builtin/skill-creator/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "loop",
+        "path": "<package>/skills/builtin/loop/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "ralph-loop",
+        "path": "<package>/skills/builtin/ralph-loop/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "ralph-prd-json",
+        "path": "<package>/skills/builtin/ralph-prd-json/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "web-annotations",
+        "path": "<package>/skills/builtin/web-annotations/SKILL.md",
+        "kind": "builtin",
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      }
+    ],
+    "subagents": [],
+    "contextFiles": [
+      {
+        "key": "Pibo Native Tooling",
+        "label": "Pibo Native Tooling",
+        "path": "<package>/context/pibo-native-tooling.md",
+        "scope": "global",
+        "source": "plugin",
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "key": "Codex Base Prompt",
+        "label": "Codex Base Prompt",
+        "path": "<package>/context/codex-base-prompt.md",
+        "scope": "global",
+        "source": "plugin",
+        "pluginId": "pibo.codex-compat",
+        "pluginName": "Pibo Codex Compatibility"
+      }
+    ],
+    "packages": [
+      {
+        "name": "pibo-run-control",
+        "description": "Expose pibo_run_* for Pibo-managed tools and subagents; private harness-native tools require explicit runtime capability.",
+        "toolNames": [
+          "pibo_run_start",
+          "pibo_run_list",
+          "pibo_run_status",
+          "pibo_run_wait",
+          "pibo_run_read",
+          "pibo_run_cancel",
+          "pibo_run_ack"
+        ]
+      },
+      {
+        "name": "pibo-goal-control",
+        "description": "Expose get_goal, create_goal, and update_goal as one native goal lifecycle package.",
+        "toolNames": [
+          "get_goal",
+          "create_goal",
+          "update_goal"
+        ]
+      },
+      {
+        "name": "codex-browser-interface",
+        "description": "Expose Browser Use and its persistent browser-bound Node REPL through a Codex-familiar structured tool surface.",
+        "toolNames": [
+          "browser_use_open_tabs",
+          "browser_use_take_screenshot",
+          "browser_use_browser_use",
+          "node_repl_js",
+          "node_repl_js_reset"
+        ],
+        "pluginId": "pibo.core",
+        "pluginName": "Pibo Core"
+      },
+      {
+        "name": "web-annotation-agent-tools",
+        "description": "Expose session-scoped Web Annotation tools for listing, reading, watching, and lifecycle updates.",
+        "toolNames": [
+          "web_annotations_list",
+          "web_annotations_get",
+          "web_annotations_watch",
+          "web_annotations_acknowledge",
+          "web_annotations_resolve",
+          "web_annotations_dismiss"
+        ],
+        "pluginId": "pibo.web-annotations",
+        "pluginName": "Pibo Web Annotations"
+      }
+    ],
+    "piboTools": [
+      {
+        "name": "browser-use",
+        "description": "Browser automation CLI for web interaction, screenshots, and extraction.",
+        "snippet": "Browser automation CLI for frontend development and web testing.\nStart in one persistent shell with `eval \"$(npm run --silent dev -- tools env browser-use)\"`.\nFor authenticated Pibo Chat Web App testing, prefer `eval \"$(npm run --silent dev -- tools browser-use lease acquire --app pibo-chat --holder \"$USER\")\"`.\nDiscover details with `npm run dev -- tools show browser-use` and `npm run dev -- tools guide browser-use browser-use`."
+      },
+      {
+        "name": "agent-browser",
+        "description": "Fast native browser automation CLI for AI agents.",
+        "snippet": "Browser automation CLI for frontend development and web testing.\nStart in one persistent shell with `eval \"$(npm run --silent dev -- tools env agent-browser)\"`.\nFor authenticated Pibo Chat Web App testing, prefer `eval \"$(npm run --silent dev -- tools agent-browser lease acquire --app pibo-chat --holder \"$USER\")\"`.\nDiscover details with `npm run dev -- tools show agent-browser` and `npm run dev -- tools guide agent-browser agent-browser`."
+      },
+      {
+        "name": "loop",
+        "description": "Pibo-native goal-first continuous agent loop runner.",
+        "snippet": "Goal-first continuous Pibo agent loop runner.\nUse `pibo loop templates`, then create with `pibo loop add --template goal-objective --room <room-id> --start`.\nOptional budgets: `--token-budget <n>` and `--max-iterations <n>`.\nInspect/control with `pibo loop list --json`, `runs --job <id> --json`, `stop <id>`, `cancel <id>`.\nGuide: `pibo tools guide loop loop`."
+      },
+      {
+        "name": "ralph",
+        "description": "Legacy Pibo Ralph alias for fresh-session continuous agent jobs.",
+        "snippet": "Continuous Pibo agent job runner for implementation/debug loops.\nUse `pibo ralph templates`, then create with `pibo ralph add --template <id> --room <room-id> --start`.\nInspect/control with `pibo ralph list --json`, `runs --job <id> --json`, `stop <id>`, `cancel <id>`.\nGuide: `pibo tools guide ralph ralph`."
+      }
+    ],
+    "mcpServers": [],
+    "piPackages": [],
+    "loopStopConditions": [],
+    "ralphStopConditions": []
+  }
+}
