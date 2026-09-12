@@ -155,6 +155,7 @@ import {
 	applySignalStatusPatchesToBootstrap,
 	applySignalStatusSnapshotToBootstrap,
 	retainSelectedSignalSnapshot,
+	SignalEpochTracker,
 	SignalStatusDeliveryGeneration,
 	shouldCommitSelectedSignalSnapshot,
 	shouldCommitSignalStatusSnapshot,
@@ -419,6 +420,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const pendingSignalStatusVersionsRef = useRef(new Map<string, number>());
 	const pendingSignalStatusUpdateCountRef = useRef(0);
 	const pendingSignalStatusFlushRef = useRef<number | undefined>(undefined);
+	const signalEpochTrackerRef = useRef(new SignalEpochTracker());
 	const signalStatusDeliveryGenerationRef = useRef(new SignalStatusDeliveryGeneration());
 	const [signalNow, setSignalNow] = useState(() => Date.now());
 	const showArchivedRef = useRef(showArchived);
@@ -499,7 +501,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [clearPendingSignalStatusPatches]);
 
 	const commitSignalStatusSnapshot = useCallback((snapshot: PiboSignalStatusSnapshot) => {
-		if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return false;
+		if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot, signalEpochTrackerRef.current)) return false;
 		clearPendingSignalStatusPatches();
 		sessionStatusSignalsRef.current = snapshot;
 		setBootstrap((current) => current ? applySignalStatusSnapshotToBootstrap(current, snapshot) : current);
@@ -644,7 +646,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		let unsubscribeSignalTree: () => void = () => undefined;
 		const isCurrent = (expectedGeneration: number) => active && expectedGeneration === generation;
 		const commitSignalSnapshot = (snapshot: PiboSignalSnapshot, expectedGeneration: number) => {
-			if (!isCurrent(expectedGeneration) || recoveryController.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
+			if (!isCurrent(expectedGeneration) || recoveryController.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId, signalEpochTrackerRef.current)) return;
 			sessionSignalsRef.current = snapshot;
 			setSessionSignals(snapshot);
 			setBootstrap((current) => current ? applySignalSnapshotToBootstrap(current, snapshot) : current);
@@ -706,7 +708,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 			unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, {
 				isCurrent: () => isCurrent(streamGeneration),
 				onSnapshot: (snapshot: PiboSignalSnapshot) => {
-					if (!shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
 					if (signalRecoveryTimer) {
 						clearTimeout(signalRecoveryTimer);
 						signalRecoveryTimer = undefined;

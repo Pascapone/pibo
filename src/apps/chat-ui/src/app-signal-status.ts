@@ -10,6 +10,21 @@ import type {
 
 type SignalSessionUpdate = { status?: PiboWebSessionNode["status"]; updatedAt?: string; isTreeActive?: boolean };
 
+export class SignalEpochTracker {
+	private current?: string;
+	private readonly retired = new Set<string>();
+
+	accept(epoch: string | undefined): boolean {
+		if (!epoch) return this.current === undefined;
+		if (epoch === this.current) return true;
+		if (this.retired.has(epoch)) return false;
+		if (this.current) this.retired.add(this.current);
+		this.current = epoch;
+		while (this.retired.size > 16) this.retired.delete(this.retired.values().next().value!);
+		return true;
+	}
+}
+
 export class SignalStatusDeliveryGeneration {
 	private generation = 0;
 
@@ -60,8 +75,9 @@ export function shouldCommitSelectedSignalSnapshot(
 	current: PiboSignalSnapshot | null,
 	snapshot: PiboSignalSnapshot,
 	selectedPiboSessionId: string,
+	epochTracker?: SignalEpochTracker,
 ): boolean {
-	if (!signalSnapshotIncludesSession(snapshot, selectedPiboSessionId)) return false;
+	if (!signalSnapshotIncludesSession(snapshot, selectedPiboSessionId) || (epochTracker && !epochTracker.accept(snapshot.epoch))) return false;
 	if (!current || current.rootPiboSessionId !== snapshot.rootPiboSessionId) return true;
 	const epochDecision = shouldAcceptSignalEpoch(current, snapshot);
 	if (epochDecision !== undefined) return epochDecision;
@@ -93,7 +109,9 @@ export function applySignalStatusPatchToBootstrap(bootstrap: BootstrapData, patc
 export function shouldCommitSignalStatusSnapshot(
 	current: PiboSignalStatusSnapshot | null,
 	snapshot: PiboSignalStatusSnapshot,
+	epochTracker?: SignalEpochTracker,
 ): boolean {
+	if (epochTracker && !epochTracker.accept(snapshot.epoch)) return false;
 	if (!current) return true;
 	const epochDecision = shouldAcceptSignalEpoch(current, snapshot);
 	if (epochDecision !== undefined) return epochDecision;
@@ -248,9 +266,6 @@ function shouldAcceptSignalEpoch(
 	if (current.epoch === incoming.epoch) return undefined;
 	if (current.epoch && !incoming.epoch) return false;
 	if (!current.epoch && incoming.epoch) return true;
-	const currentMs = Date.parse(current.generatedAt);
-	const incomingMs = Date.parse(incoming.generatedAt);
-	if (Number.isFinite(currentMs) && Number.isFinite(incomingMs)) return currentMs <= incomingMs;
 	return true;
 }
 

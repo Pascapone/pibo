@@ -20,6 +20,7 @@ async function runAppSignalStatusScenario() {
 			applySignalStatusPatchesToBootstrap,
 			applySignalStatusSnapshotToBootstrap,
 			retainSelectedSignalSnapshot,
+			SignalEpochTracker,
 			SignalStatusDeliveryGeneration,
 			shouldCommitSelectedSignalSnapshot,
 			shouldCommitSignalStatusSnapshot,
@@ -201,8 +202,10 @@ async function runAppSignalStatusScenario() {
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, { ...currentSignal, version: 0 }, "ps-root"), false, "a delayed REST snapshot cannot roll back a newer SSE version");
 		const oldEpochSignal = { ...currentSignal, epoch: "gateway-old", version: 100, generatedAt: "2026-05-27T00:30:00.000Z" };
 		const resetEpochSignal = { ...currentSignal, epoch: "gateway-new", version: 0, generatedAt: "2026-05-27T00:31:00.000Z" };
-		assert.equal(shouldCommitSelectedSignalSnapshot(oldEpochSignal, resetEpochSignal, "ps-root"), true, "a newer gateway epoch may reset its version to zero");
-		assert.equal(shouldCommitSelectedSignalSnapshot(resetEpochSignal, { ...oldEpochSignal, version: 101, generatedAt: "2026-05-27T00:30:30.000Z" }, "ps-root"), false, "a delayed snapshot from the retired epoch cannot replace the reset snapshot");
+		const selectedEpochs = new SignalEpochTracker();
+		assert.equal(shouldCommitSelectedSignalSnapshot(null, oldEpochSignal, "ps-root", selectedEpochs), true);
+		assert.equal(shouldCommitSelectedSignalSnapshot(oldEpochSignal, resetEpochSignal, "ps-root", selectedEpochs), true, "a newer gateway epoch may reset its version to zero");
+		assert.equal(shouldCommitSelectedSignalSnapshot(resetEpochSignal, { ...oldEpochSignal, version: 101, generatedAt: "2026-05-27T00:32:30.000Z" }, "ps-root", selectedEpochs), false, "a delayed snapshot from the retired epoch cannot replace the reset snapshot even when its wall-clock timestamp is later");
 		assert.deepEqual(applySelectedSignalPatch(resetEpochSignal, { ...patch, epoch: "gateway-old", fromVersion: 0 }, "ps-root"), { snapshot: resetEpochSignal, needsRefresh: true }, "patches from a retired epoch trigger snapshot recovery");
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, currentSignal, "ps-other"), false, "a previous session tree cannot replace the selected session tree");
 		const deliveryGeneration = new SignalStatusDeliveryGeneration();
@@ -272,8 +275,12 @@ async function runAppSignalStatusScenario() {
 		assert.equal(applySignalStatusPatches(statusSnapshot, [statusPatch, { ...statusPatch, fromVersion: 99 }]).needsRefresh, true, "a gap invalidates the whole coalesced batch");
 		assert.equal(applySignalStatusPatch(statusSnapshot, { ...statusPatch, fromVersion: 99 }).needsRefresh, true, "a missed global patch requests reconciliation");
 		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:19:00.000Z" }), false, "a delayed global snapshot cannot roll state back");
-		assert.equal(shouldCommitSignalStatusSnapshot({ ...statusSnapshot, epoch: "gateway-old" }, { ...statusSnapshot, epoch: "gateway-new", generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } }), true, "a newer status epoch can reset root versions");
-		assert.equal(shouldCommitSignalStatusSnapshot({ ...statusSnapshot, epoch: "gateway-new", generatedAt: "2026-05-27T00:22:00.000Z" }, { ...statusSnapshot, epoch: "gateway-old", generatedAt: "2026-05-27T00:21:00.000Z" }), false, "a late status snapshot from the retired epoch stays fenced");
+		const statusEpochs = new SignalEpochTracker();
+		const oldEpochStatus = { ...statusSnapshot, epoch: "gateway-old" };
+		const newEpochStatus = { ...statusSnapshot, epoch: "gateway-new", generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } };
+		assert.equal(shouldCommitSignalStatusSnapshot(null, oldEpochStatus, statusEpochs), true);
+		assert.equal(shouldCommitSignalStatusSnapshot(oldEpochStatus, newEpochStatus, statusEpochs), true, "a newer status epoch can reset root versions");
+		assert.equal(shouldCommitSignalStatusSnapshot(newEpochStatus, { ...oldEpochStatus, generatedAt: "2026-05-27T00:23:00.000Z" }, statusEpochs), false, "a late status snapshot from the retired epoch stays fenced independently of wall-clock ordering");
 		assert.equal(applySignalStatusPatches({ ...statusSnapshot, epoch: "gateway-new" }, [{ ...statusPatch, epoch: "gateway-old" }]).needsRefresh, true, "status patches cannot cross epochs");
 		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } }), true, "a newer legacy gateway snapshot can reset root versions after restart");
 	`;
