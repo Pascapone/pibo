@@ -1153,10 +1153,47 @@ test("passive thinking never awaits an unresolved model catalog", async () => {
   assert.ok(result, "passive thinking must return without starting or awaiting model discovery");
   assert.equal(result.result.availability, "unavailable");
   assert.equal(result.result.retryable, true);
-  assert.match(result.result.message, /not cached/i);
-  assert.equal(listCalls, 0);
+  assert.equal(result.result.message, "Thinking options are loading. Try again shortly.");
+  assert.equal(listCalls, 1, "a cold catalog starts one adapter discovery without opening a routed session");
+  const retry = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(retry.result.availability, "unavailable");
+  assert.equal(listCalls, 1, "retries share the unresolved discovery instead of spawning background work");
   assert.equal(adapter.openInputs.length, 0);
  } finally {
+  await fixture.router.disposeAll();
+ }
+});
+
+test("passive thinking recovers from a cold catalog through one bounded adapter discovery", async () => {
+ const fixture = createFakeRuntimeFixture();
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ fixture.store.update("ps_router_fake", { activeModel: { provider: "fixture", id: "reasoning-model" }, metadata: { initialThinkingLevel: "medium" } });
+ const releaseCatalog = deferred();
+ let cachedCatalog;
+ let listCalls = 0;
+ adapter.peekModelCatalog = () => cachedCatalog;
+ adapter.listModels = async () => {
+  listCalls++;
+  await releaseCatalog.promise;
+  cachedCatalog = { runtimeInstanceId: "router-fake", models: [{ provider: "fixture", id: "reasoning-model", reasoningOptions: ["off", "low", "medium", "high"] }] };
+  return cachedCatalog;
+ };
+ try {
+  const cold = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(cold.result.availability, "unavailable");
+  assert.equal(cold.result.retryable, true);
+  assert.equal(listCalls, 1);
+  assert.equal(adapter.openInputs.length, 0, "catalog discovery must not consume an agent-session cold-start slot");
+  releaseCatalog.resolve();
+  await waitFor(() => Boolean(adapter.peekModelCatalog()));
+  const recovered = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.deepEqual({ availability: recovered.result.availability, supported: recovered.result.supported, level: recovered.result.level, availableLevels: recovered.result.availableLevels }, { availability: "ready", supported: true, level: "medium", availableLevels: ["off", "low", "medium", "high"] });
+  assert.equal(listCalls, 1);
+  assert.equal(adapter.openInputs.length, 0);
+ } finally {
+  releaseCatalog.resolve();
   await fixture.router.disposeAll();
  }
 });

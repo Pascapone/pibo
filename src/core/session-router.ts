@@ -86,6 +86,7 @@ import {
 } from "../sessions/runtime-binding.js";
 import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
 import type {
+	AgentRuntimeAdapter,
 	AgentRuntimeAuthStatus,
 	AgentRuntimeAuthTargetOperationResult,
 	AgentRuntimeSession,
@@ -616,6 +617,8 @@ export class PiboSessionRouter {
 	private readonly initializationTimings: RuntimeInitializationTiming[] = [];
 	private readonly pendingStartAborts = new Map<string,AbortController>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
+	private readonly passiveModelCatalogDiscoveries = new Map<string, Promise<void>>();
+	private readonly passiveModelCatalogRetryAfter = new Map<string, number>();
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly outputRenderSequencer: OutputRenderSequencer;
 	private readonly runRegistry: PiboRunRegistry;
@@ -744,6 +747,24 @@ export class PiboSessionRouter {
 			?? "off";
 	}
 
+	private schedulePassiveModelCatalogDiscovery(adapter: AgentRuntimeAdapter): boolean {
+		if (!adapter.listModels) return false;
+		if (this.passiveModelCatalogDiscoveries.has(adapter.instanceId)) return true;
+		if ((this.passiveModelCatalogRetryAfter.get(adapter.instanceId) ?? 0) > Date.now()) return true;
+		const discovery = Promise.resolve()
+			.then(async () => { await adapter.listModels!(); })
+			.catch(() => {
+				this.passiveModelCatalogRetryAfter.set(adapter.instanceId, Date.now() + 1_000);
+			})
+			.finally(() => {
+				if (this.passiveModelCatalogDiscoveries.get(adapter.instanceId) === discovery) {
+					this.passiveModelCatalogDiscoveries.delete(adapter.instanceId);
+				}
+			});
+		this.passiveModelCatalogDiscoveries.set(adapter.instanceId, discovery);
+		return true;
+	}
+
 	private resolvePassiveThinkingResult(piboSessionId: string): PiboThinkingResult {
 		const stored = this.resolvePiboSession(piboSessionId);
 		const binding = this.resolveSessionRuntimeBinding(stored);
@@ -769,13 +790,18 @@ export class PiboSessionRouter {
 		});
 		const catalog = adapter.peekModelCatalog?.();
 		if (!selectedModel || !catalog) {
+			const discoveryScheduled = Boolean(selectedModel) && this.schedulePassiveModelCatalogDiscovery(adapter);
 			return {
 				level: "off",
 				availableLevels: [],
 				supported: false,
 				availability: "unavailable",
-				retryable: true,
-				message: "Reasoning controls are not cached yet. Retry after runtime discovery completes.",
+				retryable: discoveryScheduled,
+				message: selectedModel
+					? discoveryScheduled
+						? "Thinking options are loading. Try again shortly."
+						: "Thinking options are unavailable for this runtime."
+					: "Select a model first.",
 			};
 		}
 		const model = catalog.models.find((candidate) => (
@@ -783,13 +809,16 @@ export class PiboSessionRouter {
 			&& (candidate.provider ?? catalog.runtimeInstanceId) === selectedModel.provider
 		));
 		if (!model) {
+			const discoveryScheduled = this.schedulePassiveModelCatalogDiscovery(adapter);
 			return {
 				level: "off",
 				availableLevels: [],
 				supported: false,
 				availability: "unavailable",
-				retryable: true,
-				message: "The selected model is not present in the cached runtime catalog. Retry after discovery refreshes.",
+				retryable: discoveryScheduled,
+				message: discoveryScheduled
+					? "Thinking options are loading. Try again shortly."
+					: "Thinking options are unavailable for the selected model.",
 			};
 		}
 		const availableLevels = (model.reasoningOptions ?? []).filter(isPiboThinkingLevel);

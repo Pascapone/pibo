@@ -23,6 +23,7 @@ import type { PiboAgentsController } from "../../subagents/tool.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
 import { PiboPluginRegistry } from "../../plugins/registry.js";
+import { SettledTtlCache } from "../../agent-runtime/settled-ttl-cache.js";
 import {
 	unsupportedAgentRuntimeCapability,
 	type AgentRuntimeCapabilities,
@@ -633,8 +634,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly descriptor = PI_AGENT_RUNTIME_DRIVER.descriptor;
 	readonly config: PiboJsonObject;
 	readonly displayName: string;
-	private modelCatalogCache?: { expiresAt: number; value: Promise<PiModelCatalog> };
-	private resolvedModelCatalog?: { expiresAt: number; value: PiModelCatalog };
+	private readonly modelCatalogCache = new SettledTtlCache<PiModelCatalog>(5_000);
 	private readonly authController: PiAgentRuntimeAuthController;
 
 	constructor(
@@ -648,7 +648,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		this.authController = new PiAgentRuntimeAuthController(
 			() => this.loadModelCatalog(),
 			() => {
-				this.modelCatalogCache = undefined;
+				this.modelCatalogCache.invalidate();
 			},
 		);
 	}
@@ -662,8 +662,8 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	peekModelCatalog(): AgentRuntimeModelCatalog | undefined {
-		if (!this.resolvedModelCatalog || this.resolvedModelCatalog.expiresAt <= Date.now()) return undefined;
-		return piAgentRuntimeModelCatalog(this.instanceId, this.resolvedModelCatalog.value);
+		const catalog = this.modelCatalogCache.peek();
+		return catalog ? piAgentRuntimeModelCatalog(this.instanceId, catalog) : undefined;
 	}
 
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
@@ -856,17 +856,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	private loadModelCatalog(): Promise<PiModelCatalog> {
-		const now = Date.now();
-		if (this.modelCatalogCache && this.modelCatalogCache.expiresAt > now) return this.modelCatalogCache.value;
-		const expiresAt = now + 5_000;
-		const value = loadPiModelCatalog(process.cwd());
-		this.modelCatalogCache = { expiresAt, value };
-		value.then((catalog) => {
-			if (this.modelCatalogCache?.value === value) this.resolvedModelCatalog = { expiresAt, value: catalog };
-		}).catch(() => {
-			if (this.modelCatalogCache?.value === value) this.modelCatalogCache = undefined;
-		});
-		return value;
+		return this.modelCatalogCache.load(() => loadPiModelCatalog(process.cwd()));
 	}
 }
 
