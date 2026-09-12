@@ -231,40 +231,53 @@ async function runOutputPersistenceInspection(
 	mode: { allowPositionalSession: boolean; deadLettersOnly: boolean },
 ): Promise<void> {
 	validateOutputPersistenceInspectionArgs(args, mode.allowPositionalSession);
-	const options = parseOptions(args);
+	const budgetFlags = new Set(["--max-scan", "--timeout-ms", "--cursor", "--after-stream", "--before-stream"]);
+	const value = (flag: string) => { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; };
+	const options = parseOptions(args.filter((arg, index) => !budgetFlags.has(arg) && !budgetFlags.has(args[index - 1])));
+	if (!mode.deadLettersOnly && ["--cursor", "--after-stream", "--before-stream"].some((flag) => args.includes(flag))) throw new Error("Cursor and stream bounds apply only to dead-letters; audit lifecycle time bounds apply to complete groups");
 	if (options.after && !Number.isFinite(Date.parse(options.after))) throw new Error("--since must be an ISO date");
 	if (options.before && !Number.isFinite(Date.parse(options.before))) throw new Error("--before must be an ISO date");
 	if (options.after && options.before && Date.parse(options.after) >= Date.parse(options.before)) {
 		throw new Error("--since must be earlier than --before");
 	}
 	const { formatJson } = await import("./sql.js");
-	const {
-		formatOutputIntegrityAudit,
-		formatOutputPersistenceDeadLetters,
-		inspectOutputIntegrity,
-		outputPersistenceDeadLettersFromAudit,
-	} = await import("./output-integrity.js");
-	const audit = inspectOutputIntegrity({
+	const { formatOutputIntegrityAudit } = await import("./output-integrity.js");
+	const { runOutputInspection } = await import("./output-inspection-runner.js");
+	const { boundedInteger } = await import("./output-dead-letters.js");
+	const controller = new AbortController();
+	const cancel = () => controller.abort();
+	process.once("SIGINT", cancel);
+	process.once("SIGTERM", cancel);
+	try {
+	const result = await runOutputInspection({
+		mode: mode.deadLettersOnly ? "dead-letters" : "audit",
+		maxScan: value("--max-scan") === undefined ? undefined : boundedInteger(value("--max-scan"), 1000, 1_000_000, "max-scan"),
+		timeoutMs: value("--timeout-ms") === undefined ? undefined : boundedInteger(value("--timeout-ms"), 1000, 3_600_000, "timeout-ms"),
+		cursor: value("--cursor"),
+		afterStream: value("--after-stream") === undefined ? undefined : boundedInteger(value("--after-stream"), 1, Number.MAX_SAFE_INTEGER, "after-stream"),
+		beforeStream: value("--before-stream") === undefined ? undefined : boundedInteger(value("--before-stream"), 1, Number.MAX_SAFE_INTEGER, "before-stream"),
 		dataStore: resolveDebugStore("pibo-data"),
 		reliabilityStore: resolveDebugStore("reliability"),
 		piboSessionId: options.key ?? (mode.allowPositionalSession ? options.positionals[0] : undefined),
 		since: options.after,
 		before: options.before,
 		limit: options.limit,
-		findingMode: mode.deadLettersOnly ? "dead_letters" : "all",
-	});
-	if (mode.deadLettersOnly) {
-		const result = outputPersistenceDeadLettersFromAudit(audit);
-		if (options.json) console.log(formatJson(result));
-		else console.log(formatOutputPersistenceDeadLetters(result));
-		return;
+	}, { signal: controller.signal });
+	if (options.json) console.log(formatJson(result));
+	else {
+		if (result.resultType === "debug.integrity.output" && result.summary) console.log(formatOutputIntegrityAudit(result));
+		else if (result.resultType === "debug.persistence.dead-letters") console.log([
+			"pibo debug persistence dead-letters", "readOnly\ttrue", `returnedDeadLetters\t${result.deadLetters.length}`, "countsScope\tpage (global total not computed)",
+			...result.deadLetters.map((item) => [item.jobId, item.piboSessionId ?? "-", item.eventId ?? "-", item.identityCollision, item.relatedIdentityCollision ?? "unknown"].join("\t")),
+		].join("\n"));
+		else console.log("pibo debug persistence audit\nreadOnly\ttrue\nhealth\tunknown (incomplete audit)");
+		console.log([`complete\t${result.budget.complete}`, `reason\t${result.budget.reason ?? "-"}`, `workRows\t${result.budget.scannedRows}/${result.budget.maxScan}`, `elapsedMs\t${result.budget.elapsedMs.toFixed(1)}/${result.budget.timeoutMs}`, ...(result.budget.nextCursor ? [`nextCursor\t${result.budget.nextCursor}`] : [])].join("\n"));
 	}
-	if (options.json) console.log(formatJson(audit));
-	else console.log(formatOutputIntegrityAudit(audit));
+	} finally { process.removeListener("SIGINT", cancel); process.removeListener("SIGTERM", cancel); }
 }
 
 function validateOutputPersistenceInspectionArgs(args: string[], allowPositionalSession: boolean): void {
-	const valueOptions = new Set(["--session", "--since", "--before", "--limit"]);
+	const valueOptions = new Set(["--session", "--since", "--before", "--limit", "--max-scan", "--timeout-ms", "--cursor", "--after-stream", "--before-stream"]);
 	let positionalCount = 0;
 	let hasSessionOption = false;
 	for (let index = 0; index < args.length; index += 1) {
@@ -1466,6 +1479,15 @@ Usage:
 Reports:
   Incomplete or invalid turn, reasoning, and tool lifecycles; identity collisions; reused output keys; session/trace-status mismatches; and pending or dead output-persistence jobs.
 
+Budgets (formatVersion 2):
+  --limit n          Detail results, default 50 (max 1000); not a work limit
+  --max-scan n       Conservative row-visit allowance, default 1000 (max 1000000)
+  --timeout-ms n     Hard reader process lifetime, default 1000 (max 3600000)
+  Full counts/JSON grouping happen only within explicit budgets. Exceeding a budget returns
+  health=unknown, summary=null. Increase the budget explicitly to restart a deep audit.
+  Lifecycle time scope applies to MAX(created_at) of whole groups, never clipped events.
+  Ctrl-C terminates the reader; audit never writes or migrates either store.
+
 Next:
   pibo debug persistence audit --json
   pibo debug persistence audit --session ps_... --since 2026-08-01T00:00:00Z --json
@@ -1481,6 +1503,18 @@ Usage:
 
 Reports:
   Output-persistence dead letters, permanent collision failures, and dead letters related to persisted collision diagnostics.
+  Unknown relationships are omitted; an incomplete page is not an absence-of-errors result.
+
+Budgets (formatVersion 2):
+  --limit n          Returned findings, default 50 (max 1000)
+  --max-scan n       Candidate and relationship rows, default 1000 (max 1000000)
+  --timeout-ms n     Hard process lifetime, default 1000
+  --cursor token     Resume stable job-ID keyset, bound to store/session/time/stream scope
+  --after-stream n   Relationship stream lower bound (exclusive)
+  --before-stream n  Relationship stream upper bound (exclusive)
+  Counts describe this page only; global total is null. Sparse scopes consume scan budget.
+  Pages are live reads, not a cross-page snapshot; concurrent inserts behind the cursor need a new traversal.
+  Ctrl-C kills the reader and closes its snapshot before returning the last checkpoint.
 
 Next:
   pibo debug persistence dead-letters --json

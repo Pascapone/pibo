@@ -155,7 +155,17 @@ export function inspectOutputIntegrity(input: {
 	before?: string;
 	limit?: string | number;
 	findingMode?: "all" | "dead_letters";
+	/** Isolated runner's conservative row-work guard, called before every audit query. */
+	beforeQuery?: (db: DatabaseSync, sql: string) => void;
 }): OutputIntegrityAudit {
+	const queryRows = <TRow>(db: DatabaseSync, sql: string, params: SqlValue[]): TRow[] => {
+		input.beforeQuery?.(db, sql);
+		return readRows<TRow>(db, sql, params);
+	};
+	const countRows = (db: DatabaseSync, sql: string, params: SqlValue[]): number => {
+		input.beforeQuery?.(db, sql);
+		return readCount(db, sql, params);
+	};
 	const limit = normalizeLimit(input.limit);
 	const findings: OutputIntegrityFinding[] = [];
 	const collisionEventKeys = new Set<string>();
@@ -736,11 +746,11 @@ function sessionTraceStatusSql(
 	};
 }
 
-function queryRows<TRow>(db: DatabaseSync, sql: string, params: SqlValue[]): TRow[] {
+function readRows<TRow>(db: DatabaseSync, sql: string, params: SqlValue[]): TRow[] {
 	return db.prepare(sql).all(...params) as TRow[];
 }
 
-function countRows(db: DatabaseSync, sql: string, params: SqlValue[]): number {
+function readCount(db: DatabaseSync, sql: string, params: SqlValue[]): number {
 	const row = db.prepare(sql).get(...params) as { count?: number | bigint } | undefined;
 	return Number(row?.count ?? 0);
 }

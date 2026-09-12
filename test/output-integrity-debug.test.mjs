@@ -299,7 +299,10 @@ test("pibo debug persistence stays progressive and returns read-only audit and d
 		const dead = JSON.parse(deadResult.stdout);
 		assert.equal(dead.resultType, "debug.persistence.dead-letters");
 		assert.equal(dead.readOnly, true);
-		assert.equal(dead.summary.deadOutputJobs, 1);
+		assert.equal(dead.formatVersion, 2);
+		assert.equal(dead.summary.deadOutputJobs, null, "bounded listing never computes a hidden global count");
+		assert.equal(dead.summary.countsScope, "page");
+		assert.equal(dead.budget.complete, true);
 		assert.equal(dead.summary.relatedIdentityCollisions, 1);
 		assert.equal(dead.deadLetters.length, 1);
 
