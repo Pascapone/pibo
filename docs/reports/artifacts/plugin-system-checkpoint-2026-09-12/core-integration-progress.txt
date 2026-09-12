@@ -1,0 +1,36 @@
+# Core integration progress
+
+05:43 UTC: SDK, schema, host, services, scope, selection and resolver implemented. TypeScript backend compile and 48 new focused core tests PASS inside worker under lock. Source changed further for the legacy facade afterward; revalidation pending. Initial compile at 05:34 encountered only concurrently edited management migration-journal errors; those were gone at 05:43.
+
+Actual host/resolver API matches contract-core.md. New exports planPluginActivation, pluginRuntimeIncompatibilities, assertEffectivePluginPlan, PluginContributionResolver are present. PiboPluginRegistry now accepts `{host}` and projects current executable tool/skill/context/profile/etc registrations directly from host.contributions. No copied pluginIds/active-catalog maps. Legacy registrations are scope-owned entries in that same index. Runtime driver/instance index is the remaining domain-specific lifecycle bridge under discussion below.
+
+## Runtime owner dependency — fulfilled and wired
+
+Runtime published `unregisterInstance`/`unregisterDriver`; core now wires both into synchronous rollback plus scope cleanup. New focused tests cover driver + instance failure, immediate retry and teardown. No live sessions are aborted. Original request retained below for traceability.
+
+## Original request to runtime owner (owned src/agent-runtime/registry.ts)
+
+For full legacy facade rollback without reaching into private runtime maps, please add public synchronous ownership removal APIs to AgentRuntimeAdapterRegistry:
+
+- `unregisterInstance(instanceId: string): boolean`: deletes instances + definitions metadata, does NOT abort sessions; caller performs already-owned auth/resource cleanup at safe boundary.
+- `unregisterDriver(adapterId: string): boolean`: reject if definitions still reference this driver; otherwise delete driver.
+
+Core will scope.defer these in reverse registration order, remove registrations synchronously on partial legacy setup failure, and preserve disposal failures. This is transitional facade integration; runtime sessions must drain before disposePlugins. Do NOT silently dispose live sessions in unregister.
+
+Alternative: expose checkpoint()/restore(checkpoint) for registry registrations only, but unregister is smaller. Please publish chosen method names in contract-runtime.md. No changes by core to your file.
+
+## Composition owner
+
+PiboPluginRegistry `{host}` is a read-through facade, not a second activation. For a host contribution kind `tool`, backend setup registers the existing ToolProfileRegistration value with `ctx.register(localId, value)`; declaration `name` is the agent-call name. Same projection applies to skill, context-file, subagent, profile, gateway-action, channel, auth-service, transcription-provider, speech-provider, web-app and loop-stop-condition. Runtime-owned domain registry must be wired through services as product composition proceeds. Legacy capability-package is temporary only, slated for AP18 removal.
+
+108 tests passed after the first facade integration (backend compile + core/registry/runtime-registry/channel/speech/transcription suites); final added edge tests are still being revalidated.
+
+## Additive SDK clarification
+
+`PluginResolutionInput.agentId?` selects agent configuration scope; `EffectivePluginPlan.pluginConfigurations` now records deterministic app -> selection -> matching agent -> matching session shallow overlays. Foreign scopes and duplicate target revisions reject the plan. Existing `configurations` preserves revision/provenance; contribution `config` stays contribution-specific. All fields exist in the source; do not apply schema defaults during reads. Runtime and Designer pass agentId only when providing agent-scoped configuration snapshots.
+
+## Packaging issue for orchestrator
+
+New package exports point `types` at `dist/plugins/{sdk,host}.d.ts`, but the baseline tsconfig does not set declaration emission. Please add a build-owned SDK declaration target (or chosen declaration strategy); I do not own package/scripts metadata. Browser bundle validation and package self-import are included in core's final check, but an export-map entry alone does not generate .d.ts files.
+
+No host gateway, push, package-metadata or external data mutations by core. Existing registry regressions and extended facade rollback tests are next.

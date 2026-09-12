@@ -1,0 +1,78 @@
+# Worker runtime — geordneter Zwischenabschluss
+
+Stand: 12. September 2026, Abschlussprüfung 06:49 UTC. Basis `cac4dcd03945b9754db7be9ab2ab4324f10c335c`; ausschließlich gemeinsamer Worktree `/root/code/pibo/.worktrees/plugin-system-rebuild`. Keine Commits, Branch-/Containeranlage, Gatewayänderungen oder Änderungen fremder Dateien. Tests/Backend-Kompilation ausschließlich im vorhandenen Docker-Worker `/workspace`, serialisiert mit `flock /tmp/plugin-system-validation.lock`.
+
+## Ergebnis und Abnahmegrenze
+
+Ein funktionierender AP06-Implementierungsteil liegt auf den bestehenden Runtime-/Router-/Toolpfaden. **AP06 ist noch nicht vollständig integriert oder abgenommen.** Insbesondere Gateway-Composition und Build-Context-HTTP-Dispatch sind Orchestrator-Eigentum und verwenden die neuen Helfer zum Berichtszeitpunkt noch nicht. Es gibt keinen Nachweis einer vollständigen Pi/Codex/OMP-Produktgeneration über authentifizierte Web-Routen und installierte Featurepakete. Keine AP11/AP19-Fertigmeldung.
+
+## Implementierte Änderungen
+
+### Gemeinsamer Plan und Runtime-Generation
+
+- `src/core/profiles.ts`: `pluginSelection`, `pluginSelectionRevision`, `pluginAgentId`, `effectivePluginPlan`; Builder `withPluginSelection`. Skill-/Kontextreferenzen können qualifizierte Contribution-ID und Pflichtstatus tragen.
+- `src/apps/chat/agent-profiles.ts`: Designer-Auswahl und Revision/Agent-ID werden übernommen. Bei vorhandener Plugin-Auswahl wird die alte Native-Tool-Liste nicht mehr zur Profilerzeugung verwendet.
+- `src/agent-runtime/plugin-plan.ts`: `PluginRuntimeCoordinator` verwendet genau Core-Resolver und Host sowie Managements bestehenden Store/Manager. Preview ist reine Auflösung. Reserve ist synchron: Auflösung, atomare DB-Admission, Abgleich der reservierten Revisionen, Projektion ausgewählter Registrierungen, immutable Generation-Snapshot. Keine zweite Auswahl- oder Installationsliste.
+- `profileFromPluginPlan` liefert bestehende Tool-/Skill-/Kontext-/Subagent-Profile aus den qualifizierten Host-Contributions. User-Skills/-Kontext und manuelle Subagents bleiben eigenständig. Alte MCP-/Pi-Package-/Toolfelder werden für einen Pluginplan nicht übernommen. Effektive Plugin-/Contribution-Konfiguration wird in Factory- und Execution-Context gebunden.
+- `src/core/session-router.ts`: tatsächlicher Cold-Start reserviert vor dem ersten asynchronen Adapter-Setup; Tool- und Ressourcenservice erhalten denselben effektiven Plan/Generation. Nach erfolgreichem Adapter-Open wird der tatsächliche Build gespeichert. Aktive Generationen werden bei Profiländerung nicht neu aufgelöst. Freigabe folgt erst nach erfolgreicher Runtime- und Ressourcendisposal. Bei unbewiesener nativer Cleanup-Lage bleibt die Reservation als konservativer Blocker bestehen.
+- Ein explizit übergebener Plugin-Registry-Pfad erzeugt nicht mehr still eine zusätzliche Default-Runtime-Registry als Fallback.
+- `src/agent-runtime/registry.ts`: synchrone `unregisterInstance`/`unregisterDriver` ohne Session-Abbruch; referenzierte Driver werden abgewiesen. Früher Anschluss für Core.
+- `src/agent-runtimes/pi/adapter.ts`: Plugin-Metadaten und Plan bleiben bei der Pi-Session-Profilkopie erhalten.
+
+### Tool- und Input-Hooks
+
+- `src/agent-runtime/plugin-hooks.ts`: deklarierte Reihenfolge, qualifizierte Tie-Break-ID, revalidierte Transformationen, Provenienzpflicht, Timeout und AbortSignal. Pflicht-Pre/Input-Fehler verhindern die Ausführung. Post-Tool-Fehler stellen einen bereits ausgeführten Schreibvorgang nicht als nicht ausgeführt dar; auch Fehler der Post-Evidenzpersistenz erhalten das Toolresultat.
+- `src/tools/session-tool-set.ts`: Hooks sitzen auf dem tatsächlichen kontrollierten Toolpfad einschließlich kontrollierter yielded Targets. Harness-native Definitionen werden nicht fiktiv abgefangen. Effektiver Plugin-Toolname-Satz filtert die echte Assembly; manuelle Delegation behält ihre bestehende Infrastruktur.
+- `src/tools/session-service.ts`: Factory-Ergebnisse werden je Controller-/Native-Tool-Konfiguration wiederverwendet. `getDefinitions()` liest ausschließlich bereits materialisierte Definitionen. Bestehende Session-MCP-Credentials/-Bridge bleiben erhalten.
+- `src/agent-runtime/routed-session.ts`: Input-Hook unmittelbar vor Promptübergabe; Cancellation verwendet das vorhandene In-flight-Signal. Nur Text wird ersetzt, nicht Session-/Message-ID oder Provenienz.
+- `src/tools/contract.ts`: optionaler Plugin-Konfigurationskontext mit gepinnter Contribution-/Revisionsidentität.
+
+### Kontextbefunde und Discovery
+
+- `src/agent-runtime/plugin-context-build.ts`: getrennte immutable `actual`-/`preview`-DTOs, tatsächliche Ressourcenlieferung, ausgewählte Toolschemata, alle Resolverknoten einschließlich ohne Kontextwirkung, progressive Skillgrenzen, Secret-Redaktion, getrennte Copy-Kanäle. Native Base-Prompts, interne Historie/Compaction und fremde Hooks werden ausdrücklich nicht als beobachtet behauptet.
+- `inspectPluginBuildContext` liest tatsächliche gespeicherte Builds; Preview ist ausdrücklich separat angefordert. Keine Ressourcenanlage, MCP-Verbindung, Factory- oder Hookausführung beim Lesen. Hookbefunde werden als eigene `hook-*`-Snapshots derselben Generation gespeichert.
+- `src/core/context-build.ts` und neuer `legacy-context-preview.ts`: alte Pi-Runtime-erzeugende Inspektion durch konservative deklarative Vorschau ersetzt. Bereits übergebene bestehende Ressourcen dürfen read-only ihre beobachteten Metadaten beisteuern. Keine neue Ressourcenanlage.
+- `src/agent-runtime/context-build.ts` und `profile-validation.ts`: dynamische Toolfactories werden nicht mehr bei Inspektion/Validierung ausgeführt.
+- `src/agent-runtimes/pi/runtime.ts`: kein `getPiPackageRuntimeOptions` mehr. `inspectPiboProfile` startet keine Runtime mehr. Entfernte alte Inspektionscontroller.
+- `src/agent-runtimes/pi/plugin-discovery.ts`: gemeinsame Policy für Bootstrap und Modellkatalog. Read-through Settings-Proxy blendet Package-/Extension-Konfiguration aus, ohne Userdateien zu verändern. Implizite Extensionpfade aus; ausdrücklich übergebene Host-Factories bleiben möglich; Skill-/Kontextdiscovery bleibt erhalten.
+- `src/agent-runtimes/pi/model-catalog.ts`: eigener Discoverypfad verwendet dieselbe Policy.
+- `src/agent-runtime/resource-service.ts`: qualifizierte Plugin-Skill-/Kontext-IDs und tatsächlicher Pflichtstatus werden bis zu Delivery Reports durchgereicht.
+
+## Tatsächliche Prüfungen
+
+Alle Logs liegen neben diesem Bericht.
+
+1. `runtime-tsc-1.log`: `npx tsc --noEmit -p tsconfig.json` scheiterte an Node-Heap-OOM bei rund 1 GB; Exit 134. Keine Provider-/Capacity-Abbrüche. Danach projektübliches `--max-old-space-size=1200` verwendet.
+2. `runtime-tsc-2.log`: Backend-TypeScript-Kompilation mit 1200-MB-Limit erfolgreich, Exit 0.
+3. `runtime-focused-1.log`: Backend-Kompilation erfolgreich; 13/16 Tests grün. Drei neue Fixturetests versuchten die vom Core eingefrorene Initialauswahl direkt zu mutieren; Fixture durch expliziten Clone korrigiert, Produktcode dafür nicht gelockert.
+4. `runtime-focused-2.log`: Backend-Kompilation erfolgreich; **17/17 Tests grün**. Enthält tatsächlichen Router-Coldstart/Dispose mit bestehendem Fake-Adapter und echter Admission-/Build-Persistenz, drei Adapter-Zielpläne/portable Toolassembly, notwendige Pi-only-Ablehnung, echte Pi-ResourceLoader-Discovery-Negativfixture, Hook-Ausführung/Timeout/Cancel und reine Kontextinspektion.
+5. `runtime-regressions.log`: Backend-Kompilation erfolgreich; **35/36 vorhandene Tests grün**. Ein Ressourcenregressionstest erwartete die Metadaten einer ausdrücklich bereits übergebenen Ressourcen-Session in `inspectPiboContextBuild`. Read-only-Projektion dieser bestehenden Metadaten ergänzt; dafür wird keine Runtime oder MCP-Verbindung erstellt.
+6. `runtime-final-validation.log`: abschließender kombinierter Lauf nach dieser Korrektur und zusätzlichem Post-Hook-Persistenzfehlertest **erfolgreich, Exit 0**. Backend-TypeScript-Kompilation erfolgreich; **54/54 Tests grün** (18 neue fokussierte Tests plus 36 vorhandene Regressionen), keine Skips/Abbrüche. Ende 06:49:05 UTC. Die einzelne Post-Hook-Persistenzwarnung im Log wird absichtlich durch den negativen Test ausgelöst.
+
+Exakter Abschlussbefehl:
+
+```sh
+docker exec -w /workspace pibo-dev-plugin-system-rebuild \
+  flock /tmp/plugin-system-validation.lock sh -c '
+    node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json &&
+    node --test test/plugin-system-runtime.test.mjs test/plugin-system-hooks.test.mjs \
+      test/plugin-system-context-build.test.mjs test/pibo-portable-tool-session.test.mjs \
+      test/agent-runtime-resource-service.test.mjs test/model-catalog.test.mjs \
+      test/runtime-routed-session.test.mjs'
+```
+
+Nach diesem Lauf wurden keine Quelländerungen mehr vorgenommen.
+
+Neue eigene Tests: `test/plugin-system-runtime.test.mjs`, `test/plugin-system-hooks.test.mjs`, `test/plugin-system-context-build.test.mjs`. Bestehende fokussierte Regressionen: `pibo-portable-tool-session`, `agent-runtime-resource-service`, `model-catalog`, `runtime-routed-session`.
+
+## Präzise offene Integrationspunkte / verbleibende Grenzen
+
+1. **Gateway-Composition:** dieselbe produktweite `PluginStore`-/`PluginManager`-/`PluginHost`-Instanz in `new PluginRuntimeCoordinator({store,manager,host})` stecken und als Routeroption `pluginRuntime` weitergeben. Stand 06:49 UTC fanden sich in `src/gateway/server.ts`/`web.ts` noch keine entsprechenden Anschlüsse. Migrierte Profile weisen fehlenden Coordinator explizit ab. Default-/Legacy-Profilmigration gehört weiter Designer/Orchestrator; vorhandene Legacy-Ausführung wurde nicht pauschal abgeschaltet.
+2. **Build-Context-HTTP:** `src/apps/chat/web-app.ts:buildContextBuildSnapshotForRequest` erzeugt weiterhin eine `inspection-*`-Ressourcen-Session und benutzt Runtime-Inspektion. Dieser Orchestrator-eigene Pfad muss durch `inspectPluginBuildContext` ersetzt werden. Actual benötigt nur Store/Session-ID; Preview zusätzlich aktuellen Profilwert und deklarierte statische Runtime-Capabilities. NICHT `inspectAgentRuntimeInstances()` dafür benutzen. Browser muss `actual`/`preview` getrennt darstellen. Exakte Signaturen stehen in `contract-runtime.md`.
+3. **Vollständige Ausführungs-/Lieferfidelity:** Der Recorder nutzt vorhandene Ressourcenreports und vom Adapter akzeptierte kontrollierte Definitionen; es fehlt der vollständige Turn-/Wire-Inputnachweis einschließlich aller dynamischen Prompt-Hooks, nativer Promptanteile und historischer/Compaction-Stufen. Fehlende native Sichtbarkeit ist erklärt. Es gibt keinen Nachweis eines vollständig rekonstruierten Wire-Prompts.
+4. **Pi-only vor Import:** Runtime prüft den gemeinsamen Plan vor dem Lesen einer nicht passenden Contribution oder ihrer Factory. Appweite Plugin-Backend-Setups müssen adapterprivate Imports ihrerseits verzögern. Ein echtes installiertes Mischpaket mit Top-Level-Pi-Import-Negativmarker auf vollständigem Management→Host→Routerpfad wurde hier nicht abgenommen; bestehender Test prüft, dass ungeeignete Contributions/Factories nicht angefasst werden.
+5. **MCP:** `mcp-server` ist als Runtime-Handoff an den bestehenden ausgewählten Server-/Secret-Konfigurationsservice vorbereitet. Extraktion/Registrierung des MCP-CLI-Plugins und dessen Settings wurden nicht begonnen. OMP-externe MCP bleibt nicht unterstützt; vorhandene Ablehnung und Regressionstest bleiben erhalten. Interne Codex-Toolbridge bleibt unabhängig. Kein neuer externer MCP-Fallback.
+6. **Generation-Recovery:** Ungewisse native Open-/Disposefehler und Timeouts behalten Reservationen. Automatische Wiederaufnahme/Freigabe solcher Crash-Orphans braucht späteren Inaktivitätsnachweis; hier bewusst kein unsicheres Expiry. Noch kein eigener negativer Routertest für alle asynchronen Fehl-/Timeoutpfade.
+7. **Breite Migration/AP13/AP16:** Keine neue Run-/Goal-/Subagent-Featureextraktion, keine Pi-Package-UI-/CLI-Entfernung, keine package/build metadata edits. Legacy Inspector-Tests, die vormals dynamische Ausführung als Inspektion voraussetzten, wurden nicht breit angepasst. Keine Providerkosten, kein Browser-/Pibo2-Test, keine gesamte Produktsuite.
+
+Auf Wunsch des Orchestrators keine weiteren APs oder Folgearbeiten begonnen. AP06 nicht pauschal abhaken; den belegten Teil und die offenen Anschlüsse getrennt ins gemeinsame Ledger übernehmen.

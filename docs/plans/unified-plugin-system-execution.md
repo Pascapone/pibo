@@ -7,14 +7,14 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-12T05:17:00Z"
+  at: "2026-09-12T06:42:00Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
     title: "Owner-approved implementation scope and A01–A37 acceptance matrix"
   - id: "parallel-execution"
-    resource: "scope:owner instruction 2026-09-12 to complete the full rebuild with up to five researchers and five implementation workers in parallel"
-    title: "Parallel execution instruction"
+    resource: "scope:owner instruction 2026-09-12 to complete the full rebuild, corrected to at most five delegated agents total and targeted follow-up work"
+    title: "Parallel execution instruction and revised capacity limit"
 ---
 
 # Goal and completion
@@ -26,6 +26,10 @@ The orchestrator owns integration, package order and final acceptance. The sourc
 # Execution boundary
 
 One focused topic branch, `plugin-system-rebuild`, is mounted in the isolated Docker dev worker. Five workers edit disjoint files of the same integrated topic. Only the orchestrator commits the combined result. Builds and suites share a container-local validation lock; code edits and research remain parallel.
+
+The owner's revised limit is five delegated agents in total. Existing research is reused; additional research waits for a concrete information gap and a free slot. Completed implementation workers receive targeted integration or review follow-ups.
+
+The later quota-window instruction stops new agent dispatch. The existing streams finish their current blocks after direct steering; the orchestrator collects and validates a coherent checkpoint. The complete rebuild and acceptance scope remains recorded; unfinished packages are handed off without product acceptance. No new or resumed agent sessions are dispatched in this window.
 
 Controller gateways are outside the development target. Pibo2 receives the exact committed package only after local validation. Merge, release and production installation are separate operations from this implementation.
 
@@ -48,7 +52,7 @@ Status values are `open`, `in progress`, `blocked` with a concrete cause, and `a
 
 | Package | Status | Owner | Acceptance evidence required |
 |---|---|---|---|
-| AP00 | in progress | Five researchers; orchestrator | Complete ownership inventory, baseline fixtures, Context/Settings mapping and regression entrypoints. |
+| AP00 | in progress | Existing research; orchestrator | Complete ownership inventory, baseline fixtures, Context/Settings mapping and regression entrypoints. |
 | AP01 | in progress | Core | Manifest validation without imports, versioned SDK and independent provider fixtures. |
 | AP02 | in progress | Core | Dependency failures before effects, deterministic replacement and rollback/cleanup failure tests. |
 | AP03 | in progress | Management | Store CAS, session-preserving persistence, immutable snapshots and interrupted multi-store migration. |
@@ -100,3 +104,17 @@ Before any migration of non-fixture persistent data, create consistent backups o
 - `test/fixtures/plugin-system/legacy-builtin-catalog.json` records the actual built-in catalog at the baseline. Custom-agent and global-tab migration fixtures remain required.
 - `npm run docs:validate` passed with zero errors or warnings after supplying an isolated Git-history mirror to the Docker worker. This validates documentation conformance, not implementation acceptance.
 - Initial simultaneous dispatch hit the live gateway's 60-second capacity wait. Implementation requests were retried on their original child threads; current live policy allows five provider requests per room. This operational limit does not alter package scope or acceptance requirements.
+- The five implementation streams resumed on their original threads after regular session-tool credential renewal. No controller gateway restart or credential change was required.
+- The public SDK declaration target and eight focused loader/real Chat Web dispatch tests passed in Docker. They cover import-free graph rejection, verification of every artifact before the first backend import, SDK resolution from a staged package, activation rollback, login/origin enforcement, session-bound tab persistence and stale CAS rejection. These checks do not constitute installed-product or browser acceptance.
+- Browser catalog/assets and stored-versus-preview plan routes are connected to the existing authentication boundary. Root service publication, the pure runtime preview provider, actual generation delivery and complete product composition are still in progress.
+- Integration review identified required follow-up for service-provider revision pinning and controlled host changes. Deactivation of one plugin must not stop unrelated live services; required service owners must appear in the generation plan and admission reservation.
+
+
+# Consolidated development checkpoint
+
+The [checkpoint report](/reports/plugin-system-rebuild-checkpoint-2026-09-12.md) records code, commands and remaining product gaps. Core and Management provide successful module-level evidence; Browser and Designer source is integrated but default manifests, build delivery and web v2 normalization remain incomplete. The default UI is therefore not ready for deployment.
+
+The orchestrator corrected authenticated read dispatch, artifact isolation, explicit actual-versus-preview routing, and service-provider revision pinning. The first broader regression pass also exposed legacy Pi-package/Build-Context expectation changes and test-loader integration issues; these must not be hidden behind successful narrow suites. Final results belong to the checkpoint report, not a claim that all acceptance scenarios passed.
+
+
+Final checkpoint source: `fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd`. Full build and UI typecheck passed; all 170 new plugin tests passed. The combined existing regression suite remains at 111/123 with twelve documented open cases. All previously active workers completed their current turns; no further agents were dispatched. The checkpoint report and preserved contracts are the continuation entrypoint. The service-provider pinning finding is fixed in the shared resolver and forwarded from actual host ownership into Runtime/Designer resolution; safe default lifecycle composition remains open.

@@ -1,0 +1,209 @@
+# Worker Management — Implementierung und geprüfte Übergabe
+
+Stand: 12. September 2026, abschließender Validierungslauf 06:26–06:27 UTC.
+Owner: management. Arbeitsumfang: AP03/AP05/AP15 sowie Installations-/Auswirkungs-/Recovery-Persistenz für AP16.
+
+## Ergebnis
+
+Der Management-Block ist als ausführbarer, getesteter Code umgesetzt, nicht als Vorschlag. Persistenz, Quellenprüfung, Staging, CLI, Web-Routen, planbasierter Uninstall, Generationsreservierungen, Wiederherstellung und Mehrstore-Migrationsjournal liegen im gemeinsamen Themen-Worktree.
+
+**Abschließender Nachweis:** Backend-TypeScript-Kompilation erfolgreich (Exit 0), **60/60 Tests erfolgreich**. Davon 35 selbst ergänzte Managementtests, 20 vorhandene Data-/Session-Regressionstests und fünf Tests des inzwischen integrierten Core-Backend-Loaders. Keine übersprungenen Tests, keine Todos. Staging, Retirement und Mehrstore-Migration enthalten echte SIGKILL-/Prozessneustarttests gegen SQLite-Testfixtures; weitere Lifecycle-Crashpunkte werden über durable Checkpoints provoziert.
+
+Das ist keine Gesamtfreigabe für AP19 und kein behaupteter headful/UI-/Modellprovider-Nachweis. Dispatcher, komplette produktive Verbraucher-/Lifecycle-Verdrahtung, Runtime-Grenzen, Browser-Flows und Paketabnahme bleiben den vereinbarten anderen Ownern zugeordnet. Der konkrete Vertrag steht vollständig in `contract-management.md`.
+
+## Arbeitsgrenzen
+
+- Ausschließlich `/root/code/pibo/.worktrees/plugin-system-rebuild` bearbeitet.
+- Baseline: `cac4dcd03945b9754db7be9ab2ab4324f10c335c`, vom Orchestrator als frisch geprüftes upstream/dev bereitgestellt.
+- Sämtliche Kompilationen und Tests ausschließlich mit `docker exec -w /workspace pibo-dev-plugin-system-rebuild` und `flock /tmp/plugin-system-validation.lock` ausgeführt.
+- Keine eigenen Worktrees, Container, Subagents oder Git-Commits angelegt; kein Push/PR, Release, Pibo2- oder Host-Gateway-Zugriff.
+- Keine bestehenden Produktdaten migriert oder geändert. Alle ausgeführten Datenmutationen betreffen temporäre Testfixtures im Worker.
+- Keine fremden Worker-Dateien überschrieben. `src/data/schema.ts` enthält nur additive Einbindung und Schemaerhöhung 14→15; `src/data/pibo-store.ts` nur PluginStore-Import, Property und Konstruktion.
+- Keine Änderungen an AGENTS, Glossar, Design, gemeinsamen Docs/Indizes/Logs oder Package-Metadaten durch diesen Worker. Die temporären Übergabedateien gehören nicht zum OKF-Bundle; dessen Integration besitzt der Orchestrator.
+
+## Eigene Dateien
+
+Neue Implementierung:
+
+- `src/plugins/store-schema.ts`
+- `src/plugins/store.ts`
+- `src/plugins/sources.ts`
+- `src/plugins/operations.ts`
+- `src/plugins/manager.ts`
+- `src/plugins/migration-journal.ts`
+- `src/plugins/product-state-migration.ts`
+- `src/plugins/staged-definition.ts`
+- `src/plugins/cli.ts`
+- `src/apps/chat/plugin-management-routes.ts`
+
+Gezielte bestehende Store-Einbindung:
+
+- `src/data/schema.ts`
+- `src/data/pibo-store.ts`
+
+Eigene Tests:
+
+- `test/plugin-system-store.test.mjs`
+- `test/plugin-system-install.test.mjs`
+- `test/plugin-system-cli.test.mjs`
+- `test/plugin-system-uninstall.test.mjs`
+- `test/plugin-system-session-recovery.test.mjs`
+- `test/plugin-system-migration-journal.test.mjs`
+- `test/plugin-system-management-helpers.mjs` (Fixture-Helfer, kein zusätzlicher Produktpfad)
+
+Für die exakten zuletzt geprüften Bytes siehe `management-source-sha256.txt`. Der gemeinsame Worktree war beim Test noch der sich integrierende, uncommittete Kandidat; ich habe keinen fremden Commitstand als eigenen abgeschlossenen Release ausgegeben.
+
+## AP03: Persistenz und Journal
+
+### Installation und CAS
+
+`PiboDataStore.plugins` verwendet dieselbe vorhandene SQLite-Verbindung. `plugin_installations` speichert genau einen aktuellen Zustandsdatensatz je Plugin-ID. Die unveränderliche Artefaktrevision (`revision:string`) ist von der monotonen Zustandsrevision (`stateRevision:number`) getrennt. CAS läuft unter BEGIN IMMEDIATE und funktioniert auch über zwei unabhängige Datenbankverbindungen.
+
+`plugin_artifacts` hält historische Artefaktmetadaten unabhängig vom Tombstone. Erneute Installation derselben Identität setzt den CAS-Zähler nicht zurück. Gleicher Hash mit verändertem Inhalt/Manifest/Standort wird nicht still akzeptiert; Herkunft und Installationszeit dürfen für eine erneute Beschaffung desselben Artefakts abweichen, ohne historische Metadaten zu ersetzen.
+
+### Konfiguration und Tabsets
+
+Konfiguration nutzt exakt Core `PluginConfigurationTarget`/`PluginConfigurationSnapshot`, getrennt nach app, agent und piboSessionId. Manager-Schreiben validiert die deklarierte Manifest-Schemaversion und das Schema; Store-Schreiben prüft CAS und reine JSON-/Secret-Referenzdaten. Schema-Definitionen werden nicht mit Konfigurationswerten verwechselt.
+
+Tabsets verwenden exakt Core `PluginSessionTabset`/`PluginTabInstance`, nicht das früh angekündigte provisorische Format. Feste Sessionbindung, qualifizierte View-ID, stabile Instanz-ID, Pluginrevision, State-Schemaversion, Fallback, Unteransicht, Reihenfolge, aktiver Tab und Layout werden persistiert. Zwei Sessions besitzen unabhängige CAS-Werte. Fremde Sessionbindung, doppelte Instanzen, ungültiger aktiver Tab, übergroßer Zustand und nicht serialisierbare Werte werden abgelehnt. Ein Tabset-Save aktiviert nichts.
+
+### Immutable Generationen und Builds
+
+Generations-Snapshot und tatsächlicher Build bleiben nach Installation, Deinstallation und Konfigurationsänderung unverändert. Ein Generationseintrag verlangt einen gültigen Core EffectivePluginPlan mit identischer piboSessionId und generation. Ein tatsächlicher Build verlangt seine bereits persistierte Generation. Vorschauen tragen eine eigene Identität und `kind:'preview'`.
+
+Identische Wiederholungen sind idempotent; abweichende Werte unter derselben Identität erzeugen Konflikt. Build-Listen laden nur Metadaten, nicht historische Promptinhalte. Einzelne Snapshots sind auf 4MiB begrenzt und können vorhandene Produktpayloads referenzieren.
+
+Payload-Verweise werden tatsächlich mit dem bestehenden PayloadStore verbunden: Bereits committed Payloads werden beim Snapshot-Commit einmalig gepinnt (`plugin_snapshot_payload_refs`, ref_count-Erhöhung, restriktiver FK). Wiederholtes Schreiben pinnt nicht erneut. Fehlende/uncommitted Payloads werden abgewiesen. Ein historischer Snapshot kann nicht durch normalen Freigabeversuch seines letzten Payload-Verweises unlesbar gemacht werden. Uninstall entfernt weder Pins noch Dateien. Ein eigener Payload- oder Session-Store wurde nicht eingeführt.
+
+### Mehrstore-Migration
+
+`PluginMigrationJournal` sichert die alten Bytes mit privatem Dateimodus und fsync vor Owner-Schreibvorgängen. Quellhash, Etappenreihenfolge, aktuelle Etappe, abgeschlossene Etappen und Fehlerzustand sind dauerhaft. Jede Owner-Etappe hat `isApplied()` und einen idempotenten Owner-Write; die AgentStore-Transaktion und die Produktdaten-Transaktion werden ausdrücklich nicht als atomare gemeinsame Transaktion dargestellt.
+
+Nach Prozessabbruch zwischen Owner-Commit und Journalcheckpoint prüft der Neustart die Owner-Postcondition. Dadurch wird die bereits angewandte Etappe nicht erneut ausgeführt. Geänderte Quelle/Reihenfolge oder beschädigte Sicherung blockieren den Lauf. Erfolgreiche Migration ist wiederholbar.
+
+`migratePluginProductState` bindet bereits ausdrücklich zugeordnete SDK-Konfigurationen/Tabsets plus externe Owner-Etappen ein. Dry-run zeigt die geplanten Vorher-/Nachher-Produktwerte. Abweichende vorhandene Konfigurationen/Tabsets werden nicht überschrieben. Unbekannte Legacy-/Pi-Package-Bytes bleiben gesichert und inaktiv; diese Funktion installiert sie nicht und rät keine Ownership aus lastSelection.
+
+## AP05: Quellen, Installation und CLI
+
+### Ein gemeinsamer Artefaktweg
+
+Lokales Verzeichnis und exakt versioniertes `.tgz`/`.tar` verwenden dieselbe Manifestprüfung und denselben kanonischen Inhaltshash. Paketname/-version müssen mit package.json und Manifest übereinstimmen. Optionaler SHA256-SRI prüft die Archivbytes. Tags und Versionsbereiche sind keine exakten Paketartefakte.
+
+Die Prüfung importiert keinen Plugincode und führt keine npm-Lifecycle-Skripte aus. Pfadtraversal, Symlinks, nicht reguläre Dateien, doppelte Archiveinträge, falsche Prüfsummen, ungültige SDK-Versionen, fehlende Einstiege und widersprüchliche Identitäten werden abgewiesen. Ein Resolver kann keinen falschen Hash oder ein vom Artefakt abweichendes Manifest einschleusen.
+
+Staging publiziert einen konkreten privaten Inhaltsstand unter seinem Hash, nicht das mutable Entwicklungsverzeichnis. Dateien werden geschrieben/synchronisiert und das Verzeichnis atomar veröffentlicht. Der Stand wird vor Aktivierung nochmals geprüft. Spätere Quelldateiänderungen verändern die alte Ausführung nicht. Gescheitertes Staging oder Update ersetzt keine alte aktive Revision.
+
+Dependency-/Servicegraph und Versionen werden mit Core `planPluginActivation` geprüft; es gibt keinen zweiten Resolver. Aktive Updates bleiben bis zum sicheren Wechsel pending-activation.
+
+### Tatsächlicher Host-Ladepfad
+
+`createStagedPluginDefinition` gibt eine lazy Core PluginDefinition zurück. Das Backend exportiert `setup(context)` und kann einen Disposer liefern. Erst Core Host.start ruft Setup nach erfolgreicher Graphprüfung auf; dann prüft der Adapter die Staging-Integrität und importiert den Backend-Einstieg.
+
+Core hat `backend-loader.ts` inzwischen auf diesen Helper aufgesetzt: Das gesamte Artefaktset wird vor dem ersten Import geprüft, SDK-Auflösung wird außerhalb der gehashten Artefakte vorbereitet, und dieselbe Ownership-Scope wird verwendet. Die realen Backend-Loader-Tests wurden im finalen Lauf mitgeprüft; kein paralleler Host oder Loader wurde erfunden.
+
+### Operatoroberfläche
+
+`runPluginCli(args,{manager,write?})` implementiert progressive Hilfe, kompakte Discovery-Listen und JSON für:
+
+- list, inspect, install, update;
+- activate, status, doctor;
+- uninstall plan/confirm;
+- operations list/show/resume/cancel;
+- recover;
+- config show/set/schema.
+
+Install/update dry-run schreibt weder Installation noch Operation noch Artefaktverzeichnis. CAS ist explizit. Nicht unterstützte Optionen — insbesondere `--dry-run` bei einer destruktiven Bestätigung — werden abgewiesen statt ignoriert. Ein direkter ungeschützter Löschpfad existiert nicht.
+
+Die Dispatcher-Integration in `src/cli.ts` und die komplette Standard-Manager-Konstruktion gehören dem Orchestrator. Die eigenen Tests rufen den echten CLI-Handler mit echten Manager-/SQLite-/Artefaktoperationen auf, nicht eine separate Antwortattrappe.
+
+## AP15: Auswirkungen, Retirement und erhaltene Sessions
+
+### Vollständige Verbraucher statt zweiter Session-Datenbank
+
+`createPluginConsumerCollector` liest die vorhandenen Produkt-Sessions, gespeicherten Generationen und Plugin-Dependencies. Die beiden verpflichtenden injizierten Collector-Funktionen ergänzen bestehende Live-/Run-/Runtime- und AgentStore-/Profilbesitzer. Designer hat `profileConsumerCollector` angekündigt/implementiert; Runtime bleibt für seine Live-Verbraucher verantwortlich.
+
+Fehlt ein vollständiger Collector, scheitern destruktive Operationen geschlossen. Snapshot-lose Legacy-Sessions werden als unknown gezählt, nicht als unbeeinflusst. IDs werden dedupliziert; sessionCount zählt eindeutige Pibo Sessions über alle Kategorien. Profile, Runs, Runtime-Instanzen und abhängige Plugins sind getrennte Listen.
+
+### Serverseitige Bestätigung und Race-Prüfung
+
+Die Vorschau ist eine dauerhaft gespeicherte, versionierte, ablaufende Operation. Bestätigung verlangt Plan-ID, exakten eingegebenen Plugin-ID-Text und die angezeigte Installations-CAS-Revision. Falscher Text, abgelaufener Plan, stale CAS und veränderte Verbraucher mutieren die Installation nicht. Ein verbrauchter Plan kann nicht erneut vollzogen werden.
+
+Während Drain und nach asynchronem Cleanup wird nochmals gesammelt. Neue/material geänderte Verbraucher führen zu awaiting-confirmation statt veraltetem Vollzug. Bestehende Arbeit darf auslaufen. Ein Timeout ist kein impliziter Abort; Polling zeigt die Blocker.
+
+### Atomare Runtime-Zulassung
+
+Der ursprüngliche read-only Gate-Check genügte für die vom Orchestrator benannte Async-Race nicht. Deshalb wurde zusätzlich `reserveGeneration` implementiert: Prüfung der aktiven Revisionen und persistente Reservierung passieren atomar unter demselben SQLite-Schreiblock wie Retirement. Reservierte Generationen erscheinen als aktive Verbraucher auch ohne Live-Collector-Ergebnis.
+
+Bestätigung prüft neue Reservierungen nochmals in der gate-schließenden Transaktion; finaler Uninstall verlangt eine leere Reservierungsmenge. Nach Retirement kann keine neue abhängige Generation reserviert werden. Freigabe benötigt die Reservations-CAS und folgt erst tatsächlichem Runtime-/Resource-Cleanup. Verwaiste Reservierungen nach Crash bleiben erklärte Blocker, bis Runtime-Inaktivität bewiesen wurde. Es gibt keine automatische Lease-Ablaufabkürzung, die laufende Arbeit entfernen könnte.
+
+### Cleanup, Cancel und Recovery
+
+Lifecycle ist explizit injiziert. Aktivierung und Deaktivierung müssen den tatsächlichen Core-Hostzustand beweisen; unknown und fehlerhaftes Cleanup werden nicht als inactive ausgegeben. Unterbrochene Aktivierung wird nicht blind erneut importiert, während noch aktive/ungeklärte Ressourcen existieren. So entsteht kein stiller Mehrversionsbetrieb.
+
+Cancel vor Cleanup stellt die vorige Aufnahmebereitschaft wieder her. Nach sauberem Stop kann Cancel den verifizierten vorherigen Stand am bewiesen inaktiven Übergang erneut starten. Unklare Zwischenzustände verlangen kontrollierte Recovery. Run-Abbruch bleibt ausschließlich den vorhandenen expliziten Run-/Session-Kontrollen vorbehalten.
+
+### Erhaltung und Wiederinstallation
+
+Uninstall schreibt einen Tombstone und entfernt keine Session, Nachricht, Runtime-Bindung, Toolresultate, Plugin-Fachdaten, User-Ressourcen, Konfigurationen, Tabsets, Generations-/Build-Snapshots oder Payloadpins. Ein Test erzeugt echte sessions/chat_messages/session_runtime_bindings plus Plugin-Fachdatentabelle und vergleicht die vollständigen Zeilen vor/nach Uninstall; Historie und Payload bleiben über vorhandene Store-Lese-APIs lesbar.
+
+`sessionRecovery` blockiert erforderliche fehlende/incompatible Beiträge und degradiert optionale. Appweite tatsächlich benutzte Plugins aus dem Generationsplan werden ebenfalls bewertet, nicht nur die gewünschte Agent-Auswahl. Die exakt gepinnte Wiederinstallation repariert die Voraussetzung erst nach Aktivierung. Eine andere Version/hash reaktiviert die Session nicht ohne explizite Kompatibilitätsentscheidung oder neue migrierte Generation. Historische Snapshots ändern sich dabei nicht. Es gibt keinen automatischen Adapterwechsel oder Ersatztool-Fallback.
+
+## Abnahmeszenarien und echte Negativ-/Crashfälle
+
+| Fall | Im Management-Code geprüfter Nachweis |
+|---|---|
+| A17 | Eindeutige Sessionzählung; getrennte required/optional/historical/unknown-, Profil- und Run-Mengen; falsche Texteingabe, Ablauf, CAS, fehlender Collector ohne Mutation. |
+| A18 | Veränderung nach Preview und während Cleanup; neue Reservierung zwischen Preview/Commit; zwei SQLite-Verbindungen; Gate während Retirement; Drain, Freigabe und Cancel. |
+| A19 | Vollständiger Zeilenvergleich echter Produkt-Sessions/Nachrichten/Runtime-Bindings und Plugin-Fachdaten; lesbare Historie; erhaltene Konfigurationen/Tabsets/Snapshots/Payloads. |
+| A20 | Exakte Wiederinstallation versus anderer Hash/Version; required blockiert, optional degradiert; explizite Kompatibilitätsfreigabe; Legacy unknown. |
+| A21 | SIGKILL nach dauerhaftem Staging; SIGKILL nach Retirement-Gate; Checkpointfehler beim Stop/Import/nach Aktivierung vor Commit; keine Doppelaktivierung; Cleanupfehler bleiben sichtbar; verlorene Operation wird aus SQLite rekonstruiert. |
+| A23 | SIGKILL zwischen zwei wirklichen SQLite-Owner-Commits/Journalschritten; nicht wiederholter bereits angewandter Write; erhaltene Backupbytes; Dry-run; Scope-/Tabkonflikte und unveränderte effektive Fixture-Auswahl. |
+| A29/A31 unterstützend | Getrennte Session-Tabsets und CAS; falsche Route/Body-Session; späte Save-Zielabweichung; echte Request-/Response-Handler mit Session-Zugriffsprüfung. |
+| A25 unterstützend | Dasselbe lokale/archivierte Artefakt erhält denselben Hash; falsche Integrität/SDK/Entrypaths abgewiesen; echter Core-Backend-Import und SDK-Auflösung mit Scope-Cleanup. |
+
+Keine Tabellen- oder API-Dummy-Abfrage gibt bedingungslos „keine Verbraucher“ zurück. Leere Collector in isolierten Tests sind ausdrücklich Fixturezustände; die Produktkonstruktion verlangt injizierte vollständige Besitzerabfragen.
+
+## Verifikation
+
+Finale Befehle im gemeinsamen Docker-Worker, gemeinsam gesperrt:
+
+```sh
+docker exec -w /workspace pibo-dev-plugin-system-rebuild \
+  flock /tmp/plugin-system-validation.lock bash -lc '
+    node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --pretty false
+    node --test \
+      test/plugin-system-{store,install,cli,uninstall,session-recovery,migration-journal,backend-loader}.test.mjs \
+      test/pibo-data-session-store.test.mjs test/data-v2-store.test.mjs
+  '
+```
+
+Der tatsächlich ausgeführte Wrapper erfasste beide Exitcodes, schrieb getrennte Logs und ließ einen Buildfehler nicht durch einen erfolgreichen Testlauf verschwinden.
+
+Ergebnis 06:27 UTC:
+
+- TypeScript: Exit 0, keine Diagnosen.
+- Tests: 60, bestanden 60, fehlgeschlagen 0, skipped 0, todo 0.
+- Dauer der Tests: ungefähr 1,71 Sekunden (ohne Kompilation).
+- `git diff --check` für die bestehenden eigenen Store-Einbindungsdateien: ohne Befund.
+
+Evidenzdateien im Übergabeverzeichnis:
+
+- `management-tsc-final.log` — leer, weil keine finalen TypeScriptfehler;
+- `management-tests-final.log` — vollständiger finaler Testlauf;
+- `management-source-sha256.txt` — Byteidentitäten eigener Implementierungs-/Testdateien;
+- `management-tsc-0616.log`, `management-tests-0616.log` — früherer Zwischenstand (53 Tests bestanden; damals noch fremder web-app roomId-Typfehler). Dieser Fehler ist im finalen Lauf behoben.
+
+Frühere Entwicklungsläufe zeigten einmal eigene generische Journal-/Requestbody-Typfehler; diese wurden vor finaler Abnahme korrigiert. Die Zwischenstände werden nicht als finale grüne Buildnachweise ausgegeben.
+
+## Konkrete Integrationspflichten und Grenzen
+
+1. **Orchestrator:** Default-Manager mit demselben PiboDataStore, vollständigen Collectors und sicherem Host-Lifecycle verdrahten; `src/cli.ts`-/web-app-Dispatch und bestehende Auth/Same-Origin-Prüfungen übernehmen. Die Routen sind vollständig implementiert, aber ein Handler-Test ersetzt keine finale Defaultprodukt-Abnahme.
+2. **Runtime:** `reserveGeneration` zwingend vor dem ersten async Setup, danach immutable Generation/Build und echte Payloadpublikation, `releaseGenerationAdmission` erst nach Disposal. Beim Neustart keine verwaiste Reservation freigeben, solange der alte Generationszustand ungeklärt ist.
+3. **Hostgrenze:** Der aktuelle Core Host.stop stoppt die Gesamtkomposition. Ein gezieltes manager.deactivate(id) darf nicht unbesehen darauf abgebildet werden, während andere Plugin-Verbraucher noch arbeiten. Vollständiger Host-Drain/Restart oder ein ausdrücklich unterstützter gezielter Stop ist Aufgabe der Integration. Ohne Lifecycle-Injektion bleibt die API geschlossen.
+4. **Designer:** AgentStore-CAS/Consumer und eigene idempotente Migration übernehmen. Neue abhängige Auswahl darf die Retirement-Zulassungsgrenze nicht umgehen. Management enthält keine zweite Agent-Auswahldatenbank.
+5. **Browser:** Exakte SDK-Tabset-/Config-DTOs und dokumentierte Responsewrapper verwenden; ursprüngliche Session-/Scopebindung beim Save erhalten. Missing-plugin-Placeholder, Dialogtexteingabe, Settings und headful A→B→A-Restore gehören zum Browser-/AP19-Nachweis, nicht zu diesem Backend-Unitnachweis.
+6. **AP16:** Owner mappen echte Legacy-Agent-/MCP-/Tab-v1-Daten. Management liefert Journal, Backup, CAS und bewiesene Wiederaufnahme, aber rät keine Pluginzuordnung oder globale Tabownership. Unbekannte Pakete werden nicht automatisch ausgeführt.
+7. **Quellenumfang:** Unterstützt sind reguläre lokale Verzeichnisse und selbstenthaltene versionierte tar/tgz-Artefakte. Kein Marketplace/Registry-Download und keine npm-Installskripte. Symlinks/PAX-/Spezialeinträge werden erklärt abgewiesen. Grenzen und öffentliches SDK sind im Vertrag genannt; sie werden nicht als beliebige native Paketmanagerkompatibilität ausgegeben.
+8. **Finale Gesamtfreigabe:** Keine headful Browservalidierung, kein Pibo2-/realer Modellprovider-Test und kein kompletter npm-Package-Installationslauf durch diesen Worker. Diese liegen ausdrücklich bei Orchestrator/AP19. Keine Veröffentlichung oder Produktionsdatenmutation wurde vorgenommen.
+
+Es bleibt kein bekannter eigener Compiler-/Testfehler aus dem finalen Lauf. Die offenen Punkte oben sind klar abgegrenzte Integrations-/Akzeptanzaufgaben anderer Owner, keine permissiven Ersatzimplementierungen im Managementblock.

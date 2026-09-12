@@ -1,0 +1,376 @@
+
+> @pasko70/pibo@1.7.2 build
+> npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run plugins:sdk:build && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs
+
+
+> @pasko70/pibo@1.7.2 workflows:build
+> npm run build --workspace @pasko70/pibo-workflows
+
+
+> @pasko70/pibo-workflows@0.0.0 build
+> tsc -p tsconfig.json
+
+
+> @pasko70/pibo@1.7.2 plugins:sdk:build
+> node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json
+
+
+> @pasko70/pibo@1.7.2 web-ui:build
+> npm run chat-ui:build && npm run context-files-ui:build
+
+
+> @pasko70/pibo@1.7.2 chat-ui:build
+> vite build --config src/apps/chat-ui/vite.config.ts
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2261 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/apps/chat-ui/index.html                     0.91 kB │ gzip:   0.42 kB
+dist/apps/chat-ui/assets/index-VT9nRaM7.css    122.49 kB │ gzip:  21.12 kB
+dist/apps/chat-ui/assets/index-RQ_AOhGV.js   1,170.11 kB │ gzip: 338.60 kB
+
+✓ built in 1.21s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+> @pasko70/pibo@1.7.2 context-files-ui:build
+> vite build --config src/apps/context-files-ui/vite.config.ts
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2331 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/apps/context-files-ui/index.html                           0.70 kB │ gzip:   0.33 kB
+dist/apps/context-files-ui/assets/index-D8TsUizd.css           66.62 kB │ gzip:  14.40 kB
+dist/apps/context-files-ui/assets/diff-ChtP43wD.js              0.30 kB │ gzip:   0.23 kB
+dist/apps/context-files-ui/assets/brainfuck-D5EjA2JK.js         0.59 kB │ gzip:   0.32 kB
+dist/apps/context-files-ui/assets/properties-C357ku5U.js        0.66 kB │ gzip:   0.34 kB
+dist/apps/context-files-ui/assets/cmake-84nbDH0I.js             0.75 kB │ gzip:   0.45 kB
+dist/apps/context-files-ui/assets/asciiarmor-C_eisQCp.js        0.77 kB │ gzip:   0.40 kB
+dist/apps/context-files-ui/assets/protobuf-D1ij_kNL.js          0.80 kB │ gzip:   0.51 kB
+dist/apps/context-files-ui/assets/http-CLVgA2GD.js              0.84 kB │ gzip:   0.42 kB
+dist/apps/context-files-ui/assets/solr-BBopId9w.js              0.86 kB │ gzip:   0.45 kB
+dist/apps/context-files-ui/assets/troff-C2dAgh7P.js             0.95 kB │ gzip:   0.43 kB
+dist/apps/context-files-ui/assets/toml-BPTmHmyx.js              1.04 kB │ gzip:   0.53 kB
+dist/apps/context-files-ui/assets/spreadsheet-CTIncYxj.js       1.13 kB │ gzip:   0.53 kB
+dist/apps/context-files-ui/assets/mbox-BEMVcqjs.js              1.38 kB │ gzip:   0.65 kB
+dist/apps/context-files-ui/assets/rpm-gpDK5sbt.js               1.59 kB │ gzip:   0.81 kB
+dist/apps/context-files-ui/assets/sieve-BAxa3IjF.js             1.61 kB │ gzip:   0.77 kB
+dist/apps/context-files-ui/assets/factor-LKH5gN8L.js            1.66 kB │ gzip:   0.60 kB
+dist/apps/context-files-ui/assets/eiffel-BEjRio4Q.js            1.69 kB │ gzip:   0.90 kB
+dist/apps/context-files-ui/assets/z80-Co3PbHdE.js               1.75 kB │ gzip:   0.79 kB
+dist/apps/context-files-ui/assets/mumps-BSzj6Xyz.js             1.82 kB │ gzip:   0.95 kB
+dist/apps/context-files-ui/assets/elm-Cshzl8qu.js               1.86 kB │ gzip:   0.81 kB
+dist/apps/context-files-ui/assets/mathematica-u8YMmbU0.js       1.89 kB │ gzip:   0.80 kB
+dist/apps/context-files-ui/assets/dockerfile-DJkHQgkl.js        1.90 kB │ gzip:   0.65 kB
+dist/apps/context-files-ui/assets/turtle-Cx3rYX2g.js            1.95 kB │ gzip:   0.89 kB
+dist/apps/context-files-ui/assets/dist-RKTRnzGb.js              1.95 kB │ gzip:   1.25 kB
+dist/apps/context-files-ui/assets/ebnf-D4c0_ac3.js              1.97 kB │ gzip:   0.80 kB
+dist/apps/context-files-ui/assets/smalltalk-BLp5-jwC.js         1.99 kB │ gzip:   0.85 kB
+dist/apps/context-files-ui/assets/fcl-ClOhbFR7.js               2.02 kB │ gzip:   0.95 kB
+dist/apps/context-files-ui/assets/ntriples-B9h1VB_g.js          2.06 kB │ gzip:   0.72 kB
+dist/apps/context-files-ui/assets/dtd-DTF72YNO.js               2.09 kB │ gzip:   0.87 kB
+dist/apps/context-files-ui/assets/octave-D2Q8cUp1.js            2.10 kB │ gzip:   1.07 kB
+dist/apps/context-files-ui/assets/yacas-CXXgtw0p.js             2.14 kB │ gzip:   1.08 kB
+dist/apps/context-files-ui/assets/pascal-Dp_KdFgX.js            2.25 kB │ gzip:   1.17 kB
+dist/apps/context-files-ui/assets/simple-mode-DXiLM1-G.js       2.27 kB │ gzip:   1.09 kB
+dist/apps/context-files-ui/assets/apl-gfMMiTNf.js               2.29 kB │ gzip:   1.22 kB
+dist/apps/context-files-ui/assets/commonlisp-DgAKBe0r.js        2.31 kB │ gzip:   1.09 kB
+dist/apps/context-files-ui/assets/tcl-BGfruO1u.js               2.35 kB │ gzip:   1.22 kB
+dist/apps/context-files-ui/assets/shell-DwuoZtxw.js             2.43 kB │ gzip:   1.20 kB
+dist/apps/context-files-ui/assets/webidl-D5jiJvOU.js            2.44 kB │ gzip:   1.24 kB
+dist/apps/context-files-ui/assets/pig-AF4Hwhju.js               2.51 kB │ gzip:   1.37 kB
+dist/apps/context-files-ui/assets/puppet-BZyAS7I4.js            2.51 kB │ gzip:   1.19 kB
+dist/apps/context-files-ui/assets/forth-Cezjo90N.js             2.54 kB │ gzip:   1.32 kB
+dist/apps/context-files-ui/assets/dist-DMiglryg.js              2.57 kB │ gzip:   1.48 kB
+dist/apps/context-files-ui/assets/velocity-CqftRsjg.js          2.70 kB │ gzip:   1.11 kB
+dist/apps/context-files-ui/assets/tiddlywiki-VlUiK86J.js        2.76 kB │ gzip:   1.07 kB
+dist/apps/context-files-ui/assets/modelica-CqHI_q-D.js          2.79 kB │ gzip:   1.28 kB
+dist/apps/context-files-ui/assets/oz-BwTct_5T.js                2.88 kB │ gzip:   1.27 kB
+dist/apps/context-files-ui/assets/r-CxDmU1I4.js                 2.92 kB │ gzip:   1.33 kB
+dist/apps/context-files-ui/assets/stex-DNzd62Q_.js              3.09 kB │ gzip:   1.17 kB
+dist/apps/context-files-ui/assets/lua-CiA1ziua.js               3.13 kB │ gzip:   1.40 kB
+dist/apps/context-files-ui/assets/cypher-p9eYesGn.js            3.18 kB │ gzip:   1.49 kB
+dist/apps/context-files-ui/assets/tiki-AK6FwT8q.js              3.22 kB │ gzip:   1.25 kB
+dist/apps/context-files-ui/assets/dist-Ci2NSlf1.js              3.26 kB │ gzip:   1.67 kB
+dist/apps/context-files-ui/assets/vhdl-kS471soi.js              3.31 kB │ gzip:   1.49 kB
+dist/apps/context-files-ui/assets/sparql-Dz-mlCAC.js            3.33 kB │ gzip:   1.59 kB
+dist/apps/context-files-ui/assets/mscgen-qgSLujhx.js            3.49 kB │ gzip:   0.97 kB
+dist/apps/context-files-ui/assets/vb-BthdM_4N.js                3.65 kB │ gzip:   1.81 kB
+dist/apps/context-files-ui/assets/d-DWkQyNnU.js                 3.69 kB │ gzip:   1.67 kB
+dist/apps/context-files-ui/assets/q-B9NhS7L_.js                 3.69 kB │ gzip:   1.69 kB
+dist/apps/context-files-ui/assets/swift-DKB6_1j6.js             3.76 kB │ gzip:   1.81 kB
+dist/apps/context-files-ui/assets/coffeescript-De_zI4J0.js      3.84 kB │ gzip:   1.69 kB
+dist/apps/context-files-ui/assets/fortran-Bt6PBEDR.js           3.86 kB │ gzip:   1.93 kB
+dist/apps/context-files-ui/assets/asn1-DCl_8MCW.js              3.97 kB │ gzip:   1.95 kB
+dist/apps/context-files-ui/assets/dylan-BCDoL_-p.js             4.04 kB │ gzip:   1.63 kB
+dist/apps/context-files-ui/assets/asterisk-BEn0Cwpx.js          4.05 kB │ gzip:   1.73 kB
+dist/apps/context-files-ui/assets/livescript-BXxG0Yva.js        4.08 kB │ gzip:   1.62 kB
+dist/apps/context-files-ui/assets/ttcn-cfg-2b4Gb5sE.js          4.09 kB │ gzip:   1.72 kB
+dist/apps/context-files-ui/assets/groovy-CUpZ7dEl.js            4.12 kB │ gzip:   1.74 kB
+dist/apps/context-files-ui/assets/haskell-BRsoo5mP.js           4.15 kB │ gzip:   1.91 kB
+dist/apps/context-files-ui/assets/gas-BHEdbvp9.js               4.55 kB │ gzip:   1.27 kB
+dist/apps/context-files-ui/assets/mllike-B45xgp2S.js            4.82 kB │ gzip:   1.57 kB
+dist/apps/context-files-ui/assets/ttcn-PPSTk1ow.js              4.84 kB │ gzip:   2.14 kB
+dist/apps/context-files-ui/assets/dist-BecMXs79.js              4.86 kB │ gzip:   2.32 kB
+dist/apps/context-files-ui/assets/crystal-Bsdphhtm.js           5.01 kB │ gzip:   2.10 kB
+dist/apps/context-files-ui/assets/ruby-BjXV7-Qa.js              5.02 kB │ gzip:   2.14 kB
+dist/apps/context-files-ui/assets/ecl-BVIeWmwY.js               5.11 kB │ gzip:   2.30 kB
+dist/apps/context-files-ui/assets/julia-CQfgDRfP.js             5.26 kB │ gzip:   2.16 kB
+dist/apps/context-files-ui/assets/vbscript-D9f6rSsU.js          5.43 kB │ gzip:   2.56 kB
+dist/apps/context-files-ui/assets/mirc-C9zpzAZU.js              5.91 kB │ gzip:   2.70 kB
+dist/apps/context-files-ui/assets/xquery-BKJx4mf9.js            6.15 kB │ gzip:   2.57 kB
+dist/apps/context-files-ui/assets/cobol-DHLQUbN7.js             6.19 kB │ gzip:   2.98 kB
+dist/apps/context-files-ui/assets/python-B_1Jd8HM.js            6.27 kB │ gzip:   2.67 kB
+dist/apps/context-files-ui/assets/scheme-D9qYN0V5.js            6.35 kB │ gzip:   2.37 kB
+dist/apps/context-files-ui/assets/pug-Gsm0M45u.js               6.64 kB │ gzip:   1.99 kB
+dist/apps/context-files-ui/assets/textile-C4jVoHG1.js           6.74 kB │ gzip:   2.44 kB
+dist/apps/context-files-ui/assets/nsis-CfSuhXs5.js              6.80 kB │ gzip:   2.99 kB
+dist/apps/context-files-ui/assets/nginx-BMaDbqW3.js             7.40 kB │ gzip:   2.73 kB
+dist/apps/context-files-ui/assets/powershell-BcIto6Sf.js        7.69 kB │ gzip:   3.29 kB
+dist/apps/context-files-ui/assets/erlang-BV0c4Hdn.js            7.84 kB │ gzip:   2.90 kB
+dist/apps/context-files-ui/assets/haxe-DjVOVvNP.js              7.86 kB │ gzip:   2.94 kB
+dist/apps/context-files-ui/assets/verilog-7LoJAqYT.js           8.18 kB │ gzip:   3.46 kB
+dist/apps/context-files-ui/assets/sas-C2OyD2Y6.js               9.33 kB │ gzip:   4.11 kB
+dist/apps/context-files-ui/assets/clojure-BflJGmDX.js           9.40 kB │ gzip:   4.02 kB
+dist/apps/context-files-ui/assets/perl-BkSkiI9m.js              9.73 kB │ gzip:   3.50 kB
+dist/apps/context-files-ui/assets/idl-BUZw3wgd.js               9.82 kB │ gzip:   4.40 kB
+dist/apps/context-files-ui/assets/gherkin-oBAE_ms0.js          10.15 kB │ gzip:   5.09 kB
+dist/apps/context-files-ui/assets/dist-CswnpKik.js             11.52 kB │ gzip:   5.17 kB
+dist/apps/context-files-ui/assets/dist-XVYGiB-c.js             14.27 kB │ gzip:   5.76 kB
+dist/apps/context-files-ui/assets/dist-fPhZsAUX.js             16.20 kB │ gzip:   7.46 kB
+dist/apps/context-files-ui/assets/javascript-DoL9Wb-Q.js       16.96 kB │ gzip:   5.72 kB
+dist/apps/context-files-ui/assets/dist-BcauuFwf.js             20.65 kB │ gzip:   9.32 kB
+dist/apps/context-files-ui/assets/dist-D-xpsbZI.js             20.91 kB │ gzip:   9.66 kB
+dist/apps/context-files-ui/assets/clike-D_6L3tnO.js            22.05 kB │ gzip:   7.75 kB
+dist/apps/context-files-ui/assets/dist-BJ-TIk3N.js             22.92 kB │ gzip:  10.41 kB
+dist/apps/context-files-ui/assets/stylus-BOVgKnng.js           23.51 kB │ gzip:   8.55 kB
+dist/apps/context-files-ui/assets/css-CnaYoQib.js              24.66 kB │ gzip:   8.25 kB
+dist/apps/context-files-ui/assets/dist-DLJCGrGQ.js             27.47 kB │ gzip:  13.02 kB
+dist/apps/context-files-ui/assets/dist-LCx98fA_.js             30.68 kB │ gzip:  12.72 kB
+dist/apps/context-files-ui/assets/dist-mpRGeo_R.js             32.12 kB │ gzip:  13.01 kB
+dist/apps/context-files-ui/assets/dist-S3zJGntM.js             35.03 kB │ gzip:  12.34 kB
+dist/apps/context-files-ui/assets/sql-DuQMFDvy.js              36.83 kB │ gzip:  10.90 kB
+dist/apps/context-files-ui/assets/dist-DpF08Yd7.js             40.67 kB │ gzip:  16.92 kB
+dist/apps/context-files-ui/assets/dist-DTeLDijr.js             44.54 kB │ gzip:  19.31 kB
+dist/apps/context-files-ui/assets/dist-eddbbGyw.js             70.75 kB │ gzip:  26.08 kB
+dist/apps/context-files-ui/assets/dist-BAqbgxUS.js             97.71 kB │ gzip:  28.63 kB
+dist/apps/context-files-ui/assets/dist-DHvUPfrF.js            103.86 kB │ gzip:  34.74 kB
+dist/apps/context-files-ui/assets/dist-CqM4On9D.js            339.76 kB │ gzip: 109.69 kB
+dist/apps/context-files-ui/assets/index-CkWXlBNn.js         1,244.08 kB │ gzip: 405.40 kB
+
+✓ built in 1.56s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+> @pasko70/pibo@1.7.2 vscode:webview:build
+> vite build --config src/apps/chat-vscode/extension/webview/vite.config.ts
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 2149 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/apps/chat-vscode-web/index.html                   0.46 kB │ gzip:   0.30 kB
+dist/apps/chat-vscode-web/assets/index-b18ZkEo0.css   21.65 kB │ gzip:   5.32 kB
+dist/apps/chat-vscode-web/assets/index-DRVSjV1_.js   943.88 kB │ gzip: 273.05 kB
+
+✓ built in 765ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+> @pasko70/pibo@1.7.2 chat-ui:typecheck
+> tsc -p src/apps/chat-ui/tsconfig.json --noEmit
+
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ rendered plugin toggles preserve mandatory state and exact session/settings scopes; stale preview cannot retarget (422.567946ms)
+✔ legacy standard: exact contribution/tool sets and independent resources (34.203803ms)
+✔ legacy subset: exact contribution/tool sets and independent resources (10.992601ms)
+✔ legacy pi-only: exact contribution/tool sets and independent resources (10.127781ms)
+✔ legacy codex-native: exact contribution/tool sets and independent resources (10.76368ms)
+✔ legacy omp: exact contribution/tool sets and independent resources (10.070664ms)
+✔ legacy manual: exact contribution/tool sets and independent resources (11.786557ms)
+✔ legacy run: exact contribution/tool sets and independent resources (12.135634ms)
+✔ legacy resources: exact contribution/tool sets and independent resources (10.067809ms)
+✔ legacy mcp: exact contribution/tool sets and independent resources (10.62584ms)
+✔ legacy unknown-pi-package: exact contribution/tool sets and independent resources (11.444352ms)
+✔ legacy unknown-tool: exact contribution/tool sets and independent resources (9.809933ms)
+✔ fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run) (4.154386ms)
+✔ required subset mismatch and runtime incompatibility never gain tools (4.431829ms)
+✔ migration crash after AgentStore commit before journal checkpoint resumes after reopen (58.268311ms)
+✔ migration refuses concurrent source edits; raw unknown fields remain in backup (9.694055ms)
+✔ SQL CAS protects parallel connections, archive and missing references survive metadata edits (26.274653ms)
+✔ API v2 rejects legacy/version/required manipulation; unchanged unresolved metadata is saveable (26.381304ms)
+✔ preview route ignores forged runtime capabilities, is read-only, and catalog hides artifact paths (9.84056ms)
+✔ Designer snapshots preserve missing selections, optional exclusions and revision across model changes (1.632686ms)
+✔ v2 normalizer adapters preserve model clears and never reinsert old Goal/Tool/Package defaults (1.608831ms)
+✔ unresolved inactive migration is a blocked preview, not a valid empty activation (3.615313ms)
+✔ installed definition and invalid graph inspection never import executable entries (24.517883ms)
+✔ all artifact hashes are verified before even the first backend import (27.271961ms)
+✔ installed backend resolves the public SDK and shares the actual host ownership scope (21.313656ms)
+✔ invalid installed backend export rolls back earlier plugin resources (31.754848ms)
+✔ SDK linkage cannot silently replace a different package during activation (5.645567ms)
+✔ root browser entry does not publish backend or private sibling data (114.959191ms)
+✔ dedicated public subtree serves chunks but rejects traversal and symlinks to backend (70.213728ms)
+✔ a browser subtree containing the declared backend is never public (65.737032ms)
+✔ tabs require a session and effective pinned view, not just installation (2.475354ms)
+✔ same view deduplicates only within session; state and subview are retained (1.409686ms)
+✔ multiple instance identities, close neighbor, and schema mismatch preserve saved state (0.330151ms)
+✔ A→B→A / reload persists active tab, settings subview, independent state and layout (2.7284ms)
+✔ late A autosave stays A while B is selected; serialized edits are not lost (1.58682ms)
+✔ two-browser CAS conflict preserves losing local state and never overwrites server (1.556903ms)
+✔ cross-session server responses and attempted tab movement are rejected (1.07797ms)
+✔ deep links encode the owning session, tab and subview (0.707023ms)
+✔ configuration URL fixes app/agent/session target independently from tab ownership (0.388502ms)
+✔ host imports only effective pinned browser modules and injects shared React/SDK (1.338312ms)
+✔ setup failure rolls back renderers, hooks and views (0.6051ms)
+✔ undeclared executable browser registrations fail without affecting other owners (0.469153ms)
+✔ late module resolution after dispose never mounts executable contributions (0.328157ms)
+✔ ordered input transforms retain provenance and exact session (1.026104ms)
+✔ input rejection, timeout and cancellation do not send fallback text (12.690299ms)
+✔ session request cannot escape plugin API namespace (0.402939ms)
+✔ catalog strips all server source paths, secrets and service objects (0.358756ms)
+✔ asset serving uses immutable revision and denies traversal/symlink/backend escapes (37.834613ms)
+✔ session plan route checks access and never reads another session (1.380571ms)
+✔ build evidence reads only saved nodes, never synthesizes current catalog nodes (0.258507ms)
+✔ progressive CLI discovery and JSON install/status/uninstall exercise real persistence (84.735828ms)
+✔ management routes require same-origin mutation and fixed session access/CAS (59.241254ms)
+✔ configuration route rejects late save targeting another session and validates manifest schema (41.367179ms)
+✔ legacy Build Context and Pi profile inspection never create runtime, MCP, factories or executable extensions (3.703427ms)
+✔ actual build persists immutable plan/delivery and all no-context contributions; preview remains separately identified (103.852536ms)
+✔ actual capture rejects cross-session and cross-generation resources (50.376833ms)
+✔ hooks order by order then qualified identity; transformations revalidate before tool execution (14.869945ms)
+✔ invalid required pre transform and missing provenance fail closed, no external call (1.694793ms)
+✔ optional failing observer is recorded; post failure never rewrites successful external execution (0.982992ms)
+Plugin post-tool evidence persistence failed after tool execution; external result is retained.
+✔ hook timeout aborts hook signal and blocks required pre execution (15.867246ms)
+✔ already cancelled input does not invoke hook; identity is host scoped and values cannot mutate input (0.911808ms)
+✔ default tool assembly applies hooks to controlled tools but not native harness definitions (1.455072ms)
+✔ post-tool evidence storage failure cannot erase an already committed external result (0.833601ms)
+✔ local and versioned package artifacts have identical content identity and inspection never imports (87.365362ms)
+✔ ordinary staged package lazily activates through the real core host and cleans every registration (41.281337ms)
+✔ dry-run creates no installation, operation, staged files or executable effects (24.1762ms)
+✔ SDK, entrypoint, dependency, archive integrity, symlinks and mutable stage failures stay inactive (47.89098ms)
+✔ source edits do not alter staged execution, updates wait for a safe drain (70.789161ms)
+✔ A21 real process death after content staging is recoverable and never imports staged code (120.933516ms)
+✔ failed update staging keeps the old active revision and historical generation unchanged (56.89285ms)
+✔ staging crash and import failure recover without an active partial installation (56.256211ms)
+✔ host validates missing dependencies, cycles and version conflicts before setup effects (5.468243ms)
+✔ host deterministically chooses explicit replacement provider and cleans consumers before providers (5.020579ms)
+✔ provider choice without a declared replacement does not silently override (0.465347ms)
+✔ partial setup owns resources, listener, timer and service; clean rollback permits retry (1.980471ms)
+✔ scope disposal is LIFO and once-only, aggregates failures, closes late registration and child sessions (0.879907ms)
+✔ failed cleanup cannot be reported as a stopped or successfully replaced host (1.035923ms)
+✔ partial activation plus cleanup failure keeps both causes and attempts remaining cleanup (0.678238ms)
+✔ session child scopes do not share generation resources and are stopped before root (0.555706ms)
+✔ host rejects missing or cyclic contribution dependencies before any setup (0.710478ms)
+✔ legacy facade reads host-owned tools directly and sees teardown without a copied catalog (19.941782ms)
+✔ legacy registration failure rolls back maps and immediately silences its listener; retry and cleanup are owned (2.941231ms)
+✔ legacy runtime driver/instance registrations roll back synchronously and are released at the owner boundary (3.727222ms)
+✔ legacy asynchronous registration cannot mutate the catalog after the registration boundary (0.864869ms)
+✔ legacy facade does not run tool factories during inventory inspection (0.527283ms)
+✔ undeclared provider, undeclared service use and absent promised services fail closed (1.082639ms)
+✔ manifest: local backend/browser fixture is inspectable without executing either entry (4.847744ms)
+✔ manifest: real local package fixture is inspected while executable entrypoints remain untouched (1.384399ms)
+✔ manifest validates every configuration schema branch, including currently unselected properties (0.709336ms)
+✔ manifest: independent plugin can depend on a service-owned unknown contribution kind (0.307509ms)
+✔ manifest rejects unknown manifest schema with structured origin/path (0.923679ms)
+✔ manifest rejects unknown contribution schema with structured origin/path (0.440941ms)
+✔ manifest rejects duplicate contribution with structured origin/path (1.389467ms)
+✔ manifest rejects missing context effect with structured origin/path (0.283996ms)
+✔ manifest rejects empty no-context reason with structured origin/path (0.462982ms)
+✔ manifest rejects SDK conflict with structured origin/path (0.383072ms)
+✔ manifest rejects contradictory dependencies with structured origin/path (0.408409ms)
+✔ manifest rejects missing local dependency with structured origin/path (0.396879ms)
+✔ manifest rejects mandatory default disabled with structured origin/path (0.327066ms)
+✔ manifest rejects function in JSON with structured origin/path (0.310955ms)
+✔ manifest rejects non-finite JSON with structured origin/path (0.172234ms)
+✔ manifest rejects unsafe entrypoint ../outside.js (0.183416ms)
+✔ manifest rejects unsafe entrypoint /absolute.js (0.183104ms)
+✔ manifest rejects unsafe entrypoint dist/../../escape.js (0.16455ms)
+✔ manifest rejects unsafe entrypoint dist\escape.js (0.157167ms)
+✔ manifest rejects unsafe entrypoint file:evil (0.100148ms)
+✔ manifest rejects unsafe entrypoint dist/entry.js?x (0.090259ms)
+✔ manifest rejects unsafe entrypoint dist//entry.js (0.092764ms)
+✔ manifest rejects unresolved entries and validates fixed-session view/settings metadata (3.756347ms)
+✔ manifest: supported version ranges do not coerce invalid or prerelease versions (0.562421ms)
+✔ config validation is finite JSON, validates transformed values, and fails closed on unsupported keywords (1.409615ms)
+✔ SDK browser boundary contains no Node, harness or old registry import (0.824022ms)
+✔ A23 cross-store write/journal crash is resumed from owner postconditions without duplicate effects (52.442926ms)
+✔ A23 real SIGKILL between two SQLite owner stages resumes without losing old bytes or repeating applied writes (108.349719ms)
+✔ product-state migration preserves explicit scopes and session ownership, and refuses existing independent tabsets (40.583872ms)
+✔ migration dry-run is write-free and changed source/order or corrupted backup fails closed (28.757521ms)
+✔ a process death with running checkpoint is recoverable and failed postconditions cannot complete (30.138423ms)
+✔ pi: effective selection controls real portable tool definitions, config and excluded Pi factory (10.813575ms)
+✔ codex-native: effective selection controls real portable tool definitions, config and excluded Pi factory (1.652835ms)
+✔ omp: effective selection controls real portable tool definitions, config and excluded Pi factory (1.525254ms)
+✔ required Pi-only contribution rejects before reading host implementation (1.807476ms)
+✔ coordinator reserves pinned generation, survives retirement until explicit disposal release and freezes selection (94.154324ms)
+✔ registration removal rejects referenced drivers and never aborts live runtime sessions (2.680601ms)
+✔ Pi discovery policy blocks implicit packages/extensions without mutating user settings and preserves explicit factories/context/skills (69.354038ms)
+✔ real router reserves before async adapter setup, pins active config, captures build and releases only after disposal (74.593099ms)
+✔ selection is a pure explicit snapshot and defaults are not silently read on subsequent resolution (7.343615ms)
+✔ mandatory contributions cannot be disabled or omitted by an API payload (2.086952ms)
+✔ disabling the whole plugin disables even required agent contributions without touching infrastructure (2.197871ms)
+✔ optional Pi-only is omitted under Codex/OMP; required Pi-only blocks without any implementation import (2.065402ms)
+✔ required dependency propagation blocks an optional unsupported prerequisite with a complete path (0.792242ms)
+✔ explicit optional dependency disabling is honored, not switched back on (0.652158ms)
+✔ selected dependency cycles fail with the dependency path (0.590603ms)
+✔ new mandatory update and changed artifact semantics demand explicit migration without altering old generation (0.907309ms)
+✔ missing plugin drafts are retained and retiring installations reject new generation dependencies (1.007839ms)
+✔ overlapping tool names require explicit selected provider and declared replacement, independent of order (1.827543ms)
+✔ mixed inspector inventory includes every selected and excluded contribution plus independent resources (1.539471ms)
+✔ different user content with equal name and plugin/user collisions fail rather than overwrite (0.932167ms)
+✔ schema validation rejects malformed selections and invalid plugin configuration (1.386744ms)
+✔ runtime capability and external service requirements distinguish optional and mandatory failures (0.555506ms)
+✔ effective configuration has deterministic scopes and refuses foreign session/agent targets (1.264603ms)
+✔ unnamed replaceable shell providers require explicit composition, never load order (0.808684ms)
+✔ empty agent selection still validates plugin dependencies, without turning dependency tools on (0.749362ms)
+✔ accepted optional-only revision updates retain the exact tool set and do not use new defaults (0.412858ms)
+✔ generation identity cannot be omitted or replaced with room/profile identity (0.388462ms)
+✔ service infrastructure pins unselected provider revisions without enabling their agent tools (1.129779ms)
+✔ service replacements require the same explicit host choice and pin only its actual revision (1.399126ms)
+✔ A19/A20 exact revision reinstall repairs required dependency; history and snapshots never change (96.408761ms)
+✔ A20 different version/hash needs explicit compatibility; optional missing contributions only degrade (95.242022ms)
+✔ legacy sessions without snapshots remain unknown, readable, and conservatively blocked (23.533719ms)
+✔ installation state CAS persists across independent connections and tombstones (64.77966ms)
+✔ session tabsets use CAS and fixed session identity, never global or agent identity (27.241725ms)
+✔ configuration scopes, CAS and credential references are independently persisted (26.508714ms)
+✔ generation and build snapshots are immutable and lists do not hydrate payloads (55.547245ms)
+✔ uninstall metadata has no cascade into tabsets, config, history, bindings or domain data (45.264131ms)
+✔ A17 unique sessions and required/optional/historical/unknown usage are separate from profiles/runs (3.347967ms)
+✔ A17 wrong text, expired plan, stale revision and unavailable collector mutate nothing (83.700367ms)
+✔ A18 consumers changing after preview and during cleanup require new confirmation (52.884148ms)
+✔ A18 retirement denies new activation, drains rather than aborts, cancellation restores admission (58.267069ms)
+✔ A19 installation tombstone retains tabsets, configuration, snapshots and unrelated records (69.029787ms)
+✔ A21 crashes at drain and cleanup restart idempotently; failed disposal cannot claim success (69.395655ms)
+✔ A21 actual process kill after durable retirement is recovered without deleting product history (128.467271ms)
+✔ A18 persisted generation reservations close the read/async-setup retirement race across connections (65.207286ms)
+✔ cancellation after confirmed cleanup restores the exact prior revision without losing consumers (54.644824ms)
+✔ collector reads existing product sessions and injected owner stores without a duplicate session database (47.821959ms)
+✔ A21 interrupted activation never results in two active revisions or implicit recovery import (46.570352ms)
+✔ real Chat Web dispatcher authenticates before consulting plugin services (223.525167ms)
+✔ plugin mutations enforce existing same-origin boundary before manager writes (141.334564ms)
+✔ session tab writes use original URL session, CAS, and read without runtime activation (157.17069ms)
+✔ recorded generations and pure previews remain separate on the real authenticated route (197.181474ms)
+✔ a late preview from a different session cannot be exposed under the requested session URL (162.476377ms)
+ℹ tests 170
+ℹ suites 0
+ℹ pass 170
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14092.802584

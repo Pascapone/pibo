@@ -1,0 +1,94 @@
+# Management contract — implemented handoff, 2026-09-12 06:27 UTC
+
+Owner management. Implementation root `/root/code/pibo/.worktrees/plugin-system-rebuild`; baseline `cac4dcd03945b9754db7be9ab2ab4324f10c335c`. SDK DTOs from Core are authoritative. The early provisional id/stateVersion/scope-id shapes have been removed; do not use them.
+
+Final worker validation: backend tsc exit 0; 60/60 tests passed (35 Management tests, 20 existing Data/Session regressions, 5 installed backend-loader integration tests). Details and exact commands: `worker-management.md`. Overall product/AP19 acceptance remains Orchestrator-owned.
+
+## Product persistence: actual exports
+
+`PiboDataStore.plugins: PluginStore` uses the existing PiboDataStore SQLite connection. No second Session database. Additive schema v15 in `store-schema.ts`, installed by `src/data/schema.ts`. No installation-owned cascading foreign keys; no delete API for sessions/history/domain data.
+
+`src/plugins/store.ts`:
+
+- `StoredPluginInstallation = SDK PluginInstallation & {pendingArtifact?:PluginRevision,diagnostic?:string,updatedAt:string}`. `revision:string` is immutable artifact identity; `stateRevision:number` is CAS. `listInstallations(pluginId?)`, `getInstallation(pluginId)`, `putInstallation(record,expectedStateRevision)`. Expected 0 creates. Counter survives uninstall/reinstall; artifacts remain independently immutable. `getArtifact(pluginId,contentHash)` reads historical metadata.
+- `getConfig(target:PluginConfigurationTarget)`, `putConfig(snapshot:PluginConfigurationSnapshot,expectedRevision)`. Exact SDK targets: `{scope:'app',pluginId}`, `{scope:'agent',pluginId,agentId}`, `{scope:'session',pluginId,piboSessionId}`. Exact snapshot `{target,revision,schemaVersion,values}`. Reference-only credentials, no secret literals. Manager validates the manifest configuration schema before writing.
+- `getTabset(piboSessionId)`, `putTabset(tabset:PluginSessionTabset,expectedRevision)`. Exact SDK tab fields: `instanceId,piboSessionId,pluginId,viewId,pluginRevision,stateSchemaVersion,state,fallback,subviewId?,instanceKey?`; viewId is qualified. Exact tabset: `schemaVersion:1,piboSessionId,revision,tabs,activeTabId,layout`. Missing returns undefined; create expected 0. Cross-session tabs, duplicate instance IDs and absent active IDs fail; 100-tab/1MiB bound. No activation side effect. State survives uninstall.
+- `putGenerationSnapshot({piboSessionId,generationId,plan:EffectivePluginPlan,createdAt})`; `getGenerationSnapshot(session,generation)`, `listGenerationSnapshots(session)`. Plan must be schema v1, valid, kind generation and have exactly matching piboSessionId/generation. Immutable canonical-JSON identity; repeated identical write is idempotent.
+- `putBuildSnapshot({piboSessionId,generationId,snapshotId,kind:'actual'|'preview',data,createdAt})`; `getBuildSnapshot(session,snapshotId)`, `listBuildSnapshots(session)`. Actual build requires its persisted generation; preview is separately identified. Lists hydrate metadata only. Data uses Runtime's serializable provenance/delivery representation. 4MiB snapshot bound.
+- Every nested `payloadRef` in a stored generation/build snapshot MUST refer to an existing committed Pibo PayloadStore record. Snapshot commit pins it once, increments ref_count and records a restricting FK in `plugin_snapshot_payload_refs`. Missing/uncommitted refs fail. Publish payload first, then snapshot. No arbitrary external strings in payloadRef; external unavailable data must be marked unavailable instead. Duplicate snapshots do not repin. Uninstall leaves payloads and pins intact.
+- `PluginConflictError.code='revision-conflict'`; `PluginValidationError.code='invalid-plugin-input'`. Config/state/snapshot writes reject credential literals. Diagnostics use the existing core sensitive-data redactor.
+- `getOperation`, `listOperations`, `putOperation(record,expectedRevision)`; `getJournal`, `putJournal(record,expectedRevision)`; `transaction(callback)`. These coordinate local SQLite transactions, not a fake cross-DB transaction.
+
+## REQUIRED Runtime integration: atomic admission
+
+A read-only `assertCanActivate` followed by async setup is NOT sufficient.
+
+`manager.reserveGeneration({piboSessionId,generationId,pluginIds})` synchronously checks enabled active/pending installation state and persists a reservation under the same BEGIN IMMEDIATE lock used by retirement. Call before the first async runtime/resource setup. Result is `PluginGenerationAdmission` with CAS revision and exact pinned artifact revisions. Same-ID retry cannot broaden its plugin set; a released generation cannot be reused.
+
+`manager.releaseGenerationAdmission(piboSessionId,generationId,expectedRevision)` follows completed runtime/resource disposal. Reservations remain visible drain blockers even when a live collector misses them. New reservations are rechecked inside the retirement transaction, and final uninstall checks that no reservation remains. Crash-orphan reservations are not automatically expired: Runtime must first prove the generation inactive, then explicitly release. `store.getAdmission(session,generation)`, `store.listAdmissions(pluginId)` support reconciliation.
+
+Runtime handoff acknowledges reserve/release. Agent/profile mutations introducing new dependencies must likewise respect the retiring catalog/admission boundary; missing legacy dependencies remain unknown. Full owner-store consumers are still required below.
+
+## Manager and operation state
+
+`new PluginManager({store,artifactRoot,collectConsumers?,lifecycle?,sourceResolver?,now?,providers?,isCompatibleRevision?})`.
+
+Actual public methods:
+- `inspect(source)` -> manifest/source/hash/file metadata, import-free.
+- `install(source,{expectedRevision,dryRun?})` -> `{installation,operation}` or `{dryRun:true,...}`. Core `planPluginActivation` validates the import-free dependency/service graph. Source and stage verification precede commit. Active updates retain the old revision with pendingArtifact until controlled activation.
+- `activate(pluginId,{expectedRevision})` -> PluginOperation. Closes admission and waits for drain before replacing executable state.
+- `planUninstall(pluginId,{ttlMs?})` -> server-persisted PluginOperation with `id,installationRevision,expiresAt,impact`.
+- `confirmUninstall({planId,pluginIdText,expectedRevision})` -> PluginOperation. expectedRevision is the installation stateRevision displayed in the plan. Exact plugin-ID text, expiry, CAS and current consumer fingerprint are checked before retirement. Reusing a consumed plan fails.
+- `resumeOperation(id)`, `cancelOperation(id)`, `recover()`; these never abort runs. Drain is polled and returns its explicit blockers; there is no forced-removal timeout. New consumers during drain/cleanup require a new plan. Cancel can restore prior admission; after clean stop it reactivates the verified old revision at the proven inactive boundary. Uncertain lifecycle state remains blocked for recovery.
+- `getConfig(target)`, `putConfig(configuration,expectedRevision)` validate explicit scope/schema/CAS.
+- `sessionRecovery(piboSessionId)` -> `{status:'ready'|'degraded'|'blocked'|'unknown',canResume,historyReadable:true,diagnostics}`. Required missing/incompatible revisions block; optional missing functions degrade. No snapshot is unknown/blocked pending conservative explicit resolution. Exact hash reinstall repairs compatibility; different hash requires explicit `isCompatibleRevision` decision or a migrated new generation. No runtime/tool fallback.
+- `diagnose(pluginId?)` -> installations, operations, admissions and lifecycle/collector availability.
+
+`PluginOperation` states: prepared, staging, committed, awaiting-confirmation, draining, stopping, stopped, activating, restoring, complete, failed, cancelled. Executable uncertainty is never relabelled successful. Staging/commit use one local transaction; recovery uses durable lifecycle checkpoints and actual host status. Installation tombstones retain metadata, configs, tabs, builds and domain data.
+
+## Existing-store consumer collector
+
+`PluginConsumer = {kind:'session'|'profile'|'run'|'runtime'|'plugin',id,usage:'active'|'required'|'optional'|'historical'|'unknown',revision?,generation?}`.
+
+`collectConsumers(pluginId):Promise<PluginConsumer[]>` is required for destructive operations. No empty fallback. It must be complete for existing product/runtime/reliability/AgentStore owners.
+
+`createPluginConsumerCollector({store:PiboDataStore,collectLive,collectProfiles})` in operations.ts reads existing product session rows, stored generations and installed plugin dependencies, then combines the two REQUIRED injected owner collectors. It marks snapshot-less sessions unknown. Designer exports profileConsumerCollector; combine builtin profiles as needed. Runtime/reliability collector owns active runs and instances. Manager always additionally includes persisted generation reservations.
+
+Impact counts distinct Pibo Session IDs overall; category lists may overlap (the same session can be active and required). Profiles/runs/runtime/dependent plugin IDs are listed separately. Fingerprint is deterministic over unique consumer identities and revision/generation. Retirement never calls Session-delete, Agent-delete, run cancellation or domain deletion services.
+
+## Source and core-host loading
+
+`PluginSourceInput = {kind:'local',path} | {kind:'package',path,name,version,integrity?}`. Package input is an exact-version .tgz/.tar file with matching package.json name/version and manifest version, not an npm tag/range. Optional integrity is `sha256-<base64>`. The source-resolver interface permits later adapters without another identity/lifecycle.
+
+`LocalPluginSourceResolver`, `stagePluginSource`, `verifyPluginArtifact` live in sources.ts. Only regular files/directories are accepted; symlinks, unsafe paths, duplicate archive entries, invalid checksums, unsupported tar extensions, oversized artifacts, incompatible SDK and bad entries fail closed. Limits: 64MiB/10,000 files. Directory .git is ignored. Artifacts are content-addressed, atomically published and reverified before import. No npm lifecycle scripts or legacy Pi package execution. Current artifacts must carry their non-host dependencies; this is not a dependency-downloading package manager.
+
+`createStagedPluginDefinition(installation:SDK PluginInstallation):PluginDefinition` in staged-definition.ts is a lazy adapter for the ONE core host. Backend entries export named `setup(context:PluginSetupContext)` and may return a disposer. Creating definitions/import-free graph inspection does not import entries. Setup rechecks staged integrity before import. Core's backend-loader.ts now reuses this helper, verifies the whole artifact set before the first import and prepares public SDK resolution outside hashed artifacts. Its five integration tests pass with Management.
+
+Actual lifecycle injection: `activate(artifact:PluginRevision):Promise<void>`, `deactivate(pluginId):Promise<void>`, `status(pluginId):Promise<'active'|'inactive'|'unknown'>`. No unsafe default. Current Host.stop() stops the complete composition. Orchestrator MUST coordinate complete-host drain/restart or a supported targeted host stop; do not map deactivate(id) to full Host.stop while unrelated work remains active.
+
+## Web integration: exact implemented routes
+
+Exports from `src/apps/chat/plugin-management-routes.ts`:
+`pluginManagementRoute(pathname,method)`, `pluginManagementRouteRequiresSameOrigin(route)`, `handlePluginManagementRoute({route,request,manager,store,assertSessionAccess})`.
+
+- GET `/api/chat/plugins`; POST `/api/chat/plugins/inspect`; POST `/api/chat/plugins/install`.
+- GET `/api/chat/plugins/:pluginId`; POST `.../:pluginId/activate`; POST `.../:pluginId/uninstall-plan`.
+- POST `/api/chat/plugins/uninstall-confirm`; POST `/api/chat/plugins/operations/:id/resume|cancel`; POST `/api/chat/plugins/recover`.
+- GET/PUT `/api/chat/plugins/:pluginId/config?scope=app|agent|session&targetId=...`. PUT `{configuration:PluginConfigurationSnapshot,expectedRevision}`. URL/body target must agree. Response `{configuration:null|snapshot}`.
+- GET/PUT `/api/chat/sessions/:piboSessionId/plugin-tabs`. PUT `{tabset:PluginSessionTabset,expectedRevision}`; response `{tabset:null|tabset}`.
+- GET `/api/chat/sessions/:piboSessionId/plugin-builds` -> `{snapshots:metadata[]}`; GET `.../plugin-builds/:snapshotId` -> `{snapshot}`.
+- GET `/api/chat/sessions/:piboSessionId/plugin-recovery` -> PluginSessionRecovery.
+
+Dispatcher owns existing authentication/same-origin enforcement. The handler additionally requires session-access checks for tabsets/builds/recovery and session-scoped config; wrong route/body binding fails before write. Conflicts become 409; malformed shapes/schema become 400. Browser must preserve original session/scope closures and handle CAS rather than overwrite.
+
+## CLI and migration integration
+
+`runPluginCli(args,{manager,write?}):Promise<number>` from cli.ts. Orchestrator dispatches `pibo plugins` in the actual src/cli.ts entry. Progressive branches: list, inspect, install, update, activate, status, doctor, uninstall plan/confirm, operations list/show/resume/cancel, recover, config show/set/schema. JSON supported. Install/update dry-run is write-free; unsupported dry-run flags on destructive commands are rejected, never ignored. No direct deletion fallback. Non-JSON discovery lists are compact lines.
+
+`PluginMigrationJournal(store).run({id,backup,backupRoot,stages,dryRun?,afterStageWrite?})`: stages have id, isApplied and idempotent apply in the owning store. Private exact backup is synced before stage writes; source/order drift and corrupted backup reject. Durable current-stage marker precedes owner writes; restart checks owner postconditions, so a crash after the owner transaction but before journal completion never repeats the effect.
+
+`migratePluginProductState({store,id,legacyBytes,backupRoot,configurations,tabsets,ownerStages,dryRun?,afterStageWrite?})` maps already-explicit SDK product state through that journal. Before/after values are returned for dry-run; existing divergent configs/tabsets are preserved and conflict. Mapped-value fingerprints are part of stage IDs. Unknown legacy package bytes remain backed up/inactive. Designer owns old-selection mapping/CAS; Browser owns explicit v1 tab ownership mapping; Management does not infer either from lastSelection.
+
+## Remaining integration ownership
+
+Orchestrator: default manager construction, complete collector + host lifecycle, CLI/web dispatch, package exports, global docs/index/log and AP19 acceptance. Runtime: reserve/persist/release at real generation boundaries; actual build data/payload publication and crash reconciliation. Designer: AgentStore consumers/migration stages and retiring selection validation. Browser: persistent CAS endpoints, fixed-session settings saves, placeholders and headful flows. No competing host, selection/config DTO, session store or Pi loader was added.

@@ -1,0 +1,78 @@
+# Core SDK contract — frozen v1, actual exports now written
+
+Owner core. Source `/root/code/pibo/.worktrees/plugin-system-rebuild/src/plugins`.
+
+## Import boundaries
+
+- `sdk.ts` exports all types/constants from `manifest.ts` and `contributions.ts`, plus `PluginScope`/`PluginDisposer` from `scope.ts`. These modules import no Node/harness/backend code. Browser consumers use `import type` from `plugins/sdk.js`, never old `types.ts`.
+- Proposed installed package subpath `@pasko70/pibo/plugin-sdk` -> `dist/plugins/sdk.js`; backend `@pasko70/pibo/plugin-host` -> `dist/plugins/host.js`. **Package metadata remains orchestrator-owned.** Relative imports work now.
+- Qualified contribution IDs: `${pluginId}/${localId}`. Local IDs cannot contain `/`. Plugin id example `pibo.web-annotations`.
+- Exact types are already on disk. Do not clone these DTOs in stores/UI/runtime.
+
+## Manifest and immutable installation metadata
+
+```ts
+import type { PluginManifest, PluginInstallation } from './src/plugins/sdk.js';
+const manifest: PluginManifest = {
+  schemaVersion: 1, id: 'example.notes', name: 'Notes', version: '1.0.0', sdk: '^1.0.0',
+  entrypoints: { backend: 'dist/backend.js', browser: 'dist/browser.js' },
+  services: { provides: [{ id: 'example.notes.store', version: '1.0.0' }] },
+  contributions: [{ id: 'notes', kind: 'view', scope: 'agent', required: false,
+    defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'UI only' },
+    view: { title: 'Notes', exportName: 'Notes', visibility: 'session', instance: 'singleton',
+      mount: 'unmount', stateSchemaVersion: 1 } }]
+};
+// PluginRevision: pluginId, revision:string (immutable artifact identity), version,
+// contentHash, source, manifest, createdAt, artifactPath? (backend-only).
+// PluginInstallation extends that with state, enabled, stateRevision:number, diagnostics?.
+// States: staged|installed|active|pending-activation|retiring|failed|uninstalled.
+// source: {kind:'builtin',name}|{kind:'local',path}|{kind:'package',name,version,registry?}.
+// PluginCatalog = {schemaVersion:1, revision:number, installations:PluginInstallation[]}.
+```
+
+Every contribution MUST declare `context: {kind:'none',reason}` or `{kind:'context',stage,description,loading:'eager'|'progressive'|'runtime'}`. Unknown kind strings stay open; their executable handlers are service-owned, not another loader. Services use `{id,version,optional?}` requirements and `{id,version,replaces?:pluginId[]}` declarations. Package dependencies are separate `{id,version,optional?}[]`. Runtime requirement has `adapterIds?`, `instanceIds?`, `capabilities?:string[]` (existing dotted adapter capability paths), `deliveryModes?`.
+
+## Pure selection / runtime handoff
+
+```ts
+const selection: AgentPluginSelection = { schemaVersion: 1, plugins: [{
+  pluginId: 'example.notes', enabled: true, revision: 'sha256:artifact',
+  contributions: { notes: true }, config: {}, contributionConfig: {}
+}] };
+```
+
+`contributions` is a complete local-id boolean snapshot, **including mandatory IDs**. Missing keys never pick up new defaults. New mandatory ID or changed artifact revision without explicit acceptance yields migration diagnostics, not auto-expansion. `createAgentPluginSelection(installations)` in `selection.ts` will materialize defaults ONCE for explicitly supplied installations. `validateAgentPluginSelection(unknown)` validates payload shape. No database/CAS logic in resolver.
+
+`resolvePluginContributions(input: PluginResolutionInput): EffectivePluginPlan` in `resolution.ts` (implementation follows immediately). Input fields already exported: `catalog`, `selection`, `selectionRevision`, `agentId?` (needed only to apply agent-scoped configuration snapshots), `runtime:{adapterId,instanceId,capabilities,deliveryModes?}`, `kind?:'preview'|'generation'`, `piboSessionId?`, `generation?`, `resources?`, `configurations?`, `providers?`, `services?`, `acceptedRevisions?`. `acceptedRevisions` maps plugin ID to explicitly migrated old revisions, not general semver auto-acceptance. `providers` maps `kind:name` (or kind for unnamed provider) to qualified contribution ID; replacement declaration is also required.
+
+Result is deeply immutable JSON: `valid`, diagnostics with `code,severity,message,pluginId?,contributionId?,path:string[]`; original `selection`; revision/hash plugin list; ordered effective `contributions` (`id,pluginId,pluginRevision,contribution,config,required,selectionReason,dependencyPath`); independent `resources`; configurations; `pluginConfigurations: Record<string,PluginJsonObject>` (effective app -> selection -> explicitly targeted agent -> explicitly targeted session shallow overlays; no new manifest defaults); complete provenance `nodes`; preview/generation identity. Runtime MUST reject `valid:false` (helper `assertEffectivePluginPlan` will be exported). No code factories called by resolution or preview.
+
+Independent resources: `{id,kind,name,origin:'user'|'manual'|'harness',reference,contentHash?,order?,context,metadata?}`. Same kind/reference/content deduplicates, name equality does not overwrite. Metadata holds existing manual-subagent options/overrides without converting resources into plugins.
+
+## Browser / settings / tabset
+
+Actual shared exports: `PluginViewDefinition`, `PluginSettingsScope`, `PluginConfigurationTarget`, `PluginConfigurationSnapshot`, `PluginTabInstance`, `PluginSessionTabset`, `PluginBrowserCatalog`, `PluginArtifactEnvelope`.
+
+- View metadata is attached at contribution `view`, not separate registry. `subviews:[{id,title,purpose:'content'|'settings'|'context',settingsScopes?:('app'|'agent'|'session')[]}]`.
+- Config target discriminated by scope; app has pluginId, agent adds agentId, session adds piboSessionId. Snapshot adds revision, schemaVersion, values. Secrets must be references (management owns persistence policy).
+- Tab instance requires `instanceId,piboSessionId,pluginId,viewId,pluginRevision,stateSchemaVersion,state,fallback`; optional subviewId/instanceKey. **viewId is qualified**.
+- Tabset requires `schemaVersion:1,piboSessionId,revision,tabs,activeTabId:string|null,layout`. Order is array order. piboSessionId never inferred from agent or room.
+- Browser catalog is explicit projection: `schemaVersion,revision,plugins:[{pluginId,revision,version,contentHash,browserEntry?,contributions}],diagnostics`; never artifactPath/source/config/services.
+
+## Build provenance / hooks
+
+`PluginBuildProvenanceNode` exists in contributions.ts. It records schemaVersion,id,kind,origin, plugin/revision/contribution IDs, context, status, selected, installed/global/agent states, required, selectionReason, order, predecessors, optional configurationRevisions/content/transformations/delivery/tokens and fallback. Content marks model vs inspector, redaction and missing-content reason. Delivery records generation, mode,target,fidelity,status, optional time/payload/diagnostic. Resolver produces selection evidence; AP06 owns actual observed delivery/transformations. Do not mark selected content as delivered.
+
+Generic `PluginHookDescriptor` and `PluginHookResult` exported; phase pre-tool/post-tool/input/paste/drop/send, order, required, timeoutMs; continue/transform/reject, transform requires provenance. Execution pipeline belongs runtime/browser owners, not this core host.
+
+## Host / scope upcoming execution boundary
+
+`PluginScope` already implemented: constructor(pluginId,instanceId?), signal, status, assertOpen(), defer(disposer), child(instanceId), listen(target,type,callback), interval(callback,ms), dispose(). Dispose returns shared promise, tries ALL disposers in reverse order, retains failed status; child disposal is owned by parent.
+
+Host will expose `PluginHost` with `start({plugins,providers?})`, `stop()`, `services`, `contributions`, `inspect()`. `plugins` are `{installation, setup(context)}`; setup context has manifest, scope, services `get/require/provide`, contribution `register(localId,value)` and `registerResource(kind,key,value)` for domain resources. Host validates complete package/service graph and explicit service provider choices before setup. Service provider selection uses service ID -> plugin ID and requires chosen provider's `replaces` list for all losing claimants. Activation rollback removes every owned registration. Exact host types are implemented in host.ts. `planPluginActivation(input)` returns `{valid,order,providers,diagnostics}` without setup calls. `createSessionScope(pluginId,piboSessionId,generation)` creates a generation-owned child. Backend modules export `setup(context)`; management's `createStagedPluginDefinition` defers module import until after graph validation.
+
+## Dependencies / remaining integration
+
+Management consumes SDK metadata and calls manifest validator; source adapter must additionally check actual paths/symlinks/hash without importing backend. Core schema exports are `validatePluginManifest(value, options?)`, `parsePluginManifest(value, options?)`, `PluginValidationError`, `validatePluginConfig(schema,value,path?)`, `validatePluginConfigSchema(schema,path?)`; options supports `sdkVersion?`, `files?:readonly string[]` for import-free entrypoint existence.
+
+Runtime/designer use this one pure resolver; browser reads same plan for availability. Registry facade and host wiring require orchestrator composition changes, not worker edits to builtin/gateway. This handoff freezes field names; validation/tests are not yet claimed complete.

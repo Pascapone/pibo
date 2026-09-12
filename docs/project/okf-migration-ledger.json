@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-06T19:38:08Z",
+  "generated_at": "2026-09-12T06:43:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -13949,6 +13949,15 @@
       "type": "Validation Report",
       "authority": "evidentiary",
       "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/plugin-system-rebuild-checkpoint-2026-09-12.md",
+      "state": "conformant",
+      "classification": "plugin rebuild development checkpoint and incomplete integration evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
       "lineage": null
     }
   ]

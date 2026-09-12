@@ -1,0 +1,24 @@
+
+> @pasko70/pibo@1.7.2 docs:validate
+> npm run docs:validate:strict
+
+
+> @pasko70/pibo@1.7.2 docs:validate:strict
+> node scripts/validate-okf-docs.mjs --mode strict
+
+OKF strict validation: PASS
+Markdown paths: 802 (git)
+Ledger records: 802
+States: conformant=648 reserved=107 pending=0 host-exception=47
+Errors: 0; warnings: 0
+
+> @pasko70/pibo@1.7.2 docs:indexes:check
+> node scripts/generate-okf-indexes.mjs --check
+
+OKF index check: PASS
+Managed indexes: 106; drift: 0
+
+> @pasko70/pibo@1.7.2 docs:log:check
+> node scripts/check-okf-log.mjs
+
+OKF log check: PASS

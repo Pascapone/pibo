@@ -1,0 +1,59 @@
+# Designer contract — AP10 / Agent migration (implementation underway)
+
+Owner designer. Only owned source files in shared worktree; all validation in Docker with shared flock. Core SDK DTOs are authoritative.
+
+## Stored fields / runtime & browser required integration
+
+`CustomAgentDefinition` adds `pluginSelection?: AgentPluginSelection`, `revision:number`, `pluginMigration?: AgentPluginMigrationReport`. Undefined selection means **unmigrated legacy**, never defaults/empty-success. New v2 agents always have an explicit selection. `skills`, `contextFiles`, `subagents` remain independent user/manual resources. Legacy nativeTools/mcpServers/piPackages/runControl/goalControl are read-only migration input; regular v2 writes reject them. Runtime must not execute legacy fields when pluginSelection is present; unknown/unmigrated rows must be diagnosed, not silently activated.
+
+`CustomAgentStore.update(id,input,{expectedRevision})` performs SQL CAS; plugin-schema agents require expectedRevision. Create/preview/update validate core selection shape. Profile/Bootstrap/UI serializers must preserve pluginSelection, revision, pluginMigration. Browser-owned `types.ts` should add those fields (SDK type imports); no alternate selection DTO. Store exports `profileConsumerCollector(agentStore)` -> `(pluginId)=>Promise<PluginConsumer[]>`, includes archived agents and unknown legacy dependencies. Orchestrator combines it with builtin-profile/runtime consumers.
+
+## Web attachment (orchestrator owns web-app.ts / request-normalizers)
+
+I implement in `chat-capability-routes.ts`:
+- `validatePluginAgentMutation(body, existing?)` returns versioned, shape-checked mutation metadata `{pluginSelection?,expectedRevision?}`; accepts **schemaVersion:2**. Legacy executable fields (`nativeTools`, `mcpServers`, `piPackages`, `runControl`, `goalControl`, `capabilityPackages`) fail explicitly with 400/versioned migration required, never ignored. Missing references on unchanged selection survive unrelated edits.
+- `resolveAgentPluginPreview({agent,catalog,runtime,...})` calls the shared pure resolver, no imports/factories.
+- `validateAgentPluginPlanMutation({existing?,agent,catalog,runtime,...})` validates changes using same resolver; unchanged unresolved selection can be saved only for unrelated metadata edits, never bypassing activation checks.
+- Route GET `/api/chat/agent-plugin-catalog`: safe SDK browser projection plus manifest display names/agent defaults; POST `/api/chat/agent-plugin-preview`: body `{schemaVersion:2,agentId?,expectedRevision?,runtimeInstanceId,pluginSelection,skills,contextFiles,subagents,builtinTools,builtinToolNames}` -> `{schemaVersion:1,plan:EffectivePluginPlan}`. Runtime target is server-resolved from runtimeInstanceId, never trusted from body. Dispatcher authenticates / same-origin; helper route handler accepts injected catalog/runtime resolution and AgentStore.
+
+**Required existing create/PATCH integration:** call validatePluginAgentMutation on raw body BEFORE existing normalizers; merge returned pluginSelection into normalized input; preserve schemaVersion 2/expectedRevision for store. Call validateAgentPluginPlanMutation on full preview using server runtime/catalog. PATCH forwards expectedRevision to store.update and archive CAS. Map revision conflicts to HTTP 409. Do not normalize v2 to legacy defaults. I will provide precise final signatures once written.
+
+## Session Settings navigation (browser owner)
+
+`AgentsView` adds optional `piboSessionId`, `sessionProfileName`, `onOpenPluginSettings(target)` where target is `{piboSessionId,pluginId,viewId,subviewId,configurationTarget:PluginConfigurationTarget}`. Fixed opening session; viewId is qualified. Handler opens that session's plugin tab/subview with explicit app/agent/session target. Designer renders links only with a session and declared settings/context subview; no duplicate settings editor. Edited agent ID (not current session's agent) is used for agent scope and shown explicitly.
+
+## Migration / AP12–14 dependency
+
+Migration is parameterized by **actual installed manifests and a baseline effective selection inventory**; no competing hardcoded capability list. It matches legacy names against contribution `kind`/`name`, honors required/dependencies through core resolver and compares exact before/after contribution identities and tool names. Builtin extraction owner must preserve old contribution names and publish authoritative family mapping. Fixtures use actual legacy-builtin-catalog.json, Goal default and minimal yielded-run/subagent infrastructure inventory. Unknown Pi packages are retained in backup/report, never loaded.
+
+AgentStore migration stage uses Management `PluginMigrationJournal` and its own atomic CAS + source hash marker, not a fake cross-DB transaction. Raw row export is backed up before mutation; isApplied verifies own store marker after crash before journal checkpoint. Dry-run produces exact before/after sets and conflicts without writes.
+
+## Evidence
+
+No completion claim yet. Detailed command results and remaining integration obligations will be written to worker-designer.md.
+
+## Implementation checkpoint 06:20 UTC
+Store/route helpers and AgentPluginsDesigner now exist. Actual signatures match above. `CustomAgentStore.setArchived(id,archived,{expectedRevision})` also uses CAS. `profileConsumerCollector(store)` is exported from agent-store.ts. `buildAgentPluginCatalog`, `agentPluginRoute`, `handleAgentPluginRoute`, `resolveAgentPluginPreview`, `validateAgentPluginPlanMutation` are implemented in chat-capability-routes.ts. `handleAgentPluginRoute` accepts `{route,request,agents,catalog,resolveRuntime,configurations?,services?,providers?}`. Shared JSON-only Designer DTOs live in api-agent-designer-plugin-types.ts (SDK selection is not duplicated).
+
+Parent MUST strip legacy defaults inserted by `createAgentInput` from v2 before store.create, or provide a v2 branch in normalizers. V2 Store rejects *presence* of legacy fields, even empty/false. AgentPluginRoute preview requires `skills,contextFiles,subagents,builtinToolNames` arrays; runtime target is server-injected. New drafts use explicit empty selection unless product catalog supplies `defaultPluginSelection` (materialized once by product composition).
+
+Browser: please remove SettingsView PiPackageDetails/postPiPackage imports and legacy package surface; I am removing those exports in owned designer-ui/API files. `AgentsView` optional settings props and `AgentPluginSettingsTarget` are implemented. Forward piboSessionId/sessionProfileName and handler in both branches.
+
+Management: first backend tsc had only plugin-management-routes.ts:47 generic T constraint error (your file); no Designer backend errors. UI tsc initially pulled backend/http through transport type imports; I isolated these DTOs in a JSON-only file to fix this.
+
+## Runtime/AP13 narrow-run migration requirement
+`inventoryLegacyAgentSelection` now computes baseline contributions without factories, using exported Goal/Run/Agent tool names and an injected AP00 owner map. When manual subagents exist but runControl=false, the only yielded target remains pibo_agents_send_message. Migration writes that EXACT target allowlist into `pibo.run-control` run-start contributionConfig as `{allowedToolNames:string[]}` (local contribution ID found by tool name pibo_run_start, not assumed). **Runtime/Run owner must honor this config before exposing run_start; unknown or unsupported allowlist semantics must block activation, never ignore it.** With explicit runControl=true, inventory snapshots only old yieldable native/harness/manual target names. This preserves minimal infrastructure without turning on all Run targets. Please confirm/adapt this single config contract in your own runtime handoff.
+
+## Runtime integration review 06:33 UTC (action required in owned files)
+Observed current plugin-plan.ts maps names.has(pibo_run_start) back to toolPackages.runControl=true and any Goal name to goalControl=true. This silently broadens migrated manual-only Run targets and partial Goal subsets unless session-tool-set is strictly filtered by effectivePluginPlan and allowedToolNames. My tests preserve an explicit minimal allowlist. Also custom-agent migration conflicts store `pluginMigration.status=conflict` with all entries disabled; runtime must reject unresolved conflicts, not run the empty plan. A conflict is unresolved while pluginSelection equals pluginMigration.selection; an explicit valid changed pluginSelection may resolve it without rewriting historical migration evidence.
+
+Current kind alignment: I am changing migration/preview context resources to `context-file`, matching core projection/runtime (not `context`). Existing fixture OMP runtime instance is `omp-native`, adapter `orp`; `orp` is profile/plugin identity suffix, not runtime instance. Pi baseline only wraps **bash**, not all four harness tools, for explicit runControl; fixtures now preserve only bash as native yielded target.
+
+19/19 new migration/CAS/API/draft tests pass. Backend and UI typechecks are running. Full browser handoff awaits Parent worker-gateway readiness; no host operation performed.
+
+## Closure checkpoint 06:43 UTC
+New wrapper exports now remove integration ambiguity: `normalizePluginAgentCreate(rawBody):CreateCustomAgentInput` and `normalizePluginAgentUpdate(rawBody,existing):{update:UpdateCustomAgentInput,expectedRevision:number}` validate v2 BEFORE calling existing model/folder/subagent normalizers, and strip their legacy injected defaults. Use these in web-app instead of createAgentInput/createAgentUpdate. v2 existing legacy rows must be journal-migrated first (409). New v2 stores legacy goal/run booleans false, preventing old fallback code from re-enabling tools.
+
+`isUnresolvedAgentPluginMigration(agent)` exported for Runtime; the pure Designer preview emits legacy-migration-unresolved + valid:false for unchanged conflict selections. Explicit valid changed selection can supersede the old report; the historical report itself remains unchanged. Runtime must apply same guard. `profileConsumerCollector(store, optionalCatalogProvider)` now classifies required/optional from pinned manifest when available, otherwise unknown.
+
+Latest full check: backend tsc exit0, UI tsc exit0, 20/20 new tests pass; regression batch 36/39. One old test expects unknown Pi-package registration rejection (deliberately replaced by inactive legacy preservation), two source-shape assertions fail in Browser-owned App.tsx (number of new-session preference setters and inline initialAgentFolders prop moved by shell work). Details in final worker report. I restored ONLY non-executable tombstone exports for remaining browser imports (PiPackageDetails renders inactive marker; old API functions throw locally). These unblock typechecking without restoring executable legacy management. Remove them with remaining Settings/MCP shell imports during integration.

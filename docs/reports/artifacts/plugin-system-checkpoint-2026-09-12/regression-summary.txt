@@ -1,0 +1,36 @@
+Source commit: fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd
+Full local log: /tmp/pibo-plugin-rebuild-committed-regressions.log
+
+✖ custom agent store persists selected registered Pi packages (19.963803ms)
+✖ only the Sessions new-session dropdown updates the persisted profile preference (2.256031ms)
+✖ Agent Designer uses the standard responsive sidebar contract (2.888482ms)
+✖ default base context build does not select Pibo native tooling context (2.470434ms)
+✖ generated tool origins remain inspector-only parent metadata (2.015679ms)
+✖ portable runtime manifest uses materialized callable names for fixed and factory profile tools (2.071041ms)
+✖ portable runtime manifest excludes controller-backed Codex browser tools when no controller exists (3.431436ms)
+✖ context build exposes one shared agent surface and the available name-description catalog (1.404115ms)
+✖ context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate (7.295645ms)
+✖ runtime context exposes app context and resource ids without partition fields (1.268459ms)
+✖ context build skill node exposes only the prompt-entry XML, not the full body (5.998001ms)
+✖ context build still warns when a skill file cannot be read for inspection (0.715699ms)
+ℹ tests 123
+ℹ suites 0
+ℹ pass 111
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32823.801106
+✖ failing tests:
+test at test/agent-store.test.mjs:657:1
+test at test/chat-ui-agent-designer-new-session-default.test.mjs:15:1
+test at test/chat-ui-agent-designer-sidebar-folders.test.mjs:13:1
+test at test/context-build-inspector.test.mjs:31:1
+test at test/context-build-inspector.test.mjs:44:1
+test at test/context-build-inspector.test.mjs:114:1
+test at test/context-build-inspector.test.mjs:189:1
+test at test/context-build-inspector.test.mjs:301:1
+test at test/context-build-inspector.test.mjs:382:1
+test at test/context-build-inspector.test.mjs:428:1
+test at test/context-build-skills-tokens.test.mjs:30:1
+test at test/context-build-skills-tokens.test.mjs:104:1

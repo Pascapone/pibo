@@ -1,0 +1,191 @@
+# Worker designer — geordneter Zwischenabschluss
+
+Stand: 12. September 2026, Abschluss vor 07:00 UTC. Baseline laut gemeinsamem Ownership-Vertrag: `cac4dcd03945b9754db7be9ab2ab4324f10c335c`.
+
+## Ergebnis und Abnahmegrenze
+
+Der Designer-/AgentStore-Block ist implementiert und fokussiert geprüft. **Keine Behauptung einer vollständigen AP10/AP16/AP18-Produktabnahme:** Die neuen Handler, v2-Normalizer und die Migration sind noch nicht vollständig in den Parent-eigenen Web-Dispatch bzw. die produktive Start-/Migrationskomposition angeschlossen. Die sessiongebundenen Settings-Callbacks brauchen den Browser-Anschluss. Es gab keinen headful Produktdurchstich. AP11/AP19 bleiben beim Parent.
+
+Letzter vollständiger Check: Backend-TypeScript **Exit 0**, Chat-UI-TypeScript **Exit 0**, neue fokussierte Tests **22/22 bestanden**. Zusätzlich ausgeführte Bestandsregressionen: **36/39 bestanden**; die drei konkreten Abweichungen stehen unten.
+
+Keine Commits, Git-Operationen, neuen Container/Worktrees/Subagents, Host-Gateway-/Pibo2-/Remote-/Release-Aktionen. Keine Profildaten des Nutzers gelesen oder verändert. Alle Datenänderungen der Tests betreffen temporäre Fixtures im Worker. Quellcode ausschließlich im vorgegebenen Worktree, nur in eigenen Dateien. Alle Prüfungen liefen über `docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock ...`.
+
+## Eigene Dateien
+
+Geändert:
+
+- `src/apps/chat/agent-store.ts`
+- `src/apps/chat/chat-capability-routes.ts`
+- `src/apps/chat-ui/src/api-agent-designer.ts`
+- `src/apps/chat-ui/src/agents/agent-designer-model.ts`
+- `src/apps/chat-ui/src/agents/AgentsView.tsx`
+- `src/apps/chat-ui/src/agents/designer-ui.tsx`
+
+Neu:
+
+- `src/apps/chat-ui/src/api-agent-designer-plugin-types.ts` — JSON-only Transporttypen, gemeinsam von Backend und Browser importierbar; keine Kopie des SDK-Auswahlmodells.
+- `src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx`
+- `test/fixtures/plugin-system/legacy-agent-selections.json`
+- `test/plugin-system-agent-designer.test.mjs`
+- `test/plugin-system-agent-designer-ui.test.mjs`
+
+`chat-api-routes.ts` blieb unverändert: Der neue eigene Route-Recognizer benötigt dort keinen weiteren Sonderfall. Keine Änderungen an Runtime-/Browser-/Parent-Dateien, Package-Metadaten oder gemeinsamer Projektdokumentation.
+
+## Implementiertes Verhalten
+
+### AgentStore und CAS
+
+- `CustomAgentDefinition` enthält `pluginSelection?: AgentPluginSelection`, `revision:number`, `pluginMigration?: AgentPluginMigrationReport`.
+- Additive SQLite-Spalten: `revision`, `plugin_selection_json`, `plugin_migration_json`. Bestehende Ordner-, Alias-, Modell-, Optionen-, Subagent- und Archivdaten bleiben bestehen.
+- `update(id,input,{expectedRevision})` führt `UPDATE ... WHERE id=? AND revision=?` aus und erhöht die Revision. Bei v2-/Plugin-Agents ist expectedRevision verpflichtend; Konflikte liefern `PluginConflictError`.
+- `setArchived(id,archived,{expectedRevision})` schützt ebenfalls per CAS. Zwei getrennte SQLite-Verbindungen wurden geprüft.
+- Der Store validiert die Auswahlform mit Core `validateAgentPluginSelection`; v2-Schreibvorgänge akzeptieren keine alten ausführbaren Auswahlfelder. Pflicht-/Runtimeprüfung erfolgt mit den unten genannten serverseitigen Handlern, nicht im Browser.
+- Neue v2-Agents erhalten keine versteckten alten Goal-/Run-Defaults: Die historischen booleschen Felder sind für sie false. Neue Drafts verwenden eine explizit leere Auswahl oder eine ausdrücklich vom Produktkatalog gelieferte `defaultPluginSelection`.
+- Fehlende Pluginreferenzen, eingefrorene Artefaktrevisionen, Konfiguration und optionale Ausschlüsse bleiben bei anderen Änderungen erhalten.
+- `profileConsumerCollector(store, optionalCatalogProvider)` ist exportiert. Er berücksichtigt auch archivierte Agents, klassifiziert bekannte gepinnte Pflicht-/Optionalbeiträge und behandelt fehlende Inventare/unmigrierte Daten konservativ als unknown. Der Parent ergänzt Builtin-Profile und Live-/Session-/Run-Verbraucher.
+
+### API und gemeinsame Auflösung
+
+Implementierte Exports in `chat-capability-routes.ts`:
+
+- `agentPluginRoute(pathname,method)`
+- `handleAgentPluginRoute({route,request,agents,catalog,resolveRuntime,configurations?,services?,providers?})`
+- `buildAgentPluginCatalog(catalog)`
+- `validatePluginAgentMutation(rawBody,existing?)`
+- `normalizePluginAgentCreate(rawBody): CreateCustomAgentInput`
+- `normalizePluginAgentUpdate(rawBody,existing): {update,expectedRevision}`
+- `resolveAgentPluginPreview({agent,catalog,runtime,configurations?,services?,providers?})`
+- `validateAgentPluginPlanMutation({...previewOptions,existing?})`
+
+Routen:
+
+- GET `/api/chat/agent-plugin-catalog` → `{catalog}`; Metadaten und initiale Auswahl, keine Artefaktpfade/Backendobjekte.
+- POST `/api/chat/agent-plugin-preview` → `{schemaVersion:1,plan:EffectivePluginPlan}`.
+
+Preview-Payload: `{schemaVersion:2,agentId?,expectedRevision?,runtimeInstanceId,pluginSelection,skills,contextFiles,subagents,builtinTools,builtinToolNames}`. Die vier Ressourcen-/Builtin-Listen sind Arrays. Runtime-Capabilities stammen ausschließlich aus dem serverseitigen `resolveRuntime(instanceId)`; manipulierte Runtime-Objekte aus dem Payload wirken nicht. Preview führt weder Runtime-Start noch Store-Schreiben noch Toolfactory/Plugin-Setup aus.
+
+API v2 lehnt `nativeTools`, `mcpServers`, `piPackages`, `runControl`, `goalControl`, `capabilityPackages` ausdrücklich ab. Unversionierte/v1-Payloads werden abgewiesen, nicht still ignoriert. Unmigrierte bestehende Agents müssen vor v2-Mutation journalisiert überführt werden (409).
+
+Die neuen Normalizer verwenden die bestehenden Modell-/Ordner-/Subagent-Normalizer weiter, entfernen aber deren alte automatisch eingesetzte Auswahlfelder. Der Update-Wrapper erzeugt bei einem reinen Archiv-Payload keinen künstlichen schemaVersion-Feld-Update.
+
+Pflichtstatus, Beitragsabhängigkeiten und Runtimegründe stammen aus Core `resolvePluginContributions`. Ein ungültiger Plan verhindert Auswahl-/Runtimeänderungen. Eine unveränderte ungelöste Auswahl darf bei reinen Metadatenänderungen erhalten bleiben; diese Ausnahme ist **keine Aktivierungserlaubnis**.
+
+Alte Pi-Package-/MCP-Beschreibungsrouten liefern einen erklärten HTTP-410-Zustand ohne Import oder Aufruf des alten Package-Lifecycles.
+
+### Designer
+
+- Direkte NativeTool-Auswahl sowie Run-/Goal-/Pi-Package- und zentrale MCP-Auswahl wurden aus `AgentsView` entfernt.
+- Plugin-Gesamttoggle, vollständige deklarierte Beitragsliste, Art/Herkunft, Pflicht-/Optionalstatus, serverseitige Runtimegründe, explizite Revisionsannahme und fehlende Referenzen sind implementiert.
+- Bestehende Auswahl übernimmt beim Update keine neuen optionalen Defaults. Eine explizite Revisionsannahme lässt neue optionale Beiträge aus; neue Pflichtbeiträge werden sichtbar bestätigt.
+- Appweite-only-Beiträge werden als Infrastruktur angezeigt, nicht als Agent-Tools verkauft.
+- User-Skills, unabhängige Kontextdateien und manuelle Subagents bleiben eigene Felder/Editoren. Plugin-Ressourcen werden nicht zusätzlich in deren Auswahlflächen angeboten.
+- Pi Built-ins erscheinen nur bei Pi. Runtimeauswahl, Modell-/Fallback-/Optionen-/Subagenteditoren und Ordner bleiben erhalten.
+- Autosave nutzt expectedRevision, übernimmt die Serverrevision nach Erfolg und zählt deren Änderung nicht als erneute Inhaltsänderung. Überlappende Saves bleiben serialisiert.
+- Draft-Recovery verwendet einen v2-Schlüssel. Alte v1-Browserdaten werden nicht blind in eine leere ausführbare Auswahl umgewandelt; eine automatische Browser-Draft-Migration wurde nicht behauptet.
+- Previewantworten sind gegen veraltete Effektinstanzen geschützt. Der React-Verhaltenstest beweist, dass eine verspätete Antwort A den neueren Stand B nicht überschreibt.
+- `AgentsView` nimmt `piboSessionId`, `sessionProfileName`, `onOpenPluginSettings` entgegen. Ziel: `{piboSessionId,pluginId,viewId,subviewId,configurationTarget}`. Agent-Scopes verwenden die ID des bearbeiteten Agents, nicht die zufällige aktuelle Session-Agentidentität. App-/Agent-/Session-Scope werden getrennt angezeigt. Keine zweite Settings-Konfiguration im Designer.
+
+### Bestandsmigration
+
+- `inventoryLegacyAgentSelection` ermittelt die alte Auswahl aus dem gegebenen Baseline-Katalog plus einem expliziten AP00-Beitragseigentümer-Mapping. Es führt keine Factories aus und enthält keinen neuen produktiven Capability-Katalog.
+- Goal-Default und minimale Run-Infrastruktur sind berücksichtigt. Bei manuellen Subagents und runControl=false bleibt `pibo_agents_send_message` der einzige yielded-only Zielaufruf; die drei Managementtools und sieben Run-Tools bleiben verfügbar.
+- Pi-Baselineprüfung ergab: Run Control wrappt **bash**, nicht alle vier Harness-Builtins. Der Run-Zielfilter berücksichtigt dies. Implizites altes bash trotz abgewähltem Harness-bash wird als Migrationskonflikt behandelt.
+- `planLegacyAgentPluginMigration` löst gegen echte Manifest-/Runtime-Verträge auf und vergleicht genaue qualifizierte Beitrags- und Toolmengen. Zusätzliche neue Defaults werden nicht aktiv. Nicht passende Pflichtteile, fehlende Besitzer oder Runtime-Ausfälle erzeugen einen Konflikt mit inaktiver Auswahl.
+- `exportLegacyAgent` sichert die tatsächlichen SQLite-Zellen einschließlich Aliaszeilen, nicht nur die normalisierte DTO-Projektion.
+- `migrateLegacyAgentPlugins` verwendet **Management `PluginMigrationJournal`**, private Backupbytes und eine getrennte atomare AgentStore-Etappe mit sourceHash. Keine angenommene atomare Transaktion über beide Datenbanken.
+- Dry-run schreibt nicht. Wiederholung ändert weder Ergebnis noch Agentrevision. Ein Abbruch nach AgentStore-Commit vor Journal-Checkpoint wurde mit anschließendem Schließen/Neueröffnen beider Stores geprüft.
+- Alte Pi-Pakete werden weder nachgeschlagen noch geladen, sondern in Backup und `inactivePiPackages` gesichert. Die regulären alten Agentfelder werden nach der Migration leer/false; unabhängige Ressourcen, Modelle und manuelle Subagent-Overrides bleiben erhalten.
+- `isUnresolvedAgentPluginMigration(agent)` ist für die Runtime exportiert. Unveränderte Konfliktauswahl ist im Designer-Preview `valid:false`, nicht eine scheinbar gültige leere Aktivierung.
+
+Die Fixtures sind synthetisch/anonymisiert und referenzieren den tatsächlich erfassten `legacy-builtin-catalog.json`. Enthalten sind Standard, Toolteilmenge, Pi-only, Codex Native, OMP (`omp-native`-Instanz, `orp`-Adapter), manuelle Subagents, explizites Run Control, User-Ressourcen, MCP, unbekanntes Pi-Paket und unbekanntes Tool. Core-Skill-/Kontexteigentümer in diesen Testdaten behalten die dokumentierte Baseline-Identität bis zur tatsächlichen AP12-Extraktion; sie sind keine neue produktive Defaultkomposition.
+
+## Tatsächlich ausgeführte Prüfungen
+
+Alle folgenden Befehle liefen im gemeinsamen Docker-Worker unter dem gemeinsamen flock.
+
+### Letzter grüner fokussierter Check
+
+Log: `/tmp/pibo-plugin-rebuild-research/designer-closure-validation.log`
+
+```sh
+node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
+node node_modules/typescript/bin/tsc -p src/apps/chat-ui/tsconfig.json --noEmit
+node --import tsx --test test/plugin-system-agent-designer.test.mjs test/plugin-system-agent-designer-ui.test.mjs
+```
+
+Ergebnis: Backend **0**, UI **0**, **22 Tests bestanden**, keine fehlgeschlagen/übersprungen. React-Test-Renderer meldet seine bekannte Deprecation; dies wurde nicht als Browser-/Layoutnachweis ausgegeben.
+
+### Kompilierung und Bestandsregressionen
+
+Log: `/tmp/pibo-plugin-rebuild-research/designer-final-validation.log`
+
+Backend-`tsc` mit Emit und UI-`tsc --noEmit` jeweils **0**. Damaliger neuer Testsatz **20/20** (danach zwei zusätzliche Normalizer-/Konfliktfälle im grünen 22er-Satz).
+
+```sh
+node --test \
+  test/agent-store.test.mjs \
+  test/agent-profiles.test.mjs \
+  test/chat-ui-agent-designer-runtime-switch.test.mjs \
+  test/chat-ui-agent-designer-description-clear.test.mjs \
+  test/chat-ui-agent-designer-new-session-default.test.mjs \
+  test/chat-ui-agent-designer-sidebar-folders.test.mjs \
+  test/chat-ui-agent-designer-subagents.test.mjs \
+  test/chat-ui-agents-initial-draft.test.mjs \
+  test/chat-ui-agent-context-scope-accessibility.test.mjs
+```
+
+**36/39 bestanden. Drei konkrete Abweichungen:**
+
+1. `custom agent store persists selected registered Pi packages`: Der alte Test erwartet für unbekannte Pakete `Unknown Pi package "missing-package"`. Der Migrationspfad bewahrt diese nun ohne registrierungs-/ausführungswirksamen Pi-Package-Lookup inaktiv auf. Das ist eine absichtliche Vertragsänderung, keine grüne Bestandsassertion. Der neue unbekannte-Pi-Paket-Test beweist Backup, Inaktivität und Idempotenz. Der Parent muss den alten Test beim endgültigen AP18-Cutover anpassen/ersetzen.
+2. `only the Sessions new-session dropdown updates the persisted profile preference`: Eine Source-Zählassertion erwartet zwei Setter-Vorkommen im Browser-eigenen `App.tsx`, findet nach dessen Umbau eines. Nicht von mir durch Änderung fremder Dateien kaschiert.
+3. `Agent Designer uses the standard responsive sidebar contract`: Source-Assertion erwartet `initialAgentFolders={bootstrap.agentFolders}` direkt in `App.tsx`; der Browser-Umbau hat diese Struktur verändert. Die eigenen Ordner-/Draft-/Sidebar-Verhaltenstests im selben Lauf bestehen.
+
+Frühere Logs sind erhalten: `designer-tsc-first.log` (damaliger Fremdfehler Management-Generic), `designer-ui-tsc-first.log` (von mir behobener Backend-Typeimport), `designer-tests-first.log` (Fixture-Korrekturen: JSON-Undefined beim Journalvergleich, OMP-Instanz-ID), `designer-validation-second.log` (19/19 neue Tests; damals noch Shell-Importanschlüsse offen). Keine dieser Zwischenfehler wird als abschließend grün ausgegeben.
+
+## Präzise offene Parent-/Runtime-/Browser-Anschlüsse
+
+### 1. Web-Dispatch — noch nicht produktiv verbunden
+
+In `src/apps/chat/web-app.ts` authentifiziert der Parent die zwei neuen Routen und ruft `agentPluginRoute`/`handleAgentPluginRoute` auf. Preview POST braucht vorhandene Same-Origin-JSON-Prüfung. Übergeben werden AgentStore, der eine aktive Plugin-Katalog, serverseitige Runtime-Inspektion sowie passende Config-/Service-/Providerdaten. Keine Runtime-/MCP-Erzeugung im GET/Preview-Pfad.
+
+Der überprüfte bestehende POST `/agents` verwendet weiterhin `createAgentInput(body)` und PATCH weiterhin `createAgentUpdate(body)`. **Das genügt nicht:** Diese alten Normalizer kennen die neue Auswahl nicht. Ohne Austausch können neue UI-Payloads sonst still alte Defaults erhalten oder CAS nicht erreichen.
+
+Konkreter Austausch:
+
+- POST: `normalizePluginAgentCreate(rawBody)` statt `createAgentInput(body)`; danach bestehende Runtime-Feature-Override-Normalisierung, Name/Ordner/Modellprüfung. Den vollständigen Vorschauagent mit `validateAgentPluginPlanMutation` gegen serverseitigen Katalog/Runtime prüfen, dann Store.create.
+- PATCH: `const {update,expectedRevision}=normalizePluginAgentUpdate(rawBody,existing)`; bestehende Feature-/Modellnormalisierung weiterverwenden. Auf dem vollständigen Updatepreview `validateAgentPluginPlanMutation({existing,...})` aufrufen. `store.update(id,update,{expectedRevision})` verwenden.
+- Archivänderung: `setArchived(id,archived,{expectedRevision})`; bei kombinierten Feld-/Archivupdates die neue Revision aus dem Feldsave verwenden oder gemischte Operationen explizit ablehnen, statt dieselbe alte Revision zweimal zu verwenden.
+- `PluginConflictError` als HTTP 409 mappen. Bestehende Name-/Ordner-/Subagent-Validierungen bleiben bestehen.
+- Agent-/Profile-/Bootstrap-Serializer und Browsertransport müssen `pluginSelection`, `revision`, `pluginMigration` durchreichen. `customAgentUpdateAffectsRuntime` muss pluginSelection berücksichtigen. Unveränderte ungelöste Auswahl bei reinen Metadatenedits darf nicht durch einen zweiten pauschalen Runtime-Check wieder unnötig uneditierbar werden.
+
+### 2. Runtime / AP13 — Auswahl darf nicht wieder expandieren
+
+`pibo.run-control`/`pibo_run_start` erhält aus der Migration `contributionConfig[localId].allowedToolNames`. Der Runtime-Worker muss diese genaue Allowlist beachten. Sie ist über den Namen des tatsächlichen Beitrags ermittelt, keine angenommene lokale ID.
+
+Das frühe `profileFromPluginPlan` setzte `toolPackages.runControl=true`, sobald run_start vorhanden war, und Goal-Control auf true, sobald irgendein Goaltool vorhanden war. Wenn danach ungebremst der alte Generator alle Ziele/Goaltools ergänzt, wird eine Teilmenge wieder verbreitert. Runtime/Tool-Lieferung muss nach dem effektiven Plan und der Allowlist filtern. Mein Baseline-/Migrationsbeweis ersetzt diesen Integrationsnachweis nicht.
+
+Die Runtime muss `isUnresolvedAgentPluginMigration` vor Aktivierung beachten und unbekannte Legacyprofile konservativ behandeln. Bei fehlenden/inkompatiblen Pluginreferenzen keine Ersatztools oder automatische Runtime wählen.
+
+### 3. Produktive Migration / echte AP12–14-Manifeste
+
+Die Migration ist ausführbar und getestet, aber absichtlich nicht automatisch beim AgentStore-Konstruktor gestartet. Der Parent muss sie nach AP11/AP12–14 mit tatsächlichen installierten Familienmanifesten, AP00-Owner-Mapping, beiden Storeinstanzen und Backuproot aufrufen. Nur der Parent besitzt die Defaultkomposition und Start-/Recoveryintegration.
+
+MCP-/Feature-Config-Werte, Filter und Secret-Referenzen müssen in derselben Managementjournal-Operation über die vorhandenen Owner-Config-Etappen mitgeführt werden. Mein Agent-Block inventarisiert Serverauswahl, erstellt aber keinen konkurrierenden globalen MCP-Config-Store und behauptet keine globale MCP-Konfigurationsmigration.
+
+Für einen Konflikt, den der Nutzer ausdrücklich als **leere** Auswahl akzeptieren möchte, fehlt noch ein dedizierter Bestätigungs-/Reconciliation-Flow. Ein gültig veränderter Auswahlsnapshot kann die alte Konfliktauswahl bereits unterscheiden; eine identische leere Auswahl nicht. Bis dahin bleibt dieser Fall sicher blockiert statt still freigegeben.
+
+### 4. Browser-Settings und verbleibende Altshell
+
+`AgentsView`-Props in beiden Renderwegen/der neuen Shell mit fester Sessionidentität und `onOpenPluginSettings` verbinden. Der Browser öffnet den qualifizierten Besitzer-Tab/Unterbereich und verwendet den übergebenen echten Konfigurationsscope. Keine ausstehende Aktion auf die inzwischen ausgewählte Session umbiegen.
+
+Zur geordneten Kompilierbarkeit bleiben wenige ausdrücklich **nicht ausführbare Tombstone-Exports** für noch vorhandene Browserimports: PiPackageCatalogItem als Lesetyp, piPackageMeta als Inaktivitätslabel, PiPackageDetails als reiner Entfernungshinweis; alte Pi-Package-/MCP-API-Funktionen werfen lokal ohne Netzwerk/Mutation. Die ursprünglichen Paketkarten und Designer-Schreibflächen sind entfernt. Der Parent/Browser-Worker entfernt diese letzten Imports zusammen mit den alten Settings/MCP-Flächen. Das ist Übergangsschuld und kein vollständiger AP18-Retirementnachweis.
+
+### 5. Noch fehlende Akzeptanz
+
+Kein headful Browser-Use-/CDP-Nachweis des produktiven Designers, keine vollständige Gateway-/API-End-to-End-Abnahme, keine Installation des gesamten Kandidaten, kein AP11/AP19-/Pibo2-Nachweis. Der React-Verhaltenstest belegt Pflicht-/Optionalinteraktion, Scopeziele und verspätete Antworten, nicht visuelle Produktabnahme.
+
+## Handoff
+
+Der frühe und fortgeschriebene Schnittstellenvertrag steht in `/tmp/pibo-plugin-rebuild-research/contract-designer.md`. Keine weiteren APs oder Folgearbeiten werden von diesem Worker gestartet. Der Parent kann den geprüften Zwischenstand integrieren, die genannten Grenzen offen ausweisen und die gemeinsamen Änderungen sichern.
+
+Letzte Nachprüfung nach dem letzten Source-Edit: derselbe neue Testsatz erneut **22/22 bestanden**, Exit 0; Log `/tmp/pibo-plugin-rebuild-research/designer-final-source-tests.log`. Keine weiteren Sourceänderungen danach.

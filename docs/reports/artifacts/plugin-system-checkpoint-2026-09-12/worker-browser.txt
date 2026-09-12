@@ -1,0 +1,132 @@
+# Worker browser — geordneter Zwischenstand
+
+Stand: 2026-09-12, 06:38 UTC. **Nicht als vollständige AP07/AP08/AP09/AP11/AP17-Abnahme freigegeben.** Der Orchestrator hat einen geordneten Abschluss angeordnet; keine weitere breite Extraktion, kein Gatewaystart und keine Browser-Abnahme in diesem Zwischenstand.
+
+## Arbeitsgrenzen
+
+- Quelländerungen ausschließlich in `/root/code/pibo/.worktrees/plugin-system-rebuild`.
+- Ausführung ausschließlich über `docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock ...`.
+- Keine Commits, Pushes, PRs, zusätzlichen Container/Worktrees/Subagents, Host-Gateway- oder Pibo2-Änderungen.
+- Keine Produktdatenmutation außerhalb der Testfixtures. Assettests erzeugen temporäre Verzeichnisse im Dockerworker und räumen diese auf.
+- Designer-Dateien wurden nicht bearbeitet. Dessen zwischenzeitlich entfernte Pi-Package/MCP-API-Exporte wurden in den Browser-eigenen Aufrufern berücksichtigt.
+- Parent-Korrekturen an `plugin-browser-routes.ts` und `build-context-view.tsx` wurden gelesen und erhalten.
+
+## Implementierte Dateien und Verhalten
+
+### Browserkatalog und Assets
+
+`src/apps/chat/plugin-browser-routes.ts`
+
+- `pluginBrowserRoute`, `pluginBrowserCatalog`, `handlePluginBrowserRoute`.
+- GET `/api/chat/plugin-browser/catalog`, immutable `/api/chat/plugin-browser/assets/:pluginId/:revision/*`, GET `/api/chat/sessions/:id/plugin-plan`.
+- SDK-DTO-Projektion ohne ArtifactRoot/Source/Store-Revision/Service-Objekte.
+- Sessionzugriff vor Planlesen; Antwort muss derselben Pibo Session gehören.
+- Nur aktive/zugelassene Revision, erlaubte Assettypen, Realpath-/Traversal-/Symlinkprüfung.
+- Parent hat Root-Entry-/Sibling-Backend-Isolation und ungültige URL-Encoding-Behandlung ergänzt. Diese bleiben unverändert.
+- Dispatcher besitzt Authentisierung. Handler startet keine Runtime und verbindet kein MCP.
+
+### Gemeinsamer Browserhost
+
+`src/apps/chat-ui/src/plugins/browser-host.tsx`
+
+- Dynamischer ESM-Import ausschließlich effektiver, revisionspassender Browsermodule.
+- `PluginBrowserSetup` injiziert dieselbe React-/SDK-Instanz sowie PluginScope und feste Session-ID.
+- Manifest-`view.exportName`; registrierte Renderer, Composer-Hooks und Shell; Registrierungen dürfen nur effektive eigene Contribution-IDs verwenden.
+- Fehlerdiagnose pro Plugin; Setup-Rollback räumt Renderer/Hooks/Views auf; verspäteter Import nach Disposal montiert keine View.
+- `PluginArtifact`, `readPluginArtifact`, Error Boundary, Schema-/Owner-Prüfung und Textfallback.
+- Envelope wird direkt oder unter `pluginArtifact` bzw. `structuredContent.pluginArtifact` erkannt.
+- `runPluginInputHooks`: Reihenfolge, Transformationsprovenienz, Reject, Timeout, Cancellation; kein stiller Send-Fallback nach Fehlern.
+- `sessionPluginRequest` fixiert `/api/chat/sessions/:id/plugins/:pluginId/<path>` und AbortSignal.
+
+### Tabsets, Konfiguration und Workspace
+
+`plugins/session-tab-controller.ts`, `plugins/plugin-workspace.tsx`, `plugins/plugin-settings.tsx`
+
+- Exakte SDK-Tabsets und Tabinstanzen; feste Session-ID, qualifizierte View-ID und gepinnte Pluginrevision.
+- Öffnen nur aus effektivem Plan und passendem Browserkatalog; Singleton-/Multiple-Instanzregeln.
+- CAS-Persistenz über Management-Routen; serialisierte Saves behalten ursprüngliche Session und übernehmen keine global wechselnde Auswahl.
+- Konflikt hält lokale Daten fest, verhindert weiteres Überschreiben und bietet Export sowie explizites Laden des Serverstands.
+- Unteransicht und View-State liegen im Tabset. Sichtbare App-/Agent-/Session-Konfigurationsziele mit eigenen CAS-Revisionen; Editorinstanz hält ursprüngliches Ziel.
+- Manifestbasierte Öffnen-/Subview-Navigation, Tastaturnavigation, Shift-Pfeil-Reordering, Missing-Plugin-Platzhalter mit erhaltenem State, bewusster v1-Import.
+- Deep Links enthalten Session, View, Instanz und Unteransicht; Linkpfad ist `/sessions/:id`.
+- Read-only Recovery-/Stateexport und Installationsverwaltung sind implementiert, aber noch nicht als echte Userflows abgenommen.
+
+### Build Context
+
+`plugins/build-context-view.tsx`
+
+- Management-Snapshotliste und gespeicherte Builds; fehlende Befunde werden nicht aus aktuellen Katalogen erfunden.
+- Generische Provenienzknoten mit Auswahl, Herkunft, Revisionen, Kontextwirkung, Inhalt/Redaktion, Transformationen, Delivery, Vorgängern, Tokenkennzeichnung und Besitzerlinks.
+- Parent hat die separate Vorschau auf `/plugin-plan?kind=preview` vereinheitlicht. UI verlangt explizit `plan.kind === 'preview'` und passende Session-ID.
+- Keine Aufrufe des alten Runtime-erzeugenden Context-Build-Pfads.
+
+### Vorbereitete Builtin-Exports / Produktanschluss
+
+`plugins/builtin-browser-entry.tsx`
+
+- Exportiert `BuildContextView`, `UserResourcesView`, `AgentDesignerView`, `WorkflowsView`, `CronView`, `LoopsView`.
+- User-Kontextdateien, User-Skills und Prompteditoren verwenden vorhandene Eigentümer/APIs; keine künstlichen Drittanbieter-Ressourcenplugins.
+- **Diese Exporte sind noch kein installierter, vorgebauter Default-Pluginumfang.** Manifest-/Artifact-/Build-Anschluss bleibt offen.
+
+`App.tsx`
+
+- `PluginWorkspaceProvider` um den Chat und `PluginWorkspaceTabs` statt des alten Desktop-Tabsidebars.
+- Eine gemeinsame Session-/Terminal-Shell statt zweier ausgeführter Desktop-/Narrow-Featureunions; kompakte mobile Umschaltung zwischen Sessions/Terminal/Plugins vorbereitet.
+- Alte direkte Context-/Settings-/VSCode-Renderzweige entfernt.
+- **Wichtig:** Ersatzmanifeste und gemeinsame Browserbuilds fehlen noch. Deshalb sind bisherige Defaultflächen damit aktuell nicht vollständig erreichbar. Dies ist ein Integrationszwischenstand, kein migrationsfertiger Produktstand und kein Releasekandidat.
+- Einige alte Navigations-/Tabhilfen und ungenutzte Imports in App bleiben als weitere gezielte Bereinigung offen; nicht als vollständige Legacy-Entfernung werten.
+
+`composer/Composer.tsx`, `terminal-file-drop-target.tsx`, `session-views/compact-terminal/CompactTerminalSessionView.tsx`
+
+- Tatsächlicher Composer-Sendpfad führt registrierte Send-Hooks aus; Text bleibt bei Fehlern erhalten. Bestehende IME-Enter-Prüfung bleibt bestehen.
+- Text-Paste führt Hooks aus, hält Auswahl/Fokus und verwirft verspätete Ergebnisse bei geändertem Text oder abgebrochener Session.
+- File-Drop führt Hooks mit Dateimetadaten aus; Reject/Fehler verhindert Upload. Datei-Transformation ist ausdrücklich nicht unterstützt und wird nicht scheinbar angewandt.
+- Default Compact Terminal erkennt Plugin-Envelopes in `row.output` und verwendet generischen Renderer/Fallback.
+
+`settings/SettingsView.tsx`, `app-agent-catalog-mutations.ts`, `context/McpToolsView.tsx`
+
+- Zwischenzeitlich vom Designer entfernte Pi-Package-API-/Typimporte und nicht mehr benutzte Package-Mutationen bereinigt.
+- Ausführbare Pi-Package-Settings entfernt; Legacyfläche zeigt Migrationshinweis.
+- `UserSkillsSettings` exportiert und erhalten.
+- Legacy-MCP-Contextfläche ist nur noch lesender Migrationsbefund; kein zweiter schreibender Kontexteditor.
+
+## Tatsächlich ausgeführte Checks
+
+1. Erster UI-Typecheck: blockiert durch den damaligen parallelen Designer-Syntaxfehler `AgentsView.tsx:876 TS1381`.
+   - Log: `browser-typecheck-1.log`.
+2. Erster eigener Testlauf: fehlgeschlagen wegen eines falschen relativen Imports im neuen Testfile. Import korrigiert.
+   - Log: `browser-tests-1.log`.
+3. Zweiter Lauf: **20/20 Tests bestanden**; UI-Typecheck meldete zwei Fehler im neuen Builtin-Adapter (Autosave-Prop, CreateSession-Response). Korrigiert.
+   - Log: `browser-validation-2.log`.
+4. Abschließende Integration zeigte inzwischen entfernte Designer-Package-/MCP-Exporte. Browser-Aufrufer bereinigt; keine Designeränderungen überschrieben.
+5. **Finaler eigener Lauf, 06:37 UTC: Exit 0.**
+   - `node --import tsx --test src/apps/chat-ui/src/plugins/plugin-browser.test.mjs`: **20 Tests, 20 bestanden, 0 fehlgeschlagen**.
+   - `npm run chat-ui:typecheck`: **Exit 0**.
+   - Gemeinsames Log: `/tmp/pibo-plugin-rebuild-research/browser-validation-final.log`.
+
+Abgedeckt: fixe Session/Planrevision, unabhängige Instanzen, persistiertes A→B→A/Reload-Modell, verspätete A-Saves während B, serialisierte Edits, Two-Browser-CAS, Cross-Session-Ablehnung, Deep-Link-Daten, feste Configtargets, tatsächlicher dynamischer Hostloader mit injiziertem React/SDK, Rollback, undeclared contribution, Late-Import-Disposal, Hookreihenfolge/Reject/Timeout/Cancel, API-Namespace, Katalogprojektion, Assetrevision/Traversal/Symlink/Backend-Isolation und ausschließlich gespeicherte Buildbefunde.
+
+Der Parent meldete zusätzlich drei grüne Asset-Negativtests. Diese sind Parent-Evidence, nicht Teil der obigen 20 selbst ausgeführten Tests.
+
+**Nicht ausgeführt:** vollständiger Produktbuild, vollständige Regression, installierter Browsermodul-/Shared-React-End-to-End-Test, headful Browser Use, CDP-Userflow, Screenshot/Responsive-Abnahme, AP11 Annotationen-Durchstich, echte Two-Browser-HTTP-Konfliktprobe. Auf ausdrückliche Parent-Anweisung wurde kein Gateway gestartet.
+
+## Präzise offene Integrationspunkte / bekannte Grenzen
+
+1. **Default-Manifest/Build ist der Hauptblocker.** Die UI-only Builtinexports müssen über dieselben normalen Installationen/Manifeste, immutable Browserassets und effektiven Infrastrukturbeiträge bereitgestellt werden. Gemeinsamer React-/Query-/Router-Modulgraph ist bei den importierenden Builtin-Komponenten zwingend; empfohlen ist der bereits gemeldete gemeinsame Vite-Multi-Entry-Build. Externe einfache Module können `setup({React,sdk})` ohne private Reactkopie verwenden.
+2. Parent muss authentisierten Dispatcher, Same-Origin-Mutationsprüfungen, Katalogrevision und tatsächlichen Sessionplan/`kind=preview` verbinden bzw. dessen fertigen Stand prüfen. Agent-/Room-ID gehören in den Plan-Response für feste Scopeanzeige. Browserworker hat web-app/gateway/store nicht verändert.
+3. AP11 Annotationen braucht den normalen Plugin-Artefakt-/Backendpfad, Session-API und Envelope-Produktion. Die generischen Browserflächen sind vorhanden, **der Durchstich ist nicht durchgeführt**.
+4. Route-/Designer-/Workflow-Navigation ist noch nicht vollständig auf Manifest-Metadaten/`openView` verdrahtet. `pibo:plugin-navigation` aus dem Builtinadapter braucht den generischen Workspace-Empfänger. Alte Routeaktionen dürfen keine ungebundenen Tabs erzeugen. Deep-Link-/Back-/Forward-Verhalten ist bisher nur modellseitig, nicht mit Router/Browser belegt.
+5. **Provider-Lifecycle weiter prüfen:** `SessionWorkspace` erstellt derzeit bei Session-Remount einen neuen Controller. Modelltests beweisen späte sessionfeste Writes, aber noch nicht das reale schnelle A→B→A während eines unbestätigten A-Saves. Eine Provider-eigene Controllerhaltung bzw. garantierte Flush-/Load-Reihenfolge fehlt als nachgewiesener UI-Vertrag.
+6. React StrictMode/Unmount-/Keep-alive-AbortSignal-Verhalten ist noch nicht durch React-/Browser-Verhaltenstests abgesichert. Die aktuellen memoisierten AbortController brauchen insbesondere bei StrictMode-Effect-Replay Prüfung. Nicht als abgenommene Subscription-/Late-Save-Garantie ausgeben.
+7. Designeradapter übergibt Autosave auf Scope-Abbruch; ein wirklich awaitbarer Before-Leave-/Close-Guard und gespeicherter Designer-Instanzzustand fehlen. Workflowinternes Routing/State ebenfalls vollständig auf Plugin-Tabstate migrieren.
+8. Registrierter Shellersatz existiert, aber die Recoverybedienung liegt noch in den übergebenen Children. Ein Shellprovider, der Children nicht rendert, kann sie verdecken. Recovery muss für die vollständige Abnahme außerhalb der ersetzbaren Shell liegen.
+9. Terminalanschluss ist bislang Compact-Terminal-`row.output`; andere Trace-/historische Projektionen müssen denselben Envelope behalten. Textfallback allein beweist nicht unverändertes Paging/Ordering/Scrollverhalten. Kein Replay externer Aktionen wurde eingebaut.
+10. Hooktransformationen werden im Runner erfasst, aber noch nicht als tatsächliche Runtime-Build-/Turnbefunde persistiert. Text-Paste ist angeschlossen, Image-Paste noch nicht durch denselben Hookpfad; File-Drop unterstützt nur accept/reject von Metadaten, keine transformierende Uploadadapter. Cancel/IME/Fokus benötigen echte Browsertests.
+11. Generic Settings JSON-Editor ist CAS-/targetfest, aber Plugin-Config-Schemaversion für neue Snapshots ist derzeit 1; von tatsächlichem Manifest ableiten. Kontext-/Settings-Unteransicht und vollständiger Editorzustand sind nicht in allen übernommenen Legacykomponenten persistiert. User-Ressourcenexporte sind vorhanden, aber ohne Defaultinstallation noch nicht als erreichbar bewiesen.
+12. Buildsnapshot-Leser akzeptiert `nodes`, `pluginProvenance.nodes`, `plan.nodes`; finalen Runtime-Snapshotvertrag genau abgleichen. Vorschauumschaltung ist noch lokaler Reactstate. Besitzerlinks und fehlende Pluginhistorie bedürfen AP11-Evidence.
+13. Management-UI bietet Inspect/Install/Activate/Uninstallplan/Confirm/Resume/Cancel und zeigt Fehler; Produktionsflow nicht geprüft. New-install verwendet erwartete Revision 0, kein fertig abgenommener Update-/Reinstall-Wizard. Nicht als AP17 abgeschlossen markieren.
+14. Vollständige Legacy-VSCode-/Pi-Package-/Featureeditor-Entfernung und Navigationsinventar bleiben im integrierten Gesamtumbau zu auditieren. Historische Typ-/Routewerte können als Migrationsbefunde verbleiben, dürfen aber keine entfernten APIs aufrufen.
+
+## Abschlussbewertung
+
+Ein substanzieller Browserhost-, CAS-Modell-, Settings-/Inspector- und UI-Anschlussblock liegt mit 20 grünen fokussierten Tests und grünem Chat-UI-Typecheck vor. **Es fehlt weiterhin die funktionsfähige Default-Pluginzusammenstellung samt echter Browser- und AP11-Abnahme.** Der Parent sollte diesen Stand nur als gesicherten Implementierungszwischenstand behandeln, nicht als abgeschlossenes Pluginprodukt.

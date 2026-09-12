@@ -1,0 +1,34 @@
+# Browser contract — 2026-09-12
+
+Owner browser. SDK DTOs in `plugins/sdk.ts` are authoritative; no parallel tab/config/manifest model.
+
+## Chosen implementation exports (being written)
+
+- `src/apps/chat/plugin-browser-routes.ts`: `pluginBrowserRoute(pathname, method)` and `handlePluginBrowserRoute({route, request, installations, catalogRevision, assertSessionAccess, getSessionPlan})`. Dispatcher MUST authenticate before invoking. GET `/api/chat/plugin-browser/catalog`; GET `/api/chat/plugin-browser/assets/:pluginId/:revision/*`; GET `/api/chat/sessions/:id/plugin-plan`. Asset roots come ONLY from installed immutable artifact metadata, traversal/symlink escape rejected. No runtime creation during reads. `getSessionPlan(id)` injected by integration returns the stored effective generation plan or separate pure preview when no generation exists. Response `{plan, agentId?, roomId?}`; catalog is exact SDK projection.
+- UI browser module runtime `plugins/browser-host.tsx` exports host types and React bridge. Prebuilt ESM modules export manifest-declared `view.exportName` components, plus optional `setup(host)` for registered terminal renderers, composer hooks and shell. Shared imports MUST resolve to the same host React/SDK: initial supported packaging contract is `setup({React, sdk, ...})` with module component exports implemented using the supplied React (no bundled private React). Parent build can additionally publish shared ESM import-map assets later; do not bundle a second React. Host passes fixed `tab`, `piboSessionId`, state/updateState, scoped request and AbortSignal. Registrations are constrained to effective declared contribution IDs and own lifecycle.
+- `plugins/session-tab-controller.ts`: per-session controller owns SDK CAS tabset, serialized saves, original-session closure, explicit conflict/reload keeping local edits for export. Switching session does not retarget controller. No implicit v1 migration.
+- `plugins/plugin-workspace.tsx`: same manifest-driven workspace at desktop/narrow; generic subview/config scopes, missing-plugin fallback and recovery independent of loaded shell.
+- `plugins/build-context-view.tsx`: recorded builds list/read from management API, distinct pure preview from session plan; no legacy context-build API calls.
+
+## Parent/Core/Runtime dependencies
+
+1. Wire authenticated browser route handler in web-app; pass active installations/catalog revision and a **read-only** session plan resolver. Use same effective plan as runtime; never bootstrap runtime or connect MCP. Need actual session agentId/roomId for fixed scope labels.
+2. Build annotations browser module against this registration contract; ordinary manifest view export receives bridge, can render content/settings/context. Need authenticated plugin-owned annotation query/command endpoint retaining existing API if desired, authoritative session from bound request context. Terminal envelope follows `PluginArtifactEnvelope`, renderer registration keyed by qualified contributionId.
+3. Build actual snapshots require data shaped as `{nodes: PluginBuildProvenanceNode[], ...}` or `{plan:EffectivePluginPlan,...}` with actual recorded nodes; runtime please publish exact data shape before UI completion.
+4. Parent coordinates Docker gateway readiness for headful Browser Use/CDP validation. Browser worker will not start/stop it independently.
+5. Shared browser public package entry/build metadata owned by Parent. I will expose concrete browser-safe module types locally and provide exact package export requirement after implementation. Existing static product surfaces will be moved behind generic registrations, not added as new App feature cases.
+
+This is a handoff, not acceptance evidence. Progress/results will be in worker-browser.md.
+
+## Browser implementation checkpoint (06:16 UTC)
+Browser routes and UI modules now exist under owned paths. Parent: wire pluginBrowserRoute/handlePluginBrowserRoute; catalog/asset/plan exports match above. UI pure preview now explicitly requests GET /api/chat/sessions/:id/plugin-preview returning {plan} with kind preview. Please supply this separately, NOT generation plan. Browser ViewProps request is session-bound /api/chat/sessions/:id/plugins/:pluginId/<relative-path> (no query currently); annotations integration please expose /annotations reads/writes here or publish existing-adapter needs.
+Shared browser module exports/types are in src/apps/chat-ui/src/plugins/browser-host.tsx: PluginBrowserSetup, PluginViewProps, PluginRendererProps. setup receives same React and sdk singleton; external modules export manifest view component. registerRenderer(id,schemaVersion,Component), registerHook({descriptor,run}), registerShell(id,Component). Per-session scope owns cleanup.
+Initial chat-ui typecheck blocked by concurrent Designer AgentsView.tsx:876 TS1381; browser files not diagnosed yet. No edits to Designer.
+
+## Parent request: browser build + readiness
+Please provide coordinated gateway readiness when browser routes wired. UI integration will replace DesktopTabSidebar with PluginWorkspaceTabs and wrap App in PluginWorkspaceProvider (same narrow/Desktop host). For builtins I am adding UI-owned plugins/builtin-browser-entry.tsx exports BuildContextView, UserResourcesView, AgentDesignerView, WorkflowsView, CronView, LoopsView. Parent needs ordinary builtin manifest(s) and Vite multi-entry build sharing React chunks (recommended: add builtin-browser-entry.tsx as additional Rollup input alongside index.html so no private React instance). Serve/copy its output + shared chunks through immutable browser artifact path and manifest view.exportName. No App feature cases needed. Existing modules use React imports; shared multi-entry output is required for these builtin entries. External annotations module can use setup({React}) injection without any React import.
+
+## Abschluss-Steering / authoritative checkpoint (2026-09-12 06:38 UTC)
+Parent requested orderly stop before reset. Final report: worker-browser.md. Own focused tests 20/20 and chat-ui:typecheck exit 0 (browser-validation-final.log). No gateway/browser acceptance. This is NOT a completed AP07–11/AP17 product migration.
+Preview endpoint above is superseded by Parent: GET /api/chat/sessions/:id/plugin-plan?kind=preview (not /plugin-preview). Parent root-entry/sibling-backend isolation fixes retained.
+App now consumes provider/workspace and has removed duplicate rendering branches, but ordinary builtin manifests/immutable browser build integration are still missing; default feature access is therefore incomplete. Do not release this intermediate composition. See report for exact lifecycle, routing, hook-evidence, recovery-shell and user-resource acceptance gaps. No further source work planned during this shutdown turn.
