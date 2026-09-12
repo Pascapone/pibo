@@ -196,19 +196,19 @@ export function debug(message: string): void {
   }
 }
 
+function readIntegerEnv(name: string, fallback: number, minimum = 1): number {
+  const value = process.env[name];
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return !Number.isNaN(parsed) && parsed >= minimum ? parsed : fallback;
+}
+
 /**
  * Get configured timeout in milliseconds
  * @env MCP_TIMEOUT - timeout in seconds (default: 1800 = 30 minutes)
  */
 export function getTimeoutMs(): number {
-  const envTimeout = process.env.MCP_TIMEOUT;
-  if (envTimeout) {
-    const seconds = Number.parseInt(envTimeout, 10);
-    if (!Number.isNaN(seconds) && seconds > 0) {
-      return seconds * 1000;
-    }
-  }
-  return DEFAULT_TIMEOUT_MS;
+  return readIntegerEnv('MCP_TIMEOUT', DEFAULT_TIMEOUT_SECONDS) * 1000;
 }
 
 /**
@@ -216,14 +216,7 @@ export function getTimeoutMs(): number {
  * @env MCP_CONCURRENCY - max parallel connections (default: 5)
  */
 export function getConcurrencyLimit(): number {
-  const envConcurrency = process.env.MCP_CONCURRENCY;
-  if (envConcurrency) {
-    const limit = Number.parseInt(envConcurrency, 10);
-    if (!Number.isNaN(limit) && limit > 0) {
-      return limit;
-    }
-  }
-  return DEFAULT_CONCURRENCY;
+  return readIntegerEnv('MCP_CONCURRENCY', DEFAULT_CONCURRENCY);
 }
 
 /**
@@ -231,14 +224,7 @@ export function getConcurrencyLimit(): number {
  * @env MCP_MAX_RETRIES - max retry attempts (default: 3, use 0 to disable retries)
  */
 export function getMaxRetries(): number {
-  const envRetries = process.env.MCP_MAX_RETRIES;
-  if (envRetries) {
-    const retries = Number.parseInt(envRetries, 10);
-    if (!Number.isNaN(retries) && retries >= 0) {
-      return retries;
-    }
-  }
-  return DEFAULT_MAX_RETRIES;
+  return readIntegerEnv('MCP_MAX_RETRIES', DEFAULT_MAX_RETRIES, 0);
 }
 
 /**
@@ -246,14 +232,7 @@ export function getMaxRetries(): number {
  * @env MCP_RETRY_DELAY - base delay in milliseconds (default: 1000)
  */
 export function getRetryDelayMs(): number {
-  const envDelay = process.env.MCP_RETRY_DELAY;
-  if (envDelay) {
-    const delay = Number.parseInt(envDelay, 10);
-    if (!Number.isNaN(delay) && delay > 0) {
-      return delay;
-    }
-  }
-  return DEFAULT_RETRY_DELAY_MS;
+  return readIntegerEnv('MCP_RETRY_DELAY', DEFAULT_RETRY_DELAY_MS);
 }
 
 // ============================================================================
@@ -273,14 +252,7 @@ export function isDaemonEnabled(): boolean {
  * @env MCP_DAEMON_TIMEOUT - timeout in seconds (default: 60)
  */
 export function getDaemonTimeoutMs(): number {
-  const envTimeout = process.env.MCP_DAEMON_TIMEOUT;
-  if (envTimeout) {
-    const seconds = Number.parseInt(envTimeout, 10);
-    if (!Number.isNaN(seconds) && seconds > 0) {
-      return seconds * 1000;
-    }
-  }
-  return DEFAULT_DAEMON_TIMEOUT_SECONDS * 1000;
+  return readIntegerEnv('MCP_DAEMON_TIMEOUT', DEFAULT_DAEMON_TIMEOUT_SECONDS) * 1000;
 }
 
 /**
@@ -288,14 +260,7 @@ export function getDaemonTimeoutMs(): number {
  * @env MCP_DAEMON_REQUEST_TIMEOUT - timeout in seconds (default: 60)
  */
 export function getDaemonRequestTimeoutMs(): number {
-  const envTimeout = process.env.MCP_DAEMON_REQUEST_TIMEOUT;
-  if (envTimeout) {
-    const seconds = Number.parseInt(envTimeout, 10);
-    if (!Number.isNaN(seconds) && seconds > 0) {
-      return seconds * 1000;
-    }
-  }
-  return DEFAULT_DAEMON_REQUEST_TIMEOUT_SECONDS * 1000;
+  return readIntegerEnv('MCP_DAEMON_REQUEST_TIMEOUT', DEFAULT_DAEMON_REQUEST_TIMEOUT_SECONDS) * 1000;
 }
 
 function getDaemonUserKey(platform: NodeJS.Platform): string {
