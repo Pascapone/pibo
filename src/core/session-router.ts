@@ -89,6 +89,7 @@ import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthStatus,
 	AgentRuntimeAuthTargetOperationResult,
+	AgentRuntimeModelCatalog,
 	AgentRuntimeSession,
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
@@ -193,6 +194,7 @@ const MAX_SUBAGENT_THREAD_KEY_BYTES = 512;
 const MAX_AGENT_OBSERVATIONS = 5_000;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
+const PASSIVE_MODEL_CATALOG_TTL_MS = 5_000;
 
 export const LOOP_RUNTIME_RETRY_DEFAULTS = {
 	enabled: true,
@@ -618,6 +620,7 @@ export class PiboSessionRouter {
 	private readonly pendingStartAborts = new Map<string,AbortController>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
 	private readonly passiveModelCatalogDiscoveries = new Map<string, Promise<void>>();
+	private readonly passiveModelCatalogs = new Map<string, { catalog: AgentRuntimeModelCatalog; expiresAt: number }>();
 	private readonly passiveModelCatalogRetryAfter = new Map<string, number>();
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly outputRenderSequencer: OutputRenderSequencer;
@@ -747,12 +750,30 @@ export class PiboSessionRouter {
 			?? "off";
 	}
 
+	private peekPassiveModelCatalog(runtimeInstanceId: string): AgentRuntimeModelCatalog | undefined {
+		const cached = this.passiveModelCatalogs.get(runtimeInstanceId);
+		if (!cached) return undefined;
+		if (cached.expiresAt <= Date.now()) {
+			this.passiveModelCatalogs.delete(runtimeInstanceId);
+			return undefined;
+		}
+		return cached.catalog;
+	}
+
 	private schedulePassiveModelCatalogDiscovery(adapter: AgentRuntimeAdapter): boolean {
 		if (!adapter.listModels) return false;
+		if (this.peekPassiveModelCatalog(adapter.instanceId)) return false;
 		if (this.passiveModelCatalogDiscoveries.has(adapter.instanceId)) return true;
 		if ((this.passiveModelCatalogRetryAfter.get(adapter.instanceId) ?? 0) > Date.now()) return true;
 		const discovery = Promise.resolve()
-			.then(async () => { await adapter.listModels!(); })
+			.then(async () => {
+				const catalog = await adapter.listModels!();
+				this.passiveModelCatalogs.set(adapter.instanceId, {
+					catalog,
+					expiresAt: Date.now() + PASSIVE_MODEL_CATALOG_TTL_MS,
+				});
+				this.passiveModelCatalogRetryAfter.delete(adapter.instanceId);
+			})
 			.catch(() => {
 				this.passiveModelCatalogRetryAfter.set(adapter.instanceId, Date.now() + 1_000);
 			})
@@ -788,7 +809,7 @@ export class PiboSessionRouter {
 			piboSession: stored,
 			modelDefaults: this.resolveModelDefaults(),
 		});
-		const catalog = adapter.peekModelCatalog?.();
+		const catalog = this.peekPassiveModelCatalog(adapter.instanceId) ?? adapter.peekModelCatalog?.();
 		if (!selectedModel || !catalog) {
 			const discoveryScheduled = Boolean(selectedModel) && this.schedulePassiveModelCatalogDiscovery(adapter);
 			return {

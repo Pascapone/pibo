@@ -1198,6 +1198,50 @@ test("passive thinking recovers from a cold catalog through one bounded adapter 
  }
 });
 
+test("passive thinking retains a bounded listModels catalog when peekModelCatalog is absent", async () => {
+ const fixture = createFakeRuntimeFixture();
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ fixture.store.update("ps_router_fake", { activeModel: { provider: "fixture", id: "reasoning-model" }, metadata: { initialThinkingLevel: "medium" } });
+ delete adapter.peekModelCatalog;
+ const originalNow = Date.now;
+ let now = originalNow();
+ let listCalls = 0;
+ adapter.listModels = async () => {
+  listCalls++;
+  return {
+   runtimeInstanceId: "router-fake",
+   models: [{ provider: "fixture", id: "reasoning-model", reasoningOptions: listCalls === 1 ? ["off", "medium"] : ["off", "high"] }],
+  };
+ };
+ Date.now = () => now;
+ try {
+  const cold = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(cold.result.availability, "unavailable");
+  assert.equal(cold.result.retryable, true);
+  await waitFor(() => listCalls === 1);
+  await delay(0);
+
+  const recovered = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.deepEqual({ availability: recovered.result.availability, supported: recovered.result.supported, level: recovered.result.level, availableLevels: recovered.result.availableLevels }, { availability: "ready", supported: true, level: "medium", availableLevels: ["off", "medium"] });
+  assert.equal(adapter.openInputs.length, 0, "listModels-only recovery must not open an agent session");
+
+  now += 5_001;
+  const expired = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(expired.result.availability, "unavailable");
+  assert.equal(expired.result.retryable, true);
+  await waitFor(() => listCalls === 2);
+  await delay(0);
+  const refreshed = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.deepEqual(refreshed.result.availableLevels, ["off", "high"]);
+  assert.equal(adapter.openInputs.length, 0);
+ } finally {
+  Date.now = originalNow;
+  await fixture.router.disposeAll();
+ }
+});
+
 test("thinking menu remains responsive during the owner session's active provider turn", async () => {
  const fixture = createFakeRuntimeFixture({}, { waitForAbort: true });
  const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
