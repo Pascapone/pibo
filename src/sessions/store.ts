@@ -67,10 +67,19 @@ export type FindPiboSessionsInput = {
 	activeModel?: ModelProfile | null;
 };
 
+export type PiboSessionStructureChanges = {
+	cursor: number;
+	structureRevision: number;
+	complete: boolean;
+	sessionIds: string[];
+};
+
 export type PiboSessionStore = {
 	get(id: string): PiboSession | undefined;
 	list?(): PiboSession[];
 	getStructureRevision?(): number;
+	getStructureChangeCursor?(): number;
+	getStructureChangesSince?(cursor: number): PiboSessionStructureChanges;
 	create(input: CreatePiboSessionInput): PiboSession;
 	update(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
 	delete?(id: string): boolean;

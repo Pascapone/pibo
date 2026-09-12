@@ -13,6 +13,7 @@ import {
 	type FindPiboSessionsInput,
 	type PiboSession,
 	type PiboSessionStore,
+	type PiboSessionStructureChanges,
 	type UpdatePiboSessionInput,
 } from "./store.js";
 import {
@@ -112,7 +113,44 @@ export class PiboDataSessionStore implements PiboSessionStore {
 		return row ? sessionFromRow(row) : undefined;
 	}
 
-	getStructureRevision():number { return (this.db.prepare("SELECT revision FROM chat_navigation_clock WHERE id=1").get() as {revision:number}).revision; }
+	getStructureRevision(): number {
+		return (this.db.prepare("SELECT revision FROM chat_navigation_clock WHERE id=1").get() as { revision: number }).revision;
+	}
+
+	getStructureChangeCursor(): number {
+		return (this.db.prepare("SELECT COALESCE(MAX(sequence),0) AS cursor FROM chat_navigation_changes").get() as { cursor: number }).cursor;
+	}
+
+	getStructureChangesSince(cursor: number): PiboSessionStructureChanges {
+		const readBounds = () => this.db.prepare(`
+			SELECT
+				(SELECT revision FROM chat_navigation_clock WHERE id=1) AS structure_revision,
+				COALESCE(MIN(sequence),0) AS minimum_cursor,
+				COALESCE(MAX(sequence),0) AS cursor
+			FROM chat_navigation_changes
+		`).get() as { structure_revision: number; minimum_cursor: number; cursor: number };
+		const before = readBounds();
+		if (cursor >= before.cursor) {
+			return { cursor: before.cursor, structureRevision: before.structure_revision, complete: true, sessionIds: [] };
+		}
+		const rows = this.db.prepare(`
+			SELECT sequence,session_id FROM chat_navigation_changes
+			WHERE sequence>?
+			ORDER BY sequence
+			LIMIT 1025
+		`).all(cursor) as Array<{ sequence: number; session_id: string }>;
+		const after = readBounds();
+		const journalContainsCursor = before.minimum_cursor === 0 || cursor >= before.minimum_cursor - 1;
+		const reachedCurrentCursor = rows.at(-1)?.sequence === before.cursor;
+		const stable = before.cursor === after.cursor && before.structure_revision === after.structure_revision;
+		const complete = stable && journalContainsCursor && rows.length <= 1024 && reachedCurrentCursor;
+		return {
+			cursor: before.cursor,
+			structureRevision: before.structure_revision,
+			complete,
+			sessionIds: complete ? [...new Set(rows.map((row) => row.session_id))] : [],
+		};
+	}
 
 	list(): PiboSession[] {
 		return (this.db.prepare(`${SESSION_SELECT} WHERE s.deleted_at IS NULL ORDER BY s.updated_at DESC`).all() as SessionRow[]).map(sessionFromRow);

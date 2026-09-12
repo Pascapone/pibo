@@ -177,4 +177,33 @@ CREATE TRIGGER IF NOT EXISTS chat_navigation_binding_update AFTER UPDATE ON sess
 WHEN OLD.runtime_instance_id IS NOT NEW.runtime_instance_id OR OLD.native_session_id IS NOT NEW.native_session_id OR OLD.revision IS NOT NEW.revision
 BEGIN UPDATE chat_navigation_clock SET revision=revision+1 WHERE id=1; END;
 CREATE TRIGGER IF NOT EXISTS chat_navigation_binding_delete AFTER DELETE ON session_runtime_bindings BEGIN UPDATE chat_navigation_clock SET revision=revision+1 WHERE id=1; END;
+CREATE TABLE IF NOT EXISTS chat_navigation_changes(sequence INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS chat_navigation_change_session_insert AFTER INSERT ON sessions BEGIN
+  INSERT INTO chat_navigation_changes(session_id) VALUES(NEW.id);
+  DELETE FROM chat_navigation_changes WHERE sequence<=last_insert_rowid()-4096;
+END;
+CREATE TRIGGER IF NOT EXISTS chat_navigation_change_session_delete AFTER DELETE ON sessions BEGIN
+  INSERT INTO chat_navigation_changes(session_id) VALUES(OLD.id);
+  DELETE FROM chat_navigation_changes WHERE sequence<=last_insert_rowid()-4096;
+END;
+CREATE TRIGGER IF NOT EXISTS chat_navigation_change_session_update AFTER UPDATE ON sessions
+WHEN OLD.title IS NOT NEW.title OR OLD.profile IS NOT NEW.profile OR OLD.parent_id IS NOT NEW.parent_id OR OLD.origin_id IS NOT NEW.origin_id OR OLD.metadata_json IS NOT NEW.metadata_json OR OLD.deleted_at IS NOT NEW.deleted_at OR OLD.active_model_json IS NOT NEW.active_model_json OR OLD.room_id IS NOT NEW.room_id
+BEGIN
+  INSERT INTO chat_navigation_changes(session_id) VALUES(NEW.id);
+  DELETE FROM chat_navigation_changes WHERE sequence<=last_insert_rowid()-4096;
+END;
+CREATE TRIGGER IF NOT EXISTS chat_navigation_change_binding_insert AFTER INSERT ON session_runtime_bindings BEGIN
+  INSERT INTO chat_navigation_changes(session_id) VALUES(NEW.pibo_session_id);
+  DELETE FROM chat_navigation_changes WHERE sequence<=last_insert_rowid()-4096;
+END;
+CREATE TRIGGER IF NOT EXISTS chat_navigation_change_binding_update AFTER UPDATE ON session_runtime_bindings
+WHEN OLD.runtime_instance_id IS NOT NEW.runtime_instance_id OR OLD.native_session_id IS NOT NEW.native_session_id OR OLD.revision IS NOT NEW.revision
+BEGIN
+  INSERT INTO chat_navigation_changes(session_id) VALUES(NEW.pibo_session_id);
+  DELETE FROM chat_navigation_changes WHERE sequence<=last_insert_rowid()-4096;
+END;
+CREATE TRIGGER IF NOT EXISTS chat_navigation_change_binding_delete AFTER DELETE ON session_runtime_bindings BEGIN
+  INSERT INTO chat_navigation_changes(session_id) VALUES(OLD.pibo_session_id);
+  DELETE FROM chat_navigation_changes WHERE sequence<=last_insert_rowid()-4096;
+END;
 `;

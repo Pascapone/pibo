@@ -12,6 +12,7 @@ import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
@@ -171,6 +172,163 @@ test("store revision rebuild reparents, detaches, and deletes authoritative sign
 		assert.equal(statuses.sessions.ps_reparented, undefined);
 	} finally {
 		await router.disposeAll();
+	}
+});
+
+test("Pibo data session structure changes reconcile incrementally across store connections", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "pibo-session-structure-changes-"));
+	const path = join(directory, "pibo.sqlite");
+	const dataStore = new PiboDataStore(path);
+	const writerDataStore = new PiboDataStore(path);
+	const store = new PiboDataSessionStore(dataStore);
+	const writer = new PiboDataSessionStore(writerDataStore);
+	for (const input of [
+		{ id: "ps_parent_a", kind: "chat" },
+		{ id: "ps_parent_b", kind: "chat" },
+		{ id: "ps_reparented", kind: "subagent", parentId: "ps_parent_a" },
+	]) writer.create({ channel: "pibo.test", profile: "base", ...input });
+	const originalList = store.list.bind(store);
+	let listCalls = 0;
+	store.list = () => {
+		listCalls += 1;
+		return originalList();
+	};
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		assert.equal(listCalls, 1);
+		listCalls = 0;
+		writer.update("ps_reparented", { parentId: "ps_parent_b" });
+		let snapshot = router.snapshotSignalSession("ps_reparented");
+		assert.equal(snapshot.rootPiboSessionId, "ps_parent_b");
+		assert.equal(snapshot.sessions.ps_reparented.parentPiboSessionId, "ps_parent_b");
+		assert.equal(listCalls, 0, "one foreign write is reconciled without rescanning all sessions");
+
+		writer.update("ps_reparented", { parentId: null });
+		snapshot = router.snapshotSignalSession("ps_reparented");
+		assert.equal(snapshot.rootPiboSessionId, "ps_reparented");
+		assert.equal(snapshot.sessions.ps_reparented.parentPiboSessionId, undefined);
+		assert.equal(listCalls, 0);
+
+		writer.create({ id: "ps_inserted", channel: "pibo.test", kind: "subagent", profile: "base", parentId: "ps_parent_a" });
+		writer.update("ps_inserted", { parentId: "ps_parent_b" });
+		assert.equal(writer.delete("ps_reparented"), true);
+		const statuses = router.snapshotSignalStatuses();
+		assert.equal(statuses.sessions.ps_reparented, undefined);
+		const inserted = router.snapshotSignalSession("ps_inserted");
+		assert.equal(inserted.sessions.ps_inserted.parentPiboSessionId, "ps_parent_b");
+		assert.equal(inserted.rootPiboSessionId, "ps_parent_b");
+		assert.equal(listCalls, 0, "batched insert, reparent, and delete changes are not swallowed");
+	} finally {
+		await router.disposeAll();
+		writerDataStore.close();
+		dataStore.close();
+		await rm(directory, { recursive: true, force: true });
+	}
+});
+
+test("Pibo data session structure journal falls back after overflow without losing final state", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "pibo-session-structure-overflow-"));
+	const path = join(directory, "pibo.sqlite");
+	const dataStore = new PiboDataStore(path);
+	const writerDataStore = new PiboDataStore(path);
+	const store = new PiboDataSessionStore(dataStore);
+	const writer = new PiboDataSessionStore(writerDataStore);
+	for (const input of [
+		{ id: "ps_parent_a", kind: "chat" },
+		{ id: "ps_parent_b", kind: "chat" },
+		{ id: "ps_overflow", kind: "subagent", parentId: "ps_parent_a" },
+	]) writer.create({ channel: "pibo.test", profile: "base", ...input });
+	const originalList = store.list.bind(store);
+	let listCalls = 0;
+	store.list = () => {
+		listCalls += 1;
+		return originalList();
+	};
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		assert.equal(listCalls, 1);
+		listCalls = 0;
+		const cursor = store.getStructureChangeCursor();
+		for (let index = 0; index < 4_097; index += 1) {
+			writer.update("ps_overflow", { parentId: index % 2 === 0 ? "ps_parent_b" : "ps_parent_a" });
+		}
+		assert.equal(store.getStructureChangesSince(cursor).complete, false, "the bounded journal reports its pruned gap");
+		const snapshot = router.snapshotSignalSession("ps_overflow");
+		assert.equal(snapshot.rootPiboSessionId, "ps_parent_b");
+		assert.equal(snapshot.sessions.ps_overflow.parentPiboSessionId, "ps_parent_b");
+		assert.equal(listCalls, 1, "overflow uses one conservative full reconciliation");
+	} finally {
+		await router.disposeAll();
+		writerDataStore.close();
+		dataStore.close();
+		await rm(directory, { recursive: true, force: true });
+	}
+});
+
+test("Pibo data session structure journal migrates existing data and survives router restart", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "pibo-session-structure-migration-"));
+	const path = join(directory, "pibo.sqlite");
+	const bootstrapDataStore = new PiboDataStore(path);
+	const bootstrapStore = new PiboDataSessionStore(bootstrapDataStore);
+	bootstrapStore.create({ id: "ps_parent_a", channel: "pibo.test", kind: "chat", profile: "base" });
+	bootstrapStore.create({ id: "ps_parent_b", channel: "pibo.test", kind: "chat", profile: "base" });
+	bootstrapStore.create({ id: "ps_migrated", channel: "pibo.test", kind: "subagent", profile: "base", parentId: "ps_parent_a" });
+	bootstrapDataStore.db.exec(`
+		DROP TRIGGER chat_navigation_change_session_insert;
+		DROP TRIGGER chat_navigation_change_session_delete;
+		DROP TRIGGER chat_navigation_change_session_update;
+		DROP TRIGGER chat_navigation_change_binding_insert;
+		DROP TRIGGER chat_navigation_change_binding_update;
+		DROP TRIGGER chat_navigation_change_binding_delete;
+		DROP TABLE chat_navigation_changes;
+	`);
+	bootstrapDataStore.close();
+
+	const dataStore = new PiboDataStore(path);
+	const writerDataStore = new PiboDataStore(path);
+	const store = new PiboDataSessionStore(dataStore);
+	const writer = new PiboDataSessionStore(writerDataStore);
+	assert.equal(store.getStructureChangeCursor(), 0, "migration starts a fresh journal after existing rows");
+	let listCalls = 0;
+	const originalList = store.list.bind(store);
+	store.list = () => {
+		listCalls += 1;
+		return originalList();
+	};
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		assert.equal(listCalls, 1, "existing rows are projected once during migrated startup");
+		listCalls = 0;
+		writer.update("ps_migrated", { parentId: "ps_parent_b" });
+		assert.equal(router.snapshotSignalSession("ps_migrated").rootPiboSessionId, "ps_parent_b");
+		assert.equal(listCalls, 0);
+	} finally {
+		await router.disposeAll();
+		dataStore.close();
+	}
+
+	writer.update("ps_migrated", { parentId: null });
+	const restartedDataStore = new PiboDataStore(path);
+	const restartedStore = new PiboDataSessionStore(restartedDataStore);
+	let restartedLists = 0;
+	const restartedList = restartedStore.list.bind(restartedStore);
+	restartedStore.list = () => {
+		restartedLists += 1;
+		return restartedList();
+	};
+	const restartedRouter = new PiboSessionRouter({ persistSession: false, sessionStore: restartedStore });
+	try {
+		assert.equal(restartedLists, 1);
+		assert.equal(restartedRouter.snapshotSignalSession("ps_migrated").rootPiboSessionId, "ps_migrated");
+		restartedLists = 0;
+		writer.update("ps_migrated", { parentId: "ps_parent_a" });
+		assert.equal(restartedRouter.snapshotSignalSession("ps_migrated").rootPiboSessionId, "ps_parent_a");
+		assert.equal(restartedLists, 0, "post-restart foreign writes remain incremental");
+	} finally {
+		await restartedRouter.disposeAll();
+		restartedDataStore.close();
+		writerDataStore.close();
+		await rm(directory, { recursive: true, force: true });
 	}
 });
 

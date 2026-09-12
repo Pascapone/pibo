@@ -628,6 +628,7 @@ export class PiboSessionRouter {
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
 	private projectedSessionStructureRevision?: number;
+	private projectedSessionStructureChangeCursor?: number;
 	private projectedKnownSessionIds = new Set<string>();
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly portableToolService: PiboPortableToolService;
@@ -3345,6 +3346,30 @@ export class PiboSessionRouter {
 		for (let attempt = 0; attempt < 2; attempt += 1) {
 			const beforeRevision = this.sessionStore.getStructureRevision?.();
 			if (beforeRevision !== undefined && beforeRevision === this.projectedSessionStructureRevision) return;
+			if (
+				beforeRevision !== undefined
+				&& this.projectedSessionStructureRevision !== undefined
+				&& this.projectedSessionStructureChangeCursor !== undefined
+				&& this.sessionStore.getStructureChangesSince
+			) {
+				const changes = this.sessionStore.getStructureChangesSince(this.projectedSessionStructureChangeCursor);
+				if (changes.complete && changes.structureRevision === beforeRevision) {
+					for (const sessionId of changes.sessionIds) {
+						const session = this.sessionStore.get(sessionId);
+						if (session) {
+							this.signalRegistry.project({ type: "session_created", session });
+							this.projectedKnownSessionIds.add(sessionId);
+						} else {
+							this.signalRegistry.removeSession?.(sessionId);
+							this.projectedKnownSessionIds.delete(sessionId);
+						}
+					}
+					this.projectedSessionStructureRevision = changes.structureRevision;
+					this.projectedSessionStructureChangeCursor = changes.cursor;
+					if (this.sessionStore.getStructureRevision?.() === changes.structureRevision) return;
+					continue;
+				}
+			}
 			const sessions = this.sessionStore.list?.() ?? [];
 			const currentSessionIds = new Set(sessions.map((session) => session.id));
 			for (const previousSessionId of this.projectedKnownSessionIds) {
@@ -3358,12 +3383,15 @@ export class PiboSessionRouter {
 				this.signalRegistry.project({ type: "session_created", session });
 			}
 			this.projectedKnownSessionIds = currentSessionIds;
+			const afterChangeCursor = this.sessionStore.getStructureChangeCursor?.();
 			const afterRevision = this.sessionStore.getStructureRevision?.();
 			if (beforeRevision !== undefined && beforeRevision === afterRevision) {
 				this.projectedSessionStructureRevision = beforeRevision;
+				this.projectedSessionStructureChangeCursor = afterChangeCursor;
 				return;
 			}
 			this.projectedSessionStructureRevision = undefined;
+			this.projectedSessionStructureChangeCursor = undefined;
 		}
 	}
 
