@@ -1,4 +1,5 @@
 import { fork } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { boundedInteger, type DeadLetterInput, type BoundedDeadLetters, type InspectionBudget } from "./output-dead-letters.js";
@@ -26,6 +27,14 @@ export async function runOutputInspection(input: InspectionRequest, options: {
 	signal?: AbortSignal;
 	onProgress?: (result: InspectionResult) => void;
 } = {}): Promise<InspectionResult> {
+	for (const key of ["since", "before"] as const) {
+		if (input[key] && !Number.isFinite(Date.parse(input[key]!))) throw new Error(`${key} must be an ISO date`);
+	}
+	if (input.since && input.before && Date.parse(input.since) >= Date.parse(input.before)) throw new Error("since must be earlier than before");
+	if (input.afterStream !== undefined) boundedInteger(input.afterStream, 1, Number.MAX_SAFE_INTEGER, "after-stream");
+	if (input.beforeStream !== undefined) boundedInteger(input.beforeStream, 1, Number.MAX_SAFE_INTEGER, "before-stream");
+	if (input.afterStream !== undefined && input.beforeStream !== undefined && input.afterStream >= input.beforeStream) throw new Error("after-stream must be less than before-stream");
+	input = { ...input, ...(input.since ? { since: new Date(input.since).toISOString() } : {}), ...(input.before ? { before: new Date(input.before).toISOString() } : {}) };
 	const timeoutMs = boundedInteger(input.timeoutMs, 1000, 3_600_000, "timeout-ms");
 	const maxScan = boundedInteger(input.maxScan, 1000, 1_000_000, "max-scan");
 	const limit = boundedInteger(input.limit, 50, 1000, "limit");
@@ -41,6 +50,8 @@ export async function runOutputInspection(input: InspectionRequest, options: {
 		scope: { piboSessionId: input.piboSessionId, since: input.since, before: input.before, limit },
 		budget: { complete: false, elapsedMs: 0, scannedRows: 0, maxScan, timeoutMs }, findings: [], summary: null,
 	};
+	const runId = randomUUID();
+	latest.budget.runId = runId;
 	if (options.signal?.aborted) { latest.budget.reason = "cancelled"; return latest; }
 	return new Promise((resolve, reject) => {
 		let reason: "cancelled" | "time_limit" | undefined;
@@ -54,7 +65,7 @@ export async function runOutputInspection(input: InspectionRequest, options: {
 		if (options.signal?.aborted) cancel();
 		child.on("message", (message: { type: string; result?: InspectionResult; error?: string }) => {
 			if (reason) return;
-			if (message.result) { latest = message.result; options.onProgress?.(latest); }
+			if (message.result) { latest = message.result; latest.budget = { ...latest.budget, runId, workerPid: child.pid }; options.onProgress?.(latest); }
 			if (message.type === "result") receivedResult = true;
 			if (message.type === "error") error = new Error(message.error ?? "Output inspection failed");
 		});

@@ -694,10 +694,7 @@ function sessionTraceStatusSql(
 ): { sql: string; params: SqlValue[] } {
 	const clauses: string[] = [];
 	const params: SqlValue[] = [];
-	if (piboSessionId) {
-		clauses.push("latest.session_id = ?");
-		params.push(piboSessionId);
-	}
+	if (piboSessionId) params.push(piboSessionId);
 	if (since) {
 		clauses.push("latest.created_at >= ?");
 		params.push(since);
@@ -714,6 +711,7 @@ function sessionTraceStatusSql(
 			FROM event_log
 			WHERE session_id IS NOT NULL
 				AND type IN ('message_started', 'message_finished', 'session_error')
+				${piboSessionId ? "AND session_id = ?" : ""}
 		), latest AS (
 			SELECT session_id, type, created_at
 			FROM ranked_status_events

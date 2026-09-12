@@ -319,10 +319,24 @@ async function runDebugRepair(args: string[]): Promise<void> {
 		const jobIndex = args.indexOf("--job");
 		const jobId = jobIndex >= 0 ? args[jobIndex + 1] : undefined;
 		if (!jobId || jobId.startsWith("-")) throw new Error("pibo debug repair output-collision requires --job <dead-job-id>");
-		const allowed = new Set(["--job", jobId, "--json", "--dry-run", "--apply", "--keep-existing"]);
+		const digestIndex = args.indexOf("--expected-digest");
+		const expectedDigest = digestIndex < 0 ? undefined : args[digestIndex + 1];
+		const bytesIndex = args.indexOf("--max-bytes");
+		const maxBytes = bytesIndex < 0 ? undefined : args[bytesIndex + 1];
+		if (digestIndex >= 0 && (!expectedDigest || expectedDigest.startsWith("-"))) throw new Error("--expected-digest requires a value");
+		if (bytesIndex >= 0 && (!maxBytes || maxBytes.startsWith("-"))) throw new Error("--max-bytes requires a value");
+		const allowed = new Set(["--job", jobId, "--json", "--dry-run", "--apply", "--keep-existing", "--equivalent", "--expected-digest", "--max-bytes", ...(expectedDigest ? [expectedDigest] : []), ...(maxBytes ? [maxBytes] : [])]);
 		const unknown = args.slice(1).find((arg) => !allowed.has(arg));
 		if (unknown) throw new Error(`Unknown output collision repair option "${unknown}"`);
 		if (args.includes("--apply") && args.includes("--dry-run")) throw new Error("Choose either --dry-run or --apply");
+		if (args.includes("--equivalent")) {
+			if (args.includes("--keep-existing")) throw new Error("Choose proven --equivalent or operator --keep-existing, not both");
+			const { reconcileOutputCollisionEquivalence } = await import("./output-collision-equivalence.js");
+			const result = await reconcileOutputCollisionEquivalence({ dataStore: resolveDebugStore("pibo-data"), reliabilityStore: resolveDebugStore("reliability"), jobId, apply: args.includes("--apply"), expectedDigest, maxBytes: maxBytes === undefined ? undefined : Number(maxBytes) });
+			console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : ["pibo debug repair output-collision", `mode\t${result.mode}`, `repairable\t${result.repairable}`, `evidenceDigest\t${result.evidenceDigest}`, `applied\t${result.applied}`, `idempotent\t${result.idempotent}`, "effect\trecord-equivalence-decision-only; dead letter preserved; no replay", ...result.deliveries.map(item => `${item.deliveryId}\t${item.classification}\t${item.reason}`)].join("\n"));
+			return;
+		}
+		if (digestIndex >= 0 || bytesIndex >= 0) throw new Error("--expected-digest and --max-bytes require --equivalent");
 		const { repairOutputCollision } = await import("./output-collision-repair.js");
 		const result = repairOutputCollision({ dataStore: resolveDebugStore("pibo-data"), reliabilityStore: resolveDebugStore("reliability"), jobId, apply: args.includes("--apply"), keepExisting: args.includes("--keep-existing") });
 		console.log(args.includes("--json") ? JSON.stringify(result, null, 2) : [
@@ -1483,7 +1497,7 @@ Budgets (formatVersion 2):
   --limit n          Detail results, default 50 (max 1000); not a work limit
   --max-scan n       Conservative row-visit allowance, default 1000 (max 1000000)
   --timeout-ms n     Hard reader process lifetime, default 1000 (max 3600000)
-  Full counts/JSON grouping happen only within explicit budgets. Exceeding a budget returns
+  Results are capped at 1 MiB. Full counts/JSON grouping happen only within explicit budgets. Exceeding a budget returns
   health=unknown, summary=null. Increase the budget explicitly to restart a deep audit.
   Lifecycle time scope applies to MAX(created_at) of whole groups, never clipped events.
   Ctrl-C terminates the reader; audit never writes or migrates either store.
@@ -1513,6 +1527,7 @@ Budgets (formatVersion 2):
   --after-stream n   Relationship stream lower bound (exclusive)
   --before-stream n  Relationship stream upper bound (exclusive)
   Counts describe this page only; global total is null. Sparse scopes consume scan budget.
+  Results are capped at 1 MiB. Payloads over 64 KiB remain unvalidated, never called malformed.
   Pages are live reads, not a cross-page snapshot; concurrent inserts behind the cursor need a new traversal.
   Ctrl-C kills the reader and closes its snapshot before returning the last checkpoint.
 
@@ -1530,6 +1545,14 @@ Usage:
   pibo debug repair output --session <pibo-session-id> [--since <iso-date>] [--before <iso-date>] [--limit n] [--dry-run|--apply] [--json]
   pibo debug repair output-collision --job <dead-job-id> [--dry-run] [--json]
   pibo debug repair output-collision --job <dead-job-id> --apply --keep-existing [--json]
+  pibo debug repair output-collision --job <dead-job-id> --equivalent [--dry-run] [--max-bytes 262144] [--json]
+  pibo debug repair output-collision --job <dead-job-id> --equivalent --apply --expected-digest <dry-run-digest> [--json]
+
+Collision decisions:
+  --keep-existing is an operator decision without comparing bodies.
+  --equivalent classifies each delivery using Storage's exact persisted fingerprint proof.
+  Safe apply requires unchanged dry-run evidence and proven equivalence for every delivery.
+  Both modes preserve dead letters and historical fingerprints and never replay side effects.
 
 Behavior:
   Dry-run is the default. --apply is required for every mutation.

@@ -5,13 +5,17 @@ import type { OutputIntegrityFinding, OutputPersistenceDeadLetters } from "./out
 import type { ResolvedPiboDebugStore } from "./stores.js";
 
 export type InspectionBudget = {
+	runId?: string;
+	workerPid?: number;
 	complete: boolean;
-	reason?: "result_limit" | "scan_limit" | "time_limit" | "cancelled";
+	reason?: "result_limit" | "scan_limit" | "time_limit" | "byte_limit" | "cancelled";
 	elapsedMs: number;
 	scannedRows: number;
 	maxScan: number;
 	timeoutMs: number;
 	nextCursor?: string;
+	maxResultBytes?: number;
+	returnedBytes?: number;
 };
 export type DeadLetterInput = {
 	dataStore: ResolvedPiboDebugStore;
@@ -51,6 +55,7 @@ export const DEAD_LETTER_PAGE_SQL = `SELECT job_id AS jobId, queue, attempts, ma
 type Row = { jobId: string; queue: string; attempts: number; maxAttempts: number; deadAt: string; deadReason: string | null; collision: number; payloadBytes: number; payloadJson: string };
 
 export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (result: BoundedDeadLetters) => void): BoundedDeadLetters {
+	if (input.piboSessionId && Buffer.byteLength(input.piboSessionId) > 1024) throw new Error("Session scope exceeds 1024 bytes");
 	const limit = boundedInteger(input.limit, 50, 1000, "limit");
 	const maxScan = boundedInteger(input.maxScan, 1000, 1_000_000, "max-scan");
 	const timeoutMs = boundedInteger(input.timeoutMs, 1000, 3_600_000, "timeout-ms");
@@ -59,7 +64,7 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 	let after = "";
 	if (input.cursor) {
 		try {
-			if (input.cursor.length > 8192) throw new Error();
+			if (input.cursor.length > 16384) throw new Error();
 			const cursor = JSON.parse(Buffer.from(input.cursor, "base64url").toString());
 			if (cursor.v !== 1 || cursor.scope !== scopeHash || typeof cursor.after !== "string") throw new Error();
 			after = cursor.after;
@@ -68,7 +73,7 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 	const result: BoundedDeadLetters = {
 		resultType: "debug.persistence.dead-letters", formatVersion: 2, readOnly: true,
 		scope: { piboSessionId: input.piboSessionId, since: input.since, before: input.before, limit },
-		budget: { complete: false, elapsedMs: 0, scannedRows: 0, maxScan, timeoutMs },
+		budget: { complete: false, elapsedMs: 0, scannedRows: 0, maxScan, timeoutMs, maxResultBytes: 1048576, returnedBytes: 0 },
 		summary: { deadOutputJobs: null, returnedDeadLetters: 0, identityCollisions: 0, relatedIdentityCollisions: 0, countsScope: "page" },
 		deadLetters: [], nextCommands: ["pibo debug persistence audit --help"],
 	};
@@ -93,7 +98,9 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 			// One candidate avoids advancing past unreturned findings; each statement releases its snapshot.
 			const row = page.get(after, 1) as Row | undefined;
 			if (!row) { result.budget.complete = true; break; }
+			if (Buffer.byteLength(row.jobId) > 1024) throw new Error("Dead-letter key exceeds the bounded cursor format");
 			result.budget.scannedRows++;
+			const previousCursor = after;
 			after = row.jobId;
 			if (!["output-persistence", "output-persistence-cli"].includes(row.queue)) { checkpoint(); continue; }
 			if (input.since && row.deadAt < input.since || input.before && row.deadAt >= input.before) { checkpoint(); continue; }
@@ -105,7 +112,7 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 			const finding: OutputIntegrityFinding = {
 				kind: "dead_output_job", jobId: row.jobId, queue: row.queue, attempts: row.attempts, maxAttempts: row.maxAttempts,
 				...(typeof sessionId === "string" ? { piboSessionId: sessionId } : {}), ...(typeof eventId === "string" ? { eventId } : {}),
-				lastAt: row.deadAt, payloadValid: Boolean(payload), identityCollision: Boolean(row.collision),
+				lastAt: row.deadAt, payloadValid: row.payloadBytes > 65536 ? undefined : Boolean(payload), identityCollision: Boolean(row.collision),
 				// Do not print arbitrary error/reason text, which may contain user content.
 				...(row.deadReason && /^(max_attempts|expired|permanent_failure|payload_malformed)$/.test(row.deadReason) ? { deadReason: row.deadReason } : {}),
 			};
@@ -118,6 +125,9 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 				if (collisions.some((item) => item.eventId === eventId && item.type === "pibo.output.identity_collision")) finding.relatedIdentityCollision = true;
 				else if (collisions.length < cap) finding.relatedIdentityCollision = false;
 			}
+			const bytes = Buffer.byteLength(JSON.stringify(finding));
+			if (result.budget.returnedBytes! + bytes > result.budget.maxResultBytes! - 16384) { after = previousCursor; result.budget.reason = "byte_limit"; break; }
+			result.budget.returnedBytes! += bytes;
 			result.deadLetters.push(finding);
 			if (finding.identityCollision) result.summary.identityCollisions++;
 			if (finding.relatedIdentityCollision) result.summary.relatedIdentityCollisions++;

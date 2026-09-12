@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { performance } from 'node:perf_hooks';
 import { inspectOutputDeadLetters, DEAD_LETTER_PAGE_SQL } from '../dist/debug/output-dead-letters.js';
 import { runOutputInspection } from '../dist/debug/output-inspection-runner.js';
@@ -61,7 +63,7 @@ test('time/result/work scopes are distinct; malformed and oversized bodies canno
   const db=new DatabaseSync(f.reliabilityStore.path);
   db.prepare(`UPDATE pibo_dead_jobs SET payload_json=?,last_error=?,dead_reason=? WHERE job_id='job_00000000'`).run('secret'.repeat(20000),'secret credentials','secret credentials'); db.close();
   const result=await runOutputInspection({...f,mode:'dead-letters',limit:1,maxScan:10,timeoutMs:1000});
-  assert.equal(result.budget.reason,'result_limit'); assert.equal(result.deadLetters[0].payloadValid,false);
+  assert.equal(result.budget.reason,'result_limit'); assert.equal(result.deadLetters[0].payloadValid,undefined,'over-budget payload is unvalidated, not falsely classified as malformed');
   assert.ok(!JSON.stringify(result).includes('secret'));
   const outside=await runOutputInspection({...f,mode:'dead-letters',since:'2026-09-02',maxScan:10});
   assert.equal(outside.budget.complete,true); assert.equal(outside.deadLetters.length,0);
@@ -83,16 +85,18 @@ test('deep audit guards real scans, reports unknown, and can be restarted with e
 test('audit cancellation waits for reader exit and releases a WAL snapshot before checkpoint', async () => {
  const f=fixture(10000);
  const writer=new DatabaseSync(f.reliabilityStore.path); writer.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0');
- const abort=new AbortController(); let observedReader=false;
+ const abort=new AbortController(); let observedReader=false; let checkpointBlocked=false;
  try {
   const result=await runOutputInspection({...f,mode:'audit',maxScan:1000000,timeoutMs:1000},{signal:abort.signal,onProgress(progress){
    if(progress.budget.scannedRows>0 && !observedReader){
     observedReader=true;
     writer.prepare("UPDATE pibo_dead_jobs SET attempts=2 WHERE job_id='job_00000000'").run();
+    const blocked=writer.prepare('PRAGMA wal_checkpoint(PASSIVE)').get();
+    checkpointBlocked=Number(blocked.log)>Number(blocked.checkpointed);
     abort.abort();
    }
   }});
-  assert.equal(observedReader,true); assert.equal(result.budget.reason,'cancelled'); assert.equal(result.health.status,'unknown');
+  assert.equal(observedReader,true); assert.equal(checkpointBlocked,true,'native reader pinned the pre-write WAL snapshot before cancellation'); assert.equal(result.budget.reason,'cancelled'); assert.equal(result.health.status,'unknown');
   const checkpoint=writer.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get(); assert.equal(Number(checkpoint.busy),0); assert.equal(Number(checkpoint.log),0);
   const retry=await runOutputInspection({...f,mode:'dead-letters',limit:1}); assert.equal(retry.deadLetters[0].attempts,2);
  } finally {writer.close();rmSync(f.root,{recursive:true,force:true});}
@@ -105,4 +109,18 @@ test('hard deadline and pre-abort cannot leave a read process active', async () 
   assert.equal(timed.budget.reason,'time_limit'); assert.equal(timed.budget.complete,false);
   const aborted=await runOutputInspection({...f,mode:'audit'},{signal:AbortSignal.abort()}); assert.equal(aborted.budget.reason,'cancelled');
  } finally {rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('30 actual CLI listings meet the interactive 250ms p95 budget on 10000 historical jobs',async()=>{
+ const f=fixture(10000),samples=[];
+ try{
+  for(let i=0;i<30;i++){
+   const start=performance.now();
+   const {stdout}=await promisify(execFile)(process.execPath,['dist/bin/pibo.js','debug','persistence','dead-letters','--limit','2','--max-scan','10','--json'],{env:{...process.env,PIBO_HOME:f.root},timeout:5000});
+   samples.push(performance.now()-start);
+   const page=JSON.parse(stdout);assert.equal(page.deadLetters.length,2);assert.ok(page.budget.scannedRows<=10);
+  }
+  samples.sort((a,b)=>a-b);console.log(JSON.stringify({cliSamples:30,fixtureJobs:10000,p95Ms:samples[28]}));
+  assert.ok(samples[28]<=250,`interactive CLI p95=${samples[28]}ms exceeds 250ms`);
+ }finally{rmSync(f.root,{recursive:true,force:true});}
 });

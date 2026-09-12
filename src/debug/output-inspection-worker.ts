@@ -44,7 +44,12 @@ process.once("message", (input: InspectionRequest) => {
 			send("progress", partial);
 			try {
 				const audit = inspectOutputIntegrity({ ...input, beforeQuery });
-				send("result", { ...audit, formatVersion: 2, budget: { ...partial.budget, complete: true, elapsedMs: performance.now() - started } });
+				const returnedBytes = Buffer.byteLength(JSON.stringify(audit));
+				if (returnedBytes > 1048576) {
+					partial.budget.reason = "byte_limit";
+					partial.budget.maxResultBytes = 1048576;
+					send("result", partial);
+				} else send("result", { ...audit, formatVersion: 2, budget: { ...partial.budget, complete: true, maxResultBytes: 1048576, returnedBytes, elapsedMs: performance.now() - started } });
 			} catch (error) {
 				if (!(error instanceof WorkLimit)) throw error;
 				partial.budget.reason = "scan_limit";
