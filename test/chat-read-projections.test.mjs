@@ -27,6 +27,53 @@ test('bounded history backfill resumes and merges concurrent insert update and d
   assert.equal(maintenance.step().processed,0);
  }finally{db.close();}
 });
+
+for (const projection of ['history', 'unread']) {
+ test(`${projection} backfill rolls back a failed cursor write and resumes within the time budget`, () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+   db.exec(`CREATE TABLE event_log(stream_id INTEGER PRIMARY KEY,session_id TEXT,session_sequence INTEGER,type TEXT,retention_class TEXT);
+    CREATE TABLE app_session_read_state(session_id TEXT PRIMARY KEY,last_read_stream_id INTEGER);
+    CREATE TABLE chat_messages(id TEXT PRIMARY KEY,session_id TEXT,sequence INTEGER,source_stream_id INTEGER,role TEXT,created_at TEXT);`);
+   if (projection === 'history') {
+    const insert = db.prepare("INSERT INTO chat_messages VALUES(?, 'session', ?, NULL, 'user', '2026-09-07')");
+    for (let i = 1; i <= 3; i++) insert.run('m' + i, i);
+   } else {
+    db.exec(`INSERT INTO event_log VALUES
+     (1, 'session', 1, 'message_finished', 'chat_message'),
+     (2, NULL, 2, 'message_finished', 'chat_message'),
+     (3, 'session', 3, 'message_finished', 'chat_message');`);
+   }
+   db.exec(CHAT_READ_PROJECTION_SCHEMA);
+   const maintenance = new ChatReadProjectionStore(db);
+   const cursorColumn = projection === 'history' ? 'cursor' : 'event_cursor';
+   const indexTable = projection === 'history' ? 'chat_history_index' : 'chat_unread_index';
+   const countColumn = projection === 'history' ? 'message_count' : 'unread_count';
+   const countTable = projection === 'history' ? 'chat_history_counts' : 'chat_unread_counts';
+   const initial = maintenance.status();
+   db.exec(`CREATE TRIGGER fail_backfill_cursor BEFORE UPDATE OF ${cursorColumn} ON chat_read_backfill
+    BEGIN SELECT RAISE(ABORT, 'backfill cursor failure'); END;`);
+
+   assert.throws(() => maintenance.step(3, Infinity), /backfill cursor failure/);
+   assert.deepEqual(maintenance.status(), initial);
+   assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM ${indexTable}`).get().count, 0);
+   db.exec('DROP TRIGGER fail_backfill_cursor');
+
+   const first = maintenance.step(3, 0);
+   assert.equal(first.processed, 1);
+   assert.equal(first[cursorColumn], 1);
+   assert.equal(first.complete, false);
+   const last = maintenance.step(3, Infinity);
+   assert.equal(last.processed, 2);
+   assert.equal(last[cursorColumn], 3);
+   assert.equal(last.complete, true);
+   const expectedCount = projection === 'history' ? 3 : 2;
+   assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM ${indexTable}`).get().count, expectedCount);
+   assert.equal(db.prepare(`SELECT ${countColumn} AS count FROM ${countTable} WHERE session_id='session'`).get().count, expectedCount);
+  } finally { db.close(); }
+ });
+}
+
 test('history coverage and keyset pages use indexed edges and preserve page boundaries',()=>{
  const store=new PiboDataStore(':memory:',{payloadRootDir:':memory:'});
  try{
