@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   adapterRef,
   createWorkflowRegistry,
+  dispatchWorkflowAdapterNode,
   edgeAdapter,
   json,
   recordWorkflowEdgeTransfer,
@@ -425,6 +426,40 @@ describe("workflow edge data transfer", () => {
     assert.equal(result.targetInput, "Adapter edges: Registered adapters can bridge JSON source output into text target input.");
     assert.equal(result.transfer.payload, "Adapter edges: Registered adapters can bridge JSON source output into text target input.");
     assert.equal(result.transfer.targetNodeId, "publish");
+  });
+
+  it("preserves adapter errors across visible nodes and edge transfers", async () => {
+    for (const [caught, message] of [
+      [new Error("Adapter rejected input."), "Adapter rejected input."],
+      [{ message: "Not an Error instance." }, "Workflow adapter failed with a non-Error value."],
+      [undefined, "Workflow adapter failed with a non-Error value."],
+    ] as const) {
+      const definition = createTwoNodeWorkflow();
+      const ref = adapterRef("test.adapters.failing");
+      definition.nodes.review = {
+        kind: "adapter",
+        mode: "deterministic",
+        handler: ref,
+        input: text(),
+        output: text(),
+      };
+      definition.edges["draft-to-review"].adapter = edgeAdapter(ref, text());
+      const registry = createWorkflowRegistry();
+      registerWorkflowAdapter(registry, ref.id, () => { throw caught; });
+
+      const nodeResult = await dispatchWorkflowAdapterNode(definition, createRun(), "review", "Input", { registry });
+      const edgeResult = await transferWorkflowEdgeAdapterData(
+        definition, createRun(), "draft-to-review", createSourceAttempt(), { registry },
+      );
+      assert.equal(nodeResult.ok, false);
+      assert.equal(edgeResult.ok, false);
+      const expected = { code: "WorkflowRuntimeError.adapterFailed", message };
+      assert.deepEqual(nodeResult.error, expected);
+      assert.deepEqual(edgeResult.error, expected);
+      assert.notEqual(nodeResult.error, edgeResult.error);
+      assert.equal(nodeResult.nodeAttempt?.error, nodeResult.error);
+      assert.deepEqual(nodeResult.events.map((event) => event.type), ["node.started", "node.failed"]);
+    }
   });
 
   it("rejects registered edge adapter output that does not satisfy the declared output port", async () => {
