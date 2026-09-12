@@ -15,7 +15,9 @@ async function runAppSignalStatusScenario() {
 			applySignalPatchToBootstrap,
 			applySignalSnapshotToBootstrap,
 			applySignalStatusPatch,
+			applySignalStatusPatches,
 			applySignalStatusPatchToBootstrap,
+			applySignalStatusPatchesToBootstrap,
 			applySignalStatusSnapshotToBootstrap,
 			retainSelectedSignalSnapshot,
 			shouldCommitSelectedSignalSnapshot,
@@ -196,6 +198,11 @@ async function runAppSignalStatusScenario() {
 		assert.equal(shouldReconcileSelectedSignalTree({ ...currentSignal, sessions: { "ps-root": signalSession({ isTreeActive: true }) } }, "ps-root", "idle"), true, "an active selected snapshot remains reconciled");
 		assert.equal(shouldCommitSelectedSignalSnapshot(null, currentSignal, "ps-root"), true);
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, { ...currentSignal, version: 0 }, "ps-root"), false, "a delayed REST snapshot cannot roll back a newer SSE version");
+		const oldEpochSignal = { ...currentSignal, epoch: "gateway-old", version: 100, generatedAt: "2026-05-27T00:30:00.000Z" };
+		const resetEpochSignal = { ...currentSignal, epoch: "gateway-new", version: 0, generatedAt: "2026-05-27T00:31:00.000Z" };
+		assert.equal(shouldCommitSelectedSignalSnapshot(oldEpochSignal, resetEpochSignal, "ps-root"), true, "a newer gateway epoch may reset its version to zero");
+		assert.equal(shouldCommitSelectedSignalSnapshot(resetEpochSignal, { ...oldEpochSignal, version: 101, generatedAt: "2026-05-27T00:30:30.000Z" }, "ps-root"), false, "a delayed snapshot from the retired epoch cannot replace the reset snapshot");
+		assert.deepEqual(applySelectedSignalPatch(resetEpochSignal, { ...patch, epoch: "gateway-old", fromVersion: 0 }, "ps-root"), { snapshot: resetEpochSignal, needsRefresh: true }, "patches from a retired epoch trigger snapshot recovery");
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, currentSignal, "ps-other"), false, "a previous session tree cannot replace the selected session tree");
 		assert.deepEqual(
 			applySelectedSignalPatch(currentSignal, patch, "ps-other"),
@@ -239,15 +246,68 @@ async function runAppSignalStatusScenario() {
 		assert.equal(applySignalStatusPatchToBootstrap(withGlobalStatuses, statusPatch).sessions[1].status, "idle");
 		assert.equal(patchedStatuses.snapshot.rootVersions["ps-other"], 4);
 		assert.equal(patchedStatuses.snapshot.sessions["ps-other"].isTreeActive, false);
+		const burst = Array.from({ length: 1000 }, (_, index) => ({
+			...statusPatch,
+			fromVersion: 3 + index,
+			toVersion: 4 + index,
+			generatedAt: new Date(Date.parse(statusPatch.generatedAt) + index).toISOString(),
+			sessionStatuses: [signalStatus({ piboSessionId: "ps-other", status: index === 999 ? "running" : "idle", isTreeActive: index === 999 })],
+		}));
+		const burstResult = applySignalStatusPatches(statusSnapshot, burst);
+		assert.equal(burstResult.needsRefresh, false);
+		assert.equal(burstResult.snapshot.rootVersions["ps-other"], 1003);
+		assert.equal(burstResult.snapshot.sessions["ps-other"].status, "running");
+		assert.equal(applySignalStatusPatchesToBootstrap(withGlobalStatuses, burst).sessions[1].status, "running");
+		assert.equal(applySignalStatusPatches(statusSnapshot, [statusPatch, { ...statusPatch, fromVersion: 99 }]).needsRefresh, true, "a gap invalidates the whole coalesced batch");
 		assert.equal(applySignalStatusPatch(statusSnapshot, { ...statusPatch, fromVersion: 99 }).needsRefresh, true, "a missed global patch requests reconciliation");
 		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:19:00.000Z" }), false, "a delayed global snapshot cannot roll state back");
-		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } }), true, "a newer gateway snapshot can reset root versions after restart");
+		assert.equal(shouldCommitSignalStatusSnapshot({ ...statusSnapshot, epoch: "gateway-old" }, { ...statusSnapshot, epoch: "gateway-new", generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } }), true, "a newer status epoch can reset root versions");
+		assert.equal(shouldCommitSignalStatusSnapshot({ ...statusSnapshot, epoch: "gateway-new", generatedAt: "2026-05-27T00:22:00.000Z" }, { ...statusSnapshot, epoch: "gateway-old", generatedAt: "2026-05-27T00:21:00.000Z" }), false, "a late status snapshot from the retired epoch stays fenced");
+		assert.equal(applySignalStatusPatches({ ...statusSnapshot, epoch: "gateway-new" }, [{ ...statusPatch, epoch: "gateway-old" }]).needsRefresh, true, "status patches cannot cross epochs");
+		assert.equal(shouldCommitSignalStatusSnapshot(statusSnapshot, { ...statusSnapshot, generatedAt: "2026-05-27T00:22:00.000Z", rootVersions: { "ps-root": 0, "ps-other": 0 } }), true, "a newer legacy gateway snapshot can reset root versions after restart");
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
 test("app signal status helpers preserve snapshot and patch semantics", async () => {
 	await assert.doesNotReject(runAppSignalStatusScenario());
+});
+
+test("stale signal generations are discarded before payload parsing", async () => {
+	const script = `
+		import assert from "node:assert/strict";
+		class FakeEventSource {
+			static current;
+			listeners = new Map();
+			closed = false;
+			constructor() { FakeEventSource.current = this; }
+			addEventListener(name, listener) { this.listeners.set(name, listener); }
+			close() { this.closed = true; }
+			dispatch(name, data) { this.listeners.get(name)?.({ data }); }
+		}
+		globalThis.EventSource = FakeEventSource;
+		const { subscribeSignalStatuses } = await import("./src/apps/chat-ui/src/api-trace-signals.ts");
+		let current = false;
+		let snapshots = 0;
+		let parseCalls = 0;
+		const originalParse = JSON.parse;
+		JSON.parse = (...args) => { parseCalls += 1; return originalParse(...args); };
+		try {
+			const unsubscribe = subscribeSignalStatuses({ isCurrent: () => current, onSnapshot: () => { snapshots += 1; } });
+			FakeEventSource.current.dispatch("signal_status_snapshot", "not-json");
+			assert.equal(parseCalls, 0);
+			assert.equal(snapshots, 0);
+			current = true;
+			FakeEventSource.current.dispatch("signal_status_snapshot", JSON.stringify({ type: "signal_status_snapshot", generatedAt: new Date().toISOString(), rootVersions: {}, sessions: {} }));
+			assert.equal(parseCalls, 1);
+			assert.equal(snapshots, 1);
+			unsubscribe();
+			assert.equal(FakeEventSource.current.closed, true);
+		} finally {
+			JSON.parse = originalParse;
+		}
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 });
 
 test("optimistic session status updates are not overwritten by the previous signal snapshot", () => {
@@ -260,16 +320,18 @@ test("the sidebar keeps one global status feed while selected signal updates sha
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 	const apiSource = readFileSync("src/apps/chat-ui/src/api-trace-signals.ts", "utf8");
 	assert.match(source, /if \(area === "sessions" && selectedBackendPiboSessionId\) return undefined/);
-	assert.match(source, /subscribeSignalStatuses\(signalStatusHandlers\)/, "unselected views keep the standalone global status feed");
+	assert.match(source, /subscribeSignalStatuses\(\{[\s\S]*isCurrent:/, "unselected views keep one generation-fenced global status feed");
 	assert.match(source, /onStatusSnapshot: \(snapshot: PiboSignalStatusSnapshot\)/);
 	assert.match(source, /onStatusPatch: \(patch: PiboSignalStatusPatch\)/);
-	assert.match(source, /subscribeSignalTree\(selectedBackendPiboSessionId, signalTreeHandlers\)/);
+	assert.match(source, /subscribeSignalTree\(selectedBackendPiboSessionId, \{[\s\S]*isCurrent:/);
 	assert.match(apiSource, /params\.set\("includeStatuses", "true"\)/, "selected tree and global status events use one EventSource");
-	assert.match(source, /fetchSignalStatuses\(\{ signal: controller\.signal \}\)/);
+	assert.match(source, /const signal = recoveryController\.signal;[\s\S]*fetchSignalStatuses\(\{ signal \}\)/);
 	assert.match(source, /applySignalStatusSnapshotToBootstrap\(current, snapshot\)/);
-	assert.match(source, /applySignalStatusPatchToBootstrap\(current, patch\)/);
-	assert.match(source, /if \(active && !commitSignalStatusPatch\(patch\)\) refreshSignalStatuses\(0\)/, "a missed global patch fetches a recovery snapshot");
-	assert.match(source, /refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\);[\s\S]*refreshSignalStatuses\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\)/, "a multiplexed SSE error reconciles both projections");
+	assert.match(source, /applySignalStatusPatchesToBootstrap\(current, patches\)/);
+	assert.match(source, /MAX_PENDING_SIGNAL_STATUS_PATCHES = 512/);
+	assert.match(source, /MAX_PENDING_SIGNAL_STATUS_UPDATES = 4_096/);
+	assert.match(source, /if \(!commitSignalStatusPatch\(patch\)\) refreshSignalStatuses\(0, streamGeneration\)/, "a missed global patch fetches a generation-bound recovery snapshot");
+	assert.match(source, /refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration\);[\s\S]*refreshSignalStatuses\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration\)/, "a multiplexed SSE error reconciles both projections within one generation");
 	assert.doesNotMatch(source, /SIGNAL_STATUS_RECONCILE_INTERVAL_MS|signalStatusReconcileTimer/, "healthy global status SSE must not trigger periodic full snapshots");
 	assert.match(source, /sessionStatusSignalsRef\.current\?\.sessions\[targetPiboSessionId\]/, "room events defer to app-global canonical signals");
 	assert.match(source, /overlayCurrentSignals\(\{ \.\.\.current, sessions: appendSessionRoots\(current\.sessions, page\.sessions\) \}\)/, "newly paged sessions receive cached global statuses immediately");
@@ -277,9 +339,10 @@ test("the sidebar keeps one global status feed while selected signal updates sha
 
 test("restored or newly visible pages reconnect and arm a delayed selected-tree fallback", () => {
 	const source = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
-	assert.match(source, /window\.addEventListener\("pageshow", reconnectSignalTree\)/);
-	assert.match(source, /document\.addEventListener\("visibilitychange", refreshVisibleSignalTree\)/);
-	assert.match(source, /unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS\)/);
+	assert.match(source, /window\.addEventListener\("pagehide", suspendSignalTree\)/);
+	assert.match(source, /window\.addEventListener\("pageshow", scheduleSignalTreeReconnect\)/);
+	assert.match(source, /document\.addEventListener\("visibilitychange", handleSignalTreeVisibility\)/);
+	assert.match(source, /generation \+= 1;[\s\S]*unsubscribeSignalTree\(\)[\s\S]*subscribeSignalTree[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS, streamGeneration\)/);
 });
 
 test("selected sessions recover missing snapshots and reconcile active turns without duplicating healthy stream snapshots", () => {
@@ -287,9 +350,9 @@ test("selected sessions recover missing snapshots and reconcile active turns wit
 	assert.match(source, /SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000/);
 	assert.match(source, /SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000/);
 	assert.match(source, /retainSelectedSignalSnapshot\(sessionSignalsRef\.current, selectedBackendPiboSessionId\)/);
-	assert.match(source, /\.catch\(\(\) => \{[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS\)/, "failed initial REST snapshots retry instead of being swallowed");
+	assert.match(source, /fetchSignalTree\(selectedBackendPiboSessionId, \{ signal \}\)[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, expectedGeneration\)/, "failed initial REST snapshots retry within the current generation");
 	assert.match(source, /shouldReconcileSelectedSignalTree\(sessionSignalsRef\.current, selectedBackendPiboSessionId, selectedSession\?\.status\)/);
-	assert.match(source, /unsubscribeSignalTree = subscribeSignalTree\(selectedBackendPiboSessionId, signalTreeHandlers\);[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS\)/);
-	assert.match(source, /window\.setInterval\([\s\S]*shouldReconcileSignalTree\(\)[\s\S]*refreshSignalSnapshot\(0\)[\s\S]*SIGNAL_TREE_RECONCILE_INTERVAL_MS/);
+	assert.match(source, /unsubscribeSignalTree = subscribeSignalTree\(selectedBackendPiboSessionId, \{[\s\S]*refreshSignalSnapshot\(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS, streamGeneration\)/);
+	assert.match(source, /window\.setInterval\([\s\S]*shouldReconcileSignalTree\(\)[\s\S]*refreshSignalSnapshot\(0, generation\)[\s\S]*SIGNAL_TREE_RECONCILE_INTERVAL_MS/);
 	assert.match(source, /window\.clearInterval\(signalReconcileTimer\)/);
 });

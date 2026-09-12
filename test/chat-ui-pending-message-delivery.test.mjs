@@ -50,8 +50,8 @@ test("pending delivery metadata reaches both Terminal and trace-tree renderers",
 test("receipt overlays retain unchanged nodes and browser retry identity survives reload", async () => {
  const script = `
   import assert from 'node:assert/strict';
-  import { withMessageReceipts } from './src/apps/chat-ui/src/tracing/message-receipts.ts';
-  import { rememberPendingMessageTransaction,readPendingMessageTransaction,samePendingMessageIntent } from './src/apps/chat-ui/src/composer-send.ts';
+  import { MessageReceiptReconciliationTracker,isAcceptanceUnknownError,isTerminalMessageReceipt,matchingMessageReceipt,messageReceiptPollDelay,messageReceiptRefetchInterval,withMessageReceipts } from './src/apps/chat-ui/src/tracing/message-receipts.ts';
+  import { appendComposerOptimisticEvent,rememberPendingMessageTransaction,readPendingMessageTransaction,samePendingMessageIntent } from './src/apps/chat-ui/src/composer-send.ts';
   const values = new Map();
   globalThis.window = {sessionStorage:{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)}};
   const plan={piboSessionId:'s',text:'hello',clientTxnId:'txn',delivery:'queue',webAnnotationIds:[],fileAttachmentPaths:[]};
@@ -64,10 +64,69 @@ test("receipt overlays retain unchanged nodes and browser retry identity survive
   const receipts=[{sessionId:'s',eventId:'txn',state:'accepted'}];
   const overlay=withMessageReceipts(view,receipts);assert.equal(overlay.nodes[0].messageDeliveryState,'accepted');assert.equal(overlay.nodes[1],untouched);assert.equal(user.messageDeliveryState,undefined);
   assert.equal(withMessageReceipts(overlay,receipts),overlay);assert.equal(withMessageReceipts(view,[{sessionId:'other',eventId:'txn',state:'failed'}]),view);
+  assert.equal(messageReceiptRefetchInterval(undefined),false,'an idle initial query does not arm an interval');
+  assert.equal(messageReceiptRefetchInterval([]),false,'idle sessions stop polling after the first empty response');
+  const pending={piboSessionId:'s',clientTxnId:'txn'};
+  assert.ok(messageReceiptRefetchInterval(undefined,{pendingTransaction:pending,unchangedAttempts:0,jitterKey:'tab-a'})>0,'an initial GET failure cannot strand an unknown transaction');
+  const firstDelay=messageReceiptRefetchInterval([], {pendingTransaction:pending,unchangedAttempts:0,jitterKey:'s'});
+  const nextDelay=messageReceiptRefetchInterval([], {pendingTransaction:pending,unchangedAttempts:1,jitterKey:'s'});
+  assert.ok(firstDelay>=850&&firstDelay<=1150);assert.ok(nextDelay>firstDelay,'unknown acceptance uses bounded exponential backoff with stable jitter');
+  assert.equal(messageReceiptRefetchInterval([], {pendingTransaction:pending,unchangedAttempts:7,jitterKey:'s'}),false,'unknown reconciliation stops after the bounded attempt budget');
+  assert.ok(messageReceiptRefetchInterval([{sessionId:'s',eventId:'txn',state:'accepted'}],{unchangedAttempts:2,jitterKey:'s'})>nextDelay);
+  assert.equal(messageReceiptRefetchInterval([{state:'completed'},{state:'failed'},{state:'interrupted'}]),false,'terminal receipts stop polling');
+  assert.equal(messageReceiptPollDelay(20,'s'),messageReceiptPollDelay(4,'s'),'the active backoff is capped');
+  assert.notEqual(messageReceiptPollDelay(0,'session:tab-a'),messageReceiptPollDelay(0,'session:tab-b'),'per-tab jitter seeds desynchronize otherwise identical sessions');
+  assert.equal(matchingMessageReceipt([{sessionId:'s',eventId:'txn',state:'completed'}],pending).state,'completed');
+  assert.equal(isTerminalMessageReceipt({state:'completed'}),true);assert.equal(isTerminalMessageReceipt({state:'running'}),false);
+  assert.equal(isAcceptanceUnknownError({acceptanceUnknown:true}),true);
+  const tracker=new MessageReceiptReconciliationTracker('txn');
+  assert.equal(tracker.observe(receipts,pending).pendingReceipt.state,'accepted');
+  const terminal={sessionId:'s',eventId:'txn',state:'completed'};
+  assert.deepEqual(tracker.observe([terminal],null).terminalReceipts,[terminal]);
+  assert.deepEqual(tracker.observe([terminal],null).terminalReceipts,[],'a delayed terminal receipt refreshes trace once across reconnect/refetch duplicates');
+  const optimistic={piboSessionId:'s',events:[{id:'txn'}]};assert.equal(appendComposerOptimisticEvent(optimistic,'s',optimistic.events[0]),optimistic,'same-id retries do not duplicate optimistic admission');
  `;
  await execFileAsync(process.execPath,["--import","tsx","--input-type=module","--eval",script],{cwd:process.cwd()});
 });
 
+
+test("receipt polling is restarted explicitly after a newly accepted message", async () => {
+ const [app,pane]=await Promise.all([
+  readFile("src/apps/chat-ui/src/App.tsx","utf8"),
+  readFile("src/apps/chat-ui/src/session-trace-pane.tsx","utf8"),
+ ]);
+ assert.match(pane,/refetchInterval: \(query\) => messageReceiptRefetchInterval\(query\.state\.data\?\.receipts/);
+ assert.match(pane,/refetchIntervalInBackground: false/);
+ assert.match(pane,/refetchOnReconnect: "always"/);
+ assert.match(pane,/retry: selectedPendingReceiptTransaction \? 2 : false/);
+ assert.match(pane,/receiptPollJitterSeedRef = useRef\(createClientTxnId\(\)\)/);
+ assert.match(app,/invalidateQueries\(\{ queryKey: \["chat", "message-receipts", piboSessionId\] \}\)/);
+});
+
+test("a lost accepted POST response reconciles by receipt without a second admission", async () => {
+ const script = `
+  import assert from 'node:assert/strict';
+  import { getMessageReceipts,postMessage } from './src/apps/chat-ui/src/api-chat-sessions.ts';
+  import { isTerminalMessageReceipt,matchingMessageReceipt } from './src/apps/chat-ui/src/tracing/message-receipts.ts';
+  let postCalls=0;let state='accepted';
+  globalThis.fetch=async(input)=>{
+   const url=String(input);
+   if(url.includes('/api/chat/message-receipts'))return Response.json({receipts:[{id:'receipt-1',sessionId:'s',eventId:'txn',state,updatedAt:1}]});
+   if(url.includes('/api/chat/message')){postCalls++;throw new TypeError('response lost after durable acceptance');}
+   throw new Error('unexpected fetch '+url);
+  };
+  await assert.rejects(postMessage('s','text','txn'),{acceptanceUnknown:true});
+  assert.equal(postCalls,1);
+  const pending={piboSessionId:'s',clientTxnId:'txn'};
+  const accepted=matchingMessageReceipt((await getMessageReceipts('s')).receipts,pending);
+  assert.equal(accepted.state,'accepted');assert.equal(isTerminalMessageReceipt(accepted),false);
+  state='completed';
+  const terminal=matchingMessageReceipt((await getMessageReceipts('s')).receipts,pending);
+  assert.equal(isTerminalMessageReceipt(terminal),true);
+  assert.equal(postCalls,1,'receipt reconciliation never resubmits the POST');
+ `;
+ await execFileAsync(process.execPath,["--import","tsx","--input-type=module","--eval",script],{cwd:process.cwd()});
+});
 
 test("message API distinguishes unknown acceptance from explicit rejection", async () => {
  const script = `

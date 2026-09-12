@@ -151,8 +151,8 @@ import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
 	applySignalSnapshotToBootstrap,
-	applySignalStatusPatch,
-	applySignalStatusPatchToBootstrap,
+	applySignalStatusPatches,
+	applySignalStatusPatchesToBootstrap,
 	applySignalStatusSnapshotToBootstrap,
 	retainSelectedSignalSnapshot,
 	shouldCommitSelectedSignalSnapshot,
@@ -205,6 +205,8 @@ type LoadNavigationOptions = {
 const SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS = 750;
 const SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS = 5_000;
 const SIGNAL_TREE_RECONCILE_INTERVAL_MS = 30_000;
+const MAX_PENDING_SIGNAL_STATUS_PATCHES = 512;
+const MAX_PENDING_SIGNAL_STATUS_UPDATES = 4_096;
 const NAVIGATION_FALLBACK_REFRESH_MS = 30_000;
 const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
@@ -399,6 +401,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [sessionSignals, setSessionSignals] = useState<PiboSignalSnapshot | null>(null);
 	const sessionSignalsRef = useRef<PiboSignalSnapshot | null>(null);
 	const sessionStatusSignalsRef = useRef<PiboSignalStatusSnapshot | null>(null);
+	const pendingSignalStatusPatchesRef = useRef<PiboSignalStatusPatch[]>([]);
+	const pendingSignalStatusVersionsRef = useRef(new Map<string, number>());
+	const pendingSignalStatusUpdateCountRef = useRef(0);
+	const pendingSignalStatusFlushRef = useRef<number | undefined>(undefined);
 	const [signalNow, setSignalNow] = useState(() => Date.now());
 	const showArchivedRef = useRef(showArchived);
 	const sessionListScrollRef = useRef<HTMLDivElement>(null);
@@ -445,73 +451,146 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSignalNow(Date.now());
 	}, [bootstrap]);
 
+	const clearPendingSignalStatusPatches = useCallback(() => {
+		if (pendingSignalStatusFlushRef.current !== undefined) cancelAnimationFrame(pendingSignalStatusFlushRef.current);
+		pendingSignalStatusFlushRef.current = undefined;
+		pendingSignalStatusPatchesRef.current = [];
+		pendingSignalStatusVersionsRef.current.clear();
+		pendingSignalStatusUpdateCountRef.current = 0;
+	}, []);
+
+	const flushSignalStatusPatches = useCallback(() => {
+		pendingSignalStatusFlushRef.current = undefined;
+		const patches = pendingSignalStatusPatchesRef.current;
+		pendingSignalStatusPatchesRef.current = [];
+		pendingSignalStatusVersionsRef.current.clear();
+		pendingSignalStatusUpdateCountRef.current = 0;
+		if (patches.length === 0) return;
+		const result = applySignalStatusPatches(sessionStatusSignalsRef.current, patches);
+		if (result.needsRefresh) return;
+		sessionStatusSignalsRef.current = result.snapshot;
+		setBootstrap((current) => current ? applySignalStatusPatchesToBootstrap(current, patches) : current);
+	}, []);
+
 	const commitSignalStatusSnapshot = useCallback((snapshot: PiboSignalStatusSnapshot) => {
 		if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return false;
+		clearPendingSignalStatusPatches();
 		sessionStatusSignalsRef.current = snapshot;
 		setBootstrap((current) => current ? applySignalStatusSnapshotToBootstrap(current, snapshot) : current);
 		return true;
-	}, []);
+	}, [clearPendingSignalStatusPatches]);
 
 	const commitSignalStatusPatch = useCallback((patch: PiboSignalStatusPatch) => {
-		const result = applySignalStatusPatch(sessionStatusSignalsRef.current, patch);
-		if (result.needsRefresh) return false;
-		sessionStatusSignalsRef.current = result.snapshot;
-		setBootstrap((current) => current ? applySignalStatusPatchToBootstrap(current, patch) : current);
+		const current = sessionStatusSignalsRef.current;
+		const expectedVersion = pendingSignalStatusVersionsRef.current.get(patch.rootPiboSessionId)
+			?? current?.rootVersions[patch.rootPiboSessionId]
+			?? 0;
+		const nextUpdateCount = pendingSignalStatusUpdateCountRef.current + patch.sessionStatuses.length;
+		if (!current || expectedVersion !== patch.fromVersion
+			|| pendingSignalStatusPatchesRef.current.length >= MAX_PENDING_SIGNAL_STATUS_PATCHES
+			|| nextUpdateCount > MAX_PENDING_SIGNAL_STATUS_UPDATES) {
+			clearPendingSignalStatusPatches();
+			return false;
+		}
+		pendingSignalStatusPatchesRef.current.push(patch);
+		pendingSignalStatusVersionsRef.current.set(patch.rootPiboSessionId, patch.toVersion);
+		pendingSignalStatusUpdateCountRef.current = nextUpdateCount;
+		if (pendingSignalStatusFlushRef.current === undefined) {
+			pendingSignalStatusFlushRef.current = requestAnimationFrame(flushSignalStatusPatches);
+		}
 		return true;
-	}, []);
+	}, [clearPendingSignalStatusPatches, flushSignalStatusPatches]);
+
+	useEffect(() => clearPendingSignalStatusPatches, [clearPendingSignalStatusPatches]);
 
 	useEffect(() => {
 		if (area === "sessions" && selectedBackendPiboSessionId) return undefined;
 		let active = true;
+		let generation = 0;
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
-		const controller = new AbortController();
-		const refreshSignalStatuses = (delayMs: number) => {
-			if (!active) return;
+		let signalStatusFetchGeneration: number | undefined;
+		let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+		let recoveryController = new AbortController();
+		let unsubscribeSignalStatuses: () => void = () => undefined;
+		const isCurrent = (expectedGeneration: number) => active && expectedGeneration === generation;
+		const refreshSignalStatuses = (delayMs: number, expectedGeneration = generation) => {
+			if (!isCurrent(expectedGeneration)) return;
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = setTimeout(() => {
 				signalRecoveryTimer = undefined;
-				fetchSignalStatuses({ signal: controller.signal })
+				if (!isCurrent(expectedGeneration) || signalStatusFetchGeneration === expectedGeneration) return;
+				signalStatusFetchGeneration = expectedGeneration;
+				const signal = recoveryController.signal;
+				fetchSignalStatuses({ signal })
 					.then((snapshot) => {
-						if (active && !controller.signal.aborted) commitSignalStatusSnapshot(snapshot);
+						if (isCurrent(expectedGeneration) && !signal.aborted) commitSignalStatusSnapshot(snapshot);
 					})
 					.catch(() => {
-						if (!controller.signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+						if (isCurrent(expectedGeneration) && !signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, expectedGeneration);
+					})
+					.finally(() => {
+						if (signalStatusFetchGeneration === expectedGeneration) signalStatusFetchGeneration = undefined;
 					});
 			}, delayMs);
 		};
-		const signalStatusHandlers = {
-			onSnapshot: (snapshot: PiboSignalStatusSnapshot) => {
-				if (!active || !shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
-				if (signalRecoveryTimer) {
-					clearTimeout(signalRecoveryTimer);
-					signalRecoveryTimer = undefined;
-				}
-				commitSignalStatusSnapshot(snapshot);
-			},
-			onPatch: (patch: PiboSignalStatusPatch) => {
-				if (active && !commitSignalStatusPatch(patch)) refreshSignalStatuses(0);
-			},
-			onError: () => refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS),
-		};
-		let unsubscribeSignalStatuses: () => void = () => undefined;
-		const reconnectSignalStatuses = () => {
-			if (!active) return;
+		const connectSignalStatuses = () => {
+			if (!active || document.hidden) return;
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			signalRecoveryTimer = undefined;
+			generation += 1;
+			const streamGeneration = generation;
 			unsubscribeSignalStatuses();
-			unsubscribeSignalStatuses = subscribeSignalStatuses(signalStatusHandlers);
+			recoveryController.abort();
+			recoveryController = new AbortController();
+			unsubscribeSignalStatuses = subscribeSignalStatuses({
+				isCurrent: () => isCurrent(streamGeneration),
+				onSnapshot: (snapshot: PiboSignalStatusSnapshot) => {
+					if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
+					if (signalRecoveryTimer) {
+						clearTimeout(signalRecoveryTimer);
+						signalRecoveryTimer = undefined;
+					}
+					commitSignalStatusSnapshot(snapshot);
+				},
+				onPatch: (patch: PiboSignalStatusPatch) => {
+					if (!commitSignalStatusPatch(patch)) refreshSignalStatuses(0, streamGeneration);
+				},
+				onError: () => refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration),
+			});
 		};
-		const refreshVisibleSignalStatuses = () => {
-			if (document.visibilityState === "visible") reconnectSignalStatuses();
+		const scheduleSignalStatusReconnect = () => {
+			if (!active || document.hidden || resumeTimer) return;
+			resumeTimer = setTimeout(() => {
+				resumeTimer = undefined;
+				connectSignalStatuses();
+			}, 0);
 		};
-		unsubscribeSignalStatuses = subscribeSignalStatuses(signalStatusHandlers);
-		window.addEventListener("pageshow", reconnectSignalStatuses);
-		document.addEventListener("visibilitychange", refreshVisibleSignalStatuses);
+		const suspendSignalStatuses = () => {
+			generation += 1;
+			if (resumeTimer) clearTimeout(resumeTimer);
+			resumeTimer = undefined;
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			signalRecoveryTimer = undefined;
+			recoveryController.abort();
+			unsubscribeSignalStatuses();
+			unsubscribeSignalStatuses = () => undefined;
+		};
+		const handleSignalStatusVisibility = () => {
+			if (document.hidden) suspendSignalStatuses();
+			else scheduleSignalStatusReconnect();
+		};
+		connectSignalStatuses();
+		window.addEventListener("online", scheduleSignalStatusReconnect);
+		window.addEventListener("pagehide", suspendSignalStatuses);
+		window.addEventListener("pageshow", scheduleSignalStatusReconnect);
+		document.addEventListener("visibilitychange", handleSignalStatusVisibility);
 		return () => {
 			active = false;
-			controller.abort();
-			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
-			window.removeEventListener("pageshow", reconnectSignalStatuses);
-			document.removeEventListener("visibilitychange", refreshVisibleSignalStatuses);
-			unsubscribeSignalStatuses();
+			suspendSignalStatuses();
+			window.removeEventListener("online", scheduleSignalStatusReconnect);
+			window.removeEventListener("pagehide", suspendSignalStatuses);
+			window.removeEventListener("pageshow", scheduleSignalStatusReconnect);
+			document.removeEventListener("visibilitychange", handleSignalStatusVisibility);
 		};
 	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
 
@@ -526,107 +605,151 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSessionSignals(retainedSnapshot);
 
 		let active = true;
+		let generation = 0;
 		let signalRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 		let signalStatusRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
-		const controller = new AbortController();
-		const commitSignalSnapshot = (snapshot: PiboSignalSnapshot) => {
-			if (!active || controller.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
+		let signalTreeFetchGeneration: number | undefined;
+		let signalStatusFetchGeneration: number | undefined;
+		let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+		let recoveryController = new AbortController();
+		let unsubscribeSignalTree: () => void = () => undefined;
+		const isCurrent = (expectedGeneration: number) => active && expectedGeneration === generation;
+		const commitSignalSnapshot = (snapshot: PiboSignalSnapshot, expectedGeneration: number) => {
+			if (!isCurrent(expectedGeneration) || recoveryController.signal.aborted || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
 			sessionSignalsRef.current = snapshot;
 			setSessionSignals(snapshot);
 			setBootstrap((current) => current ? applySignalSnapshotToBootstrap(current, snapshot) : current);
 		};
-		const refreshSignalSnapshot = (delayMs: number) => {
-			if (!active) return;
+		const refreshSignalSnapshot = (delayMs: number, expectedGeneration = generation) => {
+			if (!isCurrent(expectedGeneration)) return;
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = setTimeout(() => {
 				signalRecoveryTimer = undefined;
-				fetchSignalTree(selectedBackendPiboSessionId, { signal: controller.signal })
-					.then(commitSignalSnapshot)
+				if (!isCurrent(expectedGeneration) || signalTreeFetchGeneration === expectedGeneration) return;
+				signalTreeFetchGeneration = expectedGeneration;
+				const signal = recoveryController.signal;
+				fetchSignalTree(selectedBackendPiboSessionId, { signal })
+					.then((snapshot) => commitSignalSnapshot(snapshot, expectedGeneration))
 					.catch(() => {
-						if (!controller.signal.aborted) refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+						if (isCurrent(expectedGeneration) && !signal.aborted) refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, expectedGeneration);
+					})
+					.finally(() => {
+						if (signalTreeFetchGeneration === expectedGeneration) signalTreeFetchGeneration = undefined;
 					});
 			}, delayMs);
 		};
-		const refreshSignalStatuses = (delayMs: number) => {
-			if (!active) return;
+		const refreshSignalStatuses = (delayMs: number, expectedGeneration = generation) => {
+			if (!isCurrent(expectedGeneration)) return;
 			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
 			signalStatusRecoveryTimer = setTimeout(() => {
 				signalStatusRecoveryTimer = undefined;
-				fetchSignalStatuses({ signal: controller.signal })
+				if (!isCurrent(expectedGeneration) || signalStatusFetchGeneration === expectedGeneration) return;
+				signalStatusFetchGeneration = expectedGeneration;
+				const signal = recoveryController.signal;
+				fetchSignalStatuses({ signal })
 					.then((snapshot) => {
-						if (active && !controller.signal.aborted) commitSignalStatusSnapshot(snapshot);
+						if (isCurrent(expectedGeneration) && !signal.aborted) commitSignalStatusSnapshot(snapshot);
 					})
 					.catch(() => {
-						if (!controller.signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
+						if (isCurrent(expectedGeneration) && !signal.aborted) refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, expectedGeneration);
+					})
+					.finally(() => {
+						if (signalStatusFetchGeneration === expectedGeneration) signalStatusFetchGeneration = undefined;
 					});
 			}, delayMs);
-		};
-		const signalTreeHandlers = {
-			onSnapshot: (snapshot: PiboSignalSnapshot) => {
-				if (!active || !shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
-				if (signalRecoveryTimer) {
-					clearTimeout(signalRecoveryTimer);
-					signalRecoveryTimer = undefined;
-				}
-				commitSignalSnapshot(snapshot);
-			},
-			onPatch: (patch: PiboSignalPatch) => {
-				if (!active) return;
-				const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedBackendPiboSessionId);
-				if (result.needsRefresh) {
-					refreshSignalSnapshot(0);
-					return;
-				}
-				sessionSignalsRef.current = result.snapshot;
-				setSessionSignals(result.snapshot);
-				setBootstrap((bootstrapData) => bootstrapData ? applySignalPatchToBootstrap(bootstrapData, patch) : bootstrapData);
-			},
-			onStatusSnapshot: (snapshot: PiboSignalStatusSnapshot) => {
-				if (!active || !shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
-				if (signalStatusRecoveryTimer) {
-					clearTimeout(signalStatusRecoveryTimer);
-					signalStatusRecoveryTimer = undefined;
-				}
-				commitSignalStatusSnapshot(snapshot);
-			},
-			onStatusPatch: (patch: PiboSignalStatusPatch) => {
-				if (active && !commitSignalStatusPatch(patch)) refreshSignalStatuses(0);
-			},
-			onError: () => {
-				refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
-				refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS);
-			},
-		};
-		let unsubscribeSignalTree: () => void = () => undefined;
-		const reconnectSignalTree = () => {
-			if (!active) return;
-			unsubscribeSignalTree();
-			unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
-			refreshSignalSnapshot(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS);
-		};
-		const refreshVisibleSignalTree = () => {
-			if (document.visibilityState === "visible") reconnectSignalTree();
 		};
 		const shouldReconcileSignalTree = () => {
 			const selectedSession = bootstrapRef.current ? findSessionNode(bootstrapRef.current.sessions, selectedBackendPiboSessionId) : undefined;
 			return shouldReconcileSelectedSignalTree(sessionSignalsRef.current, selectedBackendPiboSessionId, selectedSession?.status);
 		};
-		unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, signalTreeHandlers);
-		window.addEventListener("pageshow", reconnectSignalTree);
-		document.addEventListener("visibilitychange", refreshVisibleSignalTree);
+		const connectSignalTree = () => {
+			if (!active || document.hidden) return;
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			signalRecoveryTimer = undefined;
+			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
+			signalStatusRecoveryTimer = undefined;
+			generation += 1;
+			const streamGeneration = generation;
+			unsubscribeSignalTree();
+			recoveryController.abort();
+			recoveryController = new AbortController();
+			unsubscribeSignalTree = subscribeSignalTree(selectedBackendPiboSessionId, {
+				isCurrent: () => isCurrent(streamGeneration),
+				onSnapshot: (snapshot: PiboSignalSnapshot) => {
+					if (!shouldCommitSelectedSignalSnapshot(sessionSignalsRef.current, snapshot, selectedBackendPiboSessionId)) return;
+					if (signalRecoveryTimer) {
+						clearTimeout(signalRecoveryTimer);
+						signalRecoveryTimer = undefined;
+					}
+					commitSignalSnapshot(snapshot, streamGeneration);
+				},
+				onPatch: (patch: PiboSignalPatch) => {
+					const result = applySelectedSignalPatch(sessionSignalsRef.current, patch, selectedBackendPiboSessionId);
+					if (result.needsRefresh) {
+						refreshSignalSnapshot(0, streamGeneration);
+						return;
+					}
+					sessionSignalsRef.current = result.snapshot;
+					setSessionSignals(result.snapshot);
+					setBootstrap((bootstrapData) => bootstrapData ? applySignalPatchToBootstrap(bootstrapData, patch) : bootstrapData);
+				},
+				onStatusSnapshot: (snapshot: PiboSignalStatusSnapshot) => {
+					if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return;
+					if (signalStatusRecoveryTimer) {
+						clearTimeout(signalStatusRecoveryTimer);
+						signalStatusRecoveryTimer = undefined;
+					}
+					commitSignalStatusSnapshot(snapshot);
+				},
+				onStatusPatch: (patch: PiboSignalStatusPatch) => {
+					if (!commitSignalStatusPatch(patch)) refreshSignalStatuses(0, streamGeneration);
+				},
+				onError: () => {
+					refreshSignalSnapshot(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration);
+					refreshSignalStatuses(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration);
+				},
+			});
+			refreshSignalSnapshot(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS, streamGeneration);
+		};
+		const scheduleSignalTreeReconnect = () => {
+			if (!active || document.hidden || resumeTimer) return;
+			resumeTimer = setTimeout(() => {
+				resumeTimer = undefined;
+				connectSignalTree();
+			}, 0);
+		};
+		const suspendSignalTree = () => {
+			generation += 1;
+			if (resumeTimer) clearTimeout(resumeTimer);
+			resumeTimer = undefined;
+			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
+			signalRecoveryTimer = undefined;
+			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
+			signalStatusRecoveryTimer = undefined;
+			recoveryController.abort();
+			unsubscribeSignalTree();
+			unsubscribeSignalTree = () => undefined;
+		};
+		const handleSignalTreeVisibility = () => {
+			if (document.hidden) suspendSignalTree();
+			else scheduleSignalTreeReconnect();
+		};
+		connectSignalTree();
+		window.addEventListener("online", scheduleSignalTreeReconnect);
+		window.addEventListener("pagehide", suspendSignalTree);
+		window.addEventListener("pageshow", scheduleSignalTreeReconnect);
+		document.addEventListener("visibilitychange", handleSignalTreeVisibility);
 		const signalReconcileTimer = window.setInterval(() => {
-			if (document.visibilityState === "visible" && shouldReconcileSignalTree()) refreshSignalSnapshot(0);
+			if (!document.hidden && shouldReconcileSignalTree()) refreshSignalSnapshot(0, generation);
 		}, SIGNAL_TREE_RECONCILE_INTERVAL_MS);
-		refreshSignalSnapshot(SIGNAL_TREE_INITIAL_FALLBACK_DELAY_MS);
 		return () => {
 			active = false;
-			controller.abort();
-			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
-			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
-			window.removeEventListener("pageshow", reconnectSignalTree);
-			document.removeEventListener("visibilitychange", refreshVisibleSignalTree);
+			suspendSignalTree();
+			window.removeEventListener("online", scheduleSignalTreeReconnect);
+			window.removeEventListener("pagehide", suspendSignalTree);
+			window.removeEventListener("pageshow", scheduleSignalTreeReconnect);
+			document.removeEventListener("visibilitychange", handleSignalTreeVisibility);
 			window.clearInterval(signalReconcileTimer);
-			unsubscribeSignalTree();
 		};
 	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
 
@@ -1277,6 +1400,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			await queryClient.cancelQueries({ queryKey: tracePageQueriesForSession(piboSessionId) });
 			updateBootstrapCache((data) => updateSessionNodeInBootstrap(data, piboSessionId, (node) => ({ ...node, lastActivityAt: new Date().toISOString() })));
 		},
+		onSuccess: (_result, { piboSessionId }) => queryClient.invalidateQueries({ queryKey: ["chat", "message-receipts", piboSessionId] }),
 	});
 
 	const updateSelectedSessionProfile = useCallback(async (profile: string) => {

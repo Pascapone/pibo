@@ -6,6 +6,9 @@ type ThinkingData = {
 	level?: string;
 	availableLevels: string[];
 	supported?: boolean;
+	availability?: "ready" | "unavailable";
+	retryable?: boolean;
+	message?: string;
 };
 
 function parseThinkingData(output: unknown): ThinkingData | undefined {
@@ -26,6 +29,9 @@ function parseThinkingData(output: unknown): ThinkingData | undefined {
 			? obj.availableLevels.filter((level): level is string => typeof level === "string")
 			: [],
 		supported: typeof obj.supported === "boolean" ? obj.supported : undefined,
+		availability: obj.availability === "ready" || obj.availability === "unavailable" ? obj.availability : undefined,
+		retryable: typeof obj.retryable === "boolean" ? obj.retryable : undefined,
+		message: typeof obj.message === "string" ? obj.message : undefined,
 	};
 }
 
@@ -55,7 +61,11 @@ export function TerminalThinkingCard({
 			<div className="mb-2 flex items-center gap-2">
 				<Brain size={14} className="text-[#f59e0b]" />
 				<span className="font-semibold text-[#d4d4d4]">Thinking</span>
-				{data.supported === false ? (
+				{data.availability === "unavailable" ? (
+					<span className="ml-auto inline-flex items-center gap-1 border border-[#713f12] px-1.5 py-0.5 text-[11px] text-[#fbbf24]">
+						<X size={10} /> Unavailable
+					</span>
+				) : data.supported === false ? (
 					<span className="ml-auto inline-flex items-center gap-1 border border-[#5f2222] px-1.5 py-0.5 text-[11px] text-[#ef4444]">
 						<X size={10} /> Unsupported
 					</span>
@@ -92,7 +102,11 @@ export function TerminalThinkingCard({
 						})}
 					</div>
 				) : null}
-				<div className="text-[#737373]">Click a level or use <span className="text-[#f59e0b]">/thinking &lt;level&gt;</span>.</div>
+				<div className="text-[#737373]">
+					{data.availability === "unavailable"
+						? data.message ?? (data.retryable ? "Reasoning controls are not ready yet. Retry shortly." : "Reasoning controls are unavailable.")
+						: <>Click a level or use <span className="text-[#f59e0b]">/thinking &lt;level&gt;</span>.</>}
+				</div>
 			</div>
 		</div>
 	);

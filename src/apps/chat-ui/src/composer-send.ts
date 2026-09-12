@@ -99,15 +99,18 @@ export function appendComposerOptimisticEvent(
 	piboSessionId: string,
 	optimisticEvent: ChatWebStoredEvent,
 ): LiveTraceOverlay {
-	return {
-		piboSessionId,
-		events: [...(current?.piboSessionId === piboSessionId ? current.events : []), optimisticEvent],
-	};
+	const currentEvents = current?.piboSessionId === piboSessionId ? current.events : [];
+	const existingIndex = currentEvents.findIndex((event) => event.id === optimisticEvent.id);
+	if (existingIndex < 0) return { piboSessionId, events: [...currentEvents, optimisticEvent] };
+	if (currentEvents[existingIndex] === optimisticEvent) return current;
+	const events = [...currentEvents];
+	events[existingIndex] = optimisticEvent;
+	return { piboSessionId, events };
 }
 
 
 const pendingTransactionKey = "pibo.chat.pending-message-transaction.v2";
-type PendingTransaction = Pick<ComposerSendPlan, "piboSessionId" | "text" | "webAnnotationIds" | "fileAttachmentPaths" | "clientTxnId" | "delivery">;
+export type PendingTransaction = Pick<ComposerSendPlan, "piboSessionId" | "text" | "webAnnotationIds" | "fileAttachmentPaths" | "clientTxnId" | "delivery">;
 
 export function readPendingMessageTransaction(): PendingTransaction | null {
  try {

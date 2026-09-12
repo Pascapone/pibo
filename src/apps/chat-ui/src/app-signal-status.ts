@@ -45,7 +45,10 @@ export function shouldCommitSelectedSignalSnapshot(
 	selectedPiboSessionId: string,
 ): boolean {
 	if (!signalSnapshotIncludesSession(snapshot, selectedPiboSessionId)) return false;
-	return current?.rootPiboSessionId !== snapshot.rootPiboSessionId || current.version <= snapshot.version;
+	if (!current || current.rootPiboSessionId !== snapshot.rootPiboSessionId) return true;
+	const epochDecision = shouldAcceptSignalEpoch(current, snapshot);
+	if (epochDecision !== undefined) return epochDecision;
+	return current.version <= snapshot.version;
 }
 
 export function applySelectedSignalPatch(
@@ -75,6 +78,8 @@ export function shouldCommitSignalStatusSnapshot(
 	snapshot: PiboSignalStatusSnapshot,
 ): boolean {
 	if (!current) return true;
+	const epochDecision = shouldAcceptSignalEpoch(current, snapshot);
+	if (epochDecision !== undefined) return epochDecision;
 	const currentMs = Date.parse(current.generatedAt);
 	const snapshotMs = Date.parse(snapshot.generatedAt);
 	if (Number.isFinite(currentMs) && Number.isFinite(snapshotMs)) return currentMs <= snapshotMs;
@@ -85,20 +90,48 @@ export function applySignalStatusPatch(
 	current: PiboSignalStatusSnapshot | null,
 	patch: PiboSignalStatusPatch,
 ): { snapshot: PiboSignalStatusSnapshot | null; needsRefresh: boolean } {
-	if (!current || (current.rootVersions[patch.rootPiboSessionId] ?? 0) !== patch.fromVersion) {
-		return { snapshot: current, needsRefresh: true };
+	return applySignalStatusPatches(current, [patch]);
+}
+
+export function applySignalStatusPatches(
+	current: PiboSignalStatusSnapshot | null,
+	patches: readonly PiboSignalStatusPatch[],
+): { snapshot: PiboSignalStatusSnapshot | null; needsRefresh: boolean } {
+	if (!current) return { snapshot: current, needsRefresh: true };
+	if (patches.length === 0) return { snapshot: current, needsRefresh: false };
+	const rootVersions = { ...current.rootVersions };
+	for (const patch of patches) {
+		if (!signalPatchEpochMatches(current.epoch, patch.epoch)
+			|| (rootVersions[patch.rootPiboSessionId] ?? 0) !== patch.fromVersion) {
+			return { snapshot: current, needsRefresh: true };
+		}
+		rootVersions[patch.rootPiboSessionId] = patch.toVersion;
 	}
 	const sessions = { ...current.sessions };
-	for (const status of patch.sessionStatuses) sessions[status.piboSessionId] = status;
+	for (const patch of patches) {
+		for (const status of patch.sessionStatuses) sessions[status.piboSessionId] = status;
+	}
 	return {
 		snapshot: {
 			...current,
-			generatedAt: patch.generatedAt,
-			rootVersions: { ...current.rootVersions, [patch.rootPiboSessionId]: patch.toVersion },
+			epoch: patches.at(-1)!.epoch ?? current.epoch,
+			generatedAt: patches.at(-1)!.generatedAt,
+			rootVersions,
 			sessions,
 		},
 		needsRefresh: false,
 	};
+}
+
+export function applySignalStatusPatchesToBootstrap(
+	bootstrap: BootstrapData,
+	patches: readonly Pick<PiboSignalStatusPatch, "sessionStatuses">[],
+): BootstrapData {
+	const updates = new Map<string, SignalSessionUpdate>();
+	for (const patch of patches) {
+		for (const status of patch.sessionStatuses) updates.set(status.piboSessionId, signalStatusUpdate(status)!);
+	}
+	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => updates.get(piboSessionId));
 }
 
 function updateBootstrapSessionStatuses(
@@ -179,11 +212,31 @@ function latestIsoTimestamp(...values: Array<string | undefined>): string | unde
 }
 
 export function applySignalPatch(current: PiboSignalSnapshot | null, patch: PiboSignalPatch): PiboSignalSnapshot | null {
-	if (!current || current.rootPiboSessionId !== patch.rootPiboSessionId || current.version !== patch.fromVersion) return current;
+	if (!current
+		|| current.rootPiboSessionId !== patch.rootPiboSessionId
+		|| !signalPatchEpochMatches(current.epoch, patch.epoch)
+		|| current.version !== patch.fromVersion) return current;
 	const nodes = { ...current.nodes };
 	for (const id of patch.removes) delete nodes[id];
 	for (const node of patch.upserts) nodes[node.id] = node;
 	const sessions = { ...current.sessions };
 	for (const snapshot of patch.sessionSnapshots) sessions[snapshot.piboSessionId] = snapshot;
-	return { ...current, version: patch.toVersion, generatedAt: patch.generatedAt, nodes, sessions };
+	return { ...current, epoch: patch.epoch ?? current.epoch, version: patch.toVersion, generatedAt: patch.generatedAt, nodes, sessions };
+}
+
+function shouldAcceptSignalEpoch(
+	current: { epoch?: string; generatedAt: string },
+	incoming: { epoch?: string; generatedAt: string },
+): boolean | undefined {
+	if (current.epoch === incoming.epoch) return undefined;
+	if (current.epoch && !incoming.epoch) return false;
+	if (!current.epoch && incoming.epoch) return true;
+	const currentMs = Date.parse(current.generatedAt);
+	const incomingMs = Date.parse(incoming.generatedAt);
+	if (Number.isFinite(currentMs) && Number.isFinite(incomingMs)) return currentMs <= incomingMs;
+	return true;
+}
+
+function signalPatchEpochMatches(currentEpoch: string | undefined, patchEpoch: string | undefined): boolean {
+	return currentEpoch === patchEpoch || (!currentEpoch && !patchEpoch);
 }

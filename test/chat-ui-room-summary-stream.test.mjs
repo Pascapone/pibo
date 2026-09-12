@@ -46,8 +46,10 @@ test("long-lived Chat streams release HTTP\/1.1 connections during page transiti
 	const liveTraceSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/tracing/use-session-trace-live-stream.ts"), "utf8");
 	assert.match(appSource, /window\.addEventListener\("pagehide", suspendRoomSummary\)/);
 	assert.match(appSource, /window\.addEventListener\("pageshow", connectRoomSummary\)/, "a bfcache restore reconnects the room summary stream");
-	assert.match(signalSource, /return closeEventSourceOnPageHide\(events\)/);
-	assert.match(signalSource, /window\.addEventListener\("pagehide", close\)/);
+	assert.match(appSource, /window\.addEventListener\("pagehide", suspendSignalStatuses\)/);
+	assert.match(appSource, /window\.addEventListener\("pagehide", suspendSignalTree\)/);
+	assert.match(signalSource, /if \(!isCurrent\(\)\) return;[\s\S]*JSON\.parse/, "stale signal callbacks are fenced before JSON parsing");
+	assert.match(signalSource, /return \(\) => events\.close\(\)/, "the lifecycle owner closes each signal stream");
 	assert.match(liveTraceSource, /selectedLiveStreamRef\.current\?\.events\.close\(\)/, "the selected live stream closes before the next document competes for connections");
 	assert.match(liveTraceSource, /window\.addEventListener\("pageshow", recoverPageShow\)/, "the selected live stream reconnects after bfcache restore");
 });

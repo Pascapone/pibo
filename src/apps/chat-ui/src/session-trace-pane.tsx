@@ -1,4 +1,10 @@
-import { withMessageReceipts } from "./tracing/message-receipts";
+import {
+  isAcceptanceUnknownError,
+  MessageReceiptReconciliationTracker,
+  messageReceiptPollDelay,
+  messageReceiptRefetchInterval,
+  withMessageReceipts,
+} from "./tracing/message-receipts";
 import {
   useCallback,
   useEffect,
@@ -230,6 +236,11 @@ export function SessionTracePane({
   const queryClient = useQueryClient();
   const [initialRetryTransaction] = useState(readPendingMessageTransaction);
   const retrySendPlanRef = useRef<ReturnType<typeof readPendingMessageTransaction>>(initialRetryTransaction);
+  const [pendingReceiptTransaction, setPendingReceiptTransaction] = useState(initialRetryTransaction);
+  const receiptReconciliationTrackerRef = useRef(new MessageReceiptReconciliationTracker(initialRetryTransaction?.clientTxnId));
+  const receiptFingerprintRef = useRef<string | undefined>(undefined);
+  const receiptPollJitterSeedRef = useRef(createClientTxnId());
+  const [unchangedReceiptPolls, setUnchangedReceiptPolls] = useState(0);
   const liveEventSeqRef = useRef(0);
   const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
   const [liveTraceOverlay, setLiveTraceOverlayState] =
@@ -432,13 +443,49 @@ export function SessionTracePane({
   });
   const forkSupported = sessionSupportsFork(bootstrap, selectedPiboSessionId, selectedSessionProfile);
   const forkWhileRunningSupported = sessionSupportsForkWhileRunning(bootstrap, selectedPiboSessionId, selectedSessionProfile);
+  const selectedPendingReceiptTransaction = pendingReceiptTransaction?.piboSessionId === selectedBackendPiboSessionId
+    ? pendingReceiptTransaction
+    : null;
   const messageReceiptsQuery = useQuery({
     queryKey: ["chat", "message-receipts", selectedBackendPiboSessionId],
     queryFn: () => getMessageReceipts(selectedBackendPiboSessionId!),
     enabled: Boolean(selectedBackendPiboSessionId),
-    refetchInterval: 1_000,
-    retry: false,
+    refetchInterval: (query) => messageReceiptRefetchInterval(query.state.data?.receipts, {
+      pendingTransaction: selectedPendingReceiptTransaction,
+      unchangedAttempts: unchangedReceiptPolls + query.state.fetchFailureCount,
+      jitterKey: `${selectedBackendPiboSessionId ?? "message-receipts"}:${receiptPollJitterSeedRef.current}`,
+    }),
+    refetchIntervalInBackground: false,
+    refetchOnReconnect: "always",
+    retry: selectedPendingReceiptTransaction ? 2 : false,
+    retryDelay: (attempt) => messageReceiptPollDelay(attempt, receiptPollJitterSeedRef.current),
   });
+  useEffect(() => {
+    const receipts = messageReceiptsQuery.data?.receipts;
+    if (!receipts || messageReceiptsQuery.dataUpdatedAt === 0) return;
+    const fingerprint = receipts.map((receipt) => `${receipt.id}:${receipt.state}:${receipt.updatedAt}`).join("|");
+    setUnchangedReceiptPolls((current) => receiptFingerprintRef.current === fingerprint ? current + 1 : 0);
+    receiptFingerprintRef.current = fingerprint;
+  }, [messageReceiptsQuery.data, messageReceiptsQuery.dataUpdatedAt]);
+  useEffect(() => {
+    const receipts = messageReceiptsQuery.data?.receipts ?? [];
+    const reconciliation = receiptReconciliationTrackerRef.current.observe(receipts, selectedPendingReceiptTransaction);
+    if (reconciliation.pendingReceipt && selectedPendingReceiptTransaction) {
+      retrySendPlanRef.current = null;
+      rememberPendingMessageTransaction(null);
+      setPendingReceiptTransaction(null);
+      onComposerTextChange((current) => current === selectedPendingReceiptTransaction.text ? "" : current);
+      if (selectedWebAnnotations.map((annotation) => annotation.id).join("\u0000") === selectedPendingReceiptTransaction.webAnnotationIds.join("\u0000")) {
+        clearSelectedWebAnnotationAttachments();
+      }
+      if (selectedUploadAttachments.map((attachment) => attachment.path).join("\u0000") === selectedPendingReceiptTransaction.fileAttachmentPaths.join("\u0000")) {
+        clearSelectedUploadAttachments();
+      }
+    }
+    if (reconciliation.terminalReceipts.length > 0) {
+      void tracePageQuery.refetch().catch((caught) => onError(errorMessage(caught)));
+    }
+  }, [clearSelectedUploadAttachments, clearSelectedWebAnnotationAttachments, messageReceiptsQuery.data, onComposerTextChange, onError, selectedPendingReceiptTransaction, selectedUploadAttachments, selectedWebAnnotations, tracePageQuery]);
   const currentTraceView = useMemo(() => withMessageReceipts(rawCurrentTraceView, messageReceiptsQuery.data?.receipts ?? []), [rawCurrentTraceView,messageReceiptsQuery.data]);
 
   const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
@@ -559,6 +606,10 @@ export function SessionTracePane({
     );
     retrySendPlanRef.current = sendPlan;
     rememberPendingMessageTransaction(sendPlan);
+    setPendingReceiptTransaction(sendPlan);
+    receiptReconciliationTrackerRef.current.track(sendPlan.clientTxnId);
+    receiptFingerprintRef.current = undefined;
+    setUnchangedReceiptPolls(0);
     await onSend(
       sendPlan.text,
       sendPlan.webAnnotationIds,
@@ -568,6 +619,7 @@ export function SessionTracePane({
     );
     retrySendPlanRef.current = null;
     rememberPendingMessageTransaction(null);
+    setPendingReceiptTransaction(null);
     void messageReceiptsQuery.refetch();
     clearSelectedWebAnnotationAttachments();
     clearSelectedUploadAttachments();
@@ -580,6 +632,16 @@ export function SessionTracePane({
   };
 
   const rollbackComposerSend = (sendPlan: ComposerSendPlan, caught: unknown) => {
+    if (isAcceptanceUnknownError(caught)) {
+      onComposerTextChange((current) => current || sendPlan.text);
+      onError(errorMessage(caught));
+      void messageReceiptsQuery.refetch().catch(() => undefined);
+      return;
+    }
+    retrySendPlanRef.current = null;
+    rememberPendingMessageTransaction(null);
+    setPendingReceiptTransaction(null);
+    receiptReconciliationTrackerRef.current.abandon(sendPlan.clientTxnId);
     setLiveTraceOverlay((current) => {
       const target = current?.piboSessionId === sendPlan.piboSessionId
         ? current
