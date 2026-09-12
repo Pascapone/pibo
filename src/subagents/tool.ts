@@ -358,11 +358,11 @@ export function createAgentToolDefinitions(
 			name: "pibo_agents_observe",
 			title: "Pibo Agents Observe",
 			description: [
-				"Read completed delegated-agent messages with bounded cursor, identity, event, time, substring, regex, order, and limit filters.",
-				"Default cursorMode=auto: the first equivalent query returns the newest 20 completed assistant messages; later calls return only unread messages. Streaming deltas, duplicate tool progress events, and tools stay hidden.",
+				"Read completed delegated-agent messages and session errors with bounded cursor, identity, event, time, substring, regex, order, and limit filters.",
+				"Default cursorMode=auto: the first equivalent query returns the newest 20 completed assistant messages and session errors; later calls return only unread observations. Streaming deltas, duplicate tool progress events, and tools stay hidden.",
 				"Use cursorMode=history only to reread earlier observations. Inspect tools only when an agent appears stuck, reports a problem, or needs targeted diagnosis; prefer exact toolCallIds, then includeTools=true, and use toolDetail=full only when compact summaries are insufficient.",
 			].join("\n"),
-			promptSnippet: "Observe child progress through completed assistant messages. cursorMode=auto is the default and remembers each equivalent query, so repeated calls return only unread messages; use cursorMode=history to reread earlier observations. Streaming deltas, duplicate tool progress events, and tools are hidden by default. Inspect tools only for stalls, errors, or targeted diagnosis: prefer exact toolCallIds, use includeTools=true only when broader context is needed, and use toolDetail=full only when summaries are insufficient. Use textContains or textRegex for focused matching; different filters use separate automatic cursors. An explicit afterSequence overrides the stored cursor and advances that automatic query cursor.",
+			promptSnippet: "Observe child progress through completed assistant messages and session errors. cursorMode=auto is the default and remembers each equivalent query, so repeated calls return only unread observations; use cursorMode=history to reread earlier observations. Streaming deltas, duplicate tool progress events, and tools are hidden by default. Inspect tools only for stalls, errors, or targeted diagnosis: prefer exact toolCallIds, use includeTools=true only when broader context is needed, and use toolDetail=full only when summaries are insufficient. Use textContains or textRegex for focused matching; different filters use separate automatic cursors. An explicit afterSequence overrides the stored cursor and advances that automatic query cursor.",
 			executionMode: "parallel",
 			annotations: { readOnly: true },
 			inputSchema: Type.Object({

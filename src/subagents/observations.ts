@@ -10,7 +10,7 @@ export const PIBO_AGENT_OBSERVATION_TOOL_SUMMARY_MAX_BYTES = 768;
 export const PIBO_AGENT_OBSERVATION_DETAILS_MAX_BYTES = 32 * 1024;
 export const PIBO_AGENT_OBSERVATION_DEFAULT_LIMIT = 20;
 export const PIBO_AGENT_OBSERVATION_MAX_LIMIT = 200;
-export const PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES = ["assistant_message"] as const;
+export const PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES = ["assistant_message", "session_error"] as const;
 export const PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES = ["tool_call", "tool_execution_finished"] as const;
 
 export type PiboAgentObservationSource = {
