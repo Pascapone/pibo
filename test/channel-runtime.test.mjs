@@ -135,7 +135,7 @@ test("gateway session deletion awaits live runtime disposal before removing pers
 	try {
 		await server.start();
 		channelContext.createSession({ id: "ps_delete_live_runtime", channel: "test", kind: "chat", profile: "base" });
-		await channelContext.emit({ type: "execution", piboSessionId: "ps_delete_live_runtime", action: "status" });
+		await channelContext.emit({ type: "execution", piboSessionId: "ps_delete_live_runtime", action: "model" });
 		assert.equal(channelContext.getSessionRuntimeStatus("ps_delete_live_runtime").disposed, false);
 		assert.equal(await channelContext.deleteSession("ps_delete_live_runtime"), true);
 		assert.equal(store.get("ps_delete_live_runtime"), undefined);

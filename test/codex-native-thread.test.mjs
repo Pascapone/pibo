@@ -1068,7 +1068,7 @@ test("Codex native first-message branches bind only when their first message bec
 	});
 	registerTestDisposer(t, () => firstMessageState.close());
 	const durableState = await firstMessageState.client.request("test/getState", {});
-	assert.equal(durableState.resourceRequests.filter((request) => request.method === "thread/start").length, 2);
+	assert.equal(durableState.resourceRequests.filter((request) => request.method === "thread/start").length, 1);
 	assert.ok(durableState.threads[durableBranchBinding.nativeSessionId]);
 	assert.equal(durableState.turnRequests.at(-1).threadId, durableBranchBinding.nativeSessionId);
 	await firstMessageState.close();
@@ -2408,8 +2408,8 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
-	const firstStatus = await firstRouter.emit({ type: "execution", piboSessionId, action: "status" });
-	assert.equal(firstStatus.type, "execution_result");
+	const firstActivation = await firstRouter.emit({ type: "execution", piboSessionId, action: "model" });
+	assert.equal(firstActivation.type, "execution_result");
 	const firstBinding = store.getRuntimeBinding(piboSessionId);
 	assert.equal(firstBinding.state, "bound");
 	assert.equal(firstBinding.nativeSessionId, "thread-router");
@@ -2421,8 +2421,8 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
-	const resumedStatus = await secondRouter.emit({ type: "execution", piboSessionId, action: "status" });
-	assert.equal(resumedStatus.type, "execution_result");
+	const resumedActivation = await secondRouter.emit({ type: "execution", piboSessionId, action: "model" });
+	assert.equal(resumedActivation.type, "execution_result");
 	const resumedBinding = store.getRuntimeBinding(piboSessionId);
 	assert.equal(resumedBinding.nativeSessionId, firstBinding.nativeSessionId);
 	assert.equal(resumedBinding.state, "bound");
@@ -2447,7 +2447,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		runtimeResourceService: resources,
 	});
 	await assert.rejects(
-		thirdRouter.emit({ type: "execution", piboSessionId, action: "status" }),
+		thirdRouter.emit({ type: "execution", piboSessionId, action: "model" }),
 		(error) => error instanceof AgentRuntimeBindingMissingError,
 	);
 	const missing = store.getRuntimeBinding(piboSessionId);
@@ -2455,7 +2455,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 	assert.equal(missing.nativeSessionId, firstBinding.nativeSessionId);
 	assert.equal(missing.metadata.diagnosticCode, "codex_native_thread_missing");
 	await assert.rejects(
-		thirdRouter.emit({ type: "execution", piboSessionId: stalePiboSessionId, action: "status" }),
+		thirdRouter.emit({ type: "execution", piboSessionId: stalePiboSessionId, action: "model" }),
 		(error) => {
 			assert.equal(error instanceof AgentRuntimeBindingMissingError, true);
 			assert.doesNotMatch(error.message, /private\/fake-codex|thread-stale-rollout\.jsonl/);
