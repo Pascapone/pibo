@@ -227,7 +227,7 @@ Für p99 werden mindestens 1.000 lokale deterministische Admission-Proben erfass
 
 **Quellen:** `src/core/session-router.ts` (`snapshotSignalSession`, `projectKnownSessionSignals`), `src/web/channel.ts` und bestehende Signalprojektion.
 
-- [ ] Als kleiner erster Fix innerhalb einer Statusantwort nur einmal Runtime-Status erzeugen und dieselbe Projektion wiederverwenden; doppelte Ausgabevarianten dürfen keine zweite Berechnung auslösen.
+- [x] Als kleiner erster Fix innerhalb einer Statusantwort nur einmal Runtime-Status erzeugen und dieselbe Projektion wiederverwenden; doppelte Ausgabevarianten dürfen keine zweite Berechnung auslösen. Lokal integriert mit `6c0e4ff6170f987cf6252589c8dadf6a7e79a5de`; integrierte Pibo2-Abnahme bleibt separat offen.
 - [ ] Einen Projektor mit eindeutigem Besitzer und monotoner Revision definieren. Session-Anlage, Statusänderung, Parent-Wechsel, Archivierung/Löschung, Runtime-Bindung und gelesener Zustand invalidieren gezielt betroffene Einträge/Teilbäume.
 - [ ] Globalen Erstaufbau außerhalb wiederkehrender Request-Hotpaths durchführen. Solange die Projektion noch aufbaut, explizit `initializing`/Alter liefern; Admission und Health dürfen nicht von einem Vollaufbau abhängen.
 - [ ] Immer einen konsistenten Snapshot veröffentlichen, niemals einen teilweise mutierten Baum. Änderungen während des Aufbaus nach Revision nachziehen oder einen neuen Aufbau beginnen.
@@ -279,7 +279,7 @@ Für p99 werden mindestens 1.000 lokale deterministische Admission-Proben erfass
 **Quellen:** `src/apps/chat/message-command-dispatcher.ts`, `src/data/message-command-store.ts`, `src/apps/chat-ui/src/session-trace-pane.tsx` und vorhandene Receipt-Endpunkte.
 
 - [ ] Bestehende Wakeups nach dauerhaftem Admission-Commit und Terminalereignis wiederverwenden; fehlende Wakeups bei frei gewordenem Session-/Provider-/Kaltstartplatz ergänzen. Keine parallele zweite Dispatch-Schleife anlegen.
-- [ ] Lost-wakeup-Rennen vermeiden: monotoner Wakeup-Zähler/Generation oder atomare Prüfung vor Parken; pending Arbeit vor Sleep erneut prüfen. Ein bloßes EventEmitter-Signal ohne Dauerzustand reicht nicht.
+- [x] Lost-wakeup-Rennen vermeiden: monotone Generation und zusammengefasster Folgedurchlauf in `eace24be3b893512d649de96b30a34ed713d91ae`; lokaler Race-/Burst-Nachweis im [Validierungsbericht](/reports/latency-reliability-validation-2026-09-12.md). Integrierte Pibo2-Abnahme bleibt separat offen.
 - [ ] Mehrere Gateway-/CLI-Prozesse und Wiederanlauf berücksichtigen. Leases, Ownership und Fencing aus dem bestehenden Dispatcher bleiben bestehen; periodische budgetierte Reconciliation fängt verpasste Signale ab.
 - [ ] Aktiven Drain begrenzen und zwischen Räumen fair planen, mit vorhandener Control-Reserve und Aging. Ein lauter Raum darf andere neue Nachrichten nicht verhungern lassen.
 - [ ] Im Browser Receipts nur bei offenen/unklaren Clienttransaktionen pollen. Terminalevent stoppt den Poll; Reconnect reconciliiert die offene Menge einmal. Hidden-Tab pausiert optionales Polling, ohne Annahmezustand zu vergessen.

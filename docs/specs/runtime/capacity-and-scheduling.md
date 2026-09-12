@@ -5,11 +5,11 @@ description: "Defines bounded durable admission, room fairness, cold-start and p
 tags: ["runtime", "capacity", "performance", "admission"]
 status: "stable"
 authority: "normative"
-generated: { by: "openai/gpt-5.6-sol", at: "2026-09-08T19:46:13Z" }
+generated: { by: "openai/codex", at: "2026-09-12T06:10:29Z" }
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
+  commit: "eace24be3b893512d649de96b30a34ed713d91ae"
   requirements:
     - id: "RUN-CAP-001"
       status: "implemented"
@@ -18,11 +18,19 @@ traceability:
           symbol: "MessageCommandStore"
         - path: "src/data/bounded-worker-client.ts"
           symbol: "BoundedWorkerClient"
+        - path: "src/apps/chat/message-command-dispatcher.ts"
+          symbol: "MessageCommandDispatcher"
       tests:
         - path: "test/message-command-store.test.mjs"
           name: "room rotation and database-wide slots preserve control capacity across dispatch owners"
         - path: "test/storage-worker-isolation.test.mjs"
           name: "storage fairness remembers Rooms across drained bursts without delaying control work"
+        - path: "test/message-command-dispatcher.test.mjs"
+          name: "idle recovery is jittered in seconds and discovers work without a local wakeup"
+        - path: "test/message-command-dispatcher.test.mjs"
+          name: "many wakes during one storage claim coalesce without losing admission"
+        - path: "test/message-command-dispatcher.test.mjs"
+          name: "a synchronous completion burst yields to other event-loop work"
       failures:
         - "Overload rejects before a new accepted event; explicit cancellation fences unstarted claims and preserves dispatched ownership."
       confidence: "high"
@@ -135,7 +143,9 @@ Steering uses a separate budget: 64 commands/4 MiB globally, 16/1 MiB per Room, 
 
 SQLite transactions enforce at most ten normal claims and five per Room across dispatch owners, plus two Steering claims and one per Room. Persisted Room rotation and Session stream-order FIFO select candidates. Steering can bypass a normal active Turn; it cannot become a queued normal Turn. The predecessor query uses a covering Session/state/stream/delivery index so completed command history is not scanned for every claim. Schema v11 stores the dispatch clock and Room rotation state. Older readers that do not support this schema must refuse it.
 
-Explicit admission wakes survive an in-flight empty claim. Persisted terminal output releases local ownership and wakes the next dispatch immediately; idle fallback polling is 50 ms, with a separate ten-second lease renewal cadence for the 30-second ownership lease. Storage failure backs polling off to one second and bounds warning frequency.
+Explicit admission wakes survive an in-flight empty claim through a monotone wake generation. Persisted terminal output releases local ownership and wakes the next dispatch immediately. Idle and failed-storage recovery use a randomized 4.5–5.5-second delay, so commands admitted by another process remain discoverable without a local signal. Active claims retain their separate ten-second lease renewal cadence for the 30-second ownership lease; the next recovery check moves earlier when a heartbeat becomes due. Storage failures bound warning frequency.
+
+One dispatcher pass claims at most twelve commands. Further drain or a wake received during that pass resumes through the event loop, so synchronous dispatch refusals cannot produce an unlimited microtask chain. At most one pump, one continuation and one recovery timer can be owned; scheduling a new pump clears obsolete handles, and disposal cancels them. Durable ownership, room fairness, control reservations and fencing remain enforced by the command store. These server changes do not establish the browser receipt-polling or integrated latency acceptance in the [remediation plan](/plans/pibo-latency-reliability-remediation.md).
 
 Storage RPC scheduling rotates Rooms within an aged priority class. Its bounded recent-Room history survives drained bursts. A one-millisecond idle admission window collects competing Room heads; control RPCs bypass that window. The Chat writer reserves eight of 128 pending entries and 256 KiB of its eight-MiB pending-byte budget for short control operations. General pressure therefore does not consume the entire control allowance. Count, byte and age limits remain enforced on every priority. One RPC is in flight; existing output durability and uncertainty rules remain authoritative.
 

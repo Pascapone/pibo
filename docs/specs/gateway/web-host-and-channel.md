@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T17:55:23Z"
+  at: "2026-09-12T06:10:29Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
+  commit: "eace24be3b893512d649de96b30a34ed713d91ae"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -209,6 +209,8 @@ traceability:
           name: "listed Session depth matches store traversal for roots, missing parents, and cycles"
         - path: "test/gateway-restart-safety.test.mjs"
           name: "blocks with processing sessions"
+        - path: "test/gateway-restart-safety.test.mjs"
+          name: "reads runtime status once and shares telemetry across both response views"
       public: ["/gateway/status", "pibo gateway web status", "PiboSessionRouter.snapshotSignalSession"]
       failures:
         - "Depth optimization does not omit active telemetry, queue state, or runtime activity and does not change restart-safety decisions."
@@ -285,6 +287,8 @@ Gateway status and doctor SHALL report expired orphan run-job and `orphan_run_jo
 
 When known-session signal projection has listed the stored Sessions, it SHALL derive ancestor depths from that same per-call view without rereading each Session or ancestor from storage. Parent-first projection, current queue/activity signals, and available active telemetry SHALL remain unchanged. A subsequent projection SHALL use a fresh listed view rather than a cross-request cache.
 
+Within one gateway status response, runtime statuses and their available telemetry SHALL be computed once and shared by the `runtimeQueue.statuses` and compatibility `runtimeStatuses` views. The two views therefore contain the same observations and do not cause two runtime enumerations.
+
 - GIVEN a reverse-ordered parent chain among 511 stored Sessions, WHEN the router snapshots a child, THEN the correct root/parent relationship remains visible with one list operation and no per-record ancestor reads.
 - GIVEN a new stored child, WHEN another snapshot is requested, THEN the new child appears without a cache-expiry wait.
 - GIVEN active tool execution and queued input, WHEN the gateway status is queried, THEN processing, queue depth, and available telemetry remain visible and the CLI's existing active-work restart guard remains blocking.
@@ -351,7 +355,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
+Source symbols and named tests are bound to commit `eace24be3b893512d649de96b30a34ed713d91ae`. Requirement confidence measures trace quality. The earlier WP02-GW-STATUS-006 baseline has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance in its linked report. The subsequent shared-response calculation has a red/green regression and 34 passing Gateway tests in the [current validation record](/reports/latency-reliability-validation-2026-09-12.md); its integrated Pibo2 acceptance remains pending. Earlier evidence does not prove acceptance of a later candidate.
 
 Package verification commands:
 

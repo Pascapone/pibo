@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T05:51:11Z" }
+generated: { by: "openai/codex", at: "2026-09-12T06:10:29Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -67,18 +67,28 @@ Worker-Commit `686a78e0a87d7f534170bbac210f380ef7b03e95` führt ein begrenztes D
 
 Ein zweiter offener Reviewpunkt betrifft die konservative Deep-Audit-Arbeitszählung: Tabellegrößen werden zwischen getrennten Leseabfragen gecacht. Ohne einen stabilen, zeitlich begrenzten Read-Snapshot können parallele Inserts diese Obergrenze ungültig machen. Dafür sind ein Ablaufnachweis und gegebenenfalls eine Korrektur erforderlich.
 
+# Integrierte Teilfixes
+
+Commit `6c0e4ff6170f987cf6252589c8dadf6a7e79a5de` berechnet Runtime-Status und Telemetrie einmal je Gateway-Antwort und verwendet sie in beiden kompatiblen Ausgabeansichten. Die Regression für 1/10/20 Runtimes schlägt gegen die Baseline wegen zwei statt eines Reads fehl. Nach TypeScript-Kompilierung bestehen `test/gateway-restart-safety.test.mjs` und `test/gateway-restart-approval.test.mjs`: 34 Tests, 0 Fehler, 4.769,7 ms. Dieser AP-03-Teilfix ersetzt noch keinen vollständigen inkrementellen Projektor.
+
+Commit `eace24be3b893512d649de96b30a34ed713d91ae` stellt den Dispatcher auf monotone Wakeups, 4,5–5,5 Sekunden Recovery-Jitter mit früherer Lease-Erneuerung und höchstens zwölf Claims pro Event-Loop-Durchlauf um. Der neue Idle- und Burst-Test schlägt gegen die Baseline fehl; der Burst verarbeitet dort alle 100 Claims vor dem nächsten Event-Loop-Turn. Nach Kompilierung bestehen `test/message-command-dispatcher.test.mjs` und `test/message-command-store.test.mjs`: 24 Tests, 0 Fehler, 2.714,1 ms. Bestehende Zwei-Prozess-, Crash-, Fairness-, Control-Reserve- und Fencing-Prüfungen bleiben grün. Browser-Receipts und die integrierte Lastabnahme von AP-06 bleiben offen.
+
+Beide Teilfixes wurden vom Orchestrator im Integrationsworker ausgeführt, während die delegierte Agent-Steuerung nicht erreichbar war. Die aktuellen Verträge in [Kapazität](/specs/runtime/capacity-and-scheduling.md) und [Gateway](/specs/gateway/web-host-and-channel.md) dokumentieren ausschließlich diese implementierten Änderungen.
+
 # Ausführungsunterbrechung der Agent-Anbindung
 
 Mehrere delegierte Läufe endeten nach erfolgreichen Dateireads mit `Request was aborted`; einzelne erste Starts meldeten `Runtime capacity wait deadline exceeded`. Die Starts wurden daraufhin gestaffelt. Diese Beobachtungen beweisen noch keine einheitliche Ursache aller Abbrüche. Der Auditworker konnte einen Commit erstellen und am Lastharness weiterarbeiten.
 
 Ab etwa 05:43 UTC lehnt die aktuelle native Session ihre Pibo-MCP-Steuerung mit `Auth required` ab. Die inspizierte Implementierung begrenzt Tool-Credentials auf 30 Minuten (`src/tools/credential-registry.ts`) und sieht eine Prozess-/Credentialerneuerung vor dem nächsten Turn vor (`src/agent-runtimes/codex-native/adapter.ts`, `ensureFreshResourcesForTurn`). Der zeitliche Verlauf passt dazu; Credentialwerte wurden weder ausgegeben noch verändert. Der Arbeitsstand ist für die Fortsetzung gesichert. Controller-Gateway, Zugangsschutz und Laufzeitgrenzen wurden nicht verändert.
 
+Nach der vom Nutzer gemeldeten Authentifizierungsreparatur liefern die bestehende MCP-Verbindung und ein erneuter `pibo_run_status`-Aufruf weiterhin `Auth required`. Die reguläre Debug-CLI bestätigt einen weiter arbeitenden Audit-Agent und neun wiederverwendbare ruhende Sessions. Der Nutzer begrenzt die weitere Parallelität auf zwei bis höchstens drei Agents. Bis die Tool-Verbindung erneuert ist, laufen unabhängige lokale Umsetzung und Tests weiter; es wurden keine Ersatzsessions erzeugt und keine Authentifizierungsgrenzen umgangen.
+
 # Paket- und Befundstatus
 
 | Befunde / Pakete | Besitzer | Stand |
 |---|---|---|
 | F1/F3/F9; AP-01/02/09 Client, AP-06/07 UI | Browser | Implementierung delegiert |
-| F2/F4/F5/F9; AP-03/06/07 und Serveranteile AP-02/09 | Gateway | Implementierung delegiert |
+| F2/F4/F5/F9; AP-03/06/07 und Serveranteile AP-02/09 | Gateway / Integration | AP-03-Doppelberechnung und AP-06-Dispatcher lokal integriert; weitere Serverarbeit offen |
 | F6/F7; AP-04/05 | Storage | Implementierung delegiert |
 | F8; AP-08, AP-04 Debug-Reconciliation | Audit | Listing-Gesamtscan im aktuellen Eigentümerpfad bestätigt; Änderung in Arbeit |
 | SQLite-/Detailcapture-Hypothese; AP-11 | Capture | Implementierung und kontrollierter Vergleich delegiert |
@@ -90,7 +100,7 @@ Ab etwa 05:43 UTC lehnt die aktuelle native Session ihre Pibo-MCP-Steuerung mit 
 - Review der Paketimplementierungen, Integration und vollständige relevante lokale Prüfungen des gemeinsamen Kandidaten.
 - Authentifizierte headful Browserprüfung auf Desktop und 390×844, Revision-/Auth-/Offline-/Freeze-Fehlerfälle und messbare Composer-Nutzbarkeit.
 - Unverändertes committed Paket mit SHA-256 und relevante Pibo2-Prüfungen; der Deploymentpool war beim read-only Vorabcheck frei, wurde noch nicht belegt.
-- 1.000 deterministische Admission-Proben, gepaarte Status-/Health-Messungen, kontrollierter Capture-Vergleich mit drei wechselnden Wiederholungen, mindestens 30 Minuten echte Multi-Agent-Last, native Kaltstarts und zwei Stunden gemischter Dauerlauf.
+- 10.000 deterministische Admission-Proben als gemeinsames strengeres Profil beider Pläne, gepaarte Status-/Health-Messungen, kontrollierter Capture-Vergleich mit drei wechselnden Wiederholungen, mindestens 30 Minuten echte Multi-Agent-Last, native Kaltstarts und zwei Stunden gemischter Dauerlauf.
 - Geräteprüfung auf dem tatsächlich betroffenen Smartphone. Gerät, Browser/PWA und Zugriff sind angefragt; Desktopemulation beweist diesen Fall nicht.
 
 [^remediation-plan]: Verbindliche Pakete, Budgets, Schutzregeln und Definition of Done des beauftragten Plans.
