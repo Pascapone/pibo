@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-12T06:22:17Z"
+  at: "2026-09-12T06:36:00Z"
 sources:
   - id: "pibo2-investigations"
     resource: "scope: Pibo2 investigations on 2026-09-11 and 2026-09-12, candidate 0fe71c72a1d3bcb3b0d06295d323317a452b367a, consolidated controller report /tmp/pibo2-multiagent-0912/REPORT.md"
@@ -22,16 +22,16 @@ implementation_state: "in-progress"
 
 ## Ausführung ab 2026-09-12
 
-Der Nutzer hat zunächst die vollständige Umsetzung dieses Plans mit hoher Parallelität beauftragt. Wegen des verbleibenden Kontingents begrenzt die neueste Anweisung die laufende Ausführung auf einen gesunden Zwischenstand: keine neuen Sub-Agents, den noch laufenden Audit-Agent fertigarbeiten lassen und begonnene Änderungen prüfen und committen. Der Gesamtumbau ist noch nicht kurz vor Abschluss. Die integrierte Arbeitsbasis ist `cac4dcd03945b9754db7be9ab2ab4324f10c335c`; der Plan-Worktree bleibt als Eingangsdokument erhalten. Die folgenden Besitzer und getrennten Docker-Worktrees bleiben für die spätere Fortsetzung nachvollziehbar. Angefangene Arbeit gilt erst nach nachgewiesener Integration und passender Abnahme als abgeschlossen.
+Der Nutzer hat zunächst die vollständige Umsetzung dieses Plans mit hoher Parallelität beauftragt. Die letzte Anweisung beendet diese Ausführung ausdrücklich: auch der letzte Audit-Agent soll die Umsetzung einstellen, vorhandene Arbeit sichern und eine kurze Übergabe schreiben. Es werden keine neuen Agents, Arbeitspakete oder längeren Prüfungen gestartet. Der Gesamtumbau bleibt unvollständig; die Session endet mit einem geprüften Integrationsstand und einem getrennt gesicherten Audit-Branch. Die integrierte Arbeitsbasis ist `cac4dcd03945b9754db7be9ab2ab4324f10c335c`; der Plan-Worktree bleibt als Eingangsdokument erhalten. Die folgenden Besitzer und getrennten Worktrees bleiben für eine spätere, erneut beauftragte Fortsetzung nachvollziehbar. Angefangene Arbeit gilt erst nach nachgewiesener Integration und passender Abnahme als abgeschlossen.
 
 | Besitzer / Branch | Verantwortung | Schnittstellengrenze | Stand |
 |---|---|---|---|
 | `latency-browser` | AP-01/02/09 Client, Receipt-/Warteanzeige AP-06/07 | Ein Browser-Lifecycle und ein Statusbesitzer; Serververtrag mit Gateway abstimmen | Ruhend; noch keine Codeänderung |
 | `latency-gateway` | AP-03, AP-06/07 Server, AP-02/09 Server | Router-/Statusrevisionen, passive Runtime-Leser, additive API-Erweiterungen | Ruhend; AP-03a und Dispatcher inzwischen in Integration |
 | `latency-storage` | AP-04 Producer/Identität, AP-05, Storage-Messung AP-00 | Kanonische Identität und Worker-RPC; Debug-Reparatur mit Audit abstimmen | Ruhend; reiner Klassifizierer inzwischen in Integration |
-| `latency-audit` | AP-08, AP-04 Debug-Reconciliation, AP-00/10 Lastharness | Begrenzte read-only Diagnose und reproduzierbare Integritätslast | Delegiert |
+| `latency-audit` | AP-08, AP-04 Debug-Reconciliation, AP-00/10 Lastharness | Begrenzte read-only Diagnose und reproduzierbare Integritätslast | Auftrag beendet; bis `c18890c1` separat committed, 41 Tests grün, noch nicht integriert oder abgenommen |
 | `latency-capture` | AP-11, Telemetrievergleich AP-00 | Vorhandener Capture-Plan bleibt Eigentümer; keine konkurrierenden Produktdaten | Ruhend; noch keine Codeänderung |
-| `latency-integration` | Orchestrierung, Evidenz, Dokumentation, Reviewintegration, AP-10 | Ein Abnahmeverantwortlicher für alle F1–F9 und PIBO-LATENCY-001–012 | In Arbeit |
+| `latency-integration` | Orchestrierung, Evidenz, Dokumentation, Reviewintegration, AP-10 | Ein Abnahmeverantwortlicher für alle F1–F9 und PIBO-LATENCY-001–012 | Zwischenstand gesichert; Build, Typecheck und 82 relevante Produkttests bestehen |
 
 Gemeinsame Änderungen werden additiv abgestimmt: alte Status-/Bootstrap-Clients bleiben lesbar; neue Clients erkennen Unterstützung und recovern über Snapshots. Produkt-History und Output-Cursor bleiben unabhängig von zusammengefassten Statusanzeigen. Gemeinsame Dateien haben genau einen Schreiber; notwendige Hooks werden diesem als konkrete Schnittstellenanforderung übergeben.
 

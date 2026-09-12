@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T06:28:31Z" }
+generated: { by: "openai/codex", at: "2026-09-12T06:36:00Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -21,7 +21,7 @@ implementation_state: "in-progress"
 
 # Abnahmegrenze
 
-Die Umsetzung ist in Arbeit. Dieser Bericht unterscheidet den unveränderten Ausgangsstand, neue Paketprüfungen und die spätere integrierte Pibo2-Abnahme. Ein grüner Baseline-Test belegt keine geschlossene neue Anforderung. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
+Die Ausführung endet auf ausdrücklichen Nutzerwunsch mit einem gesicherten Zwischenstand. Der gesamte Umbau bleibt unvollständig. Dieser Bericht unterscheidet den unveränderten Ausgangsstand, neue Paketprüfungen und die noch ausstehende integrierte Pibo2-Abnahme. Ein grüner Baseline-Test belegt keine geschlossene neue Anforderung. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
 
 # Reproduzierbare Basis
 
@@ -79,13 +79,17 @@ Commit `81847c71989feb1645220daea1ded02f370ecb73` ergänzt die fehlende reine AP
 
 Die historische Datei `dead-letters.json` ist leer; die gesicherten Aggregate und der vorhandene Detailbeleg erlauben deshalb noch keine vollständige Zuordnung sämtlicher 31 Fehler und 32 Diagnosen. Es wurde keine historische Reparatur angewendet. Die begonnenen read-only Pibo2-Abfragen beschränken sich auf verfügbare Index-/Spaltenmetadaten und sind keine Kandidatenabnahme.
 
-Der Nutzer hat die laufende Ausführung anschließend auf einen gesunden Zwischenstand begrenzt. Es werden keine neuen Sub-Agents gestartet und keine weiteren unbegonnenen Pakete eröffnet. Der bereits laufende Audit-Agent darf seinen Auftrag beenden; noch nicht akzeptierte Ergebnisse bleiben getrennt vom geprüften Integrationsstand.
+Der Nutzer hat die laufende Ausführung anschließend auf einen gesunden Zwischenstand begrenzt und zuletzt auch den zügigen Abschluss des Audit-Agenten angeordnet. Seine bestehende Session erhielt über den regulären lokalen Pibo-Client eine `/steer`-Nachricht zum Einstellen der Umsetzung, Sichern vorhandener Arbeit und Schreiben der Übergabe. Der Gateway bestätigte die Zustellung an den aktiven Turn. Die MCP-Verbindung meldete weiterhin `Auth required`; es wurden keine Credentials verändert und keine neue Agent-Session erzeugt. Noch nicht akzeptierte Ergebnisse bleiben getrennt vom geprüften Integrationsstand.
+
+Der Audit-Agent hat seinen Auftrag beendet. Sein Branch ist bis `c18890c157ac4490272b3fb6e450740e440bdc70` committed und sauber. Er enthält die begrenzte Diagnose, AP-04-Reconciliation, einen lokalen Lastharness und abschließende Reviewkorrekturen. Der vor dem Abschlusscommit ausgeführte Server-TypeScript-Build und [41 fokussierte Tests](/reports/artifacts/latency-reliability-2026-09-12/audit-worker-tests.log) bestehen; danach wurde kein Code verändert. Diese Änderungen wurden noch nicht in `latency-integration` übernommen; die früheren AP-08-Reviewpunkte gelten ohne erneute Abnahme nicht als geschlossen. Die private Abschlussablage enthält den Orchestrierungsstand, den gesicherten Zwischenpatch, die vollständige Agent-Übergabe `latency-remediation-audit-handoff.md`, Referenzmessungen, synthetische Referenzdatenbanken und Git-Bundles für die spätere Fortsetzung.
+
+Die separat gesicherte frühere Referenzmessung des Auditworkers verwendete 1.000 Admission-Proben und 30 Status-/Health-Paare je Profil. Bei 3.250 beziehungsweise 10.000 Sessions lag Status-p95 bei 2.114,894 beziehungsweise 7.562,6244 ms; beide Profile melden `passed: false`. Diese Baselinewerte betreffen den damaligen Gateway und eine frühere Harness-Fassung, nicht den geprüften Integrationsstand oder eine finale kombinierte Kandidatenabnahme. Der vollständige Bericht hält Messversionen, fehlgeschlagene Zwischenschritte und alle verbleibenden Grenzen fest.
 
 ## Gemeinsame Prüfung des Zwischenstands
 
 Auf dem integrierten Code bei `81847c71989feb1645220daea1ded02f370ecb73` bestehen `npm run build` und `npm run typecheck` vollständig im Dockerworker. Der gemeinsame [Testlauf](/reports/artifacts/latency-reliability-2026-09-12/checkpoint-product-tests.log) umfasst die sieben oben benannten Gateway-, Dispatcher-/Store- und Identität-/Ingest-Suiten: **82 Tests, 0 Fehler**, 6.525,6 ms. Die bestehenden Vite-Bundlewarnungen bleiben unverändert sichtbar. Eine vollständige Root-Testsuite oder Releaseabnahme wurde nicht ausgeführt.
 
-Die Dokumentationsindizes haben keinen Drift; `npm run docs:validate` besteht mit 800 Markdown-Pfaden, 0 Fehlern und 0 Warnungen. Die Dokumentationsvalidator-Tests bestehen erneut mit 84 Tests, 0 Fehlern. Vier unbenutzte Dockerworker (`browser`, `gateway`, `storage`, `capture`) wurden über die Compute-CLI freigegeben. Ihre Worktrees und Branches bleiben erhalten. Audit und Integration bleiben nur für den laufenden Abschluss aktiv.
+Die Dokumentationsindizes haben keinen Drift; `npm run docs:validate` besteht mit 800 Markdown-Pfaden, 0 Fehlern und 0 Warnungen. Die Dokumentationsvalidator-Tests bestehen erneut mit 84 Tests, 0 Fehlern. Zum Sessionabschluss werden alle sechs taskeigenen Dockerworker nach Sicherung ihrer relevanten Artefakte über die Compute-CLI freigegeben. Ihre Worktrees und Branches bleiben erhalten. Alle zehn delegierten Sessions melden `idle`; es läuft kein Sub-Agent mehr.
 
 # Ausführungsunterbrechung der Agent-Anbindung
 
@@ -99,11 +103,11 @@ Nach der vom Nutzer gemeldeten Authentifizierungsreparatur liefern die bestehend
 
 | Befunde / Pakete | Besitzer | Stand |
 |---|---|---|
-| F1/F3/F9; AP-01/02/09 Client, AP-06/07 UI | Browser | Implementierung delegiert |
+| F1/F3/F9; AP-01/02/09 Client, AP-06/07 UI | Browser | Ruhend; Implementierung offen |
 | F2/F4/F5/F9; AP-03/06/07 und Serveranteile AP-02/09 | Gateway / Integration | AP-03-Doppelberechnung und AP-06-Dispatcher lokal integriert; weitere Serverarbeit offen |
-| F6/F7; AP-04/05 | Storage | Implementierung delegiert |
-| F8; AP-08, AP-04 Debug-Reconciliation | Audit | Listing-Gesamtscan im aktuellen Eigentümerpfad bestätigt; Änderung in Arbeit |
-| SQLite-/Detailcapture-Hypothese; AP-11 | Capture | Implementierung und kontrollierter Vergleich delegiert |
+| F6/F7; AP-04/05 | Storage | Reiner Klassifizierer integriert; Producer-/Worker-Arbeit und historische Zuordnung offen |
+| F8; AP-08, AP-04 Debug-Reconciliation | Audit | Separater Branch bis `c18890c1` gesichert; Review und Integration offen |
+| SQLite-/Detailcapture-Hypothese; AP-11 | Capture | Ruhend; kontrollierter Vergleich offen |
 | Alle Befunde; AP-00/10 | Integration | Historische Belege gesichert, Docker-Baseline gebaut und fokussiert geprüft |
 
 # Offene integrierte Gates

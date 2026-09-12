@@ -1,0 +1,51 @@
+✔ admission p99 is unavailable below 1000 real samples; empty distributions never pass as zero (2.401815ms)
+✔ integrity tracks IDs and committed evidence, not equality of counts (0.962504ms)
+✔ finite local harness uses real HTTP admission/receipts and refuses a smoke as reference acceptance (7761.721996ms)
+✔ provenance-only legacy collision is proven from the independently reconstructed canonical event (15.318965ms)
+✔ incoming text or a preview cannot substitute for a canonical legacy fingerprint proof (0.88073ms)
+✔ changed text, source, session, turn and part remain semantic conflicts (0.95001ms)
+✔ terminal delivery equality is independent of an assistant delivery decision (0.915556ms)
+✔ unsupported versions and incomplete events cannot be labeled repairable (0.788306ms)
+✔ classification bounds hostile structures without invoking accessors or returning bodies (1.109019ms)
+✔ real classifier v2 dry-run and audit-only apply are bounded, idempotent and delivery-specific (87.788614ms)
+✔ real classifier legacy dry-run and audit-only apply are bounded, idempotent and delivery-specific (62.80632ms)
+✔ real semantic conflicts and incomplete mixed jobs remain untouched even with a successful terminal delivery (102.796382ms)
+✔ stale dead-job evidence refuses safe apply and cannot overwrite a concurrent change (53.466092ms)
+✔ external canonical payload is read with checksum/byte validation, never from its preview (59.061967ms)
+✔ different assistant finals in one turn receive distinct durable identities while exact replay reattaches (82.745602ms)
+✔ equivalent assistant aliases fingerprint identically and compact queued/completed results do not collide (62.270493ms)
+✔ collision diagnostics are redacted and dead-letter reconciliation is explicit, audited, and idempotent (174.406952ms)
+✔ keep-existing repair accepts the exact legacy compact collision key (47.687113ms)
+{"fixtureJobs":100000,"listingSamples":30,"p95Ms":2.1531570000000784,"queryPlan":[{"id":7,"parent":0,"notused":203,"detail":"SEARCH pibo_dead_jobs USING INDEX sqlite_autoindex_pibo_dead_jobs_1 (job_id>?)"}]}
+✔ 100000 historical jobs: primary-key plan, bounded sparse scope, stable cursor, no writes (840.827161ms)
+✔ time/result/work scopes are distinct; malformed and oversized bodies cannot leak (164.426608ms)
+✔ deep audit guards real scans, reports unknown, and can be restarted with explicit work budget (167.039821ms)
+✔ audit cancellation waits for reader exit and releases a WAL snapshot before checkpoint (248.780019ms)
+✔ hard deadline and pre-abort cannot leave a read process active (109.084721ms)
+{"cliSamples":30,"fixtureJobs":10000,"p95Ms":160.45697699999982}
+✔ 30 actual CLI listings meet the interactive 250ms p95 budget on 10000 historical jobs (4430.455329ms)
+✔ scoped oversized and malformed jobs are unclassified, never an empty complete scope; cursors preserve uncertainty (53.521807ms)
+✔ arbitrary oversized identity strings never enter bounded result/progress frames (294.766678ms)
+✔ real audit work guard and later queries share a stable snapshot across concurrent WAL inserts (137.503528ms)
+✔ output integrity audit reports lifecycle, collision, and queue findings without writes (106.368984ms)
+✔ output integrity audit supports session, cutoff, and bounded detail scopes (85.192793ms)
+✔ output integrity audit matches terminal reconstruction and rejects duplicate thinking lifecycles (76.129555ms)
+✔ pibo debug persistence stays progressive and returns read-only audit and dead-letter views (894.971129ms)
+✔ online WAL backup restores product history and both compressed and large external payloads (246.1966ms)
+✔ cancelled payload copying resumes only from the same verified snapshot and repairs a partial catalog tail (124.993066ms)
+✔ snapshot byte quota rejects without declaring an incomplete backup complete (25.163804ms)
+✔ wal growth quota releases the source snapshot while writers keep appending (115.324798ms)
+✔ bounded storage status and verification report positive, partial, and WAL-pressure state without blocking writers (249.878868ms)
+✔ checkpoint and retention are dry-run by default; apply is bounded, audited, and retains orphan payloads (51.828827ms)
+✔ payload-reference status scans are explicitly bounded (82.064107ms)
+✔ checkpoint refuses missing paths and invalid runtime modes (22.448969ms)
+✔ real temporary-store CLI exposes status, bounded verification, dry-run retention, and explicit checkpoint apply (467.949984ms)
+✔ payload size completeness follows the 1000-row byte sample, not the larger row count (52.660204ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 41
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18335.165345
