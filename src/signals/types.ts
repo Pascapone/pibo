@@ -145,6 +145,8 @@ export type PiboSessionSignalSnapshot = {
 };
 
 export type PiboSignalSnapshot = {
+	/** Registry instance identity; versions restart from zero when this changes. */
+	epoch?: string;
 	rootPiboSessionId: string;
 	version: number;
 	generatedAt: string;
@@ -154,6 +156,7 @@ export type PiboSignalSnapshot = {
 
 export type PiboSignalPatch = {
 	type?: "signal_patch";
+	epoch?: string;
 	rootPiboSessionId: string;
 	fromVersion: number;
 	toVersion: number;
@@ -173,6 +176,7 @@ export type PiboSessionSignalStatus = {
 
 export type PiboSignalStatusSnapshot = {
 	type?: "signal_status_snapshot";
+	epoch?: string;
 	generatedAt: string;
 	rootVersions: Record<string, number>;
 	sessions: Record<string, PiboSessionSignalStatus>;
@@ -180,6 +184,7 @@ export type PiboSignalStatusSnapshot = {
 
 export type PiboSignalStatusPatch = {
 	type?: "signal_status_patch";
+	epoch?: string;
 	rootPiboSessionId: string;
 	fromVersion: number;
 	toVersion: number;
@@ -241,6 +246,7 @@ export type PiboSignalRegistryDiagnostics = {
 
 export interface PiboSignalRegistry {
 	project(event: PiboSignalInput): PiboSignalPatch | undefined;
+	removeSession?(piboSessionId: string): void;
 	snapshotSession(piboSessionId: string): PiboSignalSnapshot;
 	snapshotTree(rootPiboSessionId: string): PiboSignalSnapshot;
 	snapshotStatuses(): PiboSignalStatusSnapshot;

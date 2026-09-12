@@ -733,6 +733,7 @@ function writeJsonSse(controller: ReadableStreamDefaultController<Uint8Array>, e
 function compactSignalStatusPatch(patch: PiboSignalPatch): PiboSignalStatusPatch {
 	return {
 		type: "signal_status_patch",
+		epoch: patch.epoch,
 		rootPiboSessionId: patch.rootPiboSessionId,
 		fromVersion: patch.fromVersion,
 		toVersion: patch.toVersion,

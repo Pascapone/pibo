@@ -27,7 +27,12 @@ import { piboOmpPlugin } from "./omp.js";
 import { piboOpenAiChatGptTranscriptionPlugin } from "./openai-chatgpt-transcription.js";
 import { piboOpenAiTranscriptionPlugin } from "./openai-transcription.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
-import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
+import type {
+	PiboGatewayActionContext,
+	PiboGatewayPassiveActionContext,
+	PiboPlugin,
+	PiboProfileBuildContext,
+} from "./types.js";
 import { PI_AGENT_RUNTIME_DRIVER } from "../agent-runtimes/pi/adapter.js";
 
 export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
@@ -93,6 +98,21 @@ function getThinkingParams(event: PiboExecutionEvent): PiboThinkingParams {
 	if (!raw || raw.level === undefined) return {};
 	if (typeof raw.level !== "string") throw new Error("thinking requires params.level to be a string");
 	return { level: parsePiboThinkingLevel(raw.level) };
+}
+
+type ThinkingActionContext = Pick<PiboGatewayActionContext, "getThinkingLevel" | "setThinkingLevel">;
+
+function executeThinkingAction(context: ThinkingActionContext, event: PiboExecutionEvent) {
+	const params = getThinkingParams(event);
+	if (!params.level) return { ...context.getThinkingLevel(), action: "show_thinking_menu" };
+	const previousLevel = context.getThinkingLevel().level;
+	const result = context.setThinkingLevel(params.level);
+	return {
+		...result,
+		action: "set_thinking_level",
+		previousLevel,
+		changed: previousLevel !== result.level,
+	};
 }
 
 function requireApprovalResponseParams(event: PiboExecutionEvent): PiboApprovalResponseParams {
@@ -276,6 +296,9 @@ export const piboCorePlugin = definePiboPlugin({
 			execute(context) {
 				return context.getStatusSnapshot();
 			},
+			executeWithoutRuntime(context) {
+				return context.getStatusSnapshot();
+			},
 		});
 		api.registerGatewayAction({
 			name: "compact",
@@ -312,6 +335,9 @@ export const piboCorePlugin = definePiboPlugin({
 			description: "Return the routed Pibo session id.",
 			slashCommands: ["session"],
 			execute(context) {
+				return { piboSessionId: context.piboSessionId };
+			},
+			executeWithoutRuntime(context) {
 				return { piboSessionId: context.piboSessionId };
 			},
 		});
@@ -361,17 +387,9 @@ export const piboCorePlugin = definePiboPlugin({
 			name: "thinking",
 			description: "Show or set the active runtime reasoning level.",
 			slashCommands: ["thinking"],
-			execute(context, event) {
-				const params = getThinkingParams(event);
-				if (!params.level) return { ...context.getThinkingLevel(), action: "show_thinking_menu" };
-				const previousLevel = context.getThinkingLevel().level;
-				const result = context.setThinkingLevel(params.level);
-				return {
-					...result,
-					action: "set_thinking_level",
-					previousLevel,
-					changed: previousLevel !== result.level,
-				};
+			execute: executeThinkingAction,
+			executeWithoutRuntime(context: PiboGatewayPassiveActionContext, event) {
+				return executeThinkingAction(context, event);
 			},
 		});
 		api.registerGatewayAction({

@@ -634,6 +634,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly config: PiboJsonObject;
 	readonly displayName: string;
 	private modelCatalogCache?: { expiresAt: number; value: Promise<PiModelCatalog> };
+	private resolvedModelCatalog?: { expiresAt: number; value: PiModelCatalog };
 	private readonly authController: PiAgentRuntimeAuthController;
 
 	constructor(
@@ -658,6 +659,11 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			code: "pi_runtime_available",
 			message: `Pi Coding Agent SDK ${PI_PROTOCOL_VERSION} is available in-process.`,
 		}];
+	}
+
+	peekModelCatalog(): AgentRuntimeModelCatalog | undefined {
+		if (!this.resolvedModelCatalog || this.resolvedModelCatalog.expiresAt <= Date.now()) return undefined;
+		return piAgentRuntimeModelCatalog(this.instanceId, this.resolvedModelCatalog.value);
 	}
 
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
@@ -852,9 +858,12 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	private loadModelCatalog(): Promise<PiModelCatalog> {
 		const now = Date.now();
 		if (this.modelCatalogCache && this.modelCatalogCache.expiresAt > now) return this.modelCatalogCache.value;
+		const expiresAt = now + 5_000;
 		const value = loadPiModelCatalog(process.cwd());
-		this.modelCatalogCache = { expiresAt: now + 5_000, value };
-		value.catch(() => {
+		this.modelCatalogCache = { expiresAt, value };
+		value.then((catalog) => {
+			if (this.modelCatalogCache?.value === value) this.resolvedModelCatalog = { expiresAt, value: catalog };
+		}).catch(() => {
 			if (this.modelCatalogCache?.value === value) this.modelCatalogCache = undefined;
 		});
 		return value;

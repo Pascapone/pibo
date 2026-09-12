@@ -974,6 +974,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 type CodexNativeCompatibilityServices = {
 	thinkingLevel?: string;
+	thinkingLevelOverride?: string;
 	modelDefaults?: PiboModelDefaults;
 	initialFastMode?: boolean;
 	testOnlyFirstUseFailpoints?: CodexNativeFirstUseTestFailpoints;
@@ -1025,6 +1026,7 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly displayName: string;
 	readonly enabled: boolean;
 	private modelCatalogCache?: { expiresAt: number; value: Promise<CodexNativeModelCatalog> };
+	private resolvedModelCatalog?: { expiresAt: number; value: CodexNativeModelCatalog };
 	private readonly historyInspectionCache = new Map<string, { expiresAt: number; value: Promise<AgentRuntimeHistoryInspection> }>();
 	private readonly authController: CodexNativeAuthController;
 
@@ -1073,6 +1075,11 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	diagnose(): Promise<readonly AgentRuntimeDiagnostic[]> {
 		return diagnoseCodexNativeRuntime(this.config, this.instanceId);
+	}
+
+	peekModelCatalog(): AgentRuntimeModelCatalog | undefined {
+		if (!this.resolvedModelCatalog || this.resolvedModelCatalog.expiresAt <= Date.now()) return undefined;
+		return toAgentRuntimeModelCatalog(this.instanceId, this.resolvedModelCatalog.value);
 	}
 
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
@@ -1280,7 +1287,8 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				activeModel: input.activeModel
 					?? persisted.activeModel
 					?? selectRequestedModelProfile(input.profile, compatibility?.modelDefaults),
-				reasoningLevel: persisted.reasoningLevel
+				reasoningLevel: compatibility?.thinkingLevelOverride
+					?? persisted.reasoningLevel
 					?? compatibility?.thinkingLevel
 					?? selectRequestedThinkingLevel(input.profile, compatibility?.modelDefaults),
 				initialFastMode: hasPersistedServiceTier
@@ -1493,12 +1501,15 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	private loadModelCatalog(client?: CodexNativeAppServerProcess["client"]): Promise<CodexNativeModelCatalog> {
 		const now = Date.now();
 		if (this.modelCatalogCache && this.modelCatalogCache.expiresAt > now) return this.modelCatalogCache.value;
+		const expiresAt = now + 5_000;
 		const value = client
 			? readCodexNativeModelCatalog(client)
 			: this.withProcess("model-catalog", process.cwd(), async (catalogProcess) =>
 				await readCodexNativeModelCatalog(catalogProcess.client));
-		this.modelCatalogCache = { expiresAt: now + 5_000, value };
-		value.catch(() => {
+		this.modelCatalogCache = { expiresAt, value };
+		value.then((catalog) => {
+			if (this.modelCatalogCache?.value === value) this.resolvedModelCatalog = { expiresAt, value: catalog };
+		}).catch(() => {
 			if (this.modelCatalogCache?.value === value) this.modelCatalogCache = undefined;
 		});
 		return value;

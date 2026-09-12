@@ -76,15 +76,6 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 	});
 
 	try {
-		const output = await router.emit({
-			type: "execution",
-			piboSessionId: "ps_profile",
-			action: "status",
-		});
-
-		assert.equal(output.type, "execution_result");
-		assert.equal(output.result.activeTools.includes("bash"), true);
-
 		const current = await router.emit({
 			type: "execution",
 			piboSessionId: "ps_profile",
@@ -92,6 +83,92 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 		});
 		assert.equal(current.type, "execution_result");
 		assert.equal(current.result.piSessionId, "11111111-1111-4111-8111-111111111111");
+		const output = await router.emit({ type: "execution", piboSessionId: "ps_profile", action: "status" });
+		assert.equal(output.result.activeTools.includes("bash"), true);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("signal snapshots reuse the startup projection until the session structure revision changes", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: "ps_projection_cache",
+		piSessionId: "31111111-1111-4111-8111-111111111111",
+		channel: "pibo.test",
+		kind: "chat",
+		profile: "base",
+	});
+	const originalList = store.list.bind(store);
+	let listCalls = 0;
+	store.list = () => {
+		listCalls++;
+		return originalList();
+	};
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		assert.equal(listCalls, 1, "the router builds one projection before request handling");
+		router.snapshotSignalSession("ps_projection_cache");
+		router.snapshotSignalStatuses();
+		router.snapshotSignalSessions(["ps_projection_cache"]);
+		assert.equal(listCalls, 1, "warm snapshots do not rescan an unchanged store");
+		store.update("ps_projection_cache", { title: "changed" });
+		router.snapshotSignalSession("ps_projection_cache");
+		assert.equal(listCalls, 2, "a changed structure revision refreshes once");
+		router.snapshotSignalStatuses();
+		assert.equal(listCalls, 2);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("startup projection retries once when the store revision changes during its listed snapshot", async () => {
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_before_projection", channel: "pibo.test", kind: "chat", profile: "base" });
+	const originalList = store.list.bind(store);
+	let listCalls = 0;
+	store.list = () => {
+		listCalls += 1;
+		const listed = originalList();
+		if (listCalls === 1) store.create({ id: "ps_during_projection", channel: "pibo.test", kind: "chat", profile: "base" });
+		return listed;
+	};
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		assert.equal(listCalls, 2);
+		assert.ok(router.snapshotSignalStatuses().sessions.ps_during_projection);
+		assert.equal(listCalls, 2);
+	} finally {
+		await router.disposeAll();
+	}
+});
+
+test("store revision rebuild reparents, detaches, and deletes authoritative signal sessions", async () => {
+	const store = new InMemoryPiboSessionStore();
+	for (const input of [
+		{ id: "ps_parent_a", kind: "chat" },
+		{ id: "ps_parent_b", kind: "chat" },
+		{ id: "ps_reparented", kind: "subagent", parentId: "ps_parent_a" },
+	]) store.create({ channel: "pibo.test", profile: "base", ...input });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	try {
+		let snapshot = router.snapshotSignalSession("ps_reparented");
+		assert.equal(snapshot.rootPiboSessionId, "ps_parent_a");
+		assert.equal(snapshot.sessions.ps_reparented.parentPiboSessionId, "ps_parent_a");
+
+		store.update("ps_reparented", { parentId: "ps_parent_b" });
+		snapshot = router.snapshotSignalSession("ps_reparented");
+		assert.equal(snapshot.rootPiboSessionId, "ps_parent_b");
+		assert.equal(snapshot.sessions.ps_reparented.parentPiboSessionId, "ps_parent_b");
+
+		store.update("ps_reparented", { parentId: null });
+		snapshot = router.snapshotSignalSession("ps_reparented");
+		assert.equal(snapshot.rootPiboSessionId, "ps_reparented");
+		assert.equal(snapshot.sessions.ps_reparented.parentPiboSessionId, undefined);
+
+		assert.equal(store.delete("ps_reparented"), true);
+		const statuses = router.snapshotSignalStatuses();
+		assert.equal(statuses.sessions.ps_reparented, undefined);
 	} finally {
 		await router.disposeAll();
 	}
@@ -214,7 +291,7 @@ test("session router applies product model defaults instead of workspace-local d
 			router.emit({
 				type: "execution",
 				piboSessionId: "ps_model_defaults",
-				action: "status",
+				action: "session.current",
 			}),
 			/product-provider\/product-model/,
 		);
@@ -294,6 +371,7 @@ export default function(pi) {
 	});
 
 	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_package", action: "session.current" });
 		const output = await router.emit({
 			type: "execution",
 			piboSessionId: "ps_package",
@@ -887,8 +965,8 @@ test("dispose removes cached parent and child routed runtimes", async () => {
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "status" });
-		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "session.current" });
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "session.current" });
 		assert.equal(router.getPiboSessionIds().length, 2);
 		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "dispose" });
 		assert.deepEqual(router.getPiboSessionIds(), []);
@@ -1007,7 +1085,7 @@ test("cached identity reservations reject queued messages before signal acceptan
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_identity_signal_admission", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_identity_signal_admission", action: "session.current" });
 		const routed = router.sessions.get("ps_identity_signal_admission");
 		assert.ok(routed);
 		routed.sessionIdentityOperationInFlight = true;
@@ -1077,7 +1155,7 @@ test("abort action terminalizes the active turn before runtime abort work", asyn
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_abort_action", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_abort_action", action: "session.current" });
 		router.getSignalRegistry().project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "ps_abort_action", eventId: "m1", text: "hi" } });
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_action", action: "abort" });
 		const snapshot = router.getSignalRegistry().snapshotTree("ps_abort_action");
@@ -1100,7 +1178,7 @@ test("kill action disposes cached runtimes without cancelling yielded runs", asy
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_kill_action", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_kill_action", action: "session.current" });
 		router.getSignalRegistry().project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "ps_kill_action", eventId: "m1", text: "hi" } });
 		const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_kill_action", toolName: "bash" });
 		const output = await router.emit({ type: "execution", piboSessionId: "ps_kill_action", action: "kill" });
@@ -1128,7 +1206,7 @@ test("kill_all action disposes the runtime and cancels its yielded runs", async 
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_kill_all_action", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_kill_all_action", action: "session.current" });
 		const run = router.runRegistry.startToolRun({ controllerPiboSessionId: "ps_kill_all_action", toolName: "bash" });
 		await router.emit({ type: "execution", piboSessionId: "ps_kill_all_action", action: "kill_all" });
 		assert.deepEqual(router.getPiboSessionIds(), []);
@@ -1161,16 +1239,8 @@ test("kill cancels child sessions but not yielded runs", async () => {
 	});
 
 	try {
-		await router.emit({
-			type: "execution",
-			piboSessionId: "ps_parent",
-			action: "status",
-		});
-		await router.emit({
-			type: "execution",
-			piboSessionId: "ps_child",
-			action: "status",
-		});
+		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "session.current" });
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "session.current" });
 
 		const run = router.runRegistry.startToolRun({
 			controllerPiboSessionId: "ps_child",
@@ -1261,16 +1331,8 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 	});
 
 	try {
-		await router.emit({
-			type: "execution",
-			piboSessionId: "ps_parent",
-			action: "status",
-		});
-		await router.emit({
-			type: "execution",
-			piboSessionId: "ps_child",
-			action: "status",
-		});
+		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "session.current" });
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "session.current" });
 
 		const childRun = router.runRegistry.startToolRun({
 			controllerPiboSessionId: "ps_child",
@@ -1332,8 +1394,8 @@ test("session router keeps the persisted runtime instance when the profile defau
 	});
 	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
 	try {
-		const status = await router.emit({ type: "execution", piboSessionId: "ps_frozen_runtime", action: "status" });
-		assert.equal(status.type, "execution_result");
+		const model = await router.emit({ type: "execution", piboSessionId: "ps_frozen_runtime", action: "model" });
+		assert.equal(model.type, "execution_result");
 		assert.equal(store.get("ps_frozen_runtime").runtimeBinding.runtimeInstanceId, "frozen-a");
 		assert.equal(store.get("ps_frozen_runtime").runtimeBinding.state, "bound");
 	} finally {
@@ -1415,8 +1477,8 @@ test("session router lazily creates the reserved Pi transcript for an empty migr
 	const firstRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
 	let firstLocator;
 	try {
-		const status = await firstRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
-		assert.equal(status.type, "execution_result");
+		const current = await firstRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "session.current" });
+		assert.equal(current.type, "execution_result");
 		const stored = store.get("ps_empty_migrated_pi");
 		assert.equal(stored.runtimeBinding.state, "bound");
 		assert.equal(stored.runtimeBinding.metadata.nativePresenceExpected, false);
@@ -1429,8 +1491,8 @@ test("session router lazily creates the reserved Pi transcript for an empty migr
 	if (firstLocator) await rm(firstLocator, { force: true });
 	const reopenedRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
 	try {
-		const status = await reopenedRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
-		assert.equal(status.type, "execution_result");
+		const current = await reopenedRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "session.current" });
+		assert.equal(current.type, "execution_result");
 		assert.equal(store.get("ps_empty_migrated_pi").runtimeBinding.state, "bound");
 	} finally {
 		await reopenedRouter.disposeAll();
@@ -1459,7 +1521,7 @@ test("session router marks a missing bound Pi transcript instead of creating a r
 	const router = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
 	try {
 		await assert.rejects(
-			() => router.emit({ type: "execution", piboSessionId: "ps_missing_pi", action: "status" }),
+			() => router.emit({ type: "execution", piboSessionId: "ps_missing_pi", action: "session.current" }),
 			(error) => error?.name === "AgentRuntimeBindingMissingError" && /77777777/.test(error.message),
 		);
 		const stored = store.get("ps_missing_pi");
@@ -1489,15 +1551,15 @@ test("signal snapshots order known parents without rereading each stored Session
 		const snapshot = router.snapshotSignalSession("ps_child");
 		assert.equal(snapshot.rootPiboSessionId, "ps_root");
 		assert.equal(snapshot.sessions.ps_child.parentPiboSessionId, "ps_parent");
-		assert.equal(lists, 1);
-		assert.equal(reads, 0, "the complete list already contains each ancestor record");
+		assert.equal(lists, 0, "the startup projection serves unchanged stores without a request-time rescan");
+		assert.equal(reads, 0, "the complete startup list already contains each ancestor record");
 		createStoredSession(store, { piSessionId: undefined, id: "ps_new_child", parentId: "ps_parent" });
 		reads = lists = 0;
 		const next = router.snapshotSignalTree("ps_root");
 		assert.equal(next.rootPiboSessionId, "ps_root");
 		assert.equal(next.sessions.ps_new_child.parentPiboSessionId, "ps_parent");
 		assert.equal(lists, 1);
-		assert.equal(reads, 0, "each snapshot uses a fresh listed view, not per-record queries or a stale cache");
+		assert.equal(reads, 0, "a changed structure revision rebuilds from one listed view without per-record queries");
 		const registry = router.getSignalRegistry();
 		registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "ps_child", eventId: "active" } });
 		registry.project({ type: "pibo_output", event: { type: "tool_call", piboSessionId: "ps_child", eventId: "active", toolCallId: "tool", toolName: "bash", args: {}, argsComplete: false } });
@@ -1507,7 +1569,7 @@ test("signal snapshots order known parents without rereading each stored Session
 		assert.equal(expected.queuedMessages, 2);
 		reads = lists = 0;
 		assert.deepEqual(router.snapshotSignalSession("ps_child").sessions.ps_child, expected);
-		assert.equal(lists, 1);
+		assert.equal(lists, 0, "signal-only mutations do not invalidate the session structure projection");
 		assert.equal(reads, 0);
 	} finally {
 		await router.disposeAll();

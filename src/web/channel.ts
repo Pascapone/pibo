@@ -206,10 +206,17 @@ function collectActiveRuns(channelContext: PiboChannelContext): unknown[] {
 
 function createGatewayRuntimeStatuses(channelContext: PiboChannelContext): unknown[] {
 	const statuses = channelContext.listSessionRuntimeStatuses?.() ?? [];
+	let batchSnapshots: ReturnType<NonNullable<PiboChannelContext["snapshotSignalSessions"]>> | undefined;
+	try {
+		batchSnapshots = channelContext.snapshotSignalSessions?.(statuses.map((status) => status.piboSessionId));
+	} catch {
+		batchSnapshots = undefined;
+	}
 	return statuses.map((status) => {
 		try {
-			const snapshot = channelContext.snapshotSignalSession?.(status.piboSessionId);
-			const activeTelemetry = snapshot?.sessions[status.piboSessionId]?.activeTelemetry;
+			const activeTelemetry = batchSnapshots
+				? batchSnapshots[status.piboSessionId]?.activeTelemetry
+				: channelContext.snapshotSignalSession?.(status.piboSessionId)?.sessions[status.piboSessionId]?.activeTelemetry;
 			return activeTelemetry ? { ...status, activeTelemetry } : status;
 		} catch {
 			return status;

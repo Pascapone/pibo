@@ -149,9 +149,14 @@ describe('gateway status endpoint', () => {
       const channel = createWebHostChannel({ port, gatewayMode: 'prod', announce: false });
       const statuses = Array.from({ length: runtimeCount }, (_, i) => ({ piboSessionId: `ps_${i}`, processing: true }));
       let statusReads = 0;
+      let batchSnapshotReads = 0;
       let snapshotReads = 0;
       await channel.start({
         listSessionRuntimeStatuses: () => { statusReads++; return statuses; },
+        snapshotSignalSessions: (ids) => {
+          batchSnapshotReads++;
+          return Object.fromEntries(ids.map((id, index) => [id, { activeTelemetry: { activePhase: 'tool_execution', sample: index + 1 } }]));
+        },
         snapshotSignalSession: (id) => {
           snapshotReads++;
           return { sessions: { [id]: { activeTelemetry: { activePhase: 'tool_execution', sample: snapshotReads } } } };
@@ -167,7 +172,8 @@ describe('gateway status endpoint', () => {
         assert.equal(response.status, 200);
         const body = await response.json();
         assert.equal(statusReads, 1);
-        assert.equal(snapshotReads, runtimeCount);
+        assert.equal(batchSnapshotReads, 1);
+        assert.equal(snapshotReads, 0);
         assert.deepEqual(body.runtimeQueue.statuses, body.runtimeStatuses);
         assert.equal(body.runtimeStatuses.length, runtimeCount);
         assert.deepEqual(body.runtimeStatuses.at(-1).activeTelemetry, { activePhase: 'tool_execution', sample: runtimeCount });

@@ -234,12 +234,19 @@ export type PiboGatewayActionContext = {
 	killAll(): Promise<{ killed: string[]; cancelledRuns: string[] }>;
 };
 
+export type PiboGatewayPassiveActionContext = Pick<
+	PiboGatewayActionContext,
+	"piboSessionId" | "getStatus" | "getStatusSnapshot" | "getThinkingLevel" | "setThinkingLevel"
+>;
+
 export type PiboGatewayAction = {
 	name: string;
 	description?: string;
 	slashCommands?: readonly string[];
 	hidden?: boolean;
 	execute(context: PiboGatewayActionContext, event: PiboExecutionEvent): Promise<unknown> | unknown;
+	/** Execute without opening or awaiting a runtime when no routed session is active. */
+	executeWithoutRuntime?(context: PiboGatewayPassiveActionContext, event: PiboExecutionEvent): Promise<unknown> | unknown;
 };
 
 export type PiboGatewayActionInfo = {
