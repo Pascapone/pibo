@@ -268,7 +268,7 @@ async function runOutputPersistenceInspection(
 		if (result.resultType === "debug.integrity.output" && result.summary) console.log(formatOutputIntegrityAudit(result));
 		else if (result.resultType === "debug.persistence.dead-letters") console.log([
 			"pibo debug persistence dead-letters", "readOnly\ttrue", `returnedDeadLetters\t${result.deadLetters.length}`, "countsScope\tpage (global total not computed)",
-			...result.deadLetters.map((item) => [item.jobId, item.piboSessionId ?? "-", item.eventId ?? "-", item.identityCollision, item.relatedIdentityCollision ?? "unknown"].join("\t")),
+			...result.deadLetters.map((item) => [item.jobId, item.piboSessionId ?? "-", item.eventId ?? "-", item.identityCollision, item.relatedIdentityCollision ?? "unknown", item.scopeMatch ?? "match", item.inspectionIssue ?? "-"].join("\t")),
 		].join("\n"));
 		else console.log("pibo debug persistence audit\nreadOnly\ttrue\nhealth\tunknown (incomplete audit)");
 		console.log([`complete\t${result.budget.complete}`, `reason\t${result.budget.reason ?? "-"}`, `workRows\t${result.budget.scannedRows}/${result.budget.maxScan}`, `elapsedMs\t${result.budget.elapsedMs.toFixed(1)}/${result.budget.timeoutMs}`, ...(result.budget.nextCursor ? [`nextCursor\t${result.budget.nextCursor}`] : [])].join("\n"));
@@ -1518,6 +1518,8 @@ Usage:
 Reports:
   Output-persistence dead letters, permanent collision failures, and dead letters related to persisted collision diagnostics.
   Unknown relationships are omitted; an incomplete page is not an absence-of-errors result.
+  Unclassifiable scoped entries are returned as scopeMatch=unknown with a safe inspectionIssue.
+  traversalComplete and classificationComplete are separate; uncertainty survives the cursor.
 
 Budgets (formatVersion 2):
   --limit n          Returned findings, default 50 (max 1000)
@@ -1529,6 +1531,7 @@ Budgets (formatVersion 2):
   Counts describe this page only; global total is null. Sparse scopes consume scan budget.
   Results are capped at 1 MiB. Payloads over 64 KiB remain unvalidated, never called malformed.
   Pages are live reads, not a cross-page snapshot; concurrent inserts behind the cursor need a new traversal.
+  Progress is capped at 32 frames of at most 1 MiB, retained only for the bounded process lifetime.
   Ctrl-C kills the reader and closes its snapshot before returning the last checkpoint.
 
 Next:

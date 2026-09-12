@@ -107,6 +107,8 @@ export type OutputIntegrityFinding = {
 	identityCollision?: boolean;
 	relatedIdentityCollision?: boolean;
 	payloadValid?: boolean;
+	inspectionIssue?: string;
+	scopeMatch?: "unknown";
 	uses?: number;
 	sessionStatus?: string;
 	projectedStatus?: "idle" | "running" | "error";
@@ -741,6 +743,35 @@ function sessionTraceStatusSql(
 			? `${ctes} SELECT COUNT(*) AS count FROM mismatches`
 			: `${ctes} SELECT * FROM mismatches ORDER BY lastAt DESC LIMIT ?`,
 		params,
+	};
+}
+
+export class OutputAuditWorkLimitError extends Error {}
+
+/** Counts are valid only inside inspectOutputIntegrity's per-store BEGIN/ROLLBACK
+ * snapshot. Concurrent WAL writers cannot change preflight or later query input.
+ * The same guard is exercised directly in the concurrent-insert regression test.
+ */
+export function createOutputAuditWorkGuard(budget: { maxScan: number; scannedRows: number }): (db: DatabaseSync, sql: string) => void {
+	const sizes = new WeakMap<DatabaseSync, Map<string, number>>();
+	return (db, sql) => {
+		if (!db.isTransaction) throw new Error("Audit work guard requires a stable read transaction");
+		let counts = sizes.get(db);
+		if (!counts) { counts = new Map(); sizes.set(db, counts); }
+		for (const table of ["event_log", "sessions", "pibo_jobs", "pibo_dead_jobs"]) {
+			const references = [...sql.matchAll(new RegExp(`(?:FROM|JOIN)\\s+${table}\\b`, "gi"))].length;
+			if (!references) continue;
+			let count = counts.get(table);
+			if (count === undefined) {
+				const remaining = budget.maxScan - budget.scannedRows;
+				if (remaining <= 0) throw new OutputAuditWorkLimitError();
+				count = Number((db.prepare(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ${table} LIMIT ?)`).get(remaining) as { n: number }).n);
+				budget.scannedRows += count;
+				counts.set(table, count);
+			}
+			if (budget.scannedRows + count * references > budget.maxScan) throw new OutputAuditWorkLimitError();
+			budget.scannedRows += count * references;
+		}
 	};
 }
 

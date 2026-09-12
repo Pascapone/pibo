@@ -8,7 +8,7 @@ export type InspectionBudget = {
 	runId?: string;
 	workerPid?: number;
 	complete: boolean;
-	reason?: "result_limit" | "scan_limit" | "time_limit" | "byte_limit" | "cancelled";
+	reason?: "result_limit" | "scan_limit" | "time_limit" | "byte_limit" | "scope_unclassified" | "cancelled";
 	elapsedMs: number;
 	scannedRows: number;
 	maxScan: number;
@@ -16,6 +16,8 @@ export type InspectionBudget = {
 	nextCursor?: string;
 	maxResultBytes?: number;
 	returnedBytes?: number;
+	classificationComplete?: boolean;
+	traversalComplete?: boolean;
 };
 export type DeadLetterInput = {
 	dataStore: ResolvedPiboDebugStore;
@@ -62,33 +64,39 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 	const started = performance.now();
 	const scopeHash = createHash("sha256").update(JSON.stringify([input.reliabilityStore.path, input.dataStore.path, input.piboSessionId, input.since, input.before, input.afterStream, input.beforeStream])).digest("hex");
 	let after = "";
+	let classificationComplete = true;
 	if (input.cursor) {
 		try {
 			if (input.cursor.length > 16384) throw new Error();
 			const cursor = JSON.parse(Buffer.from(input.cursor, "base64url").toString());
 			if (cursor.v !== 1 || cursor.scope !== scopeHash || typeof cursor.after !== "string") throw new Error();
 			after = cursor.after;
+			classificationComplete = cursor.classificationComplete !== false;
 		} catch { throw new Error("Invalid cursor or changed inspection scope"); }
 	}
 	const result: BoundedDeadLetters = {
 		resultType: "debug.persistence.dead-letters", formatVersion: 2, readOnly: true,
 		scope: { piboSessionId: input.piboSessionId, since: input.since, before: input.before, limit },
-		budget: { complete: false, elapsedMs: 0, scannedRows: 0, maxScan, timeoutMs, maxResultBytes: 1048576, returnedBytes: 0 },
+		budget: { complete: false, elapsedMs: 0, scannedRows: 0, maxScan, timeoutMs, maxResultBytes: 1048576, returnedBytes: 0, classificationComplete, traversalComplete: false },
 		summary: { deadOutputJobs: null, returnedDeadLetters: 0, identityCollisions: 0, relatedIdentityCollisions: 0, countsScope: "page" },
 		deadLetters: [], nextCommands: ["pibo debug persistence audit --help"],
 	};
 	let lastProgress = -Infinity;
+	let progressCount = 0;
 	const checkpoint = (force = false) => {
 		result.budget.elapsedMs = performance.now() - started;
-		result.budget.nextCursor = result.budget.complete ? undefined : Buffer.from(JSON.stringify({ v: 1, scope: scopeHash, after })).toString("base64url");
+		result.budget.complete = Boolean(result.budget.traversalComplete && result.budget.classificationComplete);
+		if (result.budget.traversalComplete && !result.budget.classificationComplete) result.budget.reason = "scope_unclassified";
+		else if (result.budget.complete) delete result.budget.reason;
+		result.budget.nextCursor = result.budget.traversalComplete ? undefined : Buffer.from(JSON.stringify({ v: 1, scope: scopeHash, after, classificationComplete: result.budget.classificationComplete })).toString("base64url");
 		result.summary.returnedDeadLetters = result.deadLetters.length;
-		if (force || result.budget.elapsedMs - lastProgress >= 50) { lastProgress = result.budget.elapsedMs; onProgress?.(result); }
+		if (progressCount < 32 && (force || result.budget.elapsedMs - lastProgress >= 50)) { progressCount++; lastProgress = result.budget.elapsedMs; onProgress?.(result); }
 	};
-	if (!input.reliabilityStore.exists) { result.budget.complete = true; checkpoint(); return result; }
+	if (!input.reliabilityStore.exists) { result.budget.traversalComplete = true; checkpoint(); return result; }
 	const db = new DatabaseSync(input.reliabilityStore.path, { readOnly: true });
 	let data: DatabaseSync | undefined;
 	try {
-		if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pibo_dead_jobs'").get()) { result.budget.complete = true; return result; }
+		if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='pibo_dead_jobs'").get()) { result.budget.traversalComplete = true; checkpoint(); return result; }
 		if (input.dataStore.exists) data = new DatabaseSync(input.dataStore.path, { readOnly: true });
 		const hasEvents = data?.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='event_log'").get();
 		const page = db.prepare(DEAD_LETTER_PAGE_SQL);
@@ -97,7 +105,7 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 			if (performance.now() - started >= timeoutMs) { result.budget.reason = "time_limit"; break; }
 			// One candidate avoids advancing past unreturned findings; each statement releases its snapshot.
 			const row = page.get(after, 1) as Row | undefined;
-			if (!row) { result.budget.complete = true; break; }
+			if (!row) { result.budget.traversalComplete = true; break; }
 			if (Buffer.byteLength(row.jobId) > 1024) throw new Error("Dead-letter key exceeds the bounded cursor format");
 			result.budget.scannedRows++;
 			const previousCursor = after;
@@ -106,11 +114,17 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 			if (input.since && row.deadAt < input.since || input.before && row.deadAt >= input.before) { checkpoint(); continue; }
 			let payload: Record<string, any> | undefined;
 			try { if (row.payloadBytes <= 65536) { const parsed = JSON.parse(row.payloadJson); if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed; } } catch { /* malformed payload is itself inspectable */ }
-			const sessionId = payload?.piboSessionId ?? payload?.state?.piboSessionId;
-			const eventId = payload?.eventId ?? payload?.state?.eventId;
-			if (input.piboSessionId && sessionId !== input.piboSessionId) { checkpoint(); continue; }
+			const rawSessionId = payload?.piboSessionId ?? payload?.state?.piboSessionId;
+			const rawEventId = payload?.eventId ?? payload?.state?.eventId;
+			const oversizedIdentity = [rawSessionId, rawEventId].some(value => typeof value === "string" && Buffer.byteLength(value) > 1024);
+			const issue = row.payloadBytes > 65536 ? "payload_over_budget" : !payload ? "payload_malformed" : oversizedIdentity ? "identity_over_budget" : input.piboSessionId && typeof rawSessionId !== "string" ? "scope_identity_missing" : undefined;
+			const sessionId = oversizedIdentity ? undefined : rawSessionId;
+			const eventId = oversizedIdentity ? undefined : rawEventId;
+			if (issue) result.budget.classificationComplete = false;
+			if (!issue && input.piboSessionId && sessionId !== input.piboSessionId) { checkpoint(); continue; }
 			const finding: OutputIntegrityFinding = {
 				kind: "dead_output_job", jobId: row.jobId, queue: row.queue, attempts: row.attempts, maxAttempts: row.maxAttempts,
+				...(issue ? { inspectionIssue: issue, scopeMatch: "unknown" as const } : {}),
 				...(typeof sessionId === "string" ? { piboSessionId: sessionId } : {}), ...(typeof eventId === "string" ? { eventId } : {}),
 				lastAt: row.deadAt, payloadValid: row.payloadBytes > 65536 ? undefined : Boolean(payload), identityCollision: Boolean(row.collision),
 				// Do not print arbitrary error/reason text, which may contain user content.
@@ -133,7 +147,7 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 			if (finding.relatedIdentityCollision) result.summary.relatedIdentityCollisions++;
 			checkpoint();
 		}
-		if (!result.budget.complete && !result.budget.reason) result.budget.reason = result.deadLetters.length >= limit ? "result_limit" : "scan_limit";
+		if (!result.budget.traversalComplete && !result.budget.reason) result.budget.reason = result.deadLetters.length >= limit ? "result_limit" : "scan_limit";
 		checkpoint(true);
 		return result;
 	} finally { data?.close(); db.close(); }

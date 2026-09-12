@@ -12,6 +12,7 @@ import { inspectOutputDeadLetters, DEAD_LETTER_PAGE_SQL } from '../dist/debug/ou
 import { runOutputInspection } from '../dist/debug/output-inspection-runner.js';
 import { PiboDataStore } from '../dist/data/pibo-store.js';
 import { PiboReliabilityStore } from '../dist/reliability/store.js';
+import { inspectOutputIntegrity, createOutputAuditWorkGuard } from '../dist/debug/output-integrity.js';
 
 function fixture(n = 10000) {
  const root = mkdtempSync(join(tmpdir(), 'pibo-bounded-audit-'));
@@ -123,4 +124,47 @@ test('30 actual CLI listings meet the interactive 250ms p95 budget on 10000 hist
   samples.sort((a,b)=>a-b);console.log(JSON.stringify({cliSamples:30,fixtureJobs:10000,p95Ms:samples[28]}));
   assert.ok(samples[28]<=250,`interactive CLI p95=${samples[28]}ms exceeds 250ms`);
  }finally{rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('scoped oversized and malformed jobs are unclassified, never an empty complete scope; cursors preserve uncertainty',()=>{
+ const f=fixture(3);
+ try{
+  const db=new DatabaseSync(f.reliabilityStore.path);
+  db.prepare("UPDATE pibo_dead_jobs SET payload_json=? WHERE job_id='job_00000000'").run(JSON.stringify({piboSessionId:'ps_target',eventId:'e1',body:'secret-body'.repeat(8000)}));
+  db.prepare("UPDATE pibo_dead_jobs SET payload_json=? WHERE job_id='job_00000002'").run('{malformed-secret');db.close();
+  const first=inspectOutputDeadLetters({...f,piboSessionId:'ps_target',limit:1,maxScan:10});
+  assert.equal(first.budget.complete,false);assert.equal(first.budget.classificationComplete,false);assert.equal(first.deadLetters[0].scopeMatch,'unknown');assert.equal(first.deadLetters[0].inspectionIssue,'payload_over_budget');
+  const next=inspectOutputDeadLetters({...f,piboSessionId:'ps_target',cursor:first.budget.nextCursor,maxScan:10});
+  assert.equal(next.budget.complete,false);assert.equal(next.budget.traversalComplete,true);assert.equal(next.budget.reason,'scope_unclassified');assert.equal(next.budget.nextCursor,undefined);
+  assert.equal(next.deadLetters[0].inspectionIssue,'payload_malformed');assert.ok(!JSON.stringify([first,next]).includes('secret'));
+ }finally{rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('arbitrary oversized identity strings never enter bounded result/progress frames',()=>{
+ const f=fixture(4000),progress=[];
+ try{
+  const db=new DatabaseSync(f.reliabilityStore.path);db.prepare('UPDATE pibo_dead_jobs SET payload_json=?').run(JSON.stringify({piboSessionId:'oversized-identity'.repeat(100),eventId:'event'}));db.close();
+  const result=inspectOutputDeadLetters({...f,limit:1000,maxScan:4000},page=>progress.push(JSON.stringify(page)));
+  assert.ok(result.deadLetters.length>0);assert.ok(progress.length>0&&progress.length<=32);assert.ok(progress.every(frame=>Buffer.byteLength(frame)<=1048576));
+  assert.equal(result.budget.classificationComplete,false);assert.ok(result.deadLetters.every(row=>row.inspectionIssue==='identity_over_budget'&&row.piboSessionId===undefined));
+  assert.ok(!JSON.stringify(result).includes('oversized-identity'));
+ }finally{rmSync(f.root,{recursive:true,force:true});}
+});
+
+test('real audit work guard and later queries share a stable snapshot across concurrent WAL inserts',async()=>{
+ const f=fixture(2),writer=new DatabaseSync(f.reliabilityStore.path);writer.exec('PRAGMA journal_mode=WAL');
+ try{
+  const budget={maxScan:1000,scannedRows:0},guard=createOutputAuditWorkGuard(budget);let inserted=false;
+  const audit=inspectOutputIntegrity({...f,beforeQuery(db,sql){
+   assert.equal(db.isTransaction,true);guard(db,sql);
+   if(!inserted&&sql.includes('FROM pibo_dead_jobs')){
+    inserted=true;writer.exec('BEGIN');const add=writer.prepare(`INSERT INTO pibo_dead_jobs(job_id,queue,payload_json,attempts,max_attempts,created_at,updated_at,dead_at,dead_reason) SELECT ?,queue,payload_json,attempts,max_attempts,created_at,updated_at,dead_at,dead_reason FROM pibo_dead_jobs WHERE job_id='job_00000000'`);
+    for(let i=0;i<100;i++)add.run(`concurrent-${i}`);writer.exec('COMMIT');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM pibo_dead_jobs').get().n,2,'preflight and execution retain the same old snapshot');
+   }
+  }});
+  assert.equal(inserted,true);assert.equal(audit.summary.deadOutputJobs,1);assert.ok(budget.scannedRows<1000);
+  const fresh=await runOutputInspection({...f,mode:'audit',maxScan:10000});assert.equal(fresh.summary.deadOutputJobs,101);
+  assert.throws(()=>guard(writer,'SELECT * FROM pibo_dead_jobs'),/stable read transaction/);
+ }finally{writer.close();rmSync(f.root,{recursive:true,force:true});}
 });

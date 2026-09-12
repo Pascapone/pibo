@@ -302,9 +302,12 @@ test("pibo debug persistence stays progressive and returns read-only audit and d
 		assert.equal(dead.formatVersion, 2);
 		assert.equal(dead.summary.deadOutputJobs, null, "bounded listing never computes a hidden global count");
 		assert.equal(dead.summary.countsScope, "page");
-		assert.equal(dead.budget.complete, true);
+		assert.equal(dead.budget.complete, false, "malformed jobs cannot be excluded from a requested session scope");
+		assert.equal(dead.budget.traversalComplete, true);
+		assert.equal(dead.budget.classificationComplete, false);
 		assert.equal(dead.summary.relatedIdentityCollisions, 1);
-		assert.equal(dead.deadLetters.length, 1);
+		assert.equal(dead.deadLetters.length, 2);
+		assert.equal(dead.deadLetters.filter(item => item.scopeMatch === "unknown").length, 1);
 
 		const compatibility = await execFileAsync("node", [cliPath, "debug", "integrity", "output", "ps_incomplete", "--limit", "20", "--json"], {
 			env: { ...process.env, PIBO_HOME: fixture.home },
