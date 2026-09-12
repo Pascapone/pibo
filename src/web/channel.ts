@@ -226,13 +226,14 @@ async function createGatewayStatusResponse(channelContext: PiboChannelContext, o
 		catch(error){appStatuses[`${app.name}Status`]={status:"ambiguous",error:error instanceof Error?error.message:"Status unavailable"};}
 	}
 	const durable=appStatuses.durableMessageQueue as {status?:unknown}|undefined;
+	const runtimeStatuses = createGatewayRuntimeStatuses(channelContext);
 	return responseJson({
 		status: durable?.status==="degraded"||durable?.status==="ambiguous"?"degraded":"ok",
 		mode,
 		generation,
 		health: { status: durable?.status==="degraded"||durable?.status==="ambiguous"?"degraded":"ok", mode },
-		runtimeQueue: { layer:"runtime-session",statuses:createGatewayRuntimeStatuses(channelContext) },
-		runtimeStatuses: createGatewayRuntimeStatuses(channelContext),
+		runtimeQueue: { layer:"runtime-session",statuses:runtimeStatuses },
+		runtimeStatuses,
 		...(channelContext.getRuntimeCapacityStatus ? { runtimeCapacity: channelContext.getRuntimeCapacityStatus() } : {}),
 		...(channelContext.getRunJobReliabilityStatus ? { reliability: channelContext.getRunJobReliabilityStatus() } : {}),
 		activeRuns: collectActiveRuns(channelContext),

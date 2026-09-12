@@ -143,6 +143,40 @@ async function waitUntilReachable(port) {
 }
 
 describe('gateway status endpoint', () => {
+  it('reads runtime status once and shares telemetry across both response views', async () => {
+    for (const runtimeCount of [1, 10, 20]) {
+      const port = await freePort();
+      const channel = createWebHostChannel({ port, gatewayMode: 'prod', announce: false });
+      const statuses = Array.from({ length: runtimeCount }, (_, i) => ({ piboSessionId: `ps_${i}`, processing: true }));
+      let statusReads = 0;
+      let snapshotReads = 0;
+      await channel.start({
+        listSessionRuntimeStatuses: () => { statusReads++; return statuses; },
+        snapshotSignalSession: (id) => {
+          snapshotReads++;
+          return { sessions: { [id]: { activeTelemetry: { activePhase: 'tool_execution', sample: snapshotReads } } } };
+        },
+        listRuns: () => [],
+        getGatewayActions: () => [],
+        getWebApps: () => [],
+      });
+      try {
+        statusReads = 0;
+        snapshotReads = 0;
+        const response = await fetch(`http://127.0.0.1:${port}/gateway/status`);
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(statusReads, 1);
+        assert.equal(snapshotReads, runtimeCount);
+        assert.deepEqual(body.runtimeQueue.statuses, body.runtimeStatuses);
+        assert.equal(body.runtimeStatuses.length, runtimeCount);
+        assert.deepEqual(body.runtimeStatuses.at(-1).activeTelemetry, { activePhase: 'tool_execution', sample: runtimeCount });
+      } finally {
+        await channel.stop();
+      }
+    }
+  });
+
   it('reports degraded run-job reliability without counting orphan jobs as active runs', async () => {
     const port = await freePort();
     const channel = createWebHostChannel({ port, gatewayMode: 'prod', announce: false });
