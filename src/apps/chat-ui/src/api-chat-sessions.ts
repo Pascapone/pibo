@@ -3,18 +3,27 @@ import { requestJson } from "./api-http";
 import type { BootstrapData, ChatSessionPage, CreateSessionData, ModelProfile, NavigationData, PiboRoom, PiboSession } from "./types";
 
 export type ChatMessageDelivery = "queue" | "steer";
+export type BootstrapCatalogData = Pick<BootstrapData,
+	"agents" | "customAgents" | "agentFolders" | "modelDefaults" | "modelCatalog" | "agentCatalog" | "capabilities" | "integrations"
+>;
 
 export async function getBootstrap(
 	piboSessionId?: string,
 	includeArchived = false,
 	roomId?: string,
 	markRead = false,
-	init?: RequestInit,
+	init?: RequestInit & { core?: boolean },
 ): Promise<BootstrapData> {
 	const params = createNavigationParams(piboSessionId, includeArchived, roomId);
 	if (markRead) params.set("markRead", "true");
+	if (init?.core) params.set("core", "true");
 	const suffix = params.size ? `?${params.toString()}` : "";
-	return requestJson<Partial<BootstrapData>>(`/api/chat/bootstrap${suffix}`, init).then(normalizeBootstrap);
+	const { core: _core, ...requestInit } = init ?? {};
+	return requestJson<Partial<BootstrapData>>(`/api/chat/bootstrap${suffix}`, requestInit).then(normalizeBootstrap);
+}
+
+export function getBootstrapCatalog(init?: RequestInit): Promise<BootstrapCatalogData> {
+	return requestJson<Partial<BootstrapData>>("/api/chat/bootstrap/catalog", init).then(normalizeBootstrapCatalog);
 }
 
 export async function getNavigation(
@@ -240,9 +249,14 @@ function normalizeNavigation(payload: Partial<NavigationData>): NavigationData {
 }
 
 function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
-	const navigation = normalizeNavigation(payload);
 	return {
-		...navigation,
+		...normalizeNavigation(payload),
+		...normalizeBootstrapCatalog(payload),
+	};
+}
+
+function normalizeBootstrapCatalog(payload: Partial<BootstrapData>): BootstrapCatalogData {
+	return {
 		agents: payload.agents ?? [],
 		customAgents: payload.customAgents ?? [],
 		agentFolders: payload.agentFolders ?? [],

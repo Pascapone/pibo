@@ -3,7 +3,7 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
-import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
+import { getBootstrap, getBootstrapCatalog, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession, type BootstrapCatalogData } from "./api-chat-sessions";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
@@ -264,12 +264,25 @@ async function loadBootstrapQueryData(
 		roomId?: string;
 		markRead?: boolean;
 		force?: boolean;
+		core?: boolean;
 		signal?: AbortSignal;
 	},
 ): Promise<BootstrapData> {
 	const queryKey = chatBootstrapQueryKey(input.piboSessionId, input.includeArchived, input.roomId);
 	await queryClient.removeQueries({ queryKey, exact: true });
-	return getBootstrap(input.piboSessionId, input.includeArchived, input.roomId, Boolean(input.markRead), { signal: input.signal });
+	return getBootstrap(input.piboSessionId, input.includeArchived, input.roomId, Boolean(input.markRead), { signal: input.signal, core: input.core });
+}
+
+async function loadBootstrapCatalogQueryData(queryClient: QueryClient): Promise<BootstrapCatalogData> {
+	return queryClient.fetchQuery({
+		queryKey: ["chat", "bootstrap-catalog"],
+		queryFn: ({ signal }) => getBootstrapCatalog({ signal }),
+		staleTime: 30_000,
+	});
+}
+
+function mergeBootstrapCatalog(bootstrap: BootstrapData, catalog: BootstrapCatalogData): BootstrapData {
+	return { ...bootstrap, ...catalog };
 }
 
 async function loadNavigationQueryData(
@@ -411,6 +424,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const bootstrapRef = useRef<BootstrapData | null>(null);
 	const roomMutationGenerationRef = useRef(0);
 	const bootstrapRequestId = useRef(0);
+	const bootstrapCatalogRequestId = useRef(0);
 	const navigationInFlightRef = useRef(new Map<string, Promise<NavigationData>>());
 	const roomSwitchControllerRef = useRef<AbortController | null>(null);
 	const roomSwitchGenerationRef = useRef(0);
@@ -865,29 +879,39 @@ export function App({ route }: { route: ChatAppRoute }) {
 		navigateToRoute({ area: "context" });
 	}, [navigateToRoute]);
 
+	const invalidateDeferredBootstrapCatalog = useCallback(() => {
+		bootstrapCatalogRequestId.current += 1;
+		queryClient.removeQueries({ queryKey: ["chat", "bootstrap-catalog"], exact: true });
+	}, [queryClient]);
+
 	const updateMcpServerInBootstrap = useCallback((server: AgentCatalog["mcpServers"][number]) => {
+		invalidateDeferredBootstrapCatalog();
 		setBootstrap((current) => current ? updateAgentCatalogMcpServer(current, server) : current);
-	}, []);
+	}, [invalidateDeferredBootstrapCatalog]);
 
 	const upsertPiPackageInBootstrap = useCallback((pkg: PiPackageCatalogItem) => {
+		invalidateDeferredBootstrapCatalog();
 		setBootstrap((current) => current ? upsertAgentCatalogPiPackage(current, pkg) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? upsertAgentCatalogPiPackage(current, pkg) : current);
-	}, [queryClient]);
+	}, [invalidateDeferredBootstrapCatalog, queryClient]);
 
 	const removePiPackageFromBootstrap = useCallback((pkg: PiPackageCatalogItem) => {
+		invalidateDeferredBootstrapCatalog();
 		setBootstrap((current) => current ? removeAgentCatalogPiPackage(current, pkg.id) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? removeAgentCatalogPiPackage(current, pkg.id) : current);
-	}, [queryClient]);
+	}, [invalidateDeferredBootstrapCatalog, queryClient]);
 
 	const upsertUserSkillInBootstrap = useCallback((skill: UserSkill) => {
+		invalidateDeferredBootstrapCatalog();
 		setBootstrap((current) => current ? upsertAgentCatalogUserSkill(current, skill) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? upsertAgentCatalogUserSkill(current, skill) : current);
-	}, [queryClient]);
+	}, [invalidateDeferredBootstrapCatalog, queryClient]);
 
 	const removeUserSkillFromBootstrap = useCallback((skillId: string) => {
+		invalidateDeferredBootstrapCatalog();
 		setBootstrap((current) => current ? removeAgentCatalogUserSkill(current, skillId) : current);
 		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? removeAgentCatalogUserSkill(current, skillId) : current);
-	}, [queryClient]);
+	}, [invalidateDeferredBootstrapCatalog, queryClient]);
 
 	const fetchNavigation = useCallback((input: {
 		piboSessionId?: string;
@@ -945,12 +969,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 		const requestId = bootstrapRequestId.current + 1;
 		bootstrapRequestId.current = requestId;
+		const coreOnly = !currentBootstrap;
 		const data = await loadBootstrapQueryData(queryClient, {
 			piboSessionId,
 			includeArchived,
 			roomId,
 			markRead: options.selectSession !== false,
 			force: options.force,
+			core: coreOnly,
 			signal: options.signal,
 		});
 		if (requestId !== bootstrapRequestId.current) return data;
@@ -958,6 +984,21 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setBootstrap(next);
 		if (options.selectSession !== false) setSelectedPiboSessionId(next.selectedPiboSessionId);
 		setSelectedRoomId(next.selectedRoomId);
+		if (coreOnly) {
+			const catalogRequestId = bootstrapCatalogRequestId.current + 1;
+			bootstrapCatalogRequestId.current = catalogRequestId;
+			void loadBootstrapCatalogQueryData(queryClient)
+				.then((catalog) => {
+					if (bootstrapCatalogRequestId.current !== catalogRequestId) return;
+					setBootstrap((current) => current ? mergeBootstrapCatalog(current, catalog) : current);
+					queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? mergeBootstrapCatalog(current, catalog) : current);
+				})
+				.catch((caught) => {
+					if (bootstrapCatalogRequestId.current === catalogRequestId && !isAbortError(caught)) {
+						console.warn(`[chat] deferred bootstrap catalog unavailable: ${errorMessage(caught)}`);
+					}
+				});
+		}
 		return next;
 	}, [overlayCurrentSignals, queryClient]);
 

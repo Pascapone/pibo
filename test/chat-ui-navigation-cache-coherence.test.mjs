@@ -100,6 +100,32 @@ test("session mutations reject delayed pre-mutation navigation cache writes", as
 	await assert.doesNotReject(runNavigationCacheScenario());
 });
 
+test("cold core bootstrap resolves independently from the deferred catalog request", async () => {
+	const script = `
+		import assert from "node:assert/strict";
+		import { getBootstrap, getBootstrapCatalog } from "./src/apps/chat-ui/src/api-chat-sessions.ts";
+		let releaseCatalog;
+		const catalogGate = new Promise((resolve) => { releaseCatalog = resolve; });
+		const urls = [];
+		globalThis.fetch = async (input) => {
+			const url = String(input); urls.push(url);
+			if (url.includes("/bootstrap/catalog")) {
+				await catalogGate;
+				return Response.json({ agents: [], customAgents: [], agentFolders: [], capabilities: { actions: [] }, modelCatalog: { providers: [] }, agentCatalog: { piboTools: [], piPackages: [], userSkills: [] } });
+			}
+			return Response.json({ identity: { userId: "user" }, session: { id: "ps-1", profile: "base" }, selectedRoomId: "room-1", selectedPiboSessionId: "ps-1", rooms: [], sessions: [], agents: [{ name: "base" }], capabilities: { actions: [] } });
+		};
+		const catalog = getBootstrapCatalog();
+		const core = await getBootstrap("ps-1", false, "room-1", false, { core: true });
+		assert.equal(core.selectedPiboSessionId, "ps-1");
+		assert.match(urls.find((url) => !url.includes("/bootstrap/catalog")), /core=true/);
+		let catalogSettled = false; catalog.then(() => { catalogSettled = true; });
+		await Promise.resolve(); assert.equal(catalogSettled, false, "catalog latency does not block the core response");
+		releaseCatalog(); await catalog;
+	`;
+	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+});
+
 test("create, rename, archive, and restore all cross the navigation mutation barrier", async () => {
 	const source = await readFile("src/apps/chat-ui/src/App.tsx", "utf8");
 	const createMutation = source.slice(source.indexOf("const createSessionMutation"), source.indexOf("const renameSessionMutation"));
