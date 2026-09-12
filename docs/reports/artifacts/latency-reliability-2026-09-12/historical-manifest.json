@@ -1,0 +1,638 @@
+{
+  "schema": "pibo-private-investigation-manifest/1",
+  "sourceCandidate": "0fe71c72a1d3bcb3b0d06295d323317a452b367a",
+  "implementationBase": "cac4dcd03945b9754db7be9ab2ab4324f10c335c",
+  "handling": "Private controller evidence; raw payloads are not authorized for repository publication. Publish reviewed sanitized derivatives only.",
+  "files": [
+    {
+      "path": "pibo2-latency-evidence/REPORT.md",
+      "bytes": 13633,
+      "sha256": "cefd91dc60867e5897768cd8b15b720f8795736261c328ac172851937bf3b92d"
+    },
+    {
+      "path": "pibo2-latency-evidence/browser-load.json",
+      "bytes": 195108,
+      "sha256": "4a7aa52b2daa4bca81122597323a42b979c1db6c5834e2afd1fb7cdb6df2616f"
+    },
+    {
+      "path": "pibo2-latency-evidence/cdp.mjs",
+      "bytes": 3650,
+      "sha256": "2e4416937a1ba342634873d76a14869e9554a794470b45a1a48b1323e214f7e8"
+    },
+    {
+      "path": "pibo2-latency-evidence/freeze-gateway.txt",
+      "bytes": 3917,
+      "sha256": "2bf52b158bbe7e2f92db218515d6d18b81ef9334c60a6d0d017cd8fe1d6c74e3"
+    },
+    {
+      "path": "pibo2-latency-evidence/gateway-baseline.json",
+      "bytes": 3896,
+      "sha256": "7505a5cb84187e9d52cd10994b8a90615c8647ec327bc663511de2e212c29e53"
+    },
+    {
+      "path": "pibo2-latency-evidence/gateway-final.json",
+      "bytes": 11964,
+      "sha256": "d4d5a45dbe1c0a864230a500719d8a2724c98341cf46c30b67420e1d5b9a17dd"
+    },
+    {
+      "path": "pibo2-latency-evidence/gateway-native-end.json",
+      "bytes": 11964,
+      "sha256": "4efff60e09231c27ec3cbe6ab0bc1d90e5d65a44c54055732e3c18efd9d1fab5"
+    },
+    {
+      "path": "pibo2-latency-evidence/instrument.js",
+      "bytes": 1739,
+      "sha256": "530628de59a97a35aa044168410f654d554e1676cd59abad0780f869f0bf7d0d"
+    },
+    {
+      "path": "pibo2-latency-evidence/load-acks.json",
+      "bytes": 4591,
+      "sha256": "7421b6a33d16285b2979a9ccef555f579566bb4908e088707354c03ac88e3649"
+    },
+    {
+      "path": "pibo2-latency-evidence/load-rejected-version1.json",
+      "bytes": 607,
+      "sha256": "d15becfef046176a50afb95639927681d8ec690735a16182178fc360bd15779c"
+    },
+    {
+      "path": "pibo2-latency-evidence/load-sessions.json",
+      "bytes": 347,
+      "sha256": "40704ad562da845baa54ddf4bcdf02cee3165cb87e767ea612b8301139a6dc5d"
+    },
+    {
+      "path": "pibo2-latency-evidence/mobile-before.png",
+      "bytes": 76533,
+      "sha256": "152744f1f20b36089735200dcedd3136e0ebd1cae2e52cfe7f755a9d93ab29a5"
+    },
+    {
+      "path": "pibo2-latency-evidence/mobile-resume-5min.json",
+      "bytes": 5080,
+      "sha256": "e0591a711a58bba96823f825028fe3711a2d1f3d559807fa7d04fdf9acf0fef5"
+    },
+    {
+      "path": "pibo2-latency-evidence/mobile-resumed.png",
+      "bytes": 60833,
+      "sha256": "83e4a61b16446d8a320e9669b2118e90cc1ccd5631ee6eec2d96a582542cc012"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-api-acks.json",
+      "bytes": 2501,
+      "sha256": "82d625935047472aeb74104785f40dfdc910e24210e971fe3f2cdddb080123b0"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-browser-final.json",
+      "bytes": 155804,
+      "sha256": "3134c6c0f271b9a49b858d4ddcb8fc3b7db93815c5ad8cd40ced3f480da9975f"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-browser.json",
+      "bytes": 62740,
+      "sha256": "e88001e7dedfab87aaceb751b5873585a3515c29b7f0c2ecf6ec7ff8143e77ba"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-mobile-status.png",
+      "bytes": 59862,
+      "sha256": "1961069ea2b5748cc36534eab314295fb5ec9490d5e7a998c88e2252cd63e2eb"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-resume-trace.json",
+      "bytes": 225955,
+      "sha256": "d83c85b422e1c9d97aa6143c473e3418b1e8447b803081520ed30d88ba662ca9"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-sessions.json",
+      "bytes": 224,
+      "sha256": "f3ed5ded04118c8401e760c0494d7ba9cfa807cecce543eb7dfcd9b83001d56c"
+    },
+    {
+      "path": "pibo2-latency-evidence/native-ui-trace.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "pibo2-latency-evidence/network.ndjson",
+      "bytes": 1053449,
+      "sha256": "66eb28bdb59bc0b6d84be40e4b3177639a71fec58e5f57a18d413f36a9dafecd"
+    },
+    {
+      "path": "pibo2-latency-evidence/prepare-load.js",
+      "bytes": 546,
+      "sha256": "accba3ce2a430b0edee6ba5778a9850495e20e8195e87518f209d9640a82bc60"
+    },
+    {
+      "path": "pibo2-latency-evidence/probe-ack.json",
+      "bytes": 1216,
+      "sha256": "7487492f5e22941470a35028bc82877babc5967ca301039cca99a60253b2bd2a"
+    },
+    {
+      "path": "pibo2-latency-evidence/probe-telemetry.json",
+      "bytes": 4605,
+      "sha256": "a00bd584bd24cf09215bfb95c0318bce623582040fd494741d17a36daafa252c"
+    },
+    {
+      "path": "pibo2-latency-evidence/resume-during-streams.json",
+      "bytes": 6151,
+      "sha256": "5ff72180acea712fc3c7c7750e9bb48b45ebd511987df85688d96b0a436afacb"
+    },
+    {
+      "path": "pibo2-latency-evidence/resume-source.ts",
+      "bytes": 17528,
+      "sha256": "6a238db6be35221eee695a673c1cc07988a8a4770b038d8c469768489f8bd320"
+    },
+    {
+      "path": "pibo2-latency-evidence/router-source.ts",
+      "bytes": 137680,
+      "sha256": "2bb7020199bc38ae56e4a485d8d4ba36f199a88b314b7a9017832f75983cc4cc"
+    },
+    {
+      "path": "pibo2-latency-evidence/runtime-samples.ndjson",
+      "bytes": 732177,
+      "sha256": "16e3229b19e1f55a59c5e7d5b769a948da108c65e36b043a0edc32f696bd0d80"
+    },
+    {
+      "path": "pibo2-latency-evidence/sample-remote.py",
+      "bytes": 772,
+      "sha256": "97a6ad4b9458e27befdc83a4ae7e74b3bc476c6dde6cde365dcde81fe53985b6"
+    },
+    {
+      "path": "pibo2-latency-evidence/send-status.js",
+      "bytes": 1125,
+      "sha256": "65cbe3e0ce05440049c67b04bedac253d87e43a68014b4ae109a019100dc09ba"
+    },
+    {
+      "path": "pibo2-latency-evidence/start-load.js",
+      "bytes": 1058,
+      "sha256": "86c3aa6579b98bc4793b7233c9419425f06c5cb9b53749f947c9f91a3f922476"
+    },
+    {
+      "path": "pibo2-latency-evidence/status-contention.json",
+      "bytes": 917,
+      "sha256": "f6a99e0575b67c008c79264f4e2d75f06383ad45782638fdf3c5034e62d04789"
+    },
+    {
+      "path": "pibo2-latency-evidence/status-contention.py",
+      "bytes": 693,
+      "sha256": "49c667c604500219e80c035ccb5a5e89d5dabc14f787fc5e9813148c8e9ad468"
+    },
+    {
+      "path": "pibo2-latency-evidence/status-results.ndjson",
+      "bytes": 867,
+      "sha256": "00948ec2cb74bcae5eda7945819756e4c1140cdadb34ed5878708727f06bdef4"
+    },
+    {
+      "path": "pibo2-latency-evidence/status-visible.png",
+      "bytes": 138865,
+      "sha256": "d68f2cbe82132417083678cb963db875647ec9ba83a5c6841aec0a60c6d688a0"
+    },
+    {
+      "path": "pibo2-latency-evidence/storage-baseline.json",
+      "bytes": 1975,
+      "sha256": "ced2819178f934783e8a6d70d37a01a1858b3614a5eb3f67784060a7d723a3f0"
+    },
+    {
+      "path": "pibo2-latency-evidence/storage-final.json",
+      "bytes": 1989,
+      "sha256": "1fc476ce214f38724459cefec9aa743c71dd1fb5b129de1e6a724a3cee02a2c4"
+    },
+    {
+      "path": "pibo2-latency-evidence/storage-load-1.json",
+      "bytes": 1984,
+      "sha256": "38dccaf6bb4d1ee9071bc637a6f040c5fabbc564e646c40864a9088b6c866a8d"
+    },
+    {
+      "path": "pibo2-latency-evidence/storage-load-end.json",
+      "bytes": 1991,
+      "sha256": "2c31b3e92124f213a72f39aa239fe3f3c73fea189406d0bd6c274ac87c9e2f50"
+    },
+    {
+      "path": "pibo2-latency-evidence/telemetry-ps_3cf911cd-cf16-4165-96e8-f4331c449fe8.json",
+      "bytes": 2909,
+      "sha256": "f25e213d329cf85d64e7e752b0bcb4c7e44b8b90e7c33bce04cdd3c0341ccfbe"
+    },
+    {
+      "path": "pibo2-latency-evidence/telemetry-ps_cafb6b94-bfdf-4ae8-9b02-3da93b41bc04.json",
+      "bytes": 2909,
+      "sha256": "61cc039e745ee3892e591466fbacffceac6e8d9c4f1007bf4793b7243926a64f"
+    },
+    {
+      "path": "pibo2-latency-evidence/telemetry-ps_e452c332-f233-4eb0-babd-66a43799f3db.json",
+      "bytes": 3077,
+      "sha256": "cbd0f85e6610405485234f3f6a88a5b1c717e2020875be27a1a650c2c68482e6"
+    },
+    {
+      "path": "pibo2-latency-evidence/three-streams.png",
+      "bytes": 158215,
+      "sha256": "d9246cc33ccf00e827c849c5035fde639744c57dabafacb4189ccdd3b933af94"
+    },
+    {
+      "path": "pibo2-latency-evidence/trace-ps_05ee5d94-7df1-4b28-8215-964eefd6d66c.json",
+      "bytes": 2587,
+      "sha256": "da5d48619f3e64a8b0f1bcfe2ac0a01f30a1be22cecd03dc3117c1130fa5006f"
+    },
+    {
+      "path": "pibo2-latency-evidence/trace-ps_496e1d4e-b6c4-4898-85c4-8d75ca555b15.json",
+      "bytes": 3561,
+      "sha256": "ce3d5ea5fd1304c2f4114d5da2e1059484d8efe509cbb855595112efda702ecb"
+    },
+    {
+      "path": "pibo2-latency-evidence/trace-ps_49c25954-b36c-4532-8885-d577a50300db.json",
+      "bytes": 2587,
+      "sha256": "cb952a4c37714f8e2055592efcfa91aa96c6340cdf812fe91a3c0a6c73b92d1f"
+    },
+    {
+      "path": "pibo2-latency-evidence/web-channel-source.ts",
+      "bytes": 19735,
+      "sha256": "5a8bd59c666406d18e3f10d0333ba2803bbcfac7539756fbb6abdfb70c42c33d"
+    },
+    {
+      "path": "pibo2-multiagent-0912/REPORT.md",
+      "bytes": 47760,
+      "sha256": "a217ddff4094325875721951bb97c9ef22e265e4dbdf75ea88ab905ac0fd733a"
+    },
+    {
+      "path": "pibo2-multiagent-0912/RUN2.md",
+      "bytes": 14051,
+      "sha256": "e6f1396366eae485bf7daab852a97042cd8c206586ef74356ff756bb9a3e106b"
+    },
+    {
+      "path": "pibo2-multiagent-0912/aggregate.json",
+      "bytes": 2605,
+      "sha256": "f174fc9b449fda34d0add901288f5ad16487601cc0e3b51fcaf058fa2ab56714"
+    },
+    {
+      "path": "pibo2-multiagent-0912/aggregate.mjs",
+      "bytes": 2413,
+      "sha256": "fd1e984fe1d9f406c86135d7abda0430260bf7962f2ccd75ecb0c3a7c85fb64a"
+    },
+    {
+      "path": "pibo2-multiagent-0912/api.mjs",
+      "bytes": 1259,
+      "sha256": "201ad0c1ec102f306d38e3fd96c9d1f219a57c7a64958f8df1996da262bb5384"
+    },
+    {
+      "path": "pibo2-multiagent-0912/browser-after-resume.json",
+      "bytes": 471609,
+      "sha256": "04fa204196b6ae16c5d50b25c1b49f36edf1542bbfb6ada6604ba91ef46d3b8b"
+    },
+    {
+      "path": "pibo2-multiagent-0912/browser-after-resume2.json",
+      "bytes": 528289,
+      "sha256": "ae50a7735e4ab6cc0df3fc93e79cc9a418bbd53d52d4229af6dcaba49c245743"
+    },
+    {
+      "path": "pibo2-multiagent-0912/browser-before-freeze.json",
+      "bytes": 424877,
+      "sha256": "e29fbc24ff59f7edfc03ced8de3402ab6a676297a4238e8db0e6853ab86dbd3f"
+    },
+    {
+      "path": "pibo2-multiagent-0912/browser-longtasks.json",
+      "bytes": 607,
+      "sha256": "92ee3e040a9488667854840f19cd028a2a3f83065b6b155402d52f445d16e483"
+    },
+    {
+      "path": "pibo2-multiagent-0912/budget-room.json",
+      "bytes": 2510,
+      "sha256": "a03944c010b59ae634b56c1656e633747a91f0116b125794dc27e601082e5a58"
+    },
+    {
+      "path": "pibo2-multiagent-0912/capacity-samples.ndjson",
+      "bytes": 171688,
+      "sha256": "4b58f5cb955ebac220ebee90d0a65f4680e0431a2e76cdebd9cf608d15448a6b"
+    },
+    {
+      "path": "pibo2-multiagent-0912/cdp.mjs",
+      "bytes": 3650,
+      "sha256": "2e4416937a1ba342634873d76a14869e9554a794470b45a1a48b1323e214f7e8"
+    },
+    {
+      "path": "pibo2-multiagent-0912/chat-bundle.js",
+      "bytes": 2683127,
+      "sha256": "46f5f7879f3398769511be12c080ca3c8786f37b3a22b797fb8018a150648ee1"
+    },
+    {
+      "path": "pibo2-multiagent-0912/collision-detail.json",
+      "bytes": 2863,
+      "sha256": "682a5ea42b773ff0753488de8fb1bfd258889a6f07aafc6b6bca3fa5fbfdfb9e"
+    },
+    {
+      "path": "pibo2-multiagent-0912/collision-persisted.json",
+      "bytes": 2268,
+      "sha256": "e32f0089905baeca6712c50817da66823df4bba9569bca78f12a158f18688bc3"
+    },
+    {
+      "path": "pibo2-multiagent-0912/collision-proof.json",
+      "bytes": 581,
+      "sha256": "97e86f659d31feaa7d6537e50e3170d7fb57fa8f91c7fecd49f3fcd21846aba3"
+    },
+    {
+      "path": "pibo2-multiagent-0912/collision-proof.mjs",
+      "bytes": 1171,
+      "sha256": "8747a9cea0b25c5afe97697b1a9acfee5c9c90e616a3f44acdc73d409a4370b9"
+    },
+    {
+      "path": "pibo2-multiagent-0912/consolidate-report.py",
+      "bytes": 26290,
+      "sha256": "b5acbf63c7ec9791e1379987335717732ad4849cf44ce9027ffb9b4acdf34ff9"
+    },
+    {
+      "path": "pibo2-multiagent-0912/context-build.json",
+      "bytes": 62785,
+      "sha256": "8f231628010e96778f59674102efe7f56b3cfb654e9f23828fb6837d1130805a"
+    },
+    {
+      "path": "pibo2-multiagent-0912/db-counts-final.json",
+      "bytes": 4703,
+      "sha256": "58e308a3f92a5fbf2204e7a285746b7d0a3b803d182a46e7791bd31a2b564252"
+    },
+    {
+      "path": "pibo2-multiagent-0912/db-counts.json",
+      "bytes": 4703,
+      "sha256": "58e308a3f92a5fbf2204e7a285746b7d0a3b803d182a46e7791bd31a2b564252"
+    },
+    {
+      "path": "pibo2-multiagent-0912/db-counts.py",
+      "bytes": 1926,
+      "sha256": "24717b5abac44832ff2d2ad7813d015b3714c1cf595ba46127547ffcb1a4c06e"
+    },
+    {
+      "path": "pibo2-multiagent-0912/dead-letters.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "pibo2-multiagent-0912/extend.mjs",
+      "bytes": 1903,
+      "sha256": "a2d60f3f354c1d63f2caf63e7d9816d8bb04d5bc85cc7b6dce0d42b1bcd8e9a6"
+    },
+    {
+      "path": "pibo2-multiagent-0912/extension-acks.ndjson",
+      "bytes": 10767,
+      "sha256": "3ec9c610dbf055dbcbae601e16b66e7096701dab132c223844f891ef19e3b7da"
+    },
+    {
+      "path": "pibo2-multiagent-0912/freeze-start.txt",
+      "bytes": 21,
+      "sha256": "e7f1ef49a622ecc9ed457533744af0103edaf6e71b9816c5ce11a45c9dda6200"
+    },
+    {
+      "path": "pibo2-multiagent-0912/freeze2-start.txt",
+      "bytes": 21,
+      "sha256": "b77b587e172a7706e531a9ba438c082259b94a12eede0aa7c0dd23b34aef4777"
+    },
+    {
+      "path": "pibo2-multiagent-0912/gateway-final.json",
+      "bytes": 27760,
+      "sha256": "710f7d2068b7d7ab4d4eebcee17e15e130ab2bec7130210e8e0e090b432a6b71"
+    },
+    {
+      "path": "pibo2-multiagent-0912/instrument.js",
+      "bytes": 1739,
+      "sha256": "530628de59a97a35aa044168410f654d554e1676cd59abad0780f869f0bf7d0d"
+    },
+    {
+      "path": "pibo2-multiagent-0912/inventory-room.json",
+      "bytes": 2537,
+      "sha256": "bddf08d6f6dcbb4f491be5c6cad76442cbefabce21c6989630e7e83a1c3c0650"
+    },
+    {
+      "path": "pibo2-multiagent-0912/journal-later.txt",
+      "bytes": 39979,
+      "sha256": "ae3362cecfa59fb17ec605db3323b59611b7ede9025aad0f2c4ddf39568905ad"
+    },
+    {
+      "path": "pibo2-multiagent-0912/journal.txt",
+      "bytes": 151753,
+      "sha256": "d04c01ab30732ea79525dddd6b2473dba9e62b26bc44bdb2f30b3f792fb49f78"
+    },
+    {
+      "path": "pibo2-multiagent-0912/kanban-room.json",
+      "bytes": 2506,
+      "sha256": "435b56fc5f9c42efec4851710cab833a2c79b65f34156dc94beb7dda17dadac8"
+    },
+    {
+      "path": "pibo2-multiagent-0912/long-queues.json",
+      "bytes": 4801,
+      "sha256": "25d8646dc1efee320b0fb4700fa43efd3f8f1237c85387a9aaaf313ea1072f3e"
+    },
+    {
+      "path": "pibo2-multiagent-0912/mobile-before.png",
+      "bytes": 79743,
+      "sha256": "4a4c82b5db8c7f5d3665aa9e228ba8bfefc4e28da317005e9e377c3993a6eb48"
+    },
+    {
+      "path": "pibo2-multiagent-0912/mobile-resumed.png",
+      "bytes": 79805,
+      "sha256": "9dfec7ab1bf83160579cce9c7f50ff011c626cbef02131a4a6c37ef1af58f254"
+    },
+    {
+      "path": "pibo2-multiagent-0912/mobile-resumed2.png",
+      "bytes": 61629,
+      "sha256": "b7a1ea43398a9e5407824446cccf4f366eb4777a408f2d6d8485fc37fd87a7f8"
+    },
+    {
+      "path": "pibo2-multiagent-0912/network.ndjson",
+      "bytes": 794750,
+      "sha256": "765f5cda2f7dc43fe6ae4f7d5bd5b4863ae21c743b13fc2d95a0d1dba5856ff5"
+    },
+    {
+      "path": "pibo2-multiagent-0912/persistence-final.json",
+      "bytes": 637,
+      "sha256": "56f3694877442d5f07b0554f2cd5579a42c246e4cc5c7f89885dc409052734a9"
+    },
+    {
+      "path": "pibo2-multiagent-0912/persistence-now.json",
+      "bytes": 640,
+      "sha256": "ff97c2b85a4bce801d5b581257b8010dcf691cd1c58ccaf60b5f0387c13e7ed0"
+    },
+    {
+      "path": "pibo2-multiagent-0912/persistence-phase3.json",
+      "bytes": 568,
+      "sha256": "16db5b5643fa7f967e53aee56e0205e762860053891cc726b8e028aba66d08d6"
+    },
+    {
+      "path": "pibo2-multiagent-0912/persistence-post-debug.json",
+      "bytes": 570,
+      "sha256": "805b55c940a48dcd07df6e3c903bcbcc29c796d113ab7bb0253b942742da546f"
+    },
+    {
+      "path": "pibo2-multiagent-0912/persistence-stage2.json",
+      "bytes": 637,
+      "sha256": "0373207fac43e8e5122e1f3c7ab80f0732982b57f26d210cbce0351ab83b1fb9"
+    },
+    {
+      "path": "pibo2-multiagent-0912/phase3-acks.ndjson",
+      "bytes": 14235,
+      "sha256": "0cd24c5afb6fba15591acbdf991f4f1a3fc0539d7cf4cf0662e1b52873a47f8f"
+    },
+    {
+      "path": "pibo2-multiagent-0912/phase3-tasks.json",
+      "bytes": 1031,
+      "sha256": "7f643fbf8429ee6c11883606a4a58c0201cfd3c6b47070379c767ae366a8df42"
+    },
+    {
+      "path": "pibo2-multiagent-0912/phase3.mjs",
+      "bytes": 2276,
+      "sha256": "65b62362f7b3760a8c31f22e3156ecadbd31446f7186778f89a327daf2b8a26c"
+    },
+    {
+      "path": "pibo2-multiagent-0912/probe-session.json",
+      "bytes": 101,
+      "sha256": "d41e97fd814d65ed215e9fdd86f49f34ac7875fd54c6f2e97b30a57b00af3acf"
+    },
+    {
+      "path": "pibo2-multiagent-0912/probes.mjs",
+      "bytes": 1647,
+      "sha256": "144a0af62a86e472e944abe633fbcf7f88da8eb605ae4af89d793996a371e097"
+    },
+    {
+      "path": "pibo2-multiagent-0912/probes.ndjson",
+      "bytes": 28470,
+      "sha256": "d0fedaee2ee3b5e89f20d95e9828da1d6d77d28214ceada65ab9492087488c11"
+    },
+    {
+      "path": "pibo2-multiagent-0912/prompt-budget.txt",
+      "bytes": 2454,
+      "sha256": "b9c26969791416ce5acaed0f1d17787f0edc57c6308a3fbd8859246e9754d3dd"
+    },
+    {
+      "path": "pibo2-multiagent-0912/prompt-inventory.txt",
+      "bytes": 2444,
+      "sha256": "69b5c43a7913950b171e494d6364dc04cfbb182ca08a56237da7f7c555fe7486"
+    },
+    {
+      "path": "pibo2-multiagent-0912/prompt-kanban.txt",
+      "bytes": 2425,
+      "sha256": "9d5e9913d5fe84b6feae011f830651b1184b0f204a3c7d7814e597b435ec13b8"
+    },
+    {
+      "path": "pibo2-multiagent-0912/prompt-scheduler.txt",
+      "bytes": 2467,
+      "sha256": "bca8582e9be00ff97b19f22e664c4c17eb6767075a881ae613ccfa8a3f61167d"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resources-final.json",
+      "bytes": 2105,
+      "sha256": "636df0df9852af7e4da1085b571f127c03d79de338d4c4af8c2c59a7e6887e2a"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resources-phase3.json",
+      "bytes": 2095,
+      "sha256": "5ba1065ec11a70eebef8b8a40e8d83a951aabcecdc21609d8c9671655c27be65"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resources-post-debug.json",
+      "bytes": 2099,
+      "sha256": "70435b9980a0f27d9ad80142e007bb16dfbd12cf45036ed8cce822be3addcbf2"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resume-backlog-proof.json",
+      "bytes": 136,
+      "sha256": "aad52b155785ff67ac3f0c6dc74c72a098222e8ef0f6939523f5bb2646ecc51c"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resume-status.json",
+      "bytes": 129,
+      "sha256": "8005e358592d04e2f0cfd2489270218d8a8d464bf6ea3a42e31e57bdb3d76439"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resume2-status.json",
+      "bytes": 151,
+      "sha256": "fe0e525836362ac8ebfb5a1f8454a6b83fcc03eb2f54c42d923e379655a790d1"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resume2-trace-costs.json",
+      "bytes": 10006,
+      "sha256": "9122d29cbc3274918937c63ae0426e9068c5cccd6983f040380a36dd050b1d51"
+    },
+    {
+      "path": "pibo2-multiagent-0912/resume2-trace.json",
+      "bytes": 4150593,
+      "sha256": "7b4a75510e2311037ca8bbff3f6f6989b1bad98c8e20fcb65ecb8700192debc0"
+    },
+    {
+      "path": "pibo2-multiagent-0912/rooms-current.json",
+      "bytes": 15146,
+      "sha256": "794281813ab7eb8079dfb24a2c376f5520167e27ddd076dcec4bf9e6fbd2e6bc"
+    },
+    {
+      "path": "pibo2-multiagent-0912/rooms.mjs",
+      "bytes": 498,
+      "sha256": "e5a26bed81d02c45b65e9e07292489f449bb8d006865844487c9e1763c148926"
+    },
+    {
+      "path": "pibo2-multiagent-0912/sample.mjs",
+      "bytes": 981,
+      "sha256": "89ca733cd52b86fef75f6d64f342124265dd60961713ab479f4240fc78381f22"
+    },
+    {
+      "path": "pibo2-multiagent-0912/scheduler-room.json",
+      "bytes": 2503,
+      "sha256": "a26f745ffda856813edf2d7a0f8776e2cc15a6bd37f8f0c35e1f895cbeaa3e2d"
+    },
+    {
+      "path": "pibo2-multiagent-0912/send-status.js",
+      "bytes": 1125,
+      "sha256": "65cbe3e0ce05440049c67b04bedac253d87e43a68014b4ae109a019100dc09ba"
+    },
+    {
+      "path": "pibo2-multiagent-0912/session-manifest.json",
+      "bytes": 3968,
+      "sha256": "4deba268fe85b1784ff064996eba69d10b719229e78418415b536dd58f9d5c6f"
+    },
+    {
+      "path": "pibo2-multiagent-0912/setup.json",
+      "bytes": 4024,
+      "sha256": "34e681d9e381cc3af7c34b3b23c4e0e5f0fa9a105f029466577ea613f8a08e79"
+    },
+    {
+      "path": "pibo2-multiagent-0912/setup.mjs",
+      "bytes": 1873,
+      "sha256": "dfbcf168860a76a0f27e5b1a3e913134f02e0bcdbbb91b593dbb9008ca880db3"
+    },
+    {
+      "path": "pibo2-multiagent-0912/stage1.png",
+      "bytes": 153250,
+      "sha256": "ece9fddcbca8b4d637101402be30a20d24c7896e92343b1edeb44115f799bcfc"
+    },
+    {
+      "path": "pibo2-multiagent-0912/start-work.mjs",
+      "bytes": 3826,
+      "sha256": "9610f5556dd72457f12fb41d7ffb2e53f4794b4b4898b6d092ad75e4fdd7a306"
+    },
+    {
+      "path": "pibo2-multiagent-0912/storage-samples.ndjson",
+      "bytes": 1009489,
+      "sha256": "e533889279aeeef67d46652c9543df4bce0d5d2e7cfa80138e79ed5aaee89014"
+    },
+    {
+      "path": "pibo2-multiagent-0912/summary.mjs",
+      "bytes": 1142,
+      "sha256": "8ce3c67b05bb8bbc207c70fd06131395bea74cf4ecee4482a48025d0b2848f0a"
+    },
+    {
+      "path": "pibo2-multiagent-0912/trace-top.json",
+      "bytes": 6388,
+      "sha256": "ab6ee1c41bc8b7bd8e0de5b85c49e41e22e00f077b0fc462f9ec12968dd0cbbe"
+    },
+    {
+      "path": "pibo2-multiagent-0912/ui-status.ndjson",
+      "bytes": 153,
+      "sha256": "0671b9ee0a93320115c7af3b5289d5fe8849a36fb0e4de17350d04a768596ad4"
+    },
+    {
+      "path": "pibo2-multiagent-0912/vmstat.txt",
+      "bytes": 21118,
+      "sha256": "a500ee9e1879f0aed55db0b3b64ba2cd154192bba1ba6bfe6efc47648c1c1d7b"
+    },
+    {
+      "path": "pibo2-multiagent-0912/work-acks.ndjson",
+      "bytes": 15660,
+      "sha256": "257d4ea2000b17bf6bd16102c2a3ce24ee61853198a49b7ec4d006d152d7b5af"
+    },
+    {
+      "path": "pibo2-multiagent-0912/workspaces-final.json",
+      "bytes": 1123,
+      "sha256": "3df623e3b86c58a4910c4c3170b426cca5d3289f628a0bbdcefb6180d559ba8a"
+    }
+  ]
+}

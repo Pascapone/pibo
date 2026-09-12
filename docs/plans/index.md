@@ -8,6 +8,7 @@
 * [Gateway Resource Protection and Worker Follow&#45;ups](gateway-resource-protection-workers.md) - Directive plan for remaining gateway admission, worker policy, platform, and heavy&#45;work isolation gaps&#46;
 * [OKF documentation&#45;system migration](okf-migration.md) - Controls the staged migration of Pibo documentation into a complete OKF v0&#46;2 bundle&#46;
 * [Pibo Gateway and Trace Architecture Follow&#45;up Roadmap](pibo-fast-gateway-and-trace-roadmap.md) - Tracks only the unimplemented gateway and trace architecture follow&#45;up work after the shipped hot&#45;path phases&#46;
+* [Pibo Latenz und Zuverlässigkeit bei parallelen Sessions](pibo-latency-reliability-remediation.md) - Plant die Behebung der neun Pibo2&#45;Befunde durch begrenzte Statusverarbeitung, inkrementelle Projektionen, sichere Persistenz und überprüfbare Lastabnahme&#46;
 * [Pibo: schnelle Nachrichtenannahme und belastbare Parallelität](pibo-performance-and-scalability.md) - Priorisiert den belegten Annahme&#45;Fix und den schrittweisen Umbau zu begrenzter, isolierter und messbar skalierbarer Gateway&#45;Arbeit&#46;
 * [Reconcile Rejected Message Signals](reconcile-rejected-message-signals.md) - Directive plan to audit and close exact rejected&#45;dispatch signal and optimistic&#45;message invariants&#46;
 * [Telemetry Capture and Archive Isolation](telemetry-capture-archive-isolation.md) - Directive plan for opt&#45;in telemetry capture, isolated active stores, inert archives, and bounded maintenance&#46;

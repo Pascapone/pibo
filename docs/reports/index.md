@@ -36,6 +36,7 @@
 * [Isolated read models and bounded navigation: package F validation](performance-scalability-reads-2026-09-07.md) - Records the isolated read worker, resumable history and unread projections, bounded SSE and HTTP streaming, the startup sequence&#45;repair index fix and the ten&#45;million&#45;event load evidence&#46;
 * [Isolated telemetry and output write budgets: package E validation](performance-scalability-telemetry-2026-09-07.md) - Records bounded diagnostic workers, output checkpoint reductions, contention measurements and exact candidate validation&#46;
 * [LangGraphJS&#45;Analyse für Pibo Workflow System V1](2026-05-10-workflow-research-langgraphjs.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Latenz und Zuverlässigkeit: Umsetzung und Abnahme 2026&#45;09&#45;12](latency-reliability-validation-2026-09-12.md) - Dokumentiert Baseline, Paketintegration, Messbelege und verbleibende Abnahmegates des Latenzumbaus&#46;
 * [Live Recording Waveform Validation](live-recording-waveform-validation-2026-08-23.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Machine&#45;key Web authentication validation](machine-key-web-auth-validation-2026-08-07.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Markdown Editor Quality Validation](markdown-editor-quality-validation-2026-08-09.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
