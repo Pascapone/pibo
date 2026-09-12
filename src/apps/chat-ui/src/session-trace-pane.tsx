@@ -1,8 +1,7 @@
 import {
   isAcceptanceUnknownError,
   MessageReceiptReconciliationTracker,
-  messageReceiptPollDelay,
-  messageReceiptRefetchInterval,
+  terminalMessageReceiptRevision,
   withMessageReceipts,
 } from "./tracing/message-receipts";
 import {
@@ -28,7 +27,8 @@ import type {
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ChatSessionViewProps, ToolDisplayMode } from "./session-views/types";
-import { getMessageReceipts, getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
+import { getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
+import { useMessageReceiptsQuery } from "./tracing/use-message-receipts-query";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
@@ -238,9 +238,7 @@ export function SessionTracePane({
   const retrySendPlanRef = useRef<ReturnType<typeof readPendingMessageTransaction>>(initialRetryTransaction);
   const [pendingReceiptTransaction, setPendingReceiptTransaction] = useState(initialRetryTransaction);
   const receiptReconciliationTrackerRef = useRef(new MessageReceiptReconciliationTracker(initialRetryTransaction?.clientTxnId));
-  const receiptFingerprintRef = useRef<string | undefined>(undefined);
-  const receiptPollJitterSeedRef = useRef(createClientTxnId());
-  const [unchangedReceiptPolls, setUnchangedReceiptPolls] = useState(0);
+  const terminalReceiptTraceRevisionBySessionRef = useRef(new Map<string, string>());
   const liveEventSeqRef = useRef(0);
   const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
   const [liveTraceOverlay, setLiveTraceOverlayState] =
@@ -446,27 +444,20 @@ export function SessionTracePane({
   const selectedPendingReceiptTransaction = pendingReceiptTransaction?.piboSessionId === selectedBackendPiboSessionId
     ? pendingReceiptTransaction
     : null;
-  const messageReceiptsQuery = useQuery({
-    queryKey: ["chat", "message-receipts", selectedBackendPiboSessionId],
-    queryFn: () => getMessageReceipts(selectedBackendPiboSessionId!),
-    enabled: Boolean(selectedBackendPiboSessionId),
-    refetchInterval: (query) => messageReceiptRefetchInterval(query.state.data?.receipts, {
-      pendingTransaction: selectedPendingReceiptTransaction,
-      unchangedAttempts: unchangedReceiptPolls + query.state.fetchFailureCount,
-      jitterKey: `${selectedBackendPiboSessionId ?? "message-receipts"}:${receiptPollJitterSeedRef.current}`,
-    }),
-    refetchIntervalInBackground: false,
-    refetchOnReconnect: "always",
-    retry: selectedPendingReceiptTransaction ? 2 : false,
-    retryDelay: (attempt) => messageReceiptPollDelay(attempt, receiptPollJitterSeedRef.current),
-  });
+  const { query: messageReceiptsQuery } = useMessageReceiptsQuery(
+    selectedBackendPiboSessionId,
+    selectedPendingReceiptTransaction,
+  );
+  const terminalReceiptRevision = useMemo(() => terminalMessageReceiptRevision(rawCurrentTraceView), [rawCurrentTraceView]);
   useEffect(() => {
-    const receipts = messageReceiptsQuery.data?.receipts;
-    if (!receipts || messageReceiptsQuery.dataUpdatedAt === 0) return;
-    const fingerprint = receipts.map((receipt) => `${receipt.id}:${receipt.state}:${receipt.updatedAt}`).join("|");
-    setUnchangedReceiptPolls((current) => receiptFingerprintRef.current === fingerprint ? current + 1 : 0);
-    receiptFingerprintRef.current = fingerprint;
-  }, [messageReceiptsQuery.data, messageReceiptsQuery.dataUpdatedAt]);
+    if (!selectedBackendPiboSessionId || terminalReceiptRevision === "none") return;
+    const revisions = terminalReceiptTraceRevisionBySessionRef.current;
+    if (revisions.get(selectedBackendPiboSessionId) === terminalReceiptRevision) return;
+    revisions.delete(selectedBackendPiboSessionId);
+    revisions.set(selectedBackendPiboSessionId, terminalReceiptRevision);
+    while (revisions.size > 128) revisions.delete(revisions.keys().next().value!);
+    void messageReceiptsQuery.refetch().catch(() => undefined);
+  }, [messageReceiptsQuery, selectedBackendPiboSessionId, terminalReceiptRevision]);
   useEffect(() => {
     const receipts = messageReceiptsQuery.data?.receipts ?? [];
     const reconciliation = receiptReconciliationTrackerRef.current.observe(receipts, selectedPendingReceiptTransaction);
@@ -608,8 +599,6 @@ export function SessionTracePane({
     rememberPendingMessageTransaction(sendPlan);
     setPendingReceiptTransaction(sendPlan);
     receiptReconciliationTrackerRef.current.track(sendPlan.clientTxnId);
-    receiptFingerprintRef.current = undefined;
-    setUnchangedReceiptPolls(0);
     await onSend(
       sendPlan.text,
       sendPlan.webAnnotationIds,
@@ -619,7 +608,6 @@ export function SessionTracePane({
     );
     retrySendPlanRef.current = null;
     rememberPendingMessageTransaction(null);
-    setPendingReceiptTransaction(null);
     void messageReceiptsQuery.refetch();
     clearSelectedWebAnnotationAttachments();
     clearSelectedUploadAttachments();

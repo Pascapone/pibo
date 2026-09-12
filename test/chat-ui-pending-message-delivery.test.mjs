@@ -50,7 +50,7 @@ test("pending delivery metadata reaches both Terminal and trace-tree renderers",
 test("receipt overlays retain unchanged nodes and browser retry identity survives reload", async () => {
  const script = `
   import assert from 'node:assert/strict';
-  import { MessageReceiptReconciliationTracker,isAcceptanceUnknownError,isTerminalMessageReceipt,matchingMessageReceipt,messageReceiptPollDelay,messageReceiptRefetchInterval,withMessageReceipts } from './src/apps/chat-ui/src/tracing/message-receipts.ts';
+  import { MessageReceiptReconciliationTracker,isAcceptanceUnknownError,isTerminalMessageReceipt,matchingMessageReceipt,messageReceiptPollDelay,messageReceiptRefetchInterval,terminalMessageReceiptRevision,withMessageReceipts } from './src/apps/chat-ui/src/tracing/message-receipts.ts';
   import { appendComposerOptimisticEvent,rememberPendingMessageTransaction,readPendingMessageTransaction,samePendingMessageIntent } from './src/apps/chat-ui/src/composer-send.ts';
   const values = new Map();
   globalThis.window = {sessionStorage:{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)}};
@@ -63,7 +63,15 @@ test("receipt overlays retain unchanged nodes and browser retry identity survive
   const view={piboSessionId:'s',nodes:[user,untouched]};
   const receipts=[{sessionId:'s',eventId:'txn',state:'accepted'}];
   const overlay=withMessageReceipts(view,receipts);assert.equal(overlay.nodes[0].messageDeliveryState,'accepted');assert.equal(overlay.nodes[1],untouched);assert.equal(user.messageDeliveryState,undefined);
-  assert.equal(withMessageReceipts(overlay,receipts),overlay);assert.equal(withMessageReceipts(view,[{sessionId:'other',eventId:'txn',state:'failed'}]),view);
+  assert.equal(withMessageReceipts(overlay,receipts),overlay);
+  const terminalTurn={id:'turn',type:'agent.turn',eventId:'txn',status:'done',completedAt:'2026-09-12T12:00:00.000Z',children:[]};
+  const terminalView={...view,nodes:[user,terminalTurn]};
+  const runningReceipt=[{sessionId:'s',eventId:'txn',state:'running'}];
+  const terminalOverlay=withMessageReceipts(terminalView,runningReceipt);
+  assert.equal(terminalOverlay.nodes[0].messageDeliveryState,'completed','terminal trace evidence outranks a stale running receipt during a 15s poll backoff');
+  assert.equal(withMessageReceipts({...terminalView,nodes:[{...user,messageDeliveryState:'sending'},terminalTurn]},[]).nodes[0].messageDeliveryState,'completed','terminal trace evidence also clears optimistic sending when receipt GET is empty or failed');
+  assert.equal(terminalMessageReceiptRevision(terminalView),'txn:completed');
+  assert.equal(terminalMessageReceiptRevision({...terminalView,nodes:[...terminalView.nodes,{id:'delta',type:'model.message',children:[]}]}),'txn:completed','non-terminal deltas do not schedule repeated receipt reconciliation');assert.equal(withMessageReceipts(view,[{sessionId:'other',eventId:'txn',state:'failed'}]),view);
   assert.equal(messageReceiptRefetchInterval(undefined),false,'an idle initial query does not arm an interval');
   assert.equal(messageReceiptRefetchInterval([]),false,'idle sessions stop polling after the first empty response');
   const pending={piboSessionId:'s',clientTxnId:'txn'};
@@ -84,6 +92,8 @@ test("receipt overlays retain unchanged nodes and browser retry identity survive
   const terminal={sessionId:'s',eventId:'txn',state:'completed'};
   assert.deepEqual(tracker.observe([terminal],null).terminalReceipts,[terminal]);
   assert.deepEqual(tracker.observe([terminal],null).terminalReceipts,[],'a delayed terminal receipt refreshes trace once across reconnect/refetch duplicates');
+  for(let index=0;index<200;index++)tracker.track('bounded-'+index,index);
+  assert.equal(tracker.trackedCount(),128,'long-lived tabs retain only a bounded set of explicitly open reconciliation ids');
   const optimistic={piboSessionId:'s',events:[{id:'txn'}]};assert.equal(appendComposerOptimisticEvent(optimistic,'s',optimistic.events[0]),optimistic,'same-id retries do not duplicate optimistic admission');
  `;
  await execFileAsync(process.execPath,["--import","tsx","--input-type=module","--eval",script],{cwd:process.cwd()});
@@ -91,15 +101,19 @@ test("receipt overlays retain unchanged nodes and browser retry identity survive
 
 
 test("receipt polling is restarted explicitly after a newly accepted message", async () => {
- const [app,pane]=await Promise.all([
+ const [app,pane,receiptQuery]=await Promise.all([
   readFile("src/apps/chat-ui/src/App.tsx","utf8"),
   readFile("src/apps/chat-ui/src/session-trace-pane.tsx","utf8"),
+  readFile("src/apps/chat-ui/src/tracing/use-message-receipts-query.ts","utf8"),
  ]);
- assert.match(pane,/refetchInterval: \(query\) => messageReceiptRefetchInterval\(query\.state\.data\?\.receipts/);
- assert.match(pane,/refetchIntervalInBackground: false/);
- assert.match(pane,/refetchOnReconnect: "always"/);
- assert.match(pane,/retry: selectedPendingReceiptTransaction \? 2 : false/);
- assert.match(pane,/receiptPollJitterSeedRef = useRef\(createClientTxnId\(\)\)/);
+ assert.match(pane,/useMessageReceiptsQuery\(/);
+ assert.match(pane,/terminalMessageReceiptRevision\(rawCurrentTraceView\)/);
+ assert.match(pane,/terminalReceiptTraceRevisionBySessionRef[\s\S]*messageReceiptsQuery\.refetch\(\)/);
+ assert.match(receiptQuery,/refetchInterval: \(currentQuery\)/);
+ assert.match(receiptQuery,/refetchIntervalInBackground: false/);
+ assert.match(receiptQuery,/refetchOnReconnect: "always"/);
+ assert.match(receiptQuery,/retry: false/);
+ assert.match(receiptQuery,/receiptPollJitterSeedRef = useRef\(createClientTxnId\(\)\)/);
  assert.match(app,/invalidateQueries\(\{ queryKey: \["chat", "message-receipts", piboSessionId\] \}\)/);
 });
 

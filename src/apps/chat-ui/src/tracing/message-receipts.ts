@@ -65,20 +65,24 @@ export function isAcceptanceUnknownError(value: unknown): boolean {
 }
 
 export class MessageReceiptReconciliationTracker {
-	private readonly trackedEventIds = new Set<string>();
-	private readonly refreshedTerminalEventIds = new Set<string>();
+	private readonly trackedEventIds = new Map<string, number>();
 
 	constructor(initialEventId?: string) {
-		if (initialEventId) this.trackedEventIds.add(initialEventId);
+		if (initialEventId) this.track(initialEventId);
 	}
 
-	track(eventId: string): void {
-		this.trackedEventIds.add(eventId);
-		this.refreshedTerminalEventIds.delete(eventId);
+	track(eventId: string, now = Date.now()): void {
+		this.trackedEventIds.delete(eventId);
+		this.trackedEventIds.set(eventId, now);
+		while (this.trackedEventIds.size > 128) this.trackedEventIds.delete(this.trackedEventIds.keys().next().value!);
 	}
 
 	abandon(eventId: string): void {
 		this.trackedEventIds.delete(eventId);
+	}
+
+	trackedCount(): number {
+		return this.trackedEventIds.size;
 	}
 
 	observe(
@@ -88,10 +92,7 @@ export class MessageReceiptReconciliationTracker {
 		const pendingReceipt = matchingMessageReceipt(receipts, pendingTransaction);
 		const terminalReceipts: MessageReceipt[] = [];
 		for (const receipt of receipts) {
-			if (!this.trackedEventIds.has(receipt.eventId)
-				|| !isTerminalMessageReceipt(receipt)
-				|| this.refreshedTerminalEventIds.has(receipt.eventId)) continue;
-			this.refreshedTerminalEventIds.add(receipt.eventId);
+			if (!this.trackedEventIds.has(receipt.eventId) || !isTerminalMessageReceipt(receipt)) continue;
 			this.trackedEventIds.delete(receipt.eventId);
 			terminalReceipts.push(receipt);
 		}
@@ -99,21 +100,49 @@ export class MessageReceiptReconciliationTracker {
 	}
 }
 
+export function terminalMessageReceiptRevision(view: PiboSessionTraceView | null | undefined): string {
+	if (!view) return "none";
+	return [...terminalMessageStates(view).entries()]
+		.sort(([left], [right]) => left.localeCompare(right))
+		.map(([eventId, state]) => `${eventId}:${state}`)
+		.join("|") || "none";
+}
+
 export function withMessageReceipts<T extends PiboSessionTraceView | null | undefined>(view: T, receipts: readonly MessageReceipt[]): T {
-	if (!view || receipts.length === 0) return view;
+	if (!view) return view;
 	const byEvent = new Map(receipts.filter(r => r.sessionId === view.piboSessionId).map(r => [r.eventId,r]));
+	const terminalByEvent = terminalMessageStates(view);
 	const visit = (nodes: PiboTraceNode[]): PiboTraceNode[] => {
 		let changed = false;
 		const next = nodes.map(node => {
 		const eventId = node.eventId ?? node.id.replace(/^event:message_(?:queued|steered):/, "");
 		const receipt = node.type === "user.message" ? byEvent.get(eventId) ?? byEvent.get(node.id.replace(/^event:message_(?:queued|steered):/, "")) : undefined;
+		const terminalState = node.type === "user.message" ? terminalByEvent.get(eventId) : undefined;
+		const currentTerminalState = node.messageDeliveryState && TERMINAL_MESSAGE_RECEIPT_STATES.has(node.messageDeliveryState)
+			? node.messageDeliveryState
+			: undefined;
+		const deliveryState = currentTerminalState ?? terminalState ?? receipt?.state;
 		const children = visit(node.children);
-		if (children === node.children && (!receipt || receipt.state === node.messageDeliveryState)) return node;
+		if (children === node.children && deliveryState === node.messageDeliveryState) return node;
 		changed = true;
-		return { ...node, ...(receipt ? { messageDeliveryState: receipt.state } : {}), children };
+		return { ...node, ...(deliveryState ? { messageDeliveryState: deliveryState } : {}), children };
 		});
 		return changed ? next : nodes;
 	};
 	const nodes = visit(view.nodes);
 	return nodes === view.nodes ? view : { ...view, nodes } as T;
+}
+
+function terminalMessageStates(view: PiboSessionTraceView): Map<string, "completed" | "failed"> {
+	const states = new Map<string, "completed" | "failed">();
+	const visit = (nodes: readonly PiboTraceNode[]) => {
+		for (const node of nodes) {
+			if (node.type === "agent.turn" && node.eventId && (node.completedAt || node.status === "error")) {
+				states.set(node.eventId, node.status === "error" ? "failed" : "completed");
+			}
+			visit(node.children);
+		}
+	};
+	visit(view.nodes);
+	return states;
 }

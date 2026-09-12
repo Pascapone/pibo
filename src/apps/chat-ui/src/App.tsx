@@ -155,6 +155,7 @@ import {
 	applySignalStatusPatchesToBootstrap,
 	applySignalStatusSnapshotToBootstrap,
 	retainSelectedSignalSnapshot,
+	SignalStatusDeliveryGeneration,
 	shouldCommitSelectedSignalSnapshot,
 	shouldCommitSignalStatusSnapshot,
 	shouldReconcileSelectedSignalTree,
@@ -418,6 +419,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const pendingSignalStatusVersionsRef = useRef(new Map<string, number>());
 	const pendingSignalStatusUpdateCountRef = useRef(0);
 	const pendingSignalStatusFlushRef = useRef<number | undefined>(undefined);
+	const signalStatusDeliveryGenerationRef = useRef(new SignalStatusDeliveryGeneration());
 	const [signalNow, setSignalNow] = useState(() => Date.now());
 	const showArchivedRef = useRef(showArchived);
 	const sessionListScrollRef = useRef<HTMLDivElement>(null);
@@ -473,8 +475,18 @@ export function App({ route }: { route: ChatAppRoute }) {
 		pendingSignalStatusUpdateCountRef.current = 0;
 	}, []);
 
-	const flushSignalStatusPatches = useCallback(() => {
+	const invalidateSignalStatusDelivery = useCallback(() => {
+		const generation = signalStatusDeliveryGenerationRef.current.invalidate();
+		clearPendingSignalStatusPatches();
+		return generation;
+	}, [clearPendingSignalStatusPatches]);
+
+	const flushSignalStatusPatches = useCallback((expectedGeneration: number) => {
 		pendingSignalStatusFlushRef.current = undefined;
+		if (!signalStatusDeliveryGenerationRef.current.isCurrent(expectedGeneration)) {
+			clearPendingSignalStatusPatches();
+			return;
+		}
 		const patches = pendingSignalStatusPatchesRef.current;
 		pendingSignalStatusPatchesRef.current = [];
 		pendingSignalStatusVersionsRef.current.clear();
@@ -484,7 +496,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (result.needsRefresh) return;
 		sessionStatusSignalsRef.current = result.snapshot;
 		setBootstrap((current) => current ? applySignalStatusPatchesToBootstrap(current, patches) : current);
-	}, []);
+	}, [clearPendingSignalStatusPatches]);
 
 	const commitSignalStatusSnapshot = useCallback((snapshot: PiboSignalStatusSnapshot) => {
 		if (!shouldCommitSignalStatusSnapshot(sessionStatusSignalsRef.current, snapshot)) return false;
@@ -510,7 +522,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 		pendingSignalStatusVersionsRef.current.set(patch.rootPiboSessionId, patch.toVersion);
 		pendingSignalStatusUpdateCountRef.current = nextUpdateCount;
 		if (pendingSignalStatusFlushRef.current === undefined) {
-			pendingSignalStatusFlushRef.current = requestAnimationFrame(flushSignalStatusPatches);
+			const expectedGeneration = signalStatusDeliveryGenerationRef.current.capture();
+			pendingSignalStatusFlushRef.current = requestAnimationFrame(() => flushSignalStatusPatches(expectedGeneration));
 		}
 		return true;
 	}, [clearPendingSignalStatusPatches, flushSignalStatusPatches]);
@@ -549,6 +562,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		};
 		const connectSignalStatuses = () => {
 			if (!active || document.hidden) return;
+			invalidateSignalStatusDelivery();
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = undefined;
 			generation += 1;
@@ -580,6 +594,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			}, 0);
 		};
 		const suspendSignalStatuses = () => {
+			invalidateSignalStatusDelivery();
 			generation += 1;
 			if (resumeTimer) clearTimeout(resumeTimer);
 			resumeTimer = undefined;
@@ -606,7 +621,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			window.removeEventListener("pageshow", scheduleSignalStatusReconnect);
 			document.removeEventListener("visibilitychange", handleSignalStatusVisibility);
 		};
-	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
+	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, invalidateSignalStatusDelivery, selectedBackendPiboSessionId]);
 
 	useEffect(() => {
 		if (area !== "sessions" || !selectedBackendPiboSessionId) {
@@ -678,6 +693,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		};
 		const connectSignalTree = () => {
 			if (!active || document.hidden) return;
+			invalidateSignalStatusDelivery();
 			if (signalRecoveryTimer) clearTimeout(signalRecoveryTimer);
 			signalRecoveryTimer = undefined;
 			if (signalStatusRecoveryTimer) clearTimeout(signalStatusRecoveryTimer);
@@ -733,6 +749,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			}, 0);
 		};
 		const suspendSignalTree = () => {
+			invalidateSignalStatusDelivery();
 			generation += 1;
 			if (resumeTimer) clearTimeout(resumeTimer);
 			resumeTimer = undefined;
@@ -765,7 +782,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			document.removeEventListener("visibilitychange", handleSignalTreeVisibility);
 			window.clearInterval(signalReconcileTimer);
 		};
-	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, selectedBackendPiboSessionId]);
+	}, [area, commitSignalStatusPatch, commitSignalStatusSnapshot, invalidateSignalStatusDelivery, selectedBackendPiboSessionId]);
 
 	useEffect(() => {
 		const check = async () => {

@@ -20,6 +20,7 @@ async function runAppSignalStatusScenario() {
 			applySignalStatusPatchesToBootstrap,
 			applySignalStatusSnapshotToBootstrap,
 			retainSelectedSignalSnapshot,
+			SignalStatusDeliveryGeneration,
 			shouldCommitSelectedSignalSnapshot,
 			shouldCommitSignalStatusSnapshot,
 			shouldReconcileSelectedSignalTree,
@@ -204,6 +205,16 @@ async function runAppSignalStatusScenario() {
 		assert.equal(shouldCommitSelectedSignalSnapshot(resetEpochSignal, { ...oldEpochSignal, version: 101, generatedAt: "2026-05-27T00:30:30.000Z" }, "ps-root"), false, "a delayed snapshot from the retired epoch cannot replace the reset snapshot");
 		assert.deepEqual(applySelectedSignalPatch(resetEpochSignal, { ...patch, epoch: "gateway-old", fromVersion: 0 }, "ps-root"), { snapshot: resetEpochSignal, needsRefresh: true }, "patches from a retired epoch trigger snapshot recovery");
 		assert.equal(shouldCommitSelectedSignalSnapshot(currentSignal, currentSignal, "ps-other"), false, "a previous session tree cannot replace the selected session tree");
+		const deliveryGeneration = new SignalStatusDeliveryGeneration();
+		const staleGeneration = deliveryGeneration.capture();
+		let staleFlushes = 0;
+		const staleFrame = () => { if (deliveryGeneration.isCurrent(staleGeneration)) staleFlushes += 1; };
+		deliveryGeneration.invalidate();
+		staleFrame();
+		assert.equal(staleFlushes, 0, "a queued pre-suspend frame cannot flush after resume");
+		const resumedGeneration = deliveryGeneration.capture();
+		if (deliveryGeneration.isCurrent(resumedGeneration)) staleFlushes += 1;
+		assert.equal(staleFlushes, 1, "the resumed generation can flush its own accepted patches");
 		assert.deepEqual(
 			applySelectedSignalPatch(currentSignal, patch, "ps-other"),
 			{ snapshot: currentSignal, needsRefresh: true },
@@ -330,6 +341,8 @@ test("the sidebar keeps one global status feed while selected signal updates sha
 	assert.match(source, /applySignalStatusPatchesToBootstrap\(current, patches\)/);
 	assert.match(source, /MAX_PENDING_SIGNAL_STATUS_PATCHES = 512/);
 	assert.match(source, /MAX_PENDING_SIGNAL_STATUS_UPDATES = 4_096/);
+	assert.match(source, /requestAnimationFrame\(\(\) => flushSignalStatusPatches\(expectedGeneration\)\)/);
+	assert.equal((source.match(/const suspendSignal(?:Statuses|Tree) = \(\) => \{\n\t\t\tinvalidateSignalStatusDelivery\(\)/g) ?? []).length, 2, "both lifecycle owners invalidate and clear queued status patches before suspension");
 	assert.match(source, /if \(!commitSignalStatusPatch\(patch\)\) refreshSignalStatuses\(0, streamGeneration\)/, "a missed global patch fetches a generation-bound recovery snapshot");
 	assert.match(source, /refreshSignalSnapshot\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration\);[\s\S]*refreshSignalStatuses\(SIGNAL_TREE_ERROR_RECOVERY_DELAY_MS, streamGeneration\)/, "a multiplexed SSE error reconciles both projections within one generation");
 	assert.doesNotMatch(source, /SIGNAL_STATUS_RECONCILE_INTERVAL_MS|signalStatusReconcileTimer/, "healthy global status SSE must not trigger periodic full snapshots");

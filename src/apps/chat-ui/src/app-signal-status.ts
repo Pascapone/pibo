@@ -10,6 +10,23 @@ import type {
 
 type SignalSessionUpdate = { status?: PiboWebSessionNode["status"]; updatedAt?: string; isTreeActive?: boolean };
 
+export class SignalStatusDeliveryGeneration {
+	private generation = 0;
+
+	invalidate(): number {
+		this.generation += 1;
+		return this.generation;
+	}
+
+	capture(): number {
+		return this.generation;
+	}
+
+	isCurrent(expected: number): boolean {
+		return expected === this.generation;
+	}
+}
+
 export function applySignalSnapshotToBootstrap(bootstrap: BootstrapData, snapshot: PiboSignalSnapshot): BootstrapData {
 	return updateBootstrapSessionStatuses(bootstrap, (piboSessionId) => signalSessionUpdate(snapshot.sessions[piboSessionId]));
 }
