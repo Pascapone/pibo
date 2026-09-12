@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T08:35:06Z" }
+generated: { by: "openai/codex", at: "2026-09-12T21:40:05Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -16,14 +16,84 @@ sources:
   - id: "baseline-tests"
     resource: "/reports/artifacts/latency-reliability-2026-09-12/baseline-focused-tests.log"
     title: "Ausgeführte fokussierte Docker-Baselineprüfungen"
-implementation_state: "in-progress"
+  - id: "continuation-evidence"
+    resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
+    title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
+implementation_state: "implemented; acceptance partially blocked"
 ---
 
 # Abnahmegrenze
 
 Der zentrale [Handoff zur Fortsetzung](/reports/latency-reliability-handoff-2026-09-12.md) verbindet diesen Prüfbericht mit Branches, privaten Artefakten, offenen Paketen und den erforderlichen Workflows.
 
-Die Ausführung endet auf ausdrücklichen Nutzerwunsch mit einem gesicherten Zwischenstand. Der gesamte Umbau bleibt unvollständig. Dieser Bericht unterscheidet den unveränderten Ausgangsstand, neue Paketprüfungen und die noch ausstehende integrierte Pibo2-Abnahme. Ein grüner Baseline-Test belegt keine geschlossene neue Anforderung. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
+Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwischenstand; die später autorisierte Fortsetzung schloss die Produktimplementierung auf `722883c4` ab. Die Gesamtabnahme bleibt wegen der unten benannten externen und ressourcenbedingten Gates teilweise offen. Dieser Bericht trennt Ausgangsstand, Zwischenkandidaten und exakte Kandidatenevidenz. Ein grüner Baseline-Test wird nicht als geschlossene neue Anforderung ausgegeben. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
+
+# Abschluss der Fortsetzung auf Kandidat `722883c4`
+
+Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der abschließende committed Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Kein Push, PR, Merge, Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
+
+## Exakt dem finalen Kandidaten zugeordnete Ergebnisse
+
+| Bereich | Ergebnis | Aussagegrenze |
+|---|---|---|
+| AP-03 Foreign Writes | 3.250 Sessions: p95 20,53 ms; 10.000 Sessions: p95 13,32 ms, max 37,34 ms; Reparent, Detach, Delete und Signalrevisionen korrekt | Voller lokaler authentifizierter HTTP-Statuspfad nach prozessfremden Store-Writes; kein Browser-/Providerwert |
+| Repräsentative Admission | 3.250 gespeicherte Sessions und 3.250 gemessene Admissions, 20 Runtimes: Median 9,37 ms, p95 15,22 ms, p99 21,31 ms, max 40,85 ms; Status-p95 11,96 ms; 3.270 akzeptiert und verfolgt; 0 Integritätsfehler | Geschütztes, gepacetes lokales Produktpfadprofil bei `concurrency=1`, `burst=1`; kein Ersatz für 10.000 Admissions |
+| Native Toolsmoke | Session `ps_smoke_native5_722883c4`, Adapter und Runtime `codex-native`, Codex-App-Server 0.153.2, Luna/medium, erfolgreicher `codex_command`, Marker und terminaler Trace `done`/`ok`, 0 Fehlerknoten | Temporäre `permissionMode: "yolo"`-Sandbox-Ausnahme wegen fehlender unprivilegierter User-Namespaces; nur Native-Smoke und Native-Portfolio-Parent |
+| 6+12 Laufzeitportfolio | Endzustand: 6 Parents, 12 Children, 1 Native-Parent; alle Luna/medium, gebunden und terminal; alle Traces `ok`, 0 Fehlerknoten, erfolgreiche Modellinferenz, Tools und Marker | Im kurzen Parallelfenster waren 17 Gateway-Angebote erfolgreich. Die 18. SSH-Anfrage scheiterte vor Admission und bestand erst später; keine Behauptung von 18 gleichzeitig aktiven Agents |
+| 31 Minuten Modell/MCP | `ps_mcp_long2_722883c4`: 7 terminale Luna/medium-Runden und 7 echte 60-Sekunden-MCP-Aufrufe; MCP-Spanne 1.860,856 s | Normale Pi-Isolation, keine `yolo`-Ausnahme. Fünf ältere Preflight-Fehlerknoten im aggregierten Trace sind getrennt von den sieben erfolgreichen Runden |
+| Passive Slash-Latenz unter aktiver Arbeit | Je 49 Proben: `/status` p95 44,91 ms, max 45,53 ms; `/session` p95 75,02 ms, max 89,98 ms; `/thinking` p95 50,07 ms, max 68,95 ms | Direkt während aktiver Modell-/MCP-Arbeit über dieselbe Gatewayverbindung gemessen; providerfreie Aktionen öffneten keine zusätzliche Session |
+| Kanonische Testsuite | 476 kanonische Dateien, 476 eindeutige erfolgreiche Dateipfade, 0 fehlende, 0 zusätzliche, 0 Hashabweichungen; Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c` | Pfad-/Hash-Coverage aus disjunkten erfolgreichen Shards und einem fokussierten Wiederholungstest; abgebrochene Logs nicht gezählt |
+| Pibo2-Lease | `lease_0e34ee90319d825b87`, Slot 01, checksumgebundenes Paket; freigegeben am 2026-09-12 um 21:24:14 UTC | Keine laufende Lease oder nachträgliche Remote-Mutation |
+
+## AP-03-Vorher/Nachher und ressourcenbegrenzte Gates
+
+Der ältere Kandidat `09375bbb8d702d1bc6817ffe1313429fc05e07b3` scheiterte beim 10.000-Session-Foreign-Write-Profil mit p95 273,78 ms. Ursache war die globale `chat_navigation_clock`, die nach jeder fremden Strukturänderung eine vollständige Reprojektion auslöste. `722883c4` ergänzt ein dauerhaftes, auf 4.096 Einträge begrenztes Strukturänderungsjournal, wendet höchstens 1.024 Änderungen je Batch an, nutzt eine 1.025. Zeile als Overflow-Sentinel und fällt bei Migration, Rennen, Lücke oder Overflow konservativ auf einen Vollabgleich zurück. Der exakte Nachher-Lauf bestand mit p95 13,32 ms.
+
+Der geschützte 10.000-Admission-Lauf auf `722883c4` wurde bei Host-I/O-Full-PSI 11,12 an der unveränderten Grenze 10 nach 5.132 Admissions beendet. Er ist nicht gatefähig und wurde nicht identisch wiederholt. Der bestandene reduzierte 3.250-Admission-Lauf senkte Last, Parallelität und Burstgröße, nicht die Schutzgrenzen. Der 7.201,62-Sekunden-Soak mit 22.492 Soak-Commands, 23.512 akzeptierten/verfolgten Commands und null Integritätsfehlern gehört ausschließlich zu `09375bbb`; er wird nicht auf den finalen Kandidaten umetikettiert.
+
+## Testsuite, OOM- und I/O-Einordnung
+
+Der unsegmentierte 476-Dateien-Lauf wurde bei Host-I/O-Full-PSI 11,16 beendet. Spätere Teilversuche stoppten bei 11,05, 10,25 und 11,77; diese Ereignisse sind aktuelle Schutzstopps und keine OOM-Diagnose. Erfolgreiche Folgeläufe verwendeten unveränderte Schutzgrenzen, `NODE_OPTIONS=--max-old-space-size=1024`, `--test-concurrency=1`, kleinere Shards und Ruhephasen. Die nicht abgeschlossenen Logs `full-suite-722883c4.log`, `shard-05.log` und `remaining-06.log` wurden nicht angerechnet.
+
+In Shard 02 meldete `test/agents-controller-compat.test.mjs` `spawnSync.status === null`. Im gleichen Zeitraum lagen ein 2-GiB-Containerlimit, etwa 2,016 GiB Peak und kumulative OOM-Kill-Zähler vor; ein Exit-Signal wurde jedoch nicht erfasst. Deshalb ist der Befund ressourcenkonsistent, aber nicht allein durch die kumulativen Zähler kausal bewiesen. Nach Bereinigung nur taskeigener verwaister Prozesse bestand exakt dieser Test im fokussierten Wiederholungslauf. Keine fremden Prozessgruppen wurden beendet.
+
+Das abschließende Coverage-Ledger basiert auf den tatsächlichen kanonischen Pfaden und SHA-256-Werten, nicht auf addierten Testzahlen oder überlappenden Summaries. Ergebnis: exakt 476/476 eindeutige erfolgreiche Dateien. Coverage-Summary SHA-256: `3e055bd22c4815fff17ac0df91494a5026573527dbaa35f764683819b8410146`.
+
+## Provider-, Native- und MCP-Abnahme
+
+Die frühere Providerblockade wurde ohne Tokenkopie oder Seed-Bypass über offizielle isolierte Device-/Browser-Flows behoben. Für Gateway Native war der tatsächliche fingerprintgebundene Store `/root/.pibo/agent-runtimes/codex-native/codex-native-f93ba5251f4f/codex-home`; frühere Logins in nicht fingerprintgebundene Pfade konnten ihn nicht authentifizieren. Ein erster echter Native-Start bestätigte erfolgreiche Authentifizierung, scheiterte aber an Bubblewrap mit: `bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.`
+
+Die daraufhin verwendete temporäre Profiloption `permissionMode: "yolo"` galt nur für den Native-Smoke und den Native-Portfolio-Parent. Der lange Pi-/MCP-Lauf verwendete normale Isolation. Die Portfolio-Ausführung lief vom 2026-09-12 19:52:14 UTC bis 19:52:29 UTC. 17 Sessions erreichten und absolvierten den Gatewaypfad; `ps_load_child_05a_722883c4` scheiterte zuvor bei SSH KEX und wurde später einzeln erfolgreich angeboten. Die endgültige Laufzeitprüfung über alle 18 Sessions ist gültige eventual-completion-Evidenz, aber kein 18-Agent-Simultanlastnachweis.
+
+Der lange MCP-Lauf startete um 20:02:14 UTC und endete um 20:33:29 UTC. Seine realen MCP-Aktivitäten spannten 31:00,856. Alle sieben zeitgesteuerten Runden waren terminal erfolgreich. Die 49 Slash-Proben wurden während der aktiven Tools erhoben. Damit sind Modellarbeit, Toolnutzung und passive Aktionen gemeinsam belegt, ohne die älteren Preflight-Fehler als erfolgreiche Runden zu zählen.
+
+## Ältere, weiterhin gültige, aber nicht umetikettierte Evidenz
+
+Folgende Abnahmen gehören weiterhin ausschließlich zu `09375bbb`: die erste 476/476-Suite, die `codex-native`-Kaltstartmatrix für gleichen Raum, verschiedene Räume und warmen Kontrollpfad, der Public-Core-Bootstrap mit 102.527 Bytes und p95 54,9 ms, der sechsfache echte `TelemetryCaptureWriter`-Capture-on/off-Vergleich, die headful Desktop-/390×844- und sichtbare Lifecycle-Recovery-Abnahme sowie der 7.201,62-Sekunden-Soak. Sie bleiben relevant, werden aber nicht als exakte `722883c4`-Läufe ausgegeben.
+
+## Verbleibende Abnahmegrenzen
+
+- Der neue headful Web-Lauf auf `722883c4` blieb durch Better Auth blockiert: kein Benutzer entsprach `auth.allowedEmails`; der Google-Flow endete mit `redirect_uri_mismatch`.
+- `/api/previews/events` lieferte im älteren Browserlauf 503. Das ist ein separater Preview-SSE-Fehler; es gibt keine Behauptung eines konsolen- oder netzwerkfehlerfreien Laufs.
+- Das physische Zielgerät bleibt extern; Desktop-/Mobile-Viewport-Emulation ersetzt es nicht.
+- Das exakte 10.000-Admission-Profil und ein erneuter 7.200-Sekunden-Soak auf `722883c4` bleiben ressourcenbeziehungsweise zeitbedingt offen. Schutzgrenzen wurden nicht erhöht.
+- GitHub-Issue #1013 ist alleiniger Langzeitort für Reminder-Read/Ack-Discovery; #1016 ist der getrennte Follow-up-Ort für allgemeine Pibo2-Providerauth. Beide liegen außerhalb dieses Produktpatches.
+
+## Private Kernartefakte
+
+| Artefakt | SHA-256 |
+|---|---|
+| `ap03-http-foreign-writes-722883c4.json` | `0c3b04bde3f37b278c2d2a6933cc415a43b966fb40db781e3159a86b6f6ea00d` |
+| `pibo2-codex-native-luna-medium-tool-smoke5-722883c4.log` | `e09a554a34b057a26d342f7bb23ad8bde91c70058afd55fb246fb8278db1e92e` |
+| `portfolio-722883c4-real/runtime-validation.json` | `84c4a4ba372b150ccae96bfc051501b43ae49263320a8787459d8cf6351ec55a` |
+| `mcp-long-722883c4/summary.json` | `646118de6de8d9a5cb4cf30028962f6b76a9731bf0d271dfaecd276bebf89d27` |
+| `finite-3250-admissions-722883c4-paced/sessions-3250/summary.json` | `a5eb0514e46ef9ec7ba8a7648f28a0a775adc7505ae5272b8797df158c5f27c0` |
+| `full-suite-coverage-files-722883c4.tsv` | `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c` |
+| `pibo2-pool-release-722883c4.json` | `3f9bd80fbd41fe7f82acae6e7132d65a2b64d05f187157397d0c2a0dd3a941c8` |
+
+# Historischer Ausführungsverlauf
+
+Die folgenden Abschnitte bewahren Baseline, Zwischenreviews und den ersten Handoff als Herkunft. Wo sie Kandidat `09375bbb` oder frühere Commits nennen, ersetzen sie nicht den oben dokumentierten Abschlussstand.
 
 # Reproduzierbare Basis
 
@@ -124,3 +194,4 @@ Nach der vom Nutzer gemeldeten Authentifizierungsreparatur liefern die bestehend
 [^remediation-plan]: Verbindliche Pakete, Budgets, Schutzregeln und Definition of Done des beauftragten Plans.
 [^historical-archive]: Private Originale; Hashmanifest für Herkunft und spätere Nachprüfung.
 [^baseline-tests]: Unverändertes Docker-Testprotokoll des ausgeführten Ausgangsstands.
+[^continuation-evidence]: Private, checksumgebundene Fortsetzungsartefakte für Kandidatenidentität, Testsuite, Last, Pibo2, Native, MCP und Lease-Freigabe; keine Credentials werden veröffentlicht.

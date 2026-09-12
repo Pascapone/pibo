@@ -2,6 +2,8 @@
 
 ## 2026-09-12
 
+- **Latency remediation final candidate**: Updated the [plan](/plans/pibo-latency-reliability-remediation.md), [validation report](/reports/latency-reliability-validation-2026-09-12.md), and [handoff](/reports/latency-reliability-handoff-2026-09-12.md) for committed candidate `722883c4`. Recorded exact 476/476 path-and-hash suite coverage, bounded AP-03 foreign-write projection, protected 3,250-admission evidence, genuine Native and Luna/medium portfolio work, the 31-minute MCP workflow and active slash latencies, resource-stop and OOM attribution limits, older-candidate evidence boundaries, Better Auth and physical-device blockers, and release of the explicit Pibo2 lease. No push, PR, merge, release, controller deployment, or protection-threshold change occurred.
+
 - **Continuation handoff**: Added the central [latency remediation handoff](/reports/latency-reliability-handoff-2026-09-12.md), with verified branch heads, accepted and unreviewed work, evidence archives, workflow snapshots, restoration guidance and remaining acceptance gates. Linked the plan and validation report; the successor may choose its own agent strategy.
 
 - **User-requested session closure**: Updated the [latency plan](/plans/pibo-latency-reliability-remediation.md) and [validation record](/reports/latency-reliability-validation-2026-09-12.md) to preserve the tested integration checkpoint and separate audit commits. The last active child received the stop-and-handoff steering instruction; full remediation and integrated acceptance remain open.

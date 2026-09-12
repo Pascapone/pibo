@@ -1,11 +1,11 @@
 ---
 type: "Status"
 title: "Pibo Latenzumbau: Übergabe zur Fortsetzung"
-description: "Verzeichnet gesicherte Arbeitsstände, Prüfbelege, offene Pakete und Ausführungsworkflows für die Fortsetzung des Latenzumbaus."
+description: "Verzeichnet den finalen Produktkandidaten, Prüfbelege, Evidenzgrenzen und verbleibende externe Gates des Latenzumbaus."
 tags: ["latency", "reliability", "handoff", "implementation"]
 status: "draft"
 authority: "informative"
-generated: { by: "openai/codex", at: "2026-09-12T08:35:06Z" }
+generated: { by: "openai/codex", at: "2026-09-12T21:40:05Z" }
 sources:
   - id: "plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -16,16 +16,62 @@ sources:
   - id: "archive"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-remediation-2026-09-12"
     title: "Commitsicherungen, Rohbelege, Audit-Übergabe und archivierte Workflows"
-implementation_state: "partial; stopped for handoff"
+  - id: "continuation-evidence"
+    resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
+    title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
+implementation_state: "implemented; acceptance partially blocked"
 ---
 
-# Einstieg und Auftrag
+# Aktueller Übergabestand
 
-Dies ist der zentrale Einstieg für den nächsten Agenten. Der Nutzer möchte die vorhandene Arbeit erhalten und einem anderen Agenten zur Fortsetzung übergeben. Dieser darf seine Arbeitsweise selbst bestimmen: allein oder mit Sub-Agents. Die frühere Vorgabe hoher Parallelität und feste Agentenzahlen sind keine Vorgabe für die Fortsetzung. Dieser Übergabeschritt startet selbst keine neue Umsetzung.
+Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` abgeschlossen; die Gesamtabnahme bleibt wegen ausdrücklich benannter externer und ressourcenbedingter Gates teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Der Produktcode war vor den abschließenden Dokumentationsänderungen sauber. Es wurde nichts gepusht, als PR eröffnet, gemergt, veröffentlicht, released oder auf dem Controller-Gateway bereitgestellt.[^continuation-evidence]
 
-Der Gesamtumbau ist **nicht fertig**. Drei begrenzte Produktverbesserungen sind lokal integriert und geprüft. Ein größeres Diagnose-/Reconciliation-/Lasttestpaket liegt separat committed vor und wartet auf abschließendes Review und Integration. Browserumbau, weitere Server-/Storage-Arbeit und die gemeinsame Abnahme fehlen. Es gibt weder einen veröffentlichten Fix noch einen Nachweis, dass der beobachtete 20-Sekunden-Fall behoben ist.[^validation]
+Der Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8a7bbb67`, `00a7d5ca`, `04ca34cc`, `082dfb6d`, `b87a00d5`, `beb89780`, `d52f0f95`, `717e9a85`, `09375bbb` und `722883c4`. Der letzte Commit ergänzt die inkrementelle, prozessübergreifende Session-Strukturreconciliation. Das checksumgebundene Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`.
 
-Zuerst dieses Dokument, dann den [Umsetzungsplan](/plans/pibo-latency-reliability-remediation.md) und den [Prüfbericht](/reports/latency-reliability-validation-2026-09-12.md) lesen. Der Plan bleibt maßgeblich für F1–F9, alle zwölf Zielanforderungen, Budgets und Definition of Done; diese Übergabe verkleinert den Auftrag nicht.[^plan]
+## Was auf `722883c4` belegt ist
+
+- **AP-03:** Full-HTTP-Foreign-Write-p95 20,53 ms bei 3.250 Sessions und 13,32 ms bei 10.000 Sessions; Delete, Reparent, Detach und Revisionen korrekt.
+- **Repräsentative Admission:** 3.250 Admissions, p95 15,22 ms, p99 21,31 ms, 3.270 akzeptierte/verfolgte Commands und null Integritätsfehler. Der 10.000-Lauf wurde bei Host-I/O-Full-PSI 11,12 geschützt beendet und zählt nicht.
+- **Native:** Echter `codex-native`-Luna/medium-Toolsmoke mit Codex 0.153.2, erfolgreichem `codex_command`, Marker und fehlerfreiem terminalem Trace. Der fingerprintgebundene Auth-Store war `/root/.pibo/agent-runtimes/codex-native/codex-native-f93ba5251f4f/codex-home`.
+- **6+12 Portfolio:** Endzustand sechs Parents, zwölf Children, ein Native-Parent, überall Luna/medium, Modellinferenz, Tools, Marker und terminale fehlerfreie Traces. Im kurzen Parallelfenster waren 17 Gateway-Angebote erfolgreich; eine weitere SSH-Anfrage scheiterte vor Admission und wurde später einzeln erfolgreich wiederholt. Nicht als 18 gleichzeitig aktive Agents ausgeben.
+- **MCP-Langlauf:** Sieben erfolgreiche Modellrunden und sieben echte 60-Sekunden-MCP-Aufrufe über 1.860,856 Sekunden. Je 49 aktive Slash-Proben: `/status` p95 44,91 ms, `/session` p95 75,02 ms, `/thinking` p95 50,07 ms. Normale Pi-Isolation, keine Native-Sandbox-Ausnahme.
+- **Testsuite:** Exakt 476/476 kanonische Dateipfade erfolgreich, keine fehlenden/zusätzlichen Pfade und keine Hashabweichung. Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c`. Abgebrochene Teilprotokolle wurden nicht gezählt.
+
+## Grenzen, die nicht umetikettiert werden dürfen
+
+Die headful Desktop-/390×844-/sichtbare Recovery-Abnahme, der `codex-native`-Kaltstartvergleich, die Pibo2-Core-Bootstrap-Messung, der echte `TelemetryCaptureWriter`-A/B-Vergleich und der 7.201,62-Sekunden-Soak gehören ausschließlich zu `09375bbb8d702d1bc6817ffe1313429fc05e07b3`. Sie bleiben wertvolle Vorläuferevidenz, sind aber keine exakten `722883c4`-Läufe.
+
+Der Native-Smoke und der Native-Portfolio-Parent benötigten auf diesem Dockerhost vorübergehend `permissionMode: "yolo"`, weil Bubblewrap keine unprivilegierten User-Namespaces anlegen konnte. Diese Ausnahme galt nur dort. Der normale Pi-/MCP-Langlauf blieb isoliert.
+
+Die Suite wurde nach Schutzstopps in kleinere geschützte Shards mit `--test-concurrency=1` und 1.024-MiB-Node-Heap zerlegt. `spawnSync.status === null` im Controller-Kompatibilitätstest fiel zeitlich mit Containerlimit, Peak und kumulativen OOM-Zählern zusammen, hatte aber kein erfasstes Exit-Signal. Deshalb nicht allein als OOM-kausal ausgeben. Der exakte fokussierte Wiederholungstest bestand. Nur taskeigene verwaiste Prozessgruppen wurden beendet.
+
+## Verbleibende externe oder ressourcenbedingte Gates
+
+1. Neuer headful Web-Lauf auf `722883c4`: Better Auth fand keinen Eintrag aus `auth.allowedEmails`; Google lieferte `redirect_uri_mismatch`.
+2. Physisches Zielgerät: nicht verfügbar; Viewport-Emulation ersetzt es nicht.
+3. Exakter 10.000-Admission-Lauf: durch unveränderten Host-I/O-PSI-Schutz beendet.
+4. Neuer 7.200-Sekunden-Soak auf `722883c4`: nicht wiederholt; der vorhandene erfolgreiche Soak bleibt `09375bbb` zugeordnet.
+5. Der ältere Browserlauf hatte einen separaten `/api/previews/events`-503; keinen konsolen-/netzwerkfehlerfreien Lauf behaupten.
+
+## Betriebs- und Abschlusszustand
+
+Die explizite Pibo2-Lease `lease_0e34ee90319d825b87` auf Slot 01 wurde am 2026-09-12 um 21:24:14 UTC ordnungsgemäß freigegeben. Temporäre Slotprofile und MCP-Konfiguration werden dadurch nicht weiter betrieben. GitHub-Issue #1013 bleibt der einzige Ort für langfristige Reminder-Read/Ack-Discovery; #1016 behandelt die allgemeine Pibo2-Providerauth. Beides ist nicht Teil dieses Produktpatches.
+
+Private Kernartefakte liegen unter `/root/.pibo/investigations/latency-continuation-2026-09-12/`:
+
+- `full-suite-coverage-summary-722883c4.json` und `full-suite-coverage-files-722883c4.tsv`;
+- `ap03-http-foreign-writes-722883c4.json`;
+- `finite-3250-admissions-722883c4-paced/`;
+- `portfolio-722883c4-real/runtime-validation.json`;
+- `mcp-long-722883c4/summary.json`;
+- `pibo2-codex-native-luna-medium-tool-smoke5-722883c4.log`;
+- `pibo2-pool-release-722883c4.json`.
+
+Operativ ist keine weitere Produktimplementierung erforderlich, bevor ein Maintainer die fokussierte Commitkette und die dokumentierten Evidenzgrenzen reviewt. Ein späterer Push oder PR braucht ausdrückliche Freigabe und den normalen upstream-first GitHub-Flow. Die offenen externen Gates dürfen separat nachgeholt werden; sie rechtfertigen keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
+
+# Historischer Ersthandoff
+
+Die folgenden Abschnitte bewahren den ersten gestoppten Zwischenstand, alte Branchzuordnungen und Wiederherstellungshinweise als Herkunft. Sie sind keine aktuelle operative Anweisung und ersetzen den oben dokumentierten Kandidaten `722883c4` nicht.
 
 # Wo die Arbeit liegt
 
@@ -222,3 +268,4 @@ Die Dokumentationsprüfungen dieses Schritts laufen als reine Dateiprüfungen im
 [^plan]: Unveränderter Anforderungsumfang des importierten Umsetzungsplans.
 [^validation]: Bisherige lokale Ausführung, Grenzen und getrennte Prüfstände.
 [^archive]: Private Originale, Worker-Übergabe und wiederherstellbare Arbeitsstände auf dem Controller.
+[^continuation-evidence]: Private, checksumgebundene Fortsetzungsartefakte für Kandidatenidentität, Testsuite, Last, Pibo2, Native, MCP und Lease-Freigabe; keine Credentials werden veröffentlicht.

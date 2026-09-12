@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-12T08:35:06Z"
+  at: "2026-09-12T21:40:05Z"
 sources:
   - id: "pibo2-investigations"
     resource: "scope: Pibo2 investigations on 2026-09-11 and 2026-09-12, candidate 0fe71c72a1d3bcb3b0d06295d323317a452b367a, consolidated controller report /tmp/pibo2-multiagent-0912/REPORT.md"
@@ -15,14 +15,17 @@ sources:
   - id: "planning-baseline"
     resource: "scope: Pibo upstream/dev cac4dcd03945b9754db7be9ab2ab4324f10c335c, refreshed on 2026-09-12"
     title: "Code- und Dokumentationsbasis für die Umsetzung"
-implementation_state: "in-progress"
+  - id: "continuation-evidence"
+    resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
+    title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
+implementation_state: "implemented; acceptance partially blocked"
 ---
 
 # 1. Kontext und Ziel
 
-## Ausführung ab 2026-09-12
+## Historischer Erstlauf ab 2026-09-12
 
-Für die Übergabe an einen neuen Agenten ist der [Handoff zur Fortsetzung](/reports/latency-reliability-handoff-2026-09-12.md) der zentrale Einstieg. Er enthält erhaltene Branches, Nachweise, offene Arbeit und Workflows. Der Nutzer überlässt dem nachfolgenden Agenten ausdrücklich die Wahl zwischen eigener Umsetzung und Sub-Agents; frühere Parallelitätsvorgaben gelten nicht für dessen neuen Auftrag.
+Dieser Abschnitt bewahrt den zunächst angeordneten Stop- und Übergabesnapshot. Der spätere Abschlussstand steht unter [Abschlussstatus der autorisierten Fortsetzung](#abschlussstatus-der-autorisierten-fortsetzung); der [Handoff](/reports/latency-reliability-handoff-2026-09-12.md) und der [Validierungsbericht](/reports/latency-reliability-validation-2026-09-12.md) sind die aktuellen Einstiege.
 
 Der Nutzer hat zunächst die vollständige Umsetzung dieses Plans mit hoher Parallelität beauftragt. Die letzte Anweisung beendet diese Ausführung ausdrücklich: auch der letzte Audit-Agent soll die Umsetzung einstellen, vorhandene Arbeit sichern und eine kurze Übergabe schreiben. Es werden keine neuen Agents, Arbeitspakete oder längeren Prüfungen gestartet. Der Gesamtumbau bleibt unvollständig; die Session endet mit einem geprüften Integrationsstand und einem getrennt gesicherten Audit-Branch. Die integrierte Arbeitsbasis ist `cac4dcd03945b9754db7be9ab2ab4324f10c335c`; der Plan-Worktree bleibt als Eingangsdokument erhalten. Die folgenden Besitzer und getrennten Worktrees bleiben für eine spätere, erneut beauftragte Fortsetzung nachvollziehbar. Angefangene Arbeit gilt erst nach nachgewiesener Integration und passender Abnahme als abgeschlossen.
 
@@ -46,6 +49,28 @@ Der Gesamtbericht umfasst den ursprünglichen Streaming-/Resume-/Kaltstart-Run u
 Dieser Plan beschreibt beabsichtigte Arbeit. Er behauptet weder, dass die Änderungen bereits implementiert sind, noch dass jede denkbare Latenzquelle dauerhaft ausgeschlossen werden kann. Erfolg heißt: Die nachgewiesenen Mechanismen sind beseitigt oder kontrolliert begrenzt, Regressionen werden erkannt, und Überlast führt zu einem erklärbaren, sicheren Zustand statt zu unbegrenztem Rückstau oder unklarem Nachrichtenverlust.
 
 Die Pibo2-Messbasis ist Commit `0fe71c72a1d3bcb3b0d06295d323317a452b367a`. Die nach Fetch festgestellte Planbasis ist `upstream/dev` bei `cac4dcd03945b9754db7be9ab2ab4324f10c335c`. Diese Stände sind verschieden. Der vorliegende Source-Abgleich ist in Abschnitt 1.2 festgehalten. Jedes Arbeitspaket beginnt zusätzlich mit einem Abgleich der verantwortlichen Symbole, bestehenden Tests und später hinzugekommener Fixes; der historische Messstand wird nicht als aktueller Produktzustand ausgegeben.[^planning-baseline]
+
+## Abschlussstatus der autorisierten Fortsetzung
+
+Die spätere autorisierte Fortsetzung ersetzt den oben konservierten Stop-Snapshot. Der abschließende committed Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34` im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Er enthält die fokussierten Produktcommits von `20be897f` bis `722883c4`. Es wurde nichts gemergt, gepusht, veröffentlicht, released oder auf einem Controller-Gateway bereitgestellt. Detaillierte Ergebnisse, Kandidatengrenzen und private Artefakthashes stehen im [Validierungsbericht](/reports/latency-reliability-validation-2026-09-12.md) und im [Fortsetzungshandoff](/reports/latency-reliability-handoff-2026-09-12.md).[^continuation-evidence]
+
+| Paket | Abschlussstand und Evidenzgrenze |
+|---|---|
+| AP-01/02 | Lifecycle-Generationen, Suspend-/Resume-Fencing, Signalepochen, begrenzte Statusarbeit und Receipt-Reconciliation sind implementiert und regressionsgeprüft. Die headful Desktop-/390×844- und sichtbare Recovery-Abnahme gehört zum älteren Kandidaten `09375bbb`; ein neuer headful Slotlauf auf `722883c4` blieb durch Better Auth blockiert. |
+| AP-03 | Prozessübergreifende Strukturänderungen werden über ein begrenztes Journal inkrementell reconciliert; Scan-Fallback bleibt auf Migration, Rennen, Lücke oder Overflow begrenzt. Auf `722883c4` lag der Foreign-Write-Status-p95 bei 20,53 ms für 3.250 und 13,32 ms für 10.000 Sessions. |
+| AP-04/05/06/08 | Kollisionsklassifikation, Deadline-Grace und Epochen-Fencing, monotone Wakeups sowie begrenzte Receipt-/Audit-Reconciliation sind implementiert. Die exakte 476-Dateien-Abdeckung des finalen Kandidaten schließt die zugehörigen Regressionen ein. |
+| AP-07 | Providerfreie `/status`-, `/session`- und `/thinking`-Aktionen umgehen Kaltstart-Admission; Katalogerkennung ist begrenzt und funktioniert auch für Adapter mit `listModels()` ohne `peekModelCatalog`. Der echte `codex-native`-Luna/medium-Toolsmoke bestand auf `722883c4`; die Same-Room-/Different-Room-/Warm-Kaltstartmatrix bleibt korrekt `09375bbb` zugeordnet. |
+| AP-09 | Der unabhängig nutzbare Core-Bootstrap und die nachgelagerten Kataloge sind implementiert. Die authentifizierte Pibo2-Messung mit 102.527 Bytes und p95 54,9 ms gehört zu `09375bbb` und wird nicht auf `722883c4` umetikettiert. |
+| AP-10 | `722883c4` besitzt Build, gehashtes Paket, exakte 476/476-Dateipfadabdeckung, AP-03-Foreign-Write-Pass, einen geschützten 3.250-Admission-Pass, echte Luna/medium-Toolarbeit, einen 6-Parent-/12-Child-Endzustand und einen 31-minütigen Modell/MCP-Workflow. Der 7.201,62-Sekunden-Soak gehört zu `09375bbb`; das exakte 10.000-Admission-Gate wurde auf `722883c4` durch unveränderten Host-I/O-PSI-Schutz gestoppt. Physisches Gerät und neuer headful Better-Auth-Login bleiben extern offen. |
+| AP-11 | Der echte `TelemetryCaptureWriter` wurde in sechs wechselnden Capture-on/off-Läufen ohne Writer-Fehler, Rejects oder Expiries verglichen. Dieser Pibo2-Nachweis gehört zu `09375bbb`; `722883c4` ändert nur die AP-03-Strukturreconciliation. |
+
+Die offizielle isolierte Provideranmeldung wurde schließlich im tatsächlichen fingerprintgebundenen Native-Store durchgeführt. Der genuine Native-Smoke verwendete Codex CLI 0.153.2, `openai-codex/gpt-5.6-luna`, Reasoning `medium`, einen erfolgreichen `codex_command` und einen terminalen Trace ohne Fehlerknoten. Weil der Pibo2-Dockerhost unprivilegierte User-Namespaces für Bubblewrap nicht zuließ, nutzten ausschließlich dieser Native-Smoke und der Native-Portfolio-Parent vorübergehend `permissionMode: "yolo"`. Das war eine enge Sandbox-Ausnahme, keine unveränderte Schutzabnahme. Der normale Pi-/MCP-Lauf blieb isoliert.
+
+Der kurze Portfolio-Lauf darf nicht als 18 gleichzeitig aktive Agents beschrieben werden. Im Parallelfenster vom 2026-09-12 19:52:14 UTC bis 19:52:29 UTC wurden 17 Sessions erfolgreich über das Gateway angeboten und abgeschlossen. Die 18. SSH-Anfrage scheiterte vor Admission bei der Schlüsselaushandlung und bestand erst in einem späteren Einzelretry. Die abschließende Laufzeitprüfung belegt danach sechs Parents, zwölf Children, einen Native-Parent, überall Luna/medium, gebundene terminale Traces, Modellinferenz, Toolabschluss und Marker.
+
+Die Last- und Testsuite-Nacharbeit behielt sämtliche Schutzgrenzen bei. Der 10.000-Admission-Versuch wurde bei Host-I/O-Full-PSI 11,12 nach 5.132 Admissions als nicht gatefähig beendet; das reduzierte Profil bestand mit 3.250 Admissions, p95 15,22 ms und null Integritätsfehlern. Die unsegmentierte Suite und Teilshards wurden bei I/O-Full-PSI 11,16, 11,05, 10,25 beziehungsweise 11,77 beendet. Danach liefen kleinere geschützte Shards mit `--test-concurrency=1` und `NODE_OPTIONS=--max-old-space-size=1024`. Das kanonische Ledger weist exakt 476 eindeutige erfolgreiche Dateipfade, keine fehlenden oder zusätzlichen Pfade und keine Hashabweichungen aus. Abgebrochene Teilläufe zählen nicht.
+
+Der Plan bleibt `draft`, weil die externen beziehungsweise ressourcenblockierten Gates nicht stillschweigend als bestanden gelten: physisches Zielgerät, neuer headful Better-Auth-Lauf, exakter 10.000-Admission-Lauf und ein erneuter 7.200-Sekunden-Soak auf `722883c4`. Die explizite Pibo2-Lease `lease_0e34ee90319d825b87` wurde am 2026-09-12 um 21:24:14 UTC ordnungsgemäß freigegeben.
 
 ## 1.1 Befunde und vollständige Zuordnung
 
@@ -428,7 +453,7 @@ Relevante aktuelle Symbole: `recoverSelectedLiveStream` in `src/apps/chat-ui/src
 1. Kandidat aus unverändertem, committed und lokal geprüftem Paket auf isolierter Pibo2-Lease abnehmen. Den kanonischen Pibo2-Pfad nur für notwendige Public-/Auth-/Shared-Host-Eigenschaften verwenden; Zielhost immer explizit.
 2. Ausgangsbestand und installierten Paket-Hash prüfen. Bestehende authentifizierte headful Browser-Targets entdecken oder dokumentierten Machine-Identity-Browser aufbauen; keine künstliche Fake-Auth auf Pibo2.
 3. Desktop und 390×844 testen: normales Öffnen, warmes Zurückkehren, 1/5/30 Minuten hidden/frozen, Offline-/Online-Wechsel, Sessionwechsel und Auth-Ablauf. Mindestens zehn Fünfminuten-Recovery-Zyklen im kontrollierten Browser-Replay; reale lange Last mindestens mit zwei Freeze-/Resume-Zyklen.
-4. Mindestens 30 Minuten echte Multi-Agent-App-Arbeit mit sechs Parents und je zwei Children, Luna/low, begrenzten Follow-ups und unabhängiger Kontroll-Session. Tatsächlich erreichte Gleichzeitigkeit und Eventrate belegen; ein Arbeitsauftrag allein beweist keine Last.
+4. Mindestens 30 Minuten echte Multi-Agent-App-Arbeit mit sechs Parents und je zwei Children, `openai-codex/gpt-5.6-luna`, Reasoning `medium`, begrenzten Follow-ups und unabhängiger Kontroll-Session. Tatsächlich erreichte Gleichzeitigkeit und Eventrate belegen; ein Arbeitsauftrag allein beweist keine Last.
 5. Separat drei native Kaltstarts im selben und in verschiedenen Räumen, damit Run 1 nicht nur durch einen Pi-Test ersetzt wird.
 6. Ein 2-Stunden-Soak mit deterministischer gemischter Last und headful Reconnects als eigenes integriertes Gate; Providerkosten dafür nicht durch endlose Modellloops erzeugen. Wenn dieser Lauf aus Ressourcengründen nicht stattfindet, Dauerlaufabnahme ausdrücklich offen lassen.
 7. Physical-device-PWA-Test auf dem tatsächlich betroffenen Smartphone mit längerem Hintergrundzustand und Netzwechsel. Geräte-/Browserstand und Capturemöglichkeit im Ergebnis angeben. Solange dieses Gerät nicht zugänglich ist, gilt der Nutzerfall „20 Sekunden auf Smartphone“ als noch nicht vollständig abgenommen; die übrigen Gates laufen weiter.
@@ -477,3 +502,4 @@ Zu Beginn jedes Pakets wird genau eine Eigentümerstelle für jedes betroffene V
 
 [^pibo2-investigations]: Gesamtbericht auf dem Controller: `/tmp/pibo2-multiagent-0912/REPORT.md`, etwa 5.200 Wörter, mit Run-1-/Run-2-Einzelprotokollen und Rohbelegen. AP-00 macht die temporären Belege vor Implementierung dauerhaft nachvollziehbar.
 [^planning-baseline]: Dieser Plan wurde auf einem separaten Dokumentations-Worktree von `upstream/dev` erstellt. Produktänderungen, Lasttests oder Deployments sind durch die Erstellung des Plans nicht ausgeführt worden.
+[^continuation-evidence]: Private, checksumgebundene Fortsetzungsartefakte für Kandidatenidentität, Testsuite, Last, Pibo2, Native, MCP und Lease-Freigabe; keine Credentials werden veröffentlicht.
