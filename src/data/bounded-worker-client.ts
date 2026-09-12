@@ -30,6 +30,7 @@ type Pending = {
 	resolve: (value: unknown) => void;
 	reject: (error: Error) => void;
 	timer: ReturnType<typeof setTimeout>;
+	deadlineCheck?: ReturnType<typeof setImmediate>;
 	settled: boolean;
 };
 
@@ -112,6 +113,7 @@ export class BoundedWorkerClient {
 			this.inFlight = undefined;
 			this.pendingBytes -= pending.bytes;
 			clearTimeout(pending.timer);
+			if (pending.deadlineCheck) clearImmediate(pending.deadlineCheck);
 			if (!pending.settled) {
 				pending.settled = true;
 				if (message.error) {
@@ -147,17 +149,25 @@ export class BoundedWorkerClient {
 				resolve: value => resolve(value as T), reject, settled: false,
 				timer: setTimeout(() => {
 					if (pending.settled) return;
+					if (this.inFlight === pending) {
+						// A worker completion can already be queued in the poll phase while the
+						// caller thread was stalled. Give that completion one event-loop turn
+						// to settle before fencing a genuinely unresponsive worker as unknown.
+						pending.deadlineCheck = setImmediate(() => {
+							pending.deadlineCheck = undefined;
+							if (pending.settled || this.inFlight !== pending) return;
+							pending.settled = true;
+							this.rejected++;
+							reject(new StorageUnavailableError("storage_unknown", "Storage response deadline elapsed; reconcile the same transaction ID before retrying."));
+							this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker exceeded its execution deadline."));
+						});
+						return;
+					}
 					pending.settled = true;
 					this.rejected++;
-					if (this.inFlight === pending) {
-						reject(new StorageUnavailableError("storage_unknown", "Storage response deadline elapsed; reconcile the same transaction ID before retrying."));
-						this.fail(new StorageUnavailableError("storage_worker_failed", "Storage worker exceeded its execution deadline."));
-					}
-					else {
-						const index = this.queue.indexOf(pending);
-						if (index >= 0) { this.queue.splice(index, 1); this.pendingBytes -= pending.bytes; }
-						reject(new StorageUnavailableError("storage_deadline", "Storage queue deadline elapsed before execution."));
-					}
+					const index = this.queue.indexOf(pending);
+					if (index >= 0) { this.queue.splice(index, 1); this.pendingBytes -= pending.bytes; }
+					reject(new StorageUnavailableError("storage_deadline", "Storage queue deadline elapsed before execution."));
 				}, age),
 			};
 			this.pendingBytes += bytes;
@@ -181,6 +191,7 @@ export class BoundedWorkerClient {
 		this.dispatchTimer=undefined;
 		for (const pending of [...this.queue, ...(this.inFlight ? [this.inFlight] : [])]) {
 			clearTimeout(pending.timer);
+			if (pending.deadlineCheck) clearImmediate(pending.deadlineCheck);
 			if (!pending.settled) { pending.settled = true; pending.reject(pending === this.inFlight ? new StorageUnavailableError("storage_unknown", "Storage worker stopped during execution; reconcile the transaction ID.") : error); this.rejected++; }
 		}
 		this.queue.length = 0;
