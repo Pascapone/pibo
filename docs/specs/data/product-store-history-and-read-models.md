@@ -6,8 +6,8 @@ tags: ["data", "product-store", "history"]
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T18:00:00Z"
+  by: "openai/codex"
+  at: "2026-09-12T06:22:17Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 implementation:
@@ -17,7 +17,7 @@ implementation:
   test_execution: "focused schema, session-store, and delegated-observation tests passed in isolated Docker; broader 66-test selection passed 65 and hit one environment-only systemd isolation failure"
   build_and_typecheck_execution: "clean full typecheck passed"
 traceability:
-  commit: "e5dada192a650482d7783540854090943fc5454c"
+  commit: "81847c71989feb1645220daea1ded02f370ecb73"
   requirements:
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
@@ -87,6 +87,8 @@ traceability:
           symbol: "inspectOutputIntegrity"
         - path: "src/debug/output-collision-repair.ts"
           symbol: "repairOutputCollision"
+        - path: "src/core/output-collision-classification.ts"
+          symbol: "classifyOutputCollision"
       tests:
         - path: "test/data-v2-ingest-service.test.mjs"
           name: "chat data ingest writes user messages idempotently"
@@ -108,6 +110,14 @@ traceability:
           name: "equivalent assistant aliases fingerprint identically and compact queued/completed results do not collide"
         - path: "test/output-identity-regression.test.mjs"
           name: "collision diagnostics are redacted and dead-letter reconciliation is explicit, audited, and idempotent"
+        - path: "test/output-collision-classification.test.mjs"
+          name: "provenance-only legacy collision is proven from the independently reconstructed canonical event"
+        - path: "test/output-collision-classification.test.mjs"
+          name: "incoming text or a preview cannot substitute for a canonical legacy fingerprint proof"
+        - path: "test/output-collision-classification.test.mjs"
+          name: "changed text, source, session, turn and part remain semantic conflicts"
+        - path: "test/output-collision-classification.test.mjs"
+          name: "classification bounds hostile structures without invoking accessors or returning bodies"
       failures:
         - "Bounded payload reads verify size and SHA-256."
         - "Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow."
@@ -224,11 +234,15 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 9, install the Session-owned automatic observation cursor table without claiming its semantics, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
+The specification SHALL define the current schema version 14, retain the Session-owned automatic observation cursor table without claiming its semantics, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner. Version 14 already belongs to the implementation baseline; the collision classifier introduces no schema migration.
 
 ## Requirement: WP02-DATA-STORE-002
 
-Accepted user messages and normalized output SHALL be ingested idempotently; unkeyed repeated text remains distinct; equivalent delivery aliases SHALL fingerprint identically; versionless historic fingerprints and execution-result delivery keys SHALL remain replay-compatible without weakening conflict checks; semantically different assistant parts and execution-result phases SHALL use distinct identities; identity collisions SHALL remain non-retryable; and durable render, part, and invocation identities SHALL remain monotonic across retries and restarts. Collision diagnostics SHALL contain only bounded field names/change classes and redacted producer, projection, and phase provenance. Repair SHALL require an explicit keep-existing decision, report transcript/trace/navigation/command projection state, write an idempotent audit event, and never compare bodies or replay side effects.
+Accepted user messages and normalized output SHALL be ingested idempotently; unkeyed repeated text remains distinct; equivalent delivery aliases SHALL fingerprint identically; versionless historic fingerprints and execution-result delivery keys SHALL remain replay-compatible without weakening conflict checks; semantically different assistant parts and execution-result phases SHALL use distinct identities; identity collisions SHALL remain non-retryable; and durable render, part, and invocation identities SHALL remain monotonic across retries and restarts. Collision diagnostics SHALL contain only bounded field names/change classes and redacted producer, projection, and phase provenance. The existing operator-selected repair SHALL require an explicit keep-existing decision, report transcript/trace/navigation/command projection state, write an idempotent audit event, and never compare bodies or replay side effects.
+
+The independent `classifyOutputCollision` function SHALL prove equality only from complete assistant or terminal events with explicit delivery identities and an independently reproducible stored v1/v2 fingerprint. It SHALL use the existing v2 identity rules, including their established provenance exclusion and part aliases. Missing canonical content, previews, unsupported output types and unverifiable fingerprints SHALL remain insufficient evidence; unsupported fingerprint versions and exceeded budgets SHALL have distinct non-repairable results. Text, source, Session, Turn or part differences SHALL remain conflicts. Provenance authentication remains a separate concern.
+
+The pure classifier SHALL read or write no store and SHALL replay no side effect. It SHALL bound both input events together to 256 KiB by default and at most 1 MiB, 16,384 traversal nodes, depth 64 and one second of monotone elapsed time. It SHALL reject cyclic structures and accessors without executing them, and return fixed reason text without event bodies. Its `repairable` result is evidence for a separately validated repair operation, not a mutation or proof that historical dead letters have been reconciled.
 
 ## Requirement: WP02-DATA-STORE-003
 
@@ -300,7 +314,7 @@ The compact `execution_result` reproduction is source-derived: `RoutedSession.en
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `d30e0250fdce4017920c7f9c41c1e2067124d23b`. The full typecheck and focused schema, session-store, restart, query, and debug-CLI tests passed in isolated Docker. A broader 66-test selection passed 65 tests; the remaining real yielded-Bash timeout test could not access systemd isolation inside the worker and is unrelated to the schema or observation changes. This specification does not claim a complete root suite, Pibo2, browser, real-provider, or deployment evidence for this candidate.
+Source symbols and named tests are bound to commit `81847c71989feb1645220daea1ded02f370ecb73`. The earlier implementation baseline identified in frontmatter passed its full typecheck and focused schema, session-store, restart, query, and debug-CLI tests; its broader 66-test selection passed 65 and could not access systemd isolation for one real yielded-Bash timeout test. For the later pure classifier, server TypeScript compilation and 24 classifier/identity/ingest tests pass in isolated Docker, as recorded in the [current validation report](/reports/latency-reliability-validation-2026-09-12.md). These scoped results do not claim a complete root suite, Pibo2, browser, real-provider or deployment acceptance of the later candidate.
 
 # Related concepts
 

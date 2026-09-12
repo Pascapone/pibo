@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T06:10:29Z" }
+generated: { by: "openai/codex", at: "2026-09-12T06:28:31Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -74,6 +74,18 @@ Commit `6c0e4ff6170f987cf6252589c8dadf6a7e79a5de` berechnet Runtime-Status und T
 Commit `eace24be3b893512d649de96b30a34ed713d91ae` stellt den Dispatcher auf monotone Wakeups, 4,5–5,5 Sekunden Recovery-Jitter mit früherer Lease-Erneuerung und höchstens zwölf Claims pro Event-Loop-Durchlauf um. Der neue Idle- und Burst-Test schlägt gegen die Baseline fehl; der Burst verarbeitet dort alle 100 Claims vor dem nächsten Event-Loop-Turn. Nach Kompilierung bestehen `test/message-command-dispatcher.test.mjs` und `test/message-command-store.test.mjs`: 24 Tests, 0 Fehler, 2.714,1 ms. Bestehende Zwei-Prozess-, Crash-, Fairness-, Control-Reserve- und Fencing-Prüfungen bleiben grün. Browser-Receipts und die integrierte Lastabnahme von AP-06 bleiben offen.
 
 Beide Teilfixes wurden vom Orchestrator im Integrationsworker ausgeführt, während die delegierte Agent-Steuerung nicht erreichbar war. Die aktuellen Verträge in [Kapazität](/specs/runtime/capacity-and-scheduling.md) und [Gateway](/specs/gateway/web-host-and-channel.md) dokumentieren ausschließlich diese implementierten Änderungen.
+
+Commit `81847c71989feb1645220daea1ded02f370ecb73` ergänzt die fehlende reine AP-04-Vergleichsfunktion. Sie prüft den tatsächlichen gespeicherten Fingerprint anhand des unabhängig rekonstruierten vollständigen Events, bevor sie die vorhandene v2-Semantik und Delivery-ID vergleicht. Unvollständige Daten, unbekannte Versionen und überschrittene Budgets führen zu getrennten nicht reparierbaren Ergebnissen. Die Funktion verändert keine Daten. `test/output-collision-classification.test.mjs`, `test/output-identity-regression.test.mjs` und `test/data-v2-ingest-service.test.mjs` bestehen nach Kompilierung mit 24 Tests, 0 Fehlern, 494,9 ms. Dieselbe Abhängigkeit liegt als `799ab6ca` im Audit-Branch, damit dessen bereits begonnene Integration abschließen kann.
+
+Die historische Datei `dead-letters.json` ist leer; die gesicherten Aggregate und der vorhandene Detailbeleg erlauben deshalb noch keine vollständige Zuordnung sämtlicher 31 Fehler und 32 Diagnosen. Es wurde keine historische Reparatur angewendet. Die begonnenen read-only Pibo2-Abfragen beschränken sich auf verfügbare Index-/Spaltenmetadaten und sind keine Kandidatenabnahme.
+
+Der Nutzer hat die laufende Ausführung anschließend auf einen gesunden Zwischenstand begrenzt. Es werden keine neuen Sub-Agents gestartet und keine weiteren unbegonnenen Pakete eröffnet. Der bereits laufende Audit-Agent darf seinen Auftrag beenden; noch nicht akzeptierte Ergebnisse bleiben getrennt vom geprüften Integrationsstand.
+
+## Gemeinsame Prüfung des Zwischenstands
+
+Auf dem integrierten Code bei `81847c71989feb1645220daea1ded02f370ecb73` bestehen `npm run build` und `npm run typecheck` vollständig im Dockerworker. Der gemeinsame [Testlauf](/reports/artifacts/latency-reliability-2026-09-12/checkpoint-product-tests.log) umfasst die sieben oben benannten Gateway-, Dispatcher-/Store- und Identität-/Ingest-Suiten: **82 Tests, 0 Fehler**, 6.525,6 ms. Die bestehenden Vite-Bundlewarnungen bleiben unverändert sichtbar. Eine vollständige Root-Testsuite oder Releaseabnahme wurde nicht ausgeführt.
+
+Die Dokumentationsindizes haben keinen Drift; `npm run docs:validate` besteht mit 800 Markdown-Pfaden, 0 Fehlern und 0 Warnungen. Die Dokumentationsvalidator-Tests bestehen erneut mit 84 Tests, 0 Fehlern. Vier unbenutzte Dockerworker (`browser`, `gateway`, `storage`, `capture`) wurden über die Compute-CLI freigegeben. Ihre Worktrees und Branches bleiben erhalten. Audit und Integration bleiben nur für den laufenden Abschluss aktiv.
 
 # Ausführungsunterbrechung der Agent-Anbindung
 

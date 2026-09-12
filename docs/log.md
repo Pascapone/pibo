@@ -2,6 +2,8 @@
 
 ## 2026-09-12
 
+- **Bounded collision evidence**: Documented the pure v1/v2 equivalence classifier in the [Product Store contract](/specs/data/product-store-history-and-read-models.md), with independent canonical fingerprint proof, bounded input and explicit non-repairable outcomes. Recorded its 24 passing focused tests and the user-requested checkpoint boundary in the [validation record](/reports/latency-reliability-validation-2026-09-12.md); historical repairs and integrated acceptance remain open.
+
 - **Latency implementation progress**: Updated the [capacity contract](/specs/runtime/capacity-and-scheduling.md) for work-driven durable dispatch, bounded drain and jittered recovery, and the [Gateway contract](/specs/gateway/web-host-and-channel.md) for one shared runtime calculation per status response. The [validation record](/reports/latency-reliability-validation-2026-09-12.md) records red/green regressions, 34 Gateway and 24 dispatcher/store passes, remaining package work and the continuing delegated-tool authentication interruption. Integrated Pibo2 acceptance remains open.
 
 - **Latency remediation execution**: Imported the [latency and reliability plan](/plans/pibo-latency-reliability-remediation.md) from the user-designated planning worktree and began isolated implementation. The [validation record](/reports/latency-reliability-validation-2026-09-12.md) records the upstream/dev baseline, parallel ownership, private historical archive with SHA-256 manifest, successful Docker build and 26 passing baseline tests. Product fixes and integrated acceptance remain in progress.
