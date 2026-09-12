@@ -1497,7 +1497,8 @@ if (process.platform === "win32") {
 		let childPid;
 		const router = new PiboSessionRouter({ persistSession: false });
 		try {
-			const bash = createBashTool(process.cwd());
+			// This process-lifecycle fixture has no harness session environment.
+			const bash = createBashTool(process.cwd(), { exposeSessionEnvironment: false });
 			const tools = Object.fromEntries(createRunToolDefinitions(
 				[bash],
 				router.createRunToolController("parent"),
