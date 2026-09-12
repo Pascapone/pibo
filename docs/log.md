@@ -2,6 +2,8 @@
 
 ## 2026-09-12
 
+- **Continuation handoff**: Added the central [latency remediation handoff](/reports/latency-reliability-handoff-2026-09-12.md), with verified branch heads, accepted and unreviewed work, evidence archives, workflow snapshots, restoration guidance and remaining acceptance gates. Linked the plan and validation report; the successor may choose its own agent strategy.
+
 - **User-requested session closure**: Updated the [latency plan](/plans/pibo-latency-reliability-remediation.md) and [validation record](/reports/latency-reliability-validation-2026-09-12.md) to preserve the tested integration checkpoint and separate audit commits. The last active child received the stop-and-handoff steering instruction; full remediation and integrated acceptance remain open.
 
 - **Bounded collision evidence**: Documented the pure v1/v2 equivalence classifier in the [Product Store contract](/specs/data/product-store-history-and-read-models.md), with independent canonical fingerprint proof, bounded input and explicit non-repairable outcomes. Recorded its 24 passing focused tests and the user-requested checkpoint boundary in the [validation record](/reports/latency-reliability-validation-2026-09-12.md); historical repairs and integrated acceptance remain open.

@@ -61,6 +61,7 @@
 * [Pi Agent Runtime Parity with Pibo2&#45;Managed Authentication — 2026&#45;08&#45;15](pi-agent-runtime-parity-approved-auth-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pi Runtime Adapter Parity Validation](pi-runtime-adapter-parity-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo 1&#46;4&#46;6](release-1-4-6-notes.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Pibo Latenzumbau: Übergabe zur Fortsetzung](latency-reliability-handoff-2026-09-12.md) - Verzeichnet gesicherte Arbeitsstände, Prüfbelege, offene Pakete und Ausführungsworkflows für die Fortsetzung des Latenzumbaus&#46;
 * [Pibo VS Code Extension 1&#46;4&#46;1 — Release Report](vscode-webview-sidecar-fixes-release-2026-06-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Pibo performance and scalability F–H handoff](performance-scalability-fgh-handoff-2026-09-07.md) - Transfers the accepted A–E state, the exact F and G work&#45;in&#45;progress, branch topology, environment gates, and the remaining work to finish packages F through H&#46;
 * [Pibo performance and scalability implementation handoff](performance-scalability-handoff-2026-09-07.md) - Transfers the exact implementation, validation, branch, environment, and open&#45;test state for packages A through H&#46;

@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-12T06:36:00Z"
+  at: "2026-09-12T08:35:06Z"
 sources:
   - id: "pibo2-investigations"
     resource: "scope: Pibo2 investigations on 2026-09-11 and 2026-09-12, candidate 0fe71c72a1d3bcb3b0d06295d323317a452b367a, consolidated controller report /tmp/pibo2-multiagent-0912/REPORT.md"
@@ -21,6 +21,8 @@ implementation_state: "in-progress"
 # 1. Kontext und Ziel
 
 ## Ausführung ab 2026-09-12
+
+Für die Übergabe an einen neuen Agenten ist der [Handoff zur Fortsetzung](/reports/latency-reliability-handoff-2026-09-12.md) der zentrale Einstieg. Er enthält erhaltene Branches, Nachweise, offene Arbeit und Workflows. Der Nutzer überlässt dem nachfolgenden Agenten ausdrücklich die Wahl zwischen eigener Umsetzung und Sub-Agents; frühere Parallelitätsvorgaben gelten nicht für dessen neuen Auftrag.
 
 Der Nutzer hat zunächst die vollständige Umsetzung dieses Plans mit hoher Parallelität beauftragt. Die letzte Anweisung beendet diese Ausführung ausdrücklich: auch der letzte Audit-Agent soll die Umsetzung einstellen, vorhandene Arbeit sichern und eine kurze Übergabe schreiben. Es werden keine neuen Agents, Arbeitspakete oder längeren Prüfungen gestartet. Der Gesamtumbau bleibt unvollständig; die Session endet mit einem geprüften Integrationsstand und einem getrennt gesicherten Audit-Branch. Die integrierte Arbeitsbasis ist `cac4dcd03945b9754db7be9ab2ab4324f10c335c`; der Plan-Worktree bleibt als Eingangsdokument erhalten. Die folgenden Besitzer und getrennten Worktrees bleiben für eine spätere, erneut beauftragte Fortsetzung nachvollziehbar. Angefangene Arbeit gilt erst nach nachgewiesener Integration und passender Abnahme als abgeschlossen.
 

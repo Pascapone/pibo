@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T06:36:00Z" }
+generated: { by: "openai/codex", at: "2026-09-12T08:35:06Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -20,6 +20,8 @@ implementation_state: "in-progress"
 ---
 
 # Abnahmegrenze
+
+Der zentrale [Handoff zur Fortsetzung](/reports/latency-reliability-handoff-2026-09-12.md) verbindet diesen Prüfbericht mit Branches, privaten Artefakten, offenen Paketen und den erforderlichen Workflows.
 
 Die Ausführung endet auf ausdrücklichen Nutzerwunsch mit einem gesicherten Zwischenstand. Der gesamte Umbau bleibt unvollständig. Dieser Bericht unterscheidet den unveränderten Ausgangsstand, neue Paketprüfungen und die noch ausstehende integrierte Pibo2-Abnahme. Ein grüner Baseline-Test belegt keine geschlossene neue Anforderung. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
 
