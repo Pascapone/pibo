@@ -27,20 +27,32 @@ export class MessageCommandDispatcher {
 	private readonly claims = new Map<string, MessageCommandClaim>();
 	private readonly lastRenewed = new Map<string,number>();
 	private timer?: ReturnType<typeof setTimeout>;
+	private continuation?: ReturnType<typeof setImmediate>;
 	private disposed = false;
 	private pumping?: Promise<void>;
-	private wakePending = false;
+	private wakeGeneration = 0;
 	private lastFailureReportAt = 0;
 	private readonly leaseMs = 30_000;
 	constructor(private readonly storage: AsyncChatStorage, private readonly context: PiboChannelContext) { this.wake(); }
 	wake(): void {
 		if (this.disposed) return;
-		if (this.pumping) { this.wakePending=true; return; }
+		this.wakeGeneration++;
+		this.startPump();
+	}
+	private startPump(): void {
+		if (this.disposed || this.pumping) return;
 		if (this.timer) clearTimeout(this.timer);
+		if (this.continuation) clearImmediate(this.continuation);
 		this.timer = undefined;
-		let nextPollMs=50;
-		this.pumping = this.pump().catch(error => {
-			nextPollMs=1000;this.wakePending=false;
+		this.continuation = undefined;
+		const generation = this.wakeGeneration;
+		let drainRemaining = false;
+		let failed = false;
+		// Install the owner before any storage callback can synchronously wake it.
+		this.pumping = Promise.resolve().then(() => this.pump()).then((remaining) => {
+			drainRemaining = remaining;
+		}).catch(error => {
+			failed = true;
 			if(Date.now()-this.lastFailureReportAt>=5000){
 				this.lastFailureReportAt=Date.now();
 				console.warn("[pibo] durable message dispatcher unavailable", { code: error && typeof error === "object" && "code" in error ? String(error.code) : "dispatch_failed" });
@@ -48,8 +60,19 @@ export class MessageCommandDispatcher {
 		}).finally(() => {
 			this.pumping = undefined;
 			if (!this.disposed) {
-				if(this.wakePending) { this.wakePending=false; queueMicrotask(()=>this.wake()); }
-				else { this.timer = setTimeout(() => this.wake(), nextPollMs); this.timer.unref?.(); }
+				if (generation !== this.wakeGeneration || drainRemaining) {
+					// Yield even when claims complete synchronously; a busy room cannot
+					// monopolize the loop through an unbounded chain of microtasks.
+					this.continuation = setImmediate(() => this.startPump());
+					this.continuation.unref?.();
+				} else {
+					let nextPollMs = 4500 + Math.random() * 1000;
+					if (!failed) for (const renewedAt of this.lastRenewed.values()) {
+						nextPollMs = Math.min(nextPollMs, Math.max(1, renewedAt + this.leaseMs / 3 - Date.now()));
+					}
+					this.timer = setTimeout(() => this.startPump(), nextPollMs);
+					this.timer.unref?.();
+				}
 			}
 		});
 	}
@@ -60,21 +83,24 @@ export class MessageCommandDispatcher {
 		this.wake();
 	}
 	private forget(id: string): void {this.claims.delete(id);this.lastRenewed.delete(id);}
-	private async pump(): Promise<void> {
+	private async pump(): Promise<boolean> {
 		for (const [id, claim] of this.claims) {
-			if (this.disposed) return;
+			if (this.disposed) return false;
 			if(Date.now()-(this.lastRenewed.get(id)??0)<this.leaseMs/3)continue;
 			if (!await this.storage.heartbeatCommand(id,this.owner,claim.token,this.leaseMs)) this.forget(id);
 			else this.lastRenewed.set(id,Date.now());
 		}
-		while (!this.disposed && this.claims.size < 12) {
+		let claimed = 0;
+		while (!this.disposed && this.claims.size < 12 && claimed < 12) {
 			const claim = await this.storage.claimCommand(this.owner,this.leaseMs);
 			if (!claim) break;
+			claimed++;
 			this.claims.set(claim.id,claim);
 			this.lastRenewed.set(claim.id,Date.now());
 			// A slow cold runtime must not serialize unrelated session admission or dispatch.
 			void this.dispatch(claim);
 		}
+		return !this.disposed && claimed === 12 && this.claims.size < 12;
 	}
 	private async dispatch(claim: MessageCommandClaim): Promise<void> {
 		try {
@@ -104,7 +130,9 @@ export class MessageCommandDispatcher {
 	async dispose(): Promise<void> {
 		this.disposed = true;
 		if (this.timer) clearTimeout(this.timer);
+		if (this.continuation) clearImmediate(this.continuation);
 		this.timer = undefined;
+		this.continuation = undefined;
 		await this.pumping;
 		this.claims.clear();
 		this.lastRenewed.clear();
