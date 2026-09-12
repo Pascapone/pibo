@@ -34,14 +34,8 @@ export function validateAgentRuntimeProfileCapabilities(
 				});
 			}
 			for (const tool of enabledTools) {
-				let portable = tool.definition?.portable !== false;
-				if (!tool.definition && tool.createDefinition) {
-					try {
-						portable = tool.createDefinition({ profileName: profile.profileName }).portable !== false;
-					} catch {
-						portable = false;
-					}
-				}
+				// Dynamic factories execute only after generation admission, not in read-only validation.
+				const portable = tool.definition?.portable !== false;
 				if (portable) continue;
 				diagnostics.push({
 					severity: "error",

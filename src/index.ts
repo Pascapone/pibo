@@ -445,3 +445,4 @@ export {
 } from "./config/config.js";
 export type { PiboConfig, PiboConfigKeyDefinition } from "./config/config.js";
 export * from "./tools/runtime/index.js";
+export * from "./plugins/sdk.js";

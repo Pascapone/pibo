@@ -47,7 +47,7 @@ export function createCustomAgentProfileDefinition(agent: CustomAgentDefinition,
 					if (shouldWarnMissingReferences) console.warn(`Skipping unknown context file "${contextFileKey}" for custom agent "${agent.profileName}"`);
 				}
 			}
-			for (const toolName of agent.nativeTools) {
+			for (const toolName of agent.pluginSelection ? [] : agent.nativeTools) {
 				try {
 					builder.addTool(context.getTool(toolName));
 				} catch (error) {
@@ -66,13 +66,14 @@ export function createCustomAgentRuntimeValidationProfile(agent: CustomAgentDefi
 	const builder = createCustomAgentBuilder(agent);
 	for (const skillName of agent.skills) builder.addSkill({ name: skillName, path: skillName });
 	for (const contextFileKey of agent.contextFiles) builder.addContextFile({ key: contextFileKey, path: contextFileKey });
-	for (const toolName of agent.nativeTools) builder.addTool({ name: toolName });
+	for (const toolName of agent.pluginSelection ? [] : agent.nativeTools) builder.addTool({ name: toolName });
 	for (const subagent of agent.subagents) builder.addSubagent(subagent);
 	return builder.createSession();
 }
 
 function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionContextBuilder {
 	const builder = new InitialSessionContextBuilder(agent.profileName)
+		.withPluginSelection(agent.pluginSelection, agent.revision, agent.id)
 		.withAgentRuntime(agent.runtimeInstanceId, agent.runtimeOptions)
 		.withBuiltinTools(agent.builtinTools)
 		.withBuiltinToolNames(agent.builtinToolNames)

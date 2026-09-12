@@ -155,6 +155,8 @@ export type RuntimeRoutedSessionOptions = {
 	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean; sessionIdentityOperationInFlight: boolean }) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
+	/** Controlled input transformation; immutable routing identity remains host-owned. */
+	transformInput?: (event: PiboMessageEvent, signal: AbortSignal) => Promise<PiboMessageEvent>;
 	acquireProviderCapacity?: (provider: string, signal: AbortSignal) => Promise<CapacityLease>;
 	modelFallbacks?: readonly ModelProfile[];
 	getRuntimeAuthStatus?: () => Promise<readonly AgentRuntimeAuthStatus[]>;
@@ -1128,6 +1130,12 @@ export class RuntimeRoutedSession {
 				});
 				return;
 			}
+			if (this.options.transformInput) {
+				const transformed = await this.options.transformInput(event, inFlight.capacityAbort.signal);
+				if (typeof transformed.text !== "string") throw new Error("Invalid plugin input transformation");
+				event = { ...event, text: transformed.text };
+			}
+			if (this.disposed || inFlight.cancelled) return;
 			this.activeMessage = event;
 			this.activeMessageFailed = false;
 			this.beginRunReminderTurnGuard(event);

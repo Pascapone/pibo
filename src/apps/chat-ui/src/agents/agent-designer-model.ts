@@ -1,7 +1,8 @@
-import type { SaveCustomAgentInput } from "../api-agent-designer";
+import type { SaveCustomAgentInput, DesignerPluginFields, AgentPluginCatalog } from "../api-agent-designer";
+import type { AgentPluginSelection, PluginContribution } from "../../../../plugins/sdk.js";
 import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCatalogEntry, type BootstrapData, type CustomAgent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 
-export type AgentDraft = Omit<SaveCustomAgentInput, "description" | "mainModel" | "subagentModel"> & {
+export type AgentDraft = Omit<SaveCustomAgentInput, "description" | "mainModel" | "subagentModel"> & DesignerPluginFields & {
 	description?: string;
 	mainModel?: ModelProfile;
 	subagentModel?: ModelProfile;
@@ -15,7 +16,6 @@ export type AgentDraft = Omit<SaveCustomAgentInput, "description" | "mainModel" 
 	fast?: boolean;
 	mainFast?: boolean;
 	subagentFast?: boolean;
-	brokenNativeTools?: string[];
 	brokenContextFiles?: string[];
 	source: "custom" | "profile";
 };
@@ -40,6 +40,9 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		});
 	};
 	return {
+		schemaVersion: 2,
+		expectedRevision: draft.id ? draft.revision : undefined,
+		...(draft.pluginSelection ? { pluginSelection: structuredClone(draft.pluginSelection) } : {}),
 		displayName: draft.displayName.trim(),
 		description: (draft.description ?? "").trim() || null,
 		folderId: draft.folderId ?? null,
@@ -48,7 +51,6 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 			? structuredClone(draft.runtimeOptions)
 			: {},
 		nativeSubagents: draft.nativeSubagents ?? null,
-		nativeTools: uniqueNames(draft.nativeTools),
 		skills: uniqueNames(draft.skills),
 		contextFiles: uniqueNames(draft.contextFiles),
 		subagents: draft.subagents.flatMap((item) => {
@@ -72,8 +74,6 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 				...(typeof item.maxDepth === "number" ? { maxDepth: Math.round(item.maxDepth) } : {}),
 			}];
 		}),
-		mcpServers: uniqueNames(draft.mcpServers),
-		piPackages: uniqueNames(draft.piPackages),
 		mainModel: normalizeModel(draft.mainModel) ?? null,
 		mainModelFallbacks: normalizeFallbacks(draft.mainModelFallbacks, normalizeModel(draft.mainModel)),
 		subagentModel: normalizeModel(draft.subagentModel) ?? null,
@@ -86,25 +86,22 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 		builtinTools: draft.builtinTools,
 		builtinToolNames: normalizeBuiltinToolNames(draft.builtinToolNames, draft.builtinTools),
 		autoContextFiles: draft.autoContextFiles,
-		runControl: draft.runControl,
-		goalControl: draft.goalControl,
 	};
 }
 
 export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new-agent", folderId?: string): AgentDraft {
 	return {
+		schemaVersion: 2,
+		pluginSelection: structuredClone((catalog as (AgentCatalog & { defaultPluginSelection?: AgentPluginSelection }) | undefined)?.defaultPluginSelection ?? { schemaVersion: 1, plugins: [] }),
 		displayName,
 		description: "",
 		folderId,
 		runtimeInstanceId: defaultRuntimeInstanceId(catalog),
 		runtimeOptions: {},
 		nativeSubagents: undefined,
-		nativeTools: [],
-		skills: hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : [],
+		skills: [],
 		contextFiles: [],
 		subagents: [],
-		mcpServers: [],
-		piPackages: [],
 		mainModel: undefined,
 		mainModelFallbacks: [],
 		subagentModel: undefined,
@@ -117,9 +114,6 @@ export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new
 		builtinTools: "default",
 		builtinToolNames: [...DEFAULT_BUILTIN_TOOL_NAMES],
 		autoContextFiles: true,
-		runControl: false,
-		goalControl: true,
-		brokenNativeTools: [],
 		brokenContextFiles: [],
 		hardPinnedModel: undefined,
 		source: "custom",
@@ -155,8 +149,12 @@ export function selectExistingAgentDraft(
 	return profile ? profileToDraft(profile, catalog) : createBlankAgentDraft(catalog);
 }
 
-export function agentToDraft(agent: CustomAgent): AgentDraft {
+export function agentToDraft(agent: CustomAgent & DesignerPluginFields): AgentDraft {
 	return {
+		schemaVersion: 2,
+		revision: agent.revision,
+		pluginSelection: agent.pluginSelection ? structuredClone(agent.pluginSelection) : undefined,
+		pluginMigration: agent.pluginMigration,
 		id: agent.id,
 		profileName: agent.profileName,
 		displayName: agent.displayName,
@@ -165,12 +163,9 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		runtimeInstanceId: agent.runtimeInstanceId ?? "pi",
 		runtimeOptions: structuredClone(agent.runtimeOptions ?? {}),
 		nativeSubagents: agent.nativeSubagents,
-		nativeTools: agent.nativeTools,
 		skills: agent.skills,
 		contextFiles: agent.contextFiles,
 		subagents: structuredClone(agent.subagents),
-		mcpServers: agent.mcpServers,
-		piPackages: agent.piPackages ?? [],
 		mainModel: agent.mainModel,
 		mainModelFallbacks: agent.mainModelFallbacks ?? [],
 		subagentModel: agent.subagentModel,
@@ -183,9 +178,6 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 		builtinTools: agent.builtinTools,
 		builtinToolNames: normalizeBuiltinToolNames(agent.builtinToolNames, agent.builtinTools),
 		autoContextFiles: agent.autoContextFiles ?? true,
-		runControl: agent.runControl,
-		goalControl: agent.goalControl ?? true,
-		brokenNativeTools: agent.brokenNativeTools ?? [],
 		brokenContextFiles: agent.brokenContextFiles ?? [],
 		archivedAt: agent.archivedAt,
 		hardPinnedModel: undefined,
@@ -193,19 +185,19 @@ export function agentToDraft(agent: CustomAgent): AgentDraft {
 	};
 }
 
-export function profileToDraft(profile: BootstrapData["agents"][number], catalog?: AgentCatalog): AgentDraft {
+export function profileToDraft(profile: BootstrapData["agents"][number] & DesignerPluginFields, _catalog?: AgentCatalog): AgentDraft {
 	return {
+		schemaVersion: 2,
+		pluginSelection: profile.pluginSelection ? structuredClone(profile.pluginSelection) : undefined,
+		pluginMigration: profile.pluginMigration,
 		displayName: profile.name,
 		description: profile.description ?? "",
 		runtimeInstanceId: profile.runtimeInstanceId ?? "pi",
 		runtimeOptions: structuredClone(profile.runtimeOptions ?? {}),
 		nativeSubagents: profile.nativeSubagents,
-		nativeTools: profile.nativeTools ?? [],
-		skills: profile.skills ?? (hasBuiltinSkill(catalog, "pi-agent-harness") ? ["pi-agent-harness"] : []),
+		skills: profile.skills ?? [],
 		contextFiles: profile.contextFiles ?? [],
 		subagents: structuredClone(profile.subagents ?? []),
-		mcpServers: profile.mcpServers ?? [],
-		piPackages: profile.piPackages ?? [],
 		mainModel: profile.mainModel ?? profile.model,
 		mainModelFallbacks: profile.mainModelFallbacks ?? [],
 		subagentModel: profile.subagentModel ?? profile.model,
@@ -218,9 +210,6 @@ export function profileToDraft(profile: BootstrapData["agents"][number], catalog
 		builtinTools: profile.builtinTools ?? "default",
 		builtinToolNames: normalizeBuiltinToolNames(profile.builtinToolNames, profile.builtinTools),
 		autoContextFiles: profile.autoContextFiles ?? true,
-		runControl: profile.runControl ?? false,
-		goalControl: profile.goalControl ?? true,
-		brokenNativeTools: [],
 		brokenContextFiles: [],
 		hardPinnedModel: profile.model,
 		profileName: profile.name,
@@ -240,7 +229,7 @@ export function copyProfileToDraft(profile: BootstrapData["agents"][number], cat
 	};
 }
 
-export function copyCustomAgentToDraft(agent: CustomAgent): AgentDraft {
+export function copyCustomAgentToDraft(agent: CustomAgent & DesignerPluginFields): AgentDraft {
 	const draft = agentToDraft(agent);
 	return {
 		...draft,
@@ -360,17 +349,13 @@ export function normalizeBuiltinToolNames(names: string[] | undefined, mode: "de
 	return DEFAULT_BUILTIN_TOOL_NAMES.filter((name) => selected.has(name));
 }
 
-export type NativeToolCatalogItem = AgentCatalog["nativeTools"][number];
 export type ContextFileCatalogItem = AgentCatalog["contextFiles"][number];
+/** Read-only transitional type for the browser owner's remaining legacy migration display. */
 export type PiPackageCatalogItem = AgentCatalog["piPackages"][number];
+/** Never represents an executable installation or activation. */
+export function piPackageMeta(_pkg: PiPackageCatalogItem): string { return "Legacy Pi package · inactive · migration required"; }
 export type SkillCatalogItem = AgentCatalog["skills"][number];
 export type CatalogGroupKind = "builtin" | "plugin" | "custom" | "user";
-const CODEX_COMPAT_TOOL_NAMES = new Set([
-	"apply_patch",
-	"codex_image_generation",
-	"web_search",
-	"view_image",
-]);
 export const DEFAULT_BUILTIN_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 export const BUILTIN_TOOL_DESCRIPTIONS: Record<(typeof DEFAULT_BUILTIN_TOOL_NAMES)[number], string> = {
 	read: "Read workspace files.",
@@ -390,44 +375,6 @@ export type CatalogGroup<T> = {
 	totalCount: number;
 	defaultOpen: boolean;
 };
-
-export function buildBuiltinToolReplacementMap(
-	tools: NativeToolCatalogItem[],
-	selectedNames: string[],
-): Map<string, string[]> {
-	const selected = new Set(selectedNames);
-	const replacements = new Map<string, string[]>();
-	for (const tool of tools) {
-		if (!selected.has(tool.name)) continue;
-		for (const builtinToolName of tool.replacesBuiltinTools ?? []) {
-			const replacers = replacements.get(builtinToolName) ?? [];
-			replacers.push(tool.name);
-			replacements.set(builtinToolName, replacers);
-		}
-	}
-	for (const replacers of replacements.values()) replacers.sort((left, right) => left.localeCompare(right));
-	return replacements;
-}
-
-export function buildNativeToolGroups(tools: NativeToolCatalogItem[], selectedNames: string[]): CatalogGroup<NativeToolCatalogItem>[] {
-	const selected = new Set(selectedNames);
-	const groups = new Map<string, CatalogGroup<NativeToolCatalogItem>>();
-	for (const tool of tools) {
-		const pluginId = tool.pluginId ?? (CODEX_COMPAT_TOOL_NAMES.has(tool.name) ? "pibo.codex-compat" : undefined);
-		const pluginName = tool.pluginName ?? (pluginId === "pibo.codex-compat" ? "Codex Compat" : undefined);
-		const isNative = !pluginId || pluginId === "pibo.core";
-		const key = isNative ? "builtin" : `plugin:${pluginId}`;
-		const group = getOrCreateCatalogGroup(groups, key, {
-			title: isNative ? "Built-in Tools" : pluginDisplayName(pluginId, pluginName),
-			description: isNative ? "Built-in Pibo tool catalog" : pluginId ?? "plugin",
-			kind: isNative ? "builtin" : "plugin",
-		});
-		group.items.push(tool);
-		if (selected.has(tool.name)) group.selectedCount += 1;
-		group.totalCount += 1;
-	}
-	return finalizeCatalogGroups(groups, ["builtin", "plugin"]);
-}
 
 export function buildSkillGroups(skills: SkillCatalogItem[], selectedNames: string[]): CatalogGroup<SkillCatalogItem>[] {
 	const selected = new Set(selectedNames);
@@ -530,10 +477,6 @@ export function skillMeta(skill: SkillCatalogItem): string {
 	return skill.pluginName ?? skill.pluginId ?? "plugin skill";
 }
 
-function hasBuiltinSkill(catalog: AgentCatalog | undefined, name: string): boolean {
-	return catalog?.skills.some((skill) => skill.kind === "builtin" && skill.name === name) ?? false;
-}
-
 export function contextFileMeta(contextFile: AgentCatalog["contextFiles"][number]): string {
 	const source = contextFile.source ?? "plugin";
 	const scope = contextFile.scope ?? "global";
@@ -543,31 +486,35 @@ export function contextFileMeta(contextFile: AgentCatalog["contextFiles"][number
 	return "managed global";
 }
 
-export function isPiPackageSelected(selected: string[], pkg: PiPackageCatalogItem): boolean {
-	return selected.includes(pkg.id) || selected.includes(pkg.name);
-}
-
-export function togglePiPackageSelection(selected: string[], pkg: PiPackageCatalogItem): string[] {
-	if (isPiPackageSelected(selected, pkg)) return selected.filter((name) => name !== pkg.id && name !== pkg.name);
-	return [...selected, pkg.id];
-}
-
-export function isSelectablePiPackage(pkg: PiPackageCatalogItem): boolean {
-	return pkg.enabled && pkg.installStatus === "installed";
-}
-
-export function piPackageMeta(pkg: AgentCatalog["piPackages"][number]): string {
-	const resources = pkg.resourceTypes.length ? pkg.resourceTypes.join(" + ") : "resources pending";
-	const version = pkg.version ? `v${pkg.version}` : pkg.installStatus;
-	const diagnostics = pkg.diagnostics.some((diagnostic) => diagnostic.type === "error") ? " / needs attention" : "";
-	const enabled = pkg.enabled ? "enabled" : "disabled";
-	return `${resources} / ${version} / ${enabled}${diagnostics}`;
-}
-
 export function agentDesignerUnavailableMessage(): string {
 	return "Agent Designer API unavailable. Restart the Pibo web gateway after pulling/building the latest backend.";
 }
 
 export function isNotFoundError(message: string): boolean {
 	return message.toLowerCase().includes("not found") || message.includes("404");
+}
+
+/** Existing snapshots never acquire defaults or a new artifact revision implicitly. */
+export function setAgentPluginEnabled(selection: AgentPluginSelection, plugin: AgentPluginCatalog["plugins"][number], enabled: boolean): AgentPluginSelection {
+	const next = structuredClone(selection);
+	const entry = next.plugins.find((item) => item.pluginId === plugin.pluginId);
+	if (entry) entry.enabled = enabled;
+	else next.plugins.push({ ...structuredClone(plugin.initialSelection), enabled });
+	return next;
+}
+export function setAgentPluginContribution(selection: AgentPluginSelection, pluginId: string, contribution: PluginContribution, enabled: boolean): AgentPluginSelection {
+	if (contribution.required || contribution.scope !== "agent") return selection;
+	const next = structuredClone(selection);
+	const entry = next.plugins.find((item) => item.pluginId === pluginId);
+	if (entry?.enabled) entry.contributions[contribution.id] = enabled;
+	return next;
+}
+/** Explicit user acceptance only; new OPTIONAL contributions remain off on revision upgrades. */
+export function acceptAgentPluginRevision(selection: AgentPluginSelection, plugin: AgentPluginCatalog["plugins"][number]): AgentPluginSelection {
+	const next = structuredClone(selection);
+	const entry = next.plugins.find((item) => item.pluginId === plugin.pluginId);
+	if (!entry) return next;
+	entry.revision = plugin.revision;
+	entry.contributions = Object.fromEntries(plugin.contributions.filter((item) => item.scope === "agent").map((item) => [item.id, item.required || entry.contributions[item.id] === true]));
+	return next;
 }

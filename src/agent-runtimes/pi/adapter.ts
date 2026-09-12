@@ -217,6 +217,10 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 	const nativeSessionId = input.binding?.nativeSessionId ?? input.piboSession.piSessionId;
 	return new InitialSessionContext({
 		profileName: profile.profileName,
+		pluginSelection: profile.pluginSelection,
+		pluginSelectionRevision: profile.pluginSelectionRevision,
+		pluginAgentId: profile.pluginAgentId,
+		effectivePluginPlan: profile.effectivePluginPlan,
 		runtimeInstanceId: profile.runtimeInstanceId,
 		runtimeOptions: profile.runtimeOptions,
 		sessionId: nativeSessionId,

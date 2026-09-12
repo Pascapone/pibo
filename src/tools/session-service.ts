@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { RuntimePluginHook, PluginHookEvidence } from "../agent-runtime/plugin-hooks.js";
 import type { InitialSessionContext } from "../core/profiles.js";
 import type { PiboRunToolController } from "../runs/tools.js";
 import type { PiboAgentsController, PiboSubagentRunner } from "../subagents/tool.js";
@@ -29,6 +30,8 @@ export type CreatePiboPortableToolSessionInput = PiboPortableToolSessionControll
 	/** Shared live runtime generation used by tool credentials and resource isolation. */
 	sessionGeneration?: string;
 	profile: InitialSessionContext;
+	pluginHooks?: readonly RuntimePluginHook[];
+	recordPluginHook?: (evidence: PluginHookEvidence) => void;
 	cwd: string;
 	getActiveMessage?: PiboToolDefinitionContext["getActiveMessage"];
 	getConversationEntries?: PiboToolDefinitionContext["getConversationEntries"];
@@ -54,6 +57,8 @@ export interface PiboPortableToolSession {
 	readonly adapterId: string;
 	readonly sessionGeneration: string;
 	createDefinitions(options?: PiboPortableToolDefinitionOptions): PiboToolDefinition[];
+	/** Already materialized inventory only; never executes a factory. */
+	getDefinitions(): readonly PiboToolDefinition[];
 	configureControllers(controllers: Partial<PiboPortableToolSessionControllers>): void;
 	setConversationEntriesProvider(provider: PiboToolDefinitionContext["getConversationEntries"] | undefined): void;
 	issueMcpAccess(options?: { allowedToolNames?: readonly string[]; ttlMs?: number }): Promise<PiboToolMcpAccess>;
@@ -70,6 +75,8 @@ export type PiboPortableToolServiceOptions = {
 type SessionRecord = {
 	key: string;
 	active: boolean;
+	definitions?: PiboToolDefinition[];
+	nativeYieldableTools?: readonly PiboToolDefinition[];
 	input: CreatePiboPortableToolSessionInput;
 	controllers: PiboPortableToolSessionControllers;
 	getConversationEntries?: PiboToolDefinitionContext["getConversationEntries"];
@@ -156,8 +163,12 @@ export class PiboPortableToolService {
 
 	private createDefinitions(record: SessionRecord, options: PiboPortableToolDefinitionOptions = {}): PiboToolDefinition[] {
 		if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
-		return createPiboSessionToolDefinitions({
+		if (record.definitions && record.nativeYieldableTools === options.nativeYieldableTools) return record.definitions;
+		record.nativeYieldableTools = options.nativeYieldableTools;
+		const definitions = createPiboSessionToolDefinitions({
 			profile: record.input.profile,
+			pluginHooks: record.input.pluginHooks,
+			pluginHookScope: record.input.recordPluginHook ? { piboSessionId: record.input.piboSessionId, generation: record.sessionGeneration, record: record.input.recordPluginHook } : undefined,
 			toolContext: {
 				piboSessionId: record.input.piboSessionId,
 				piboRoomId: record.input.piboRoomId,
@@ -169,6 +180,8 @@ export class PiboPortableToolService {
 			...record.controllers,
 			nativeYieldableTools: options.nativeYieldableTools,
 		});
+		record.definitions = definitions;
+		return definitions;
 	}
 
 	private resolveTools(piboSessionId: string, generation: string): PiboToolDefinition[] {
@@ -184,9 +197,11 @@ export class PiboPortableToolService {
 			adapterId: record.input.adapterId,
 			sessionGeneration: record.sessionGeneration,
 			createDefinitions: (options) => this.createDefinitions(record, options),
+			getDefinitions: () => [...(record.definitions ?? [])],
 			configureControllers: (controllers) => {
 				if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
 				record.controllers = { ...record.controllers, ...controllers };
+				record.definitions = undefined;
 			},
 			setConversationEntriesProvider: (provider) => {
 				if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);

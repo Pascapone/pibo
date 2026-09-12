@@ -54,6 +54,8 @@ export type PiboToolUpdateCallback<TDetails = unknown> = (update: PiboToolProgre
 
 /** Session-owned context available to portable tool factories and executions. */
 export type PiboToolDefinitionContext = {
+	/** Immutable effective configuration pinned by the selected generation. */
+	plugin?: { id: string; contributionId: string; revision: string; configuration: Readonly<Record<string, unknown>>; contributionConfiguration: Readonly<Record<string, unknown>> };
 	piboSessionId?: string;
 	piboRoomId?: string;
 	profileName?: string;

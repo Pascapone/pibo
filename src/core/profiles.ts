@@ -1,3 +1,4 @@
+import type { AgentPluginSelection, EffectivePluginPlan } from "../plugins/contributions.js";
 import type { PiboJsonObject } from "./events.js";
 import type { PiboThinkingLevel } from "./thinking.js";
 import {
@@ -69,6 +70,8 @@ export type SubagentProfile = {
 export type SkillSourceKind = "builtin" | "plugin" | "user";
 
 export type SkillProfile = {
+	pluginContributionId?: string;
+	required?: boolean;
 	name: string;
 	path: string;
 	enabled?: boolean;
@@ -85,6 +88,8 @@ export type ContextFileScope = "global" | "agent";
 export type ContextFileSource = "plugin" | "managed";
 
 export type ContextFileProfile = {
+	pluginContributionId?: string;
+	required?: boolean;
 	key?: string;
 	path: string;
 	label?: string;
@@ -150,6 +155,10 @@ export type WebSearchProviderUserLocation = {
 
 export type InitialSessionContextOptions = {
 	profileName: string;
+	pluginSelection?: AgentPluginSelection;
+	pluginSelectionRevision?: number;
+	pluginAgentId?: string;
+	effectivePluginPlan?: EffectivePluginPlan;
 	runtimeInstanceId?: string;
 	runtimeOptions?: PiboJsonObject;
 	sessionId?: string;
@@ -180,6 +189,10 @@ export type InitialSessionContextOptions = {
 
 export class InitialSessionContext {
 	readonly profileName: string;
+	readonly pluginSelection?: AgentPluginSelection;
+	readonly pluginSelectionRevision: number;
+	readonly pluginAgentId?: string;
+	readonly effectivePluginPlan?: EffectivePluginPlan;
 	readonly runtimeInstanceId: string;
 	readonly runtimeOptions: PiboJsonObject;
 	readonly sessionId?: string;
@@ -209,6 +222,10 @@ export class InitialSessionContext {
 
 	constructor(options: InitialSessionContextOptions) {
 		this.profileName = options.profileName;
+		this.pluginSelection = options.pluginSelection ? structuredClone(options.pluginSelection) : undefined;
+		this.pluginSelectionRevision = options.pluginSelectionRevision ?? 0;
+		this.pluginAgentId = options.pluginAgentId;
+		this.effectivePluginPlan = options.effectivePluginPlan;
 		this.runtimeInstanceId = options.runtimeInstanceId ?? DEFAULT_AGENT_RUNTIME_INSTANCE_ID;
 		this.runtimeOptions = structuredClone(options.runtimeOptions ?? {});
 		this.sessionId = options.sessionId;
@@ -240,6 +257,9 @@ export class InitialSessionContext {
 
 export class InitialSessionContextBuilder {
 	private readonly profileName: string;
+	private pluginSelection?: AgentPluginSelection;
+	private pluginSelectionRevision = 0;
+	private pluginAgentId?: string;
 	private runtimeInstanceId = DEFAULT_AGENT_RUNTIME_INSTANCE_ID;
 	private runtimeOptions: PiboJsonObject = {};
 	private sessionId?: string;
@@ -432,9 +452,19 @@ export class InitialSessionContextBuilder {
 		return this;
 	}
 
+	withPluginSelection(selection: AgentPluginSelection | undefined, revision = 0, agentId?: string): this {
+		this.pluginSelection = selection ? structuredClone(selection) : undefined;
+		this.pluginSelectionRevision = revision;
+		this.pluginAgentId = agentId;
+		return this;
+	}
+
 	createSession(): InitialSessionContext {
 		return new InitialSessionContext({
 			profileName: this.profileName,
+			pluginSelection: this.pluginSelection,
+			pluginSelectionRevision: this.pluginSelectionRevision,
+			pluginAgentId: this.pluginAgentId,
 			runtimeInstanceId: this.runtimeInstanceId,
 			runtimeOptions: this.runtimeOptions,
 			sessionId: this.sessionId,

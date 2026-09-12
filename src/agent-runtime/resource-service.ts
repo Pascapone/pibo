@@ -621,8 +621,9 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		this.context.push(sessionContextContribution(this.input));
 		for (const [index, file] of this.input.profile.contextFiles.entries()) {
 			if (file.enabled === false) continue;
-			const id = `context:${file.key ?? file.path}`;
-			this.requiredContributionIds.add(id);
+			const id = file.pluginContributionId ?? `context:${file.key ?? file.path}`;
+			const required = file.required !== false;
+			if (required) this.requiredContributionIds.add(id);
 			const sourcePath = resolveProfilePath(contextCwd, file.path);
 			try {
 				const content = await readFile(sourcePath, "utf8");
@@ -643,7 +644,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 					source: contextSource(file),
 					intent: file.scope === "agent" ? "developer" : "project",
 					label: file.label ?? file.key ?? basename(file.path),
-					required: true,
+					required,
 					order: 200 + index,
 					path: sourcePath,
 					sourcePath,
@@ -658,7 +659,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 					source: contextSource(file),
 					intent: file.scope === "agent" ? "developer" : "project",
 					label: file.label ?? file.key ?? basename(file.path),
-					required: true,
+					required,
 					order: 200 + index,
 					path: sourcePath,
 					sourcePath,
@@ -704,14 +705,15 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 	private async prepareSkills(): Promise<void> {
 		for (const skill of this.input.profile.skills) {
 			if (skill.enabled === false) continue;
-			const contributionId = `skill:${skill.name}`;
-			this.requiredContributionIds.add(contributionId);
+			const contributionId = skill.pluginContributionId ?? `skill:${skill.name}`;
+			const required = skill.required !== false;
+			if (required) this.requiredContributionIds.add(contributionId);
 			const sourcePath = resolveProfilePath(this.input.cwd, skill.path);
 			const resource: AgentRuntimeSkillResource = {
 				contributionId,
 				name: skill.name,
 				kind: skill.kind ?? "plugin",
-				required: true,
+				required,
 				sourcePath,
 			};
 			this.skills.push(resource);

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { BrowserPluginContext, runPluginInputHooks } from "../plugins/browser-host";
 import { Copy, LoaderCircle, Mic, SendHorizontal, Square, X } from "lucide-react";
 import { uploadChatFiles, type ChatUploadedFile } from "../api-chat-files";
 import { TerminalImageDialog } from "../session-views/compact-terminal/CompactTerminalSessionView";
@@ -73,6 +74,10 @@ export function Composer({
 	onClearUploadAttachments,
 	onSend,
 }: ComposerProps) {
+	const pluginContext = useContext(BrowserPluginContext);
+	const inputHookAbort = useMemo(() => new AbortController(), [sessionId]);
+	const inputHookPending = useRef(false);
+	useEffect(() => () => inputHookAbort.abort(), [inputHookAbort]);
 	const composerRootRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
@@ -378,6 +383,20 @@ export function Composer({
 
 	const handleClipboardImagePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
 		if (disabled || uploading) return;
+		const hooks = pluginContext?.host.plan.piboSessionId === sessionId ? pluginContext.host.hooks.filter((hook) => hook.descriptor.phase === "paste") : [];
+		if (hooks.length && sessionId && !clipboardImageFiles(event.clipboardData).length) {
+			event.preventDefault();
+			const input = event.currentTarget;
+			const start = input.selectionStart; const end = input.selectionEnd;
+			const previous = value;
+			void runPluginInputHooks(hooks, "paste", event.clipboardData.getData("text/plain"), sessionId, inputHookAbort.signal).then(({ value: pasted }) => {
+				if (inputHookAbort.signal.aborted || latestValueRef.current !== previous) return;
+				if (typeof pasted !== "string") throw new Error("Paste hook must return text");
+				onValueChange(previous.slice(0, start) + pasted + previous.slice(end));
+				requestAnimationFrame(() => { if (!inputHookAbort.signal.aborted && document.activeElement === input) input.setSelectionRange(start + pasted.length, start + pasted.length); });
+			}).catch((error) => { if (!inputHookAbort.signal.aborted) setUploadStatus({ message: String(error), error: true }); });
+			return;
+		}
 		const imageFiles = clipboardImageFiles(event.clipboardData);
 		if (!imageFiles.length) return;
 
@@ -423,18 +442,27 @@ export function Composer({
 	};
 
 	const dispatchText = async (candidate: string) => {
-		const text = candidate.trim();
+		if (inputHookPending.current || inputHookAbort.signal.aborted) return;
+		let text = candidate.trim();
 		if (!text) return;
-		historyNavRef.current = null;
-		appendStoredComposerHistory(text);
-		latestValueRef.current = "";
-		onValueChange("");
-		if (text.split(/\s+/)[0] === "/upload") {
-			openUploadDialog();
-			return;
-		}
-		if (text.startsWith("/") && (await onCommand(text))) return;
-		await onSend(text);
+		inputHookPending.current = true;
+		try {
+			if (sessionId && pluginContext?.host.plan.piboSessionId === sessionId) {
+				const transformed = await runPluginInputHooks(pluginContext.host.hooks, "send", text, sessionId, inputHookAbort.signal);
+				if (typeof transformed.value !== "string") throw new Error("Send hook must return text");
+				text = transformed.value.trim();
+			}
+			inputHookAbort.signal.throwIfAborted();
+			if (!text) return;
+			if (text.split(/\s+/)[0] === "/upload") { openUploadDialog(); return; }
+			if (!(text.startsWith("/") && (await onCommand(text)))) await onSend(text);
+			if (!inputHookAbort.signal.aborted) {
+				historyNavRef.current = null; appendStoredComposerHistory(text);
+				if (latestValueRef.current === candidate) { latestValueRef.current = ""; onValueChange(""); }
+			}
+		} catch (error) {
+			if (!inputHookAbort.signal.aborted) setUploadStatus({ message: String(error), error: true });
+		} finally { inputHookPending.current = false; }
 	};
 
 	const finishAudioRecording = async (recorder: MediaRecorder) => {

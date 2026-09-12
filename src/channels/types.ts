@@ -57,6 +57,8 @@ export type PiboChannelAuth = {
 export type PiboChannelKind = "local" | "web" | "messaging" | "custom";
 
 export type PiboChannelContext = {
+	/** Services are projections of the owning plugin host; lookup never activates a provider. */
+	getService?<T = unknown>(id: string): T | undefined;
 	emit(event: PiboInputEvent): Promise<PiboOutputEvent>;
 	subscribe(listener: PiboEventListener): () => void;
 	getSession(id: string): PiboSession | undefined;

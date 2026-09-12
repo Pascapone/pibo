@@ -208,7 +208,6 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 
 export class PiboGatewayServer {
 	private readonly pluginRegistry: PiboPluginRegistry;
-	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly ownsPluginRegistry: boolean;
 	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
@@ -225,7 +224,6 @@ export class PiboGatewayServer {
 	constructor(private readonly options: GatewayServerOptions = {}) {
 		this.ownsPluginRegistry = options.pluginRegistry === undefined;
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
-		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
 		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
 	}
 
@@ -294,12 +292,12 @@ export class PiboGatewayServer {
 
 		const ownedPluginRegistries = this.ownsPluginRegistry
 			? [this.pluginRegistry]
-			: this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry] : [];
+			: [];
 		for (const registry of ownedPluginRegistries) {
 			for (const app of registry.getWebApps()) await app.dispose?.();
 		}
 		await Promise.allSettled(
-			[...new Set([this.pluginRegistry, this.compatibilityRuntimeRegistry].filter((registry): registry is PiboPluginRegistry => Boolean(registry)))]
+			[this.pluginRegistry]
 				.map(async (registry) => await registry.disposeSpeechProviders()),
 		);
 
@@ -430,14 +428,14 @@ export class PiboGatewayServer {
 
 	private createChannelContext(): PiboChannelContext {
 		return {
+			getService: <T>(id: string) => this.pluginRegistry.getPluginHost().services.get<T>(id),
 			emit: (event) => this.requireRouter().emit(event),
 			subscribe: (listener) => this.requireRouter().subscribe(listener),
 			getSession: (id) => this.requireSessionStore().get(id),
 			createSession: (input) => {
 				const profile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
 				const profileContext = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, profile);
-				const runtimeAdapter = this.pluginRegistry.getAgentRuntimeAdapter(profileContext.runtimeInstanceId)
-					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
+				const runtimeAdapter = this.pluginRegistry.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
 				if (!runtimeAdapter) throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
 				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
 				return this.requireSessionStore().create({
@@ -469,8 +467,7 @@ export class PiboGatewayServer {
 				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
 				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
 				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
-				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId)
-					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
 				if (!adapter) {
 					return {
 						runtimeInstanceId: binding.runtimeInstanceId,
@@ -504,8 +501,7 @@ export class PiboGatewayServer {
 				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
 				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
 				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
-				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId)
-					?? this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
 				if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
 					throw new Error(`Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history.`);
 				}

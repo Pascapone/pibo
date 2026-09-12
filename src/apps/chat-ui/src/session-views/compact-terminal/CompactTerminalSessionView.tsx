@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { PluginArtifact, readPluginArtifact } from "../../plugins/browser-host";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { BookOpenCheck, ChevronDown, ChevronLeft, ChevronRight, CircleX, FileArchive, Hammer, Image as ImageIcon, Images, MessageSquare, Pencil, SquareTerminal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -784,6 +785,8 @@ function TerminalRowContent({
 	onModelChanged: ChatSessionViewProps["onModelChanged"];
 	onFork: ChatSessionViewProps["onFork"];
 }) {
+	const artifact = readPluginArtifact(row.output);
+	if (artifact) return <PluginArtifact envelope={artifact} piboSessionId={piboSessionId} />;
 	if (row.kind === "message.assistant") {
 		return (
 			<div className="ml-5 min-w-0" data-pibo-component="TerminalAssistantMessage">

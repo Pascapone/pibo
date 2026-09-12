@@ -1,3 +1,6 @@
+/** New SDK metadata is shared; legacy backend API types below remain transitional. */
+export type * from "./sdk.js";
+
 import type {
 	PiboExecutionEvent,
 	PiboForkCandidate,

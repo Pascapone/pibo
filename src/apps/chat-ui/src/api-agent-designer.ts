@@ -1,4 +1,8 @@
 import { requestJson } from "./api-http";
+import type { AgentPluginSelection, EffectivePluginPlan } from "../../../plugins/sdk.js";
+import type { AgentPluginCatalog, AgentPluginMigrationReport } from "./api-agent-designer-plugin-types";
+export type { AgentPluginCatalog };
+export type DesignerPluginFields = { revision?: number; pluginSelection?: AgentPluginSelection; pluginMigration?: AgentPluginMigrationReport };
 import type { AgentCatalog, AgentRuntimeCapabilities, AgentRuntimeDiagnostic, CustomAgent, CustomAgentFolder, ModelProfile, UserSkill } from "./types";
 
 export type ContextBuildDiagnostic = {
@@ -62,18 +66,18 @@ export type ContextBuildSnapshot = {
 };
 
 export type SaveCustomAgentInput = {
+	schemaVersion: 2;
+	expectedRevision?: number;
+	pluginSelection?: AgentPluginSelection;
 	displayName: string;
 	description?: string | null;
 	folderId?: string | null;
 	runtimeInstanceId: string;
 	runtimeOptions: Record<string, unknown>;
 	nativeSubagents?: boolean | null;
-	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
 	subagents: CustomAgent["subagents"];
-	mcpServers: string[];
-	piPackages: string[];
 	mainModel?: ModelProfile | null;
 	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile | null;
@@ -86,8 +90,6 @@ export type SaveCustomAgentInput = {
 	builtinTools: "default" | "disabled";
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
-	runControl: boolean;
-	goalControl: boolean;
 };
 
 export async function getAgentCatalog(): Promise<{
@@ -97,7 +99,7 @@ export async function getAgentCatalog(): Promise<{
 	return requestJson("/api/chat/agent-catalog");
 }
 
-export async function getCustomAgents(): Promise<{ agents: CustomAgent[] }> {
+export async function getCustomAgents(): Promise<{ agents: (CustomAgent & DesignerPluginFields)[] }> {
 	return requestJson("/api/chat/agents");
 }
 
@@ -134,7 +136,7 @@ export async function getContextBuild(input: { piboSessionId: string }): Promise
 	return (await requestJson<{ snapshot: ContextBuildSnapshot }>(`/api/chat/context-build?${params.toString()}`)).snapshot;
 }
 
-export async function postCustomAgent(input: SaveCustomAgentInput): Promise<{ agent: CustomAgent }> {
+export async function postCustomAgent(input: SaveCustomAgentInput): Promise<{ agent: CustomAgent & DesignerPluginFields }> {
 	return requestJson("/api/chat/agents", {
 		method: "POST",
 		headers: { "content-type": "application/json" },
@@ -145,11 +147,11 @@ export async function postCustomAgent(input: SaveCustomAgentInput): Promise<{ ag
 export async function patchCustomAgent(
 	id: string,
 	input: Partial<SaveCustomAgentInput> & { archived?: boolean },
-): Promise<{ agent: CustomAgent }> {
+): Promise<{ agent: CustomAgent & DesignerPluginFields }> {
 	return requestJson(`/api/chat/agents/${encodeURIComponent(id)}`, {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
+		body: JSON.stringify({ ...input, schemaVersion: 2 }),
 	});
 }
 
@@ -163,43 +165,6 @@ export async function deleteCustomAgent(id: string, confirmName: string): Promis
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ confirmName }),
 	});
-}
-
-export async function patchMcpServerDescription(name: string, description: string): Promise<{
-	server: AgentCatalog["mcpServers"][number];
-}> {
-	return requestJson(`/api/chat/mcp-servers/${encodeURIComponent(name)}/description`, {
-		method: "PATCH",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ description }),
-	});
-}
-
-export async function postPiPackage(source: string): Promise<AgentCatalog["piPackages"][number]> {
-	return (await requestJson<{ package: AgentCatalog["piPackages"][number] }>("/api/chat/pi-packages", {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ source }),
-	})).package;
-}
-
-export async function patchPiPackage(
-	id: string,
-	input: { enabled: boolean },
-): Promise<AgentCatalog["piPackages"][number]> {
-	return (await requestJson<{ package: AgentCatalog["piPackages"][number] }>(`/api/chat/pi-packages/${encodeURIComponent(id)}`, {
-		method: "PATCH",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(input),
-	})).package;
-}
-
-export async function deletePiPackage(id: string): Promise<AgentCatalog["piPackages"][number]> {
-	return (await requestJson<{ removedPackage: AgentCatalog["piPackages"][number] }>(`/api/chat/pi-packages/${encodeURIComponent(id)}`, {
-		method: "DELETE",
-		headers: { "content-type": "application/json" },
-		body: "{}",
-	})).removedPackage;
 }
 
 export async function listUserSkills(): Promise<UserSkill[]> {
@@ -244,3 +209,19 @@ export async function installUserSkill(url: string): Promise<UserSkill> {
 		body: JSON.stringify({ url }),
 	})).skill;
 }
+
+export async function getAgentPluginCatalog(): Promise<{ catalog: AgentPluginCatalog }> {
+	return requestJson("/api/chat/agent-plugin-catalog");
+}
+export async function previewAgentPlugins(input: Pick<SaveCustomAgentInput, "schemaVersion" | "expectedRevision" | "runtimeInstanceId" | "pluginSelection" | "skills" | "contextFiles" | "subagents" | "builtinTools" | "builtinToolNames"> & { agentId?: string }): Promise<{ schemaVersion: 1; plan: EffectivePluginPlan }> {
+	return requestJson("/api/chat/agent-plugin-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+}
+
+/** @deprecated Inactive migration tombstones until the remaining shell imports are retired. No network or executable package path. */
+export async function postPiPackage(_source: string): Promise<AgentCatalog["piPackages"][number]> { throw new Error("Pi package API retired. Use unified plugins; legacy packages remain inactive."); }
+/** @deprecated See postPiPackage. */
+export async function patchPiPackage(_id: string, _input: { enabled: boolean }): Promise<AgentCatalog["piPackages"][number]> { throw new Error("Pi package API retired. Use unified plugins; legacy packages remain inactive."); }
+/** @deprecated See postPiPackage. */
+export async function deletePiPackage(_id: string): Promise<AgentCatalog["piPackages"][number]> { throw new Error("Pi package API retired. Legacy data is retained for migration."); }
+/** @deprecated MCP configuration is edited only in its plugin tab. */
+export async function patchMcpServerDescription(_name: string, _description: string): Promise<{ server: AgentCatalog["mcpServers"][number] }> { throw new Error("MCP configuration moved to its plugin tab."); }

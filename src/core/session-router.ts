@@ -11,6 +11,10 @@ import {
 } from "./profiles.js";
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
+import { capturePluginContextBuild, persistPluginContextBuild, persistPluginHookEvidence } from "../agent-runtime/plugin-context-build.js";
+import type { PluginJsonObject } from "../plugins/manifest.js";
+import { runPluginHooks } from "../agent-runtime/plugin-hooks.js";
 import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
 import {
 	RUN_REMINDER_MAX_DURATION_MS,
@@ -147,6 +151,8 @@ export type PiboSessionRouterOptions = Omit<
 > & {
 	profile?: InitialSessionContext;
 	pluginRegistry?: PiboPluginRegistry;
+	/** Same host + persisted manager used by product plugin management. Required for migrated profiles. */
+	pluginRuntime?: PluginRuntimeCoordinator;
 	sessionStore?: PiboSessionStore;
 	forwardPiEvents?: boolean;
 	reliabilityStore?: PiboReliabilityStore;
@@ -246,6 +252,10 @@ function profileForSession(
 	const usesProfileRuntime = baseProfile.runtimeInstanceId === runtimeInstanceId;
 	const options: InitialSessionContextOptions = {
 		profileName: baseProfile.profileName,
+		pluginSelection: baseProfile.pluginSelection,
+		pluginSelectionRevision: baseProfile.pluginSelectionRevision,
+		pluginAgentId: baseProfile.pluginAgentId,
+		effectivePluginPlan: baseProfile.effectivePluginPlan,
 		runtimeInstanceId,
 		runtimeOptions: usesProfileRuntime
 			? { ...baseProfile.runtimeOptions, ...runtimeOptionsOverride }
@@ -638,6 +648,7 @@ export class PiboSessionRouter {
 	private readonly routedSessionDisposeTimeoutMs: number;
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly pluginGenerations = new Map<string, PluginRuntimeGeneration>();
 	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
@@ -652,7 +663,7 @@ export class PiboSessionRouter {
 		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
 		// Historical custom registries supplied only actions/profiles while runtime creation was implicit.
 		// Preserve that composition contract during the adapter migration without branching on adapter ids.
-		this.compatibilityRuntimeRegistry = options.pluginRegistry ? createDefaultPiboPluginRegistry() : undefined;
+		this.compatibilityRuntimeRegistry = undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.outputRenderSequencer = new OutputRenderSequencer({
 			highWaterStore: outputRenderHighWaterStore(this.sessionStore),
@@ -901,6 +912,8 @@ export class PiboSessionRouter {
 
 	private async disposeRoutedSession(piboSessionId: string, session: RoutedSession, reason: string): Promise<void> {
 		const disposal = Promise.resolve().then(() => session.dispose());
+		const pluginGeneration = this.pluginGenerations.get(piboSessionId);
+		let runtimeDisposed = false;
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		const timedOut = new Promise<never>((_resolve, reject) => {
 			timeout = setTimeout(() => reject(new PiboSessionDisposalTimeoutError(piboSessionId, this.routedSessionDisposeTimeoutMs)), this.routedSessionDisposeTimeoutMs);
@@ -908,6 +921,7 @@ export class PiboSessionRouter {
 		});
 		try {
 			await Promise.race([disposal, timedOut]);
+			runtimeDisposed = true;
 		} catch (error) {
 			if (error instanceof PiboSessionDisposalTimeoutError) {
 				session.forceDispose(`${reason}; bounded disposal timeout`);
@@ -922,6 +936,10 @@ export class PiboSessionRouter {
 			const resources = this.runtimeResourceSessions.get(piboSessionId);
 			if (resources) await resources.dispose();
 			if (this.runtimeResourceSessions.get(piboSessionId) === resources) this.runtimeResourceSessions.delete(piboSessionId);
+			if (runtimeDisposed && pluginGeneration) {
+				this.options.pluginRuntime!.release(pluginGeneration);
+				if (this.pluginGenerations.get(piboSessionId) === pluginGeneration) this.pluginGenerations.delete(piboSessionId);
+			}
 		}
 	}
 
@@ -1609,6 +1627,25 @@ export class PiboSessionRouter {
 	}
 
 	private async createRoutedSession(piboSessionId: string, phases: Record<string,number> = {}): Promise<RoutedSession> {
+		const profile = this.getSessionRuntimeProfile(piboSessionId);
+		const binding = this.resolveSessionRuntimeBinding(this.resolvePiboSession(piboSessionId));
+		const adapter = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId).requireAgentRuntimeAdapter(binding.runtimeInstanceId);
+		if (profile.pluginSelection && !this.options.pluginRuntime) throw new Error("Plugin runtime admission coordinator is required for this profile");
+		const generation = profile.pluginSelection ? this.options.pluginRuntime!.reserve(profile, { adapterId: binding.adapterId, instanceId: binding.runtimeInstanceId, capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject }, piboSessionId, randomUUID()) : undefined;
+		if (generation) this.pluginGenerations.set(piboSessionId, generation);
+		const setup = { nativeCleanupUncertain: false };
+		try {
+			return await this.createAdmittedRoutedSession(piboSessionId, phases, generation, setup);
+		} catch (error) {
+			if (generation && !setup.nativeCleanupUncertain && !this.runtimeResourceSessions.has(piboSessionId) && !this.portableToolSessions.has(piboSessionId)) {
+				this.options.pluginRuntime!.release(generation);
+				this.pluginGenerations.delete(piboSessionId);
+			}
+			throw error;
+		}
+	}
+
+	private async createAdmittedRoutedSession(piboSessionId: string, phases: Record<string,number>, pluginGeneration: PluginRuntimeGeneration | undefined, setup: { nativeCleanupUncertain: boolean }): Promise<RoutedSession> {
 		let phaseStarted = performance.now();
 		const piboSession = this.resolvePiboSession(piboSessionId);
 		let session: RoutedSession | undefined;
@@ -1619,7 +1656,7 @@ export class PiboSessionRouter {
 		const parentModelScopeId = parent ? parentBinding?.nativeSessionId ?? parent.id : undefined;
 		const modelDefaults = this.resolveModelDefaults();
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
-		const sessionProfile = this.getSessionRuntimeProfile(piboSession.id);
+		const sessionProfile = pluginGeneration?.profile ?? this.getSessionRuntimeProfile(piboSession.id);
 		const persistedHistoryHandoff = readPortableHistoryHandoffMetadata(binding.metadata);
 		if (binding.metadata?.[PORTABLE_HISTORY_HANDOFF_METADATA_KEY] !== undefined && !persistedHistoryHandoff) {
 			throw new Error("The pending portable history handoff metadata is invalid; refusing to start a contextless target runtime.");
@@ -1699,7 +1736,7 @@ export class PiboSessionRouter {
 		const agentsController = this.createAgentsController(piboSession.id);
 		const runToolController = this.createRunToolController(piboSession.id);
 		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
-		const sessionGeneration = randomUUID();
+		const sessionGeneration = pluginGeneration?.plan.generation ?? randomUUID();
 		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
 		if (previousResources) await previousResources.dispose();
 		this.portableToolSessions.get(piboSession.id)?.dispose();
@@ -1710,6 +1747,8 @@ export class PiboSessionRouter {
 			adapterId: binding.adapterId,
 			sessionGeneration,
 			profile: sessionProfile,
+			pluginHooks: pluginGeneration?.hooks,
+			recordPluginHook: pluginGeneration ? (evidence) => persistPluginHookEvidence(this.options.pluginRuntime!.options.store, evidence) : undefined,
 			cwd: workspace,
 			getActiveMessage: () => session?.getActiveMessage(),
 			agentsController,
@@ -1749,6 +1788,7 @@ export class PiboSessionRouter {
 		});
 		let runtimeSession: AgentRuntimeSession;
 		try {
+			setup.nativeCleanupUncertain = true;
 			runtimeSession = await runtimeRegistry.openAgentRuntimeSession(binding.runtimeInstanceId, {
 				piboSession: {
 					...piboSession,
@@ -1838,8 +1878,10 @@ export class PiboSessionRouter {
 				});
 				bindingSync.expectedRevision = binding.revision;
 			}
+			if (pluginGeneration) persistPluginContextBuild(this.options.pluginRuntime!.options.store, capturePluginContextBuild({ plan: pluginGeneration.plan, resources, tools: portableTools.getDefinitions() }));
 		} catch (error) {
-			await runtimeSession.dispose().catch(() => {});
+			await runtimeSession.dispose();
+			setup.nativeCleanupUncertain = false;
 			portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			await resources.dispose();
@@ -1893,6 +1935,10 @@ export class PiboSessionRouter {
 					this.handleInterruptedRunReminders(messages);
 				},
 				messagePreflight: this.options.messagePreflight,
+				transformInput: pluginGeneration ? async (event, signal) => {
+					const content = await runPluginHooks(pluginGeneration.hooks, "input", event.text, { piboSessionId: piboSession.id, generation: sessionGeneration, signal, record: (evidence) => persistPluginHookEvidence(this.options.pluginRuntime!.options.store, evidence) }, (value) => typeof value === "string");
+					return { ...event, text: content as string };
+				} : undefined,
 				acquireProviderCapacity: runtimeAdapter.descriptor.id === "pi" ? undefined : (provider,signal) => this.capacity.acquireProvider(provider,typeof piboSession.metadata?.chatRoomId === "string" ? piboSession.metadata.chatRoomId : piboSession.id,signal,Boolean(piboSession.parentId)),
 				modelFallbacks,
 				getRuntimeAuthStatus: () => runtimeRegistry.getAgentRuntimeAuthStatus(binding.runtimeInstanceId),

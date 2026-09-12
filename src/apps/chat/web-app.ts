@@ -364,7 +364,15 @@ export type ChatWebIntegrations = {
 	};
 };
 
+import type { PluginManager } from "../../plugins/manager.js";
+import { PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PluginSessionPlanReader } from "../../plugins/product-services.js";
+import { handlePluginManagementRoute, pluginManagementRoute, pluginManagementRouteRequiresSameOrigin } from "./plugin-management-routes.js";
+import { handlePluginBrowserRoute, pluginBrowserRoute } from "./plugin-browser-routes.js";
+
 export type ChatWebAppOptions = {
+	/** Explicit composition injection; normal startup resolves the same service from the host. */
+	pluginManager?: PluginManager;
+	pluginSessionPlan?: PluginSessionPlanReader;
 	defaultProfile?: string;
 	piPackageStoreCwd?: string;
 	agentStorePath?: string;
@@ -3493,12 +3501,16 @@ function sessionDepth(session: PiboSession | undefined, sessionsById: ReadonlyMa
 	return depth;
 }
 
-function requireSharedSession(context: PiboWebAppContext, piboSessionId: string): PiboSession {
+function requireStoredSession(context: PiboWebAppContext, piboSessionId: string): PiboSession {
 	const session = context.channelContext.getSession(piboSessionId);
 	if (!session) {
 		throw new PiboWebHttpError("Session not found", 404);
 	}
-	return canonicalizeSessionProfile(context, session);
+	return session;
+}
+
+function requireSharedSession(context: PiboWebAppContext, piboSessionId: string): PiboSession {
+	return canonicalizeSessionProfile(context, requireStoredSession(context, piboSessionId));
 }
 
 function defaultRuntimeInstanceId(context: PiboWebAppContext, defaultProfile: string): string | undefined {
@@ -4803,6 +4815,41 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/auth-check` && request.method === "GET") {
 				await requireSession(request, context);
 				return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+			}
+			const pluginRoute = pluginManagementRoute(url.pathname, request.method);
+			if (pluginRoute) {
+				await requireSession(request, context);
+				if (pluginManagementRouteRequiresSameOrigin(pluginRoute)) requireSameOriginJsonRequest(request);
+				const manager = options.pluginManager ?? context.channelContext.getService?.<PluginManager>(PLUGIN_MANAGEMENT_SERVICE);
+				if (!manager) throw new PiboWebHttpError("Plugin management service is unavailable", 503);
+				return handlePluginManagementRoute({
+					route: pluginRoute, request, manager, store: manager.store,
+					assertSessionAccess: (piboSessionId) => { requireStoredSession(context, piboSessionId); },
+				});
+			}
+			const browserPluginRoute = pluginBrowserRoute(url.pathname, request.method);
+			if (browserPluginRoute) {
+				await requireSession(request, context);
+				const manager = options.pluginManager ?? context.channelContext.getService?.<PluginManager>(PLUGIN_MANAGEMENT_SERVICE);
+				if (!manager) throw new PiboWebHttpError("Plugin management service is unavailable", 503);
+				const installations = manager.store.listInstallations();
+				return handlePluginBrowserRoute({
+					route: browserPluginRoute, request, installations,
+					catalogRevision: installations.reduce((revision, installation) => revision + installation.stateRevision, 0),
+					assertSessionAccess: (piboSessionId) => { requireStoredSession(context, piboSessionId); },
+					getSessionPlan: async (piboSessionId) => {
+						const kind = url.searchParams.get("kind");
+						if (kind !== null && kind !== "actual" && kind !== "preview") throw new PiboWebHttpError("Invalid plugin plan kind", 400);
+						if (kind !== "preview") {
+							const snapshot = manager.store.listGenerationSnapshots(piboSessionId).at(-1);
+							if (snapshot) return { plan: snapshot.plan, roomId: chatRoomIdFromMetadata(requireStoredSession(context, piboSessionId).metadata) };
+							if (kind === "actual") throw new PiboWebHttpError("No recorded plugin generation exists", 404);
+						}
+						const readPlan = options.pluginSessionPlan ?? context.channelContext.getService?.<PluginSessionPlanReader>(PLUGIN_SESSION_PLAN_SERVICE);
+						if (!readPlan) throw new PiboWebHttpError("Plugin preview service is unavailable", 503);
+						return readPlan(piboSessionId, "preview");
+					},
+				});
 			}
 			if (isTelemetryRetentionMaintenanceDue({ state: state.telemetryRetentionMaintenance })) {
 				maybeRunTelemetryRetentionMaintenance({

@@ -1,3 +1,4 @@
+import { pluginOnlyPiServicesOptions } from "./plugin-discovery.js";
 import {
 	ModelRegistry,
 	createAgentSessionServices,
@@ -101,7 +102,7 @@ export async function loadModelCatalogWithServices(
 }
 
 export async function loadModelCatalog(cwd = process.cwd()): Promise<ModelCatalog> {
-	return loadModelCatalogWithServices(createAgentSessionServices, cwd, (registry) => {
+	return loadModelCatalogWithServices((options) => createAgentSessionServices(pluginOnlyPiServicesOptions({ ...options, resourceLoaderOptions: { noSkills: true, noContextFiles: true, noPromptTemplates: true, noThemes: true } })), cwd, (registry) => {
 		registerOpenAiSupplementalModels(registry);
 		registerMiniMaxProvider(registry);
 		registerGlmProvider(registry);

@@ -1,3 +1,4 @@
+import { wrapPluginToolHooks, type RuntimePluginHook, type PluginHookScope } from "../agent-runtime/plugin-hooks.js";
 import type {
 	InitialSessionContext,
 	ToolDefinitionContext,
@@ -18,6 +19,8 @@ import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "./r
 
 export type CreatePiboSessionToolDefinitionsOptions = {
 	profile: InitialSessionContext;
+	pluginHooks?: readonly RuntimePluginHook[];
+	pluginHookScope?: Omit<PluginHookScope, "toolName" | "toolCallId" | "signal">;
 	toolContext?: ToolDefinitionContext;
 	agentsController?: PiboAgentsController;
 	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
@@ -118,8 +121,14 @@ export function createPiboSessionToolDefinitions(
 	const delegatedSendTool = agentTools.find((tool) => tool.name === "pibo_agents_send_message");
 	const directAgentTools = agentTools.filter((tool) => tool !== delegatedSendTool);
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
+	const selectedNames = profile.effectivePluginPlan ? new Set(profile.tools.map((tool) => tool.name)) : undefined;
+	const isSelected = (tool: PiboToolDefinition) => !selectedNames || selectedNames.has(tool.name)
+		|| (profile.subagents.some((agent) => agent.enabled !== false) && tool.name.startsWith("pibo_agents_"));
+	const wrap = (tool: PiboToolDefinition) => options.pluginHookScope && options.pluginHooks?.length
+		? wrapPluginToolHooks(tool, options.pluginHooks, options.pluginHookScope) : tool;
 	const yieldableTools = [
 		...nativeYieldableTools,
+		...[
 		...materializedProfileTools
 			.filter((tool) => tool.profile.yieldable !== false)
 			.map((tool) => tool.definition),
@@ -127,6 +136,7 @@ export function createPiboSessionToolDefinitions(
 		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
 		...agentTools,
 		...codexCompatTools,
+		].filter(isSelected).map(wrap),
 	];
 	const runControlYieldableTools = profile.toolPackages.runControl === true
 		? yieldableTools
@@ -137,12 +147,14 @@ export function createPiboSessionToolDefinitions(
 
 	return [
 		...nativeYieldableTools,
+		...[
 		...profileToolDefinitions,
 		...(runtimeTool ? [runtimeTool] : []),
 		...codexBrowserTools,
 		...directAgentTools,
 		...codexCompatTools,
 		...goalTools,
-		...runTools,
+		].filter(isSelected).map(wrap),
+		...runTools.filter((tool) => !selectedNames || selectedNames.has(tool.name) || Boolean(delegatedSendTool)).map(wrap),
 	];
 }

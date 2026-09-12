@@ -10,7 +10,6 @@ import {
 	PanelLeftOpen,
 	Plus,
 	RefreshCw,
-	Server,
 	Trash2,
 	X,
 } from "lucide-react";
@@ -24,9 +23,7 @@ import {
 	agentDesignerUnavailableMessage,
 	agentDraftToSaveInput,
 	agentToDraft,
-	buildBuiltinToolReplacementMap,
 	buildContextFileGroups,
-	buildNativeToolGroups,
 	buildSkillGroups,
 	contextFileMeta,
 	compatibleModelSelectionsForRuntime,
@@ -34,8 +31,6 @@ import {
 	copyProfileToDraft,
 	createBlankAgentDraft,
 	isNotFoundError,
-	isPiPackageSelected,
-	isSelectablePiPackage,
 	modelCatalogForRuntime,
 	normalizeBuiltinToolNames,
 	reasoningValuesForModel,
@@ -43,31 +38,29 @@ import {
 	selectExistingAgentDraft,
 	skillMeta,
 	toggleName,
-	togglePiPackageSelection,
 	uniqueDraftAgentName,
 	uniqueProfileOptions,
 	validateAgentName,
 	type AgentDraft,
-	type PiPackageCatalogItem,
 } from "./agent-designer-model";
 import {
 	AgentRuntimeOptions,
 	AgentRuntimeSelector,
 	CatalogGroupGrid,
-	CatalogSection,
 	CatalogToggle,
 	DesignerPanel,
 	EmptyCatalog,
 	InlineCheckboxToggle,
-	PiPackageCard,
 	SchemaRuntimeOptionsFields,
 	SelectionCheckbox,
 } from "./designer-ui";
 import { usePaneSidebar, type PaneSurface } from "../responsive-pane-sidebar";
 import { AgentsSidebar } from "./AgentsSidebar";
+import { AgentPluginsDesigner, type AgentPluginSettingsTarget } from "./AgentPluginsDesigner";
+import type { DesignerPluginFields } from "../api-agent-designer";
 
 const AGENT_AUTOSAVE_DELAY_MS = 900;
-const PENDING_AGENT_DRAFT_STORAGE_KEY = "pibo.chat.agentDesigner.pendingDraft.v1";
+const PENDING_AGENT_DRAFT_STORAGE_KEY = "pibo.chat.agentDesigner.pendingDraft.v2";
 
 type PendingAgentDraft = {
 	draft: AgentDraft;
@@ -75,7 +68,8 @@ type PendingAgentDraft = {
 };
 
 function agentDraftSignature(draft: AgentDraft): string {
-	return JSON.stringify(agentDraftToSaveInput(draft));
+	const { expectedRevision: _revision, ...content } = agentDraftToSaveInput(draft);
+	return JSON.stringify(content);
 }
 
 function readPendingAgentDraft(): PendingAgentDraft | null {
@@ -143,7 +137,9 @@ export function AgentsView({
 	modelCatalog,
 	onCreateSession,
 	onEditContextFile,
-	onEditMcpServer,
+	piboSessionId,
+	sessionProfileName,
+	onOpenPluginSettings,
 	onAgentsChanged,
 	onAutosaveHandlerChange,
 	creatingSession,
@@ -159,7 +155,10 @@ export function AgentsView({
 	modelCatalog?: ModelCatalog;
 	onCreateSession: (profile: string) => void;
 	onEditContextFile: (key: string) => void;
-	onEditMcpServer: (name: string) => void;
+	onEditMcpServer?: (name: string) => void;
+	piboSessionId?: string;
+	sessionProfileName?: string;
+	onOpenPluginSettings?: (target: AgentPluginSettingsTarget) => void;
 	onAgentsChanged: () => void;
 	onAutosaveHandlerChange: (handler: (() => Promise<void>) | null) => void;
 	creatingSession: boolean;
@@ -261,7 +260,7 @@ export function AgentsView({
 			throw new Error(message);
 		}
 		const input = agentDraftToSaveInput(snapshot);
-		const submittedSignature = JSON.stringify(input);
+		const submittedSignature = agentDraftSignature(snapshot);
 		if (submittedSignature === savedSignatureRef.current) {
 			clearPendingAgentDraft();
 			if (mountedRef.current) setSaveState("saved");
@@ -274,6 +273,9 @@ export function AgentsView({
 				setLocalError(nameError);
 			}
 			throw new Error(nameError);
+		}
+		if (!snapshot.pluginSelection) {
+			throw new Error("Legacy agent needs explicit migration before saving this draft. The original selection is retained.");
 		}
 		if (!catalogRef.current) {
 			const message = agentDesignerUnavailableMessage();
@@ -291,13 +293,14 @@ export function AgentsView({
 		}
 
 		let shouldSaveAgain = false;
-		const acceptSavedAgent = (savedAgent: CustomAgent) => {
+		const acceptSavedAgent = (savedAgent: CustomAgent & DesignerPluginFields) => {
 			const current = currentDraftRef.current;
 			const sameDraft = snapshot.id ? current.id === snapshot.id : !current.id;
 			if (sameDraft) {
 				const nextDraft: AgentDraft = {
 					...current,
 					id: savedAgent.id,
+					revision: savedAgent.revision,
 					profileName: savedAgent.profileName,
 					archivedAt: savedAgent.archivedAt,
 					source: "custom",
@@ -464,20 +467,12 @@ export function AgentsView({
 		}) ?? [],
 		[catalog, draft.contextFiles, draftProfileName],
 	);
-	const nativeToolGroups = useMemo(
-		() => buildNativeToolGroups(catalog?.nativeTools ?? [], draft.nativeTools),
-		[catalog?.nativeTools, draft.nativeTools],
-	);
-	const builtinToolReplacements = useMemo(
-		() => buildBuiltinToolReplacementMap(catalog?.nativeTools ?? [], draft.nativeTools),
-		[catalog?.nativeTools, draft.nativeTools],
-	);
 	const skillGroups = useMemo(
-		() => buildSkillGroups(catalog?.skills ?? [], draft.skills),
+		() => buildSkillGroups(catalog?.skills.filter((skill) => skill.kind === "user") ?? [], draft.skills),
 		[catalog?.skills, draft.skills],
 	);
 	const contextFileGroups = useMemo(
-		() => buildContextFileGroups(visibleContextFiles, draft.contextFiles),
+		() => buildContextFileGroups(visibleContextFiles.filter((file) => !file.pluginId), draft.contextFiles),
 		[visibleContextFiles, draft.contextFiles],
 	);
 	const selectedRuntime = catalog?.agentRuntimes?.find((runtime) => runtime.id === draft.runtimeInstanceId);
@@ -487,10 +482,6 @@ export function AgentsView({
 			: selectedRuntime.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ?? "The selected runtime is unavailable."
 		: `Runtime instance "${draft.runtimeInstanceId}" is not registered.`;
 	const piboToolsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.tools.piboManaged, "Pibo-managed tools");
-	const piboToolsUseMcp = selectedRuntime?.capabilities.tools.piboManaged.support === "mcp";
-	const nativeToolYieldingUnavailableReason = selectedRuntime?.capabilities.tools.nativeToolYielding.support === "unsupported"
-		? `Private harness-native tools cannot be yielded by pibo_run_start: ${selectedRuntime.capabilities.tools.nativeToolYielding.reason}`
-		: null;
 	const skillsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.skills, "Skills");
 	const contextUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.context, "Context delivery");
 	const contextDiscovery = selectedRuntime?.capabilities.contextDiscovery;
@@ -503,8 +494,6 @@ export function AgentsView({
 		? draft.autoContextFiles
 		: contextDiscovery?.enabledByDefault ?? draft.autoContextFiles) ?? true;
 	const effectiveNativeSubagents = draft.nativeSubagents ?? nativeSubagents?.enabledByDefault ?? false;
-	const mcpUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.mcp.externalServers, "External MCP servers");
-	const piPackagesUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime?.adapterId !== "pi" ? "Pi packages are available only to Pi-backed runtime instances." : null);
 	const piBuiltinToolsUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime?.adapterId !== "pi" ? "Pi built-in tool overrides do not apply to this runtime; its native tools remain unchanged." : null);
 	const modelUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime && !selectedRuntime.capabilities.models.catalog ? "This runtime does not expose a model catalog to Agent Designer." : null);
 	const reasoningUnavailableReason = runtimeUnavailableReason ?? (selectedRuntime && !selectedRuntime.capabilities.reasoning.supported ? "This runtime does not support profile-level reasoning control." : null);
@@ -551,7 +540,7 @@ export function AgentsView({
 		if (!draft.id || draft.source !== "custom") return;
 		setSaving(true);
 		try {
-			const response = await patchCustomAgent(draft.id, { archived });
+			const response = await patchCustomAgent(draft.id, { archived, expectedRevision: currentDraftRef.current.revision });
 			if (archived) {
 				setShowArchivedAgents(true);
 				localStorage.setItem("pibo.chat.showArchivedAgents", "true");
@@ -882,65 +871,9 @@ export function AgentsView({
 								onToggle={() => setDraft((current) => ({ ...current, autoContextFiles: !(current.autoContextFiles ?? true) }))}
 							/>
 						) : null}
-						<BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={builtinToolReplacements} />
+						{selectedRuntime?.adapterId === "pi" ? <BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={new Map()} /> : null}
 					</DesignerPanel>
-					<DesignerPanel title="Tools">
-						{piboToolsUnavailableReason ? <RuntimeCapabilityNotice reason={piboToolsUnavailableReason} /> : null}
-						{draft.brokenNativeTools?.length ? (
-							<div className="border border-red-500/60 bg-red-500/10 rounded-sm p-3 space-y-2">
-								<div className="flex items-start gap-2 text-red-100">
-									<AlertTriangle size={14} className="mt-0.5 shrink-0" />
-									<div>
-										<div className="text-sm font-medium">This agent references tools that are no longer registered.</div>
-										<div className="text-xs text-red-200/90">The agent remains available, but these tools will not be loaded.</div>
-									</div>
-								</div>
-								<div className="grid gap-2">
-									{draft.brokenNativeTools.map((toolName) => (
-										<div key={toolName} className="flex items-center gap-2 border border-red-500/40 bg-[#2a1417] rounded-sm px-3 py-2">
-											<div className="min-w-0 flex-1">
-												<div className="truncate text-sm text-red-100">{toolName}</div>
-												<div className="text-[11px] uppercase tracking-wider text-red-300/80">Missing tool</div>
-											</div>
-											<button
-												type="button"
-												disabled={readOnly}
-												onClick={() => setDraft((current) => ({
-													...current,
-													nativeTools: current.nativeTools.filter((item) => item !== toolName),
-													brokenNativeTools: (current.brokenNativeTools ?? []).filter((item) => item !== toolName),
-												}))}
-												className="h-8 w-8 inline-flex items-center justify-center border border-red-500/60 rounded-sm text-red-200 hover:border-red-400 hover:text-red-100 disabled:opacity-50"
-												title="Remove Missing Tool"
-												aria-label="Remove Missing Tool"
-											>
-												<X size={14} />
-											</button>
-										</div>
-									))}
-								</div>
-							</div>
-						) : null}
-						<CatalogGroupGrid
-							groups={nativeToolGroups}
-							empty={catalog ? <EmptyCatalog message="No native tools registered" /> : <EmptyCatalog />}
-							renderItem={(tool) => {
-								const portabilityReason = piboToolsUseMcp && tool.portable === false
-									? "Pi-runtime-only definition; unavailable through the session-scoped MCP bridge."
-									: null;
-								const unavailableReason = piboToolsUnavailableReason ?? portabilityReason;
-								return <CatalogToggle
-									key={tool.name}
-									disabled={readOnly || Boolean(unavailableReason && !draft.nativeTools.includes(tool.name))}
-									checked={draft.nativeTools.includes(tool.name)}
-									title={tool.name}
-									description={tool.description}
-									meta={unavailableReason ?? (tool.yieldable ? "portable / yieldable" : "portable / direct only")}
-									onToggle={() => setDraft((current) => ({ ...current, nativeTools: toggleName(current.nativeTools, tool.name) }))}
-								/>;
-							}}
-						/>
-					</DesignerPanel>
+					<AgentPluginsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} piboSessionId={piboSessionId} sessionProfileName={sessionProfileName} onOpenPluginSettings={onOpenPluginSettings ? (target) => void runAfterAutosave(() => onOpenPluginSettings(target)) : undefined} />
 					<DesignerPanel title="Skills">
 						{skillsUnavailableReason ? <RuntimeCapabilityNotice reason={skillsUnavailableReason} /> : null}
 						<CatalogGroupGrid
@@ -960,19 +893,6 @@ export function AgentsView({
 							)}
 						/>
 					</DesignerPanel>
-					<CatalogSection title="Packages">
-						{piboToolsUnavailableReason ? <div className="col-span-full"><RuntimeCapabilityNotice reason={piboToolsUnavailableReason} /></div> : null}
-						{draft.runControl && nativeToolYieldingUnavailableReason ? <div className="col-span-full"><RuntimeCapabilityNotice reason={nativeToolYieldingUnavailableReason} /></div> : null}
-						<CatalogToggle disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.goalControl)} checked={draft.goalControl} title="pibo-goal-control" description="Expose get_goal, create_goal, and update_goal for persisted Goal Loop lifecycle and accounting." meta={piboToolsUnavailableReason ?? "portable package"} onToggle={() => setDraft((current) => ({ ...current, goalControl: !current.goalControl }))} />
-						<CatalogToggle disabled={readOnly || Boolean(piboToolsUnavailableReason && !draft.runControl)} checked={draft.runControl} title="pibo-run-control" description="Expose pibo_run_* for Pibo-managed tools and subagents. Private harness-native tools are included only when the runtime declares native-tool yielding." meta={piboToolsUnavailableReason ?? nativeToolYieldingUnavailableReason ?? "portable + runtime-native"} onToggle={() => setDraft((current) => ({ ...current, runControl: !current.runControl }))} />
-					</CatalogSection>
-					<PiPackagesDesigner
-						packages={catalog?.piPackages}
-						draft={draft}
-						setDraft={setDraft}
-						readOnly={readOnly}
-						capabilityUnavailableReason={piPackagesUnavailableReason}
-					/>
 					<DesignerPanel title="Context Files">
 						{contextUnavailableReason ? <RuntimeCapabilityNotice reason={contextUnavailableReason} /> : null}
 						{draft.brokenContextFiles?.length ? (
@@ -1061,14 +981,6 @@ export function AgentsView({
 						readOnly={readOnly}
 						capabilityUnavailableReason={piboToolsUnavailableReason}
 					/>
-					<McpServersDesigner
-						servers={catalog?.mcpServers}
-						draft={draft}
-						setDraft={setDraft}
-						readOnly={readOnly}
-						capabilityUnavailableReason={mcpUnavailableReason}
-						onEditServer={(name) => void runAfterAutosave(() => onEditMcpServer(name))}
-					/>
 					{archivedDraft && draft.profileName ? (
 						<DesignerPanel title="Delete Agent">
 							<div className="border border-red-500/60 bg-red-500/10 text-red-100 rounded-sm p-3 text-sm">
@@ -1093,66 +1005,6 @@ function RuntimeCapabilityNotice({ reason }: { reason: string }) {
 		<div className="border border-[#f59e0b]/50 bg-[#f59e0b]/10 px-3 py-2 text-xs text-amber-100 rounded-sm">
 			{reason} Existing selections remain visible so they can be removed.
 		</div>
-	);
-}
-
-function PiPackagesDesigner({
-	packages,
-	draft,
-	setDraft,
-	readOnly,
-	capabilityUnavailableReason,
-}: {
-	packages?: PiPackageCatalogItem[];
-	draft: AgentDraft;
-	setDraft: Dispatch<SetStateAction<AgentDraft>>;
-	readOnly: boolean;
-	capabilityUnavailableReason: string | null;
-}) {
-	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-	const allPackages = packages ?? [];
-	const packageList = allPackages.filter(isSelectablePiPackage);
-	const selectedCount = packageList.filter((pkg) => isPiPackageSelected(draft.piPackages, pkg)).length;
-
-	const toggleExpanded = (id: string) => {
-		setExpanded((current) => {
-			const next = new Set(current);
-			if (next.has(id)) next.delete(id);
-			else next.add(id);
-			return next;
-		});
-	};
-
-	return (
-		<DesignerPanel title="Pi Packages">
-			{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
-			<div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-				{packageList.length} available / {selectedCount} selected / {allPackages.length} registered
-			</div>
-			{packages ? (
-				packageList.length ? (
-					<div className="grid gap-2">
-						{packageList.map((pkg) => {
-							const selected = isPiPackageSelected(draft.piPackages, pkg);
-							return <PiPackageCard
-								key={pkg.id}
-								pkg={pkg}
-								selected={selected}
-								readOnly={readOnly || Boolean(capabilityUnavailableReason && !selected)}
-								expanded={expanded.has(pkg.id)}
-								busy={false}
-								onToggleSelected={() => {
-									if (!readOnly) {
-										setDraft((current) => ({ ...current, piPackages: togglePiPackageSelection(current.piPackages, pkg) }));
-									}
-								}}
-								onToggleExpanded={() => toggleExpanded(pkg.id)}
-							/>;
-						})}
-					</div>
-				) : <EmptyCatalog message="No installed and enabled Pi packages available. Manage Pi Packages in Settings." />
-			) : <EmptyCatalog />}
-		</DesignerPanel>
 	);
 }
 
@@ -1385,75 +1237,7 @@ function subagentTargetRuntimeInstanceId(
 	return profile?.runtimeInstanceId ?? "pi";
 }
 
-function McpServersDesigner({
-	servers,
-	draft,
-	setDraft,
-	readOnly,
-	capabilityUnavailableReason,
-	onEditServer,
-}: {
-	servers?: AgentCatalog["mcpServers"];
-	draft: AgentDraft;
-	setDraft: Dispatch<SetStateAction<AgentDraft>>;
-	readOnly: boolean;
-	capabilityUnavailableReason: string | null;
-	onEditServer: (serverName: string) => void;
-}) {
-	return (
-		<DesignerPanel title="MCP Servers">
-			{capabilityUnavailableReason ? <RuntimeCapabilityNotice reason={capabilityUnavailableReason} /> : null}
-			<div className="grid grid-cols-2 max-[1100px]:grid-cols-1 @max-[680px]:grid-cols-1 gap-2">
-				{servers ? servers.map((server) => {
-					const selected = draft.mcpServers.includes(server.name);
-					const selectionDisabled = readOnly || (!server.hasDescription && !selected) || Boolean(capabilityUnavailableReason && !selected);
-					return (
-						<div key={server.name} className={`border rounded-sm bg-[#151f24] p-2 ${selected ? "border-[#11a4d4]" : server.hasDescription ? "border-slate-800" : "border-[#f59e0b]/60"}`}>
-							<button
-								type="button"
-								disabled={selectionDisabled}
-								onClick={() => setDraft((current) => ({ ...current, mcpServers: toggleName(current.mcpServers, server.name) }))}
-								className="grid w-full min-w-0 grid-cols-[18px_1fr] gap-2 text-left disabled:opacity-60"
-							>
-								<SelectionCheckbox checked={selected} disabled={selectionDisabled} className="mt-0.5" />
-								<span className="min-w-0">
-									<span className="flex items-center gap-2">
-										<Server size={13} className="text-[#11a4d4]" />
-										<span className="block text-sm truncate text-slate-200">{server.name}</span>
-									</span>
-									<span className="block font-mono text-[10px] mt-1 text-slate-600">
-										{server.transport}{server.descriptionSource ? ` / ${server.descriptionSource}` : ""}
-									</span>
-								</span>
-							</button>
-							{server.hasDescription ? (
-								<div className="mt-2 text-xs text-slate-400">{server.description}</div>
-							) : (
-								<div className="mt-2 flex items-center gap-2 text-xs text-amber-100">
-									<AlertTriangle size={13} />
-									Missing agent description
-								</div>
-							)}
-							<div className="mt-2 flex justify-end">
-								<button
-									type="button"
-									onClick={() => onEditServer(server.name)}
-									title="Edit MCP Tool Context"
-									aria-label="Edit MCP Tool Context"
-									className="inline-flex h-6 items-center justify-center gap-1 border border-[#11a4d4]/70 px-1.5 text-[10px] uppercase tracking-wider text-[#7dd3fc] hover:border-[#11a4d4] hover:text-sky-100"
-								>
-									<Edit3 size={12} />
-									Edit
-								</button>
-							</div>
-						</div>
-					);
-				}) : <EmptyCatalog />}
-				{servers && servers.length === 0 ? <div className="text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm p-3">No MCP servers configured</div> : null}
-			</div>
-		</DesignerPanel>
-	);
-}
+
 function agentNamesInUse(agents: BootstrapData["agents"], customAgents: CustomAgent[]): string[] {
 	return [
 		...agents.flatMap((agent) => [agent.name, ...agent.aliases]),

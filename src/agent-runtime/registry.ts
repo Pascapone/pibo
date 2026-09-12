@@ -391,6 +391,19 @@ export class AgentRuntimeAdapterRegistry {
 		return adapter;
 	}
 
+	/** Registration-only removal. The owner must drain and dispose resources first. */
+	unregisterInstance(instanceId: string): boolean {
+		this.definitions.delete(instanceId);
+		return this.instances.delete(instanceId);
+	}
+
+	unregisterDriver(adapterId: string): boolean {
+		if ([...this.definitions.values()].some((definition) => definition.adapterId === adapterId)) {
+			throw new AgentRuntimeRegistrationError(`Agent runtime adapter "${adapterId}" is still referenced by configured instances.`);
+		}
+		return this.drivers.delete(adapterId);
+	}
+
 	getDriver(adapterId: string): AgentRuntimeDriver<unknown> | undefined {
 		return this.drivers.get(adapterId);
 	}

@@ -17,13 +17,15 @@ import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { CODEX_COMPAT_TOOL_NAMES } from "../tools/codex-compat.js";
 import {
 	isEnabledRuntimeToolProfile,
-	materializePiboProfileTools,
 } from "../tools/session-tool-set.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
 	if (profile.runtimeInstanceId === runtimeInstanceId) return profile;
 	return new InitialSessionContext({
 		profileName: profile.profileName,
+		pluginSelection: profile.pluginSelection,
+		pluginSelectionRevision: profile.pluginSelectionRevision,
+		pluginAgentId: profile.pluginAgentId,
 		runtimeInstanceId,
 		runtimeOptions: {},
 		sessionId: profile.sessionId,
@@ -84,16 +86,11 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	const addNode = (node: Omit<PiboContextBuildNode, "order">) => nodes.push({ ...node, order: nodes.length });
 	const availableAgents = listAvailableAgents(profile.subagents);
 	const delegatedSendAvailable = availableAgents.length > 0;
-	const toolContext = {
-		piboSessionId: input.piboSessionId,
-		piboRoomId: input.piboRoomId,
-		profileName: profile.profileName,
-		cwd: input.cwd,
-	};
-	const materializedProfileTools = materializePiboProfileTools(profile, toolContext);
+	// Inspection must never invoke a dynamic tool factory.
+	const declaredProfileTools = profile.tools.filter((tool) => tool.enabled !== false);
 	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
 	const callableProfileTools = [
-		...materializedProfileTools.map((tool) => ({ name: tool.definition.name, yieldable: tool.profile.yieldable })),
+		...declaredProfileTools.map((tool) => ({ name: tool.name, yieldable: tool.yieldable })),
 		...(runtimeProfileTool ? [{ name: "runtime", yieldable: runtimeProfileTool.yieldable }] : []),
 	];
 	const profileToolNames = callableProfileTools.map((tool) => tool.name);

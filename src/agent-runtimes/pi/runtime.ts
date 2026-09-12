@@ -53,7 +53,7 @@ import {
 	registerPiboAssistantContextGuardRecovery,
 	type PiboAssistantContextGuardRecovery,
 } from "../../core/context-guard.js";
-import { getPiPackageRuntimeOptions } from "../../pi-packages/runtime.js";
+import { pluginOnlyPiServicesOptions } from "./plugin-discovery.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
 import { DEFAULT_USER_TIMEZONE } from "../../core/user-settings.js";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
@@ -84,7 +84,6 @@ import {
 	isCodexBrowserToolProfile as isCodexBrowserTool,
 	isEnabledCodexBrowserToolProfile as isEnabledCodexBrowserTool,
 	isEnabledRuntimeToolProfile as isEnabledRuntimeTool,
-	isGeneratedPiboTool,
 	isRuntimeToolProfile as isRuntimeTool,
 } from "../../tools/session-tool-set.js";
 
@@ -323,38 +322,6 @@ function getProfileExtensionFactories(
 	];
 }
 
-function createInspectionAgentsController(): PiboAgentsController {
-	const fail = () => {
-		throw new Error("Profile inspection cannot execute delegated-agent tools");
-	};
-	return {
-		sendMessage: fail,
-		listAgents: () => [],
-		observe: (input) => ({
-			filters: input,
-			observations: [],
-			nextAfterSequence: input.afterSequence ?? 0,
-			truncated: false,
-		}),
-		killAgent: fail,
-	};
-}
-
-function createInspectionRunToolController(): PiboRunToolController {
-	const fail = () => {
-		throw new Error("Profile inspection cannot execute run-control tools");
-	};
-	return {
-		startToolRun: fail,
-		listRuns: () => [],
-		getRunStatus: fail,
-		waitForRun: fail,
-		readRun: fail,
-		cancelRun: fail,
-		ackRun: fail,
-	};
-}
-
 async function createSessionManager(
 	cwd: string,
 	profile: InitialSessionContext,
@@ -405,14 +372,12 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const skillPaths = options.resources
 			? [...options.resources.getSkillPaths("source")]
 			: getEnabledSkillPaths(runtimeCwd, profile);
-		const piPackageOptions = getPiPackageRuntimeOptions(options.piPackageStoreCwd ?? runtimeCwd, profile);
 		let runtimeSettingsManager: SettingsManager | undefined;
-		const services = await createAgentSessionServices({
+		const services = await createAgentSessionServices(pluginOnlyPiServicesOptions({
 			cwd: runtimeCwd,
 			agentDir: runtimeAgentDir,
 			modelRuntime: options.modelRuntime,
 			resourceLoaderOptions: {
-				...piPackageOptions.resourceLoaderOptions,
 				additionalSkillPaths: skillPaths,
 				extensionFactories: getProfileExtensionFactories(
 					profile,
@@ -439,7 +404,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 					),
 				}),
 			},
-		});
+		}));
 		runtimeSettingsManager = services.settingsManager;
 		applyPiboRuntimeRetryDefaults(services.settingsManager, options.retryDefaults);
 		const modelRegistry = new ModelRegistry(services.modelRuntime);
@@ -530,7 +495,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				type: diagnostic.severity,
 				message: `[${diagnostic.code}] ${diagnostic.message}`,
 			})),
-			...piPackageOptions.diagnostics,
+			...(profile.piPackages.length ? [{ type: "warning" as const, message: "Legacy Pi packages are inactive; migrate to an explicit Pibo plugin selection." }] : []),
 			...services.diagnostics,
 			...collectResourceDiagnostics(resourceLoader.getSkills().diagnostics),
 			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({
@@ -629,56 +594,10 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 	const cwd = options.cwd ?? process.cwd();
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const inspectionModelDefaults = options.modelDefaults ?? loadPiboModelDefaults(cwd);
-	const runtimeProfile = new InitialSessionContext({
-		profileName: profile.profileName,
-		runtimeInstanceId: profile.runtimeInstanceId,
-		runtimeOptions: profile.runtimeOptions,
-		sessionId: profile.sessionId,
-		parentSessionId: profile.parentSessionId,
-		skills: profile.skills,
-		tools: profile.tools,
-		subagents: profile.subagents,
-		mcpServers: profile.mcpServers,
-		piPackages: profile.piPackages,
-		contextFiles: profile.contextFiles,
-		diagnostics: profile.diagnostics,
-		builtinTools: profile.builtinTools,
-		builtinToolNames: profile.builtinToolNames,
-		autoContextFiles: profile.autoContextFiles,
-		nativeSubagents: profile.nativeSubagents,
-		toolPackages: profile.toolPackages,
-	});
-	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
-	const hasYieldableTools =
-		profile.toolPackages.runControl === true ||
-		hasEnabledSubagents ||
-		profile.tools.some((tool) => tool.enabled !== false && (tool.definition !== undefined || tool.createDefinition !== undefined) && tool.yieldable !== false);
-	const runtime = await createPiboRuntime({
-		cwd,
-		...options,
-		profile: runtimeProfile,
-		persistSession: false,
-		modelDefaults: {},
-		activeModel: undefined,
-		agentsController: options.agentsController ?? (hasEnabledSubagents ? createInspectionAgentsController() : undefined),
-		runToolController:
-			options.runToolController ?? (hasYieldableTools ? createInspectionRunToolController() : undefined),
-	});
 
-	try {
-		const resourceLoader = runtime.services.resourceLoader;
-		const activeToolNames = new Set(runtime.session.getActiveToolNames());
-		const registeredToolNames = new Set(runtime.session.getAllTools().map((tool) => tool.name));
-		const profileToolNames = new Set(profile.tools.map((tool) => tool.name));
-		const generatedTools = runtime.session
-			.getAllTools()
-			.filter((tool) => isGeneratedPiboTool(tool.name) && !profileToolNames.has(tool.name))
-			.map((tool) => ({
-				name: tool.name,
-				hasDefinition: true,
-				registered: true,
-				active: activeToolNames.has(tool.name),
-			}));
+	const activeToolNames = new Set(options.portableTools?.getDefinitions().map((tool) => tool.name) ?? []);
+	const registeredToolNames = activeToolNames;
+	const generatedTools: PiboProfileInspection["tools"] = [];
 
 		return {
 			profileName: profile.profileName,
@@ -699,10 +618,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			autoContextFiles: profile.autoContextFiles,
 			nativeSubagents: profile.nativeSubagents,
 			toolPackages: { ...profile.toolPackages },
-			skills: resourceLoader.getSkills().skills.map((skill) => ({
-				name: skill.name,
-				path: skill.filePath,
-			})),
+			skills: profile.skills.filter((skill) => skill.enabled !== false).map((skill) => ({ name: skill.name, path: skill.path })),
 			tools: profile.tools.map((tool) => ({
 				name: tool.name,
 				hasDefinition: Boolean(tool.definition) || Boolean(tool.createDefinition) || isRuntimeTool(tool) || isCodexBrowserTool(tool),
@@ -722,17 +638,11 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			resourceDelivery: options.resources?.getInspection().delivery.map((report) => ({ ...report })) ?? [],
 			piPackages: profile.piPackages.map((pkg) => ({
 				id: pkg.id,
-				active: pkg.enabled !== false,
+				active: false,
 			})),
-			contextFiles: resourceLoader.getAgentsFiles().agentsFiles.map((contextFile) => ({
-				path: contextFile.path,
-				bytes: Buffer.byteLength(contextFile.content, "utf-8"),
-			})),
-			diagnostics: [...runtime.diagnostics],
+			contextFiles: (options.resources?.getContextContributions() ?? []).map((file) => ({ path: file.path ?? file.sourcePath ?? file.id, bytes: file.byteSize ?? 0 })),
+			diagnostics: [{ type: "warning", message: "Read-only declared profile preview; dynamic tool factories, MCP and runtime creation were not executed. Pi packages are inactive." }],
 		};
-	} finally {
-		await runtime.dispose();
-	}
 }
 
 function installPiboContextGuardTuiQueueOrdering(session: AgentSessionRuntime["session"]): void {

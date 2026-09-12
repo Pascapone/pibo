@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import type { PluginHost } from "./host.js";
+import { PluginScope } from "./scope.js";
+import { PluginRegistryProjection } from "./registry-projection.js";
 import type {
 	ContextFileProfile,
 	InitialSessionContext,
@@ -61,6 +64,8 @@ import type {
 
 export type PiboPluginRegistryOptions = {
 	plugins?: readonly PiboPlugin[];
+	/** Read-through legacy facade over the one active host index. */
+	host?: PluginHost;
 	maxActiveSpeechSessions?: number;
 	speechSessionIdleTimeoutMs?: number;
 	speechSessionStartTimeoutMs?: number;
@@ -188,45 +193,48 @@ function webRoutesOverlap(left: string, right: string): boolean {
 
 function toolIsPortable(tool: ToolProfile): boolean {
 	if (tool.definition) return tool.definition.portable !== false;
-	if (!tool.createDefinition) return true;
-	try {
-		return tool.createDefinition({}).portable !== false;
-	} catch {
-		return false;
-	}
+	// Inventory must never execute factories. Undeclared factory portability is unknown/private.
+	return !tool.createDefinition;
 }
 
 export class PiboPluginRegistry {
 	private readonly maxActiveSpeechSessions: number;
 	private readonly speechSessionIdleTimeoutMs: number;
 	private readonly speechSessionStartTimeoutMs: number;
+	private readonly projection = new PluginRegistryProjection();
 	private readonly agentRuntimes = new AgentRuntimeAdapterRegistry();
-	private readonly tools = new Map<string, ToolProfile>();
-	private readonly subagents = new Map<string, SubagentProfile>();
-	private readonly skills = new Map<string, SkillProfile>();
-	private readonly contextFiles = new Map<string, ContextFileProfile>();
-	private readonly profiles = new Map<string, PiboProfileDefinition>();
-	private readonly profileAliases = new Map<string, string>();
-	private readonly gatewayActions = new Map<string, PiboGatewayAction>();
-	private readonly gatewaySlashCommands = new Map<string, string>();
-	private readonly channels = new Map<string, PiboChannel>();
-	private authService?: PiboAuthService;
-	private readonly transcriptionProviders = new Map<string, PiboTranscriptionProvider>();
-	private readonly speechProviders = new Map<string, PiboSpeechProvider>();
+	private readonly tools = this.projection.map<ToolProfile>("tool", (value, _contribution, pluginId) => normalizeToolProfile({ ...(value as ToolProfileRegistration), pluginId }));
+	private readonly subagents = this.projection.map<SubagentProfile>("subagent", (value) => value as SubagentProfile);
+	private readonly skills = this.projection.map<SkillProfile>("skill", (value, _contribution, pluginId) => ({ ...(value as SkillProfile), pluginId }));
+	private readonly contextFiles = this.projection.map<ContextFileProfile>("context-file", (value, _contribution, pluginId) => ({ ...(value as ContextFileProfile), pluginId }));
+	private readonly profiles = this.projection.map<PiboProfileDefinition>("profile", (value) => value as PiboProfileDefinition);
+	private readonly profileAliases = this.projection.map<string>("profile-alias");
+	private readonly gatewayActions = this.projection.map<PiboGatewayAction>("gateway-action", (value) => value as PiboGatewayAction);
+	private readonly gatewaySlashCommands = this.projection.map<string>("gateway-slash-command");
+	private readonly channels = this.projection.map<PiboChannel>("channel", (value) => value as PiboChannel);
+	private readonly authServices = this.projection.map<PiboAuthService>("auth-service", (value) => value as PiboAuthService);
+	private readonly transcriptionProviders = this.projection.map<PiboTranscriptionProvider>("transcription-provider", (value) => value as PiboTranscriptionProvider);
+	private readonly speechProviders = this.projection.map<PiboSpeechProvider>("speech-provider", (value) => value as PiboSpeechProvider);
 	private readonly pendingSpeechStarts = new Map<string, PendingSpeechStart>();
 	private readonly speechSessions = new Map<string, ActiveSpeechSession>();
 	private speechProvidersDisposed = false;
 	private speechDisposePromise?: Promise<void>;
-	private readonly webApps = new Map<string, PiboWebApp>();
-	private readonly capabilityPackages = new Map<string, PiboCapabilityPackageInfo>();
+	private readonly webApps = this.projection.map<PiboWebApp>("web-app", (value) => value as PiboWebApp);
+	private readonly capabilityPackages = this.projection.map<PiboCapabilityPackageInfo>("capability-package");
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
 	private readonly productEventListeners = new Set<PiboProductEventListener>();
-	private readonly loopStopConditions = new Map<string, { definition: PiboLoopStopConditionDefinition; pluginId?: string }>();
-	private readonly pluginIds = new Set<string>();
-	private readonly pluginNames = new Map<string, string>();
+	private readonly loopStopConditions = this.projection.map<{ definition: PiboLoopStopConditionDefinition; pluginId?: string }>("loop-stop-condition", (value, _contribution, pluginId) => ({ definition: value as PiboLoopStopConditionDefinition, pluginId }));
+	private readonly pluginRecords = this.projection.map<{ name: string; scope: PluginScope }>("plugin");
+	private get pluginNames(): Map<string, string> {
+		return new Map([
+			...this.projection.host.inspect().plugins.map((entry) => [entry.pluginId, entry.manifest.name] as const),
+			...[...this.pluginRecords].map(([id, entry]) => [id, entry.name] as const),
+		]);
+	}
 	private readonly eventErrors: string[] = [];
 
 	constructor(options: PiboPluginRegistryOptions = {}) {
+		if (options.host) this.projection.host = options.host;
 		this.maxActiveSpeechSessions = positiveTimeout(options.maxActiveSpeechSessions, MAX_ACTIVE_SPEECH_SESSIONS, "maxActiveSpeechSessions");
 		this.speechSessionIdleTimeoutMs = positiveTimeout(options.speechSessionIdleTimeoutMs, SPEECH_SESSION_IDLE_TIMEOUT_MS, "speechSessionIdleTimeoutMs");
 		this.speechSessionStartTimeoutMs = positiveTimeout(options.speechSessionStartTimeoutMs, SPEECH_SESSION_START_TIMEOUT_MS, "speechSessionStartTimeoutMs");
@@ -241,14 +249,42 @@ export class PiboPluginRegistry {
 	}
 
 	registerPlugin(plugin: PiboPlugin): void {
-		if (this.pluginIds.has(plugin.id)) {
+		if (this.pluginRecords.has(plugin.id) || this.projection.host.inspect().plugins.some((entry) => entry.pluginId === plugin.id)) {
 			throw new Error(`Plugin "${plugin.id}" is already registered`);
 		}
-
-		this.pluginIds.add(plugin.id);
-		this.pluginNames.set(plugin.id, plugin.name ?? plugin.id);
-		plugin.register(this.createApi(plugin.id));
+		const scope = new PluginScope(plugin.id, `${plugin.id}/legacy/${randomUUID()}`);
+		const runtimeDisposers: (() => void)[] = [];
+		try {
+			this.projection.withScope(scope, () => {
+				this.pluginRecords.set(plugin.id, { name: plugin.name ?? plugin.id, scope });
+				const result: unknown = plugin.register(this.createApi(plugin.id, scope, runtimeDisposers));
+				if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+					void Promise.resolve(result).catch((error) => this.eventErrors.push(String(error)));
+					throw new Error("Legacy plugin registration must be synchronous; use PluginHost setup for async activation");
+				}
+			});
+		} catch (error) {
+			this.projection.host.contributions.removeScope(scope.instanceId);
+			const cleanupErrors: unknown[] = [];
+			for (const dispose of runtimeDisposers.reverse()) {
+				try { dispose(); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+			}
+			void scope.dispose().catch((cleanupError) => this.eventErrors.push(String(cleanupError)));
+			if (cleanupErrors.length) throw new AggregateError([error, ...cleanupErrors], "Legacy registration and rollback failed");
+			throw error;
+		}
 	}
+
+	/** Transitional registrations disappear with their owner; host contributions remain read-through. */
+	async disposePlugins(): Promise<void> {
+		const errors: unknown[] = [];
+		for (const { scope } of [...this.pluginRecords.values()].reverse()) {
+			try { await scope.dispose(); } catch (error) { errors.push(error); }
+		}
+		if (errors.length) throw new AggregateError(errors, "Legacy plugin facade cleanup failed");
+	}
+
+	getPluginHost(): PluginHost { return this.projection.host; }
 
 	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void {
 		this.agentRuntimes.registerDriver(driver);
@@ -385,10 +421,11 @@ export class PiboPluginRegistry {
 	}
 
 	registerAuthService(service: PiboAuthService): void {
-		if (this.authService) {
-			throw new Error(`Auth service "${this.authService.name}" is already registered`);
+		const existing = this.getAuthService();
+		if (existing) {
+			throw new Error(`Auth service "${existing.name}" is already registered`);
 		}
-		this.authService = service;
+		this.authServices.set(service.name, service);
 	}
 
 	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void {
@@ -782,7 +819,7 @@ export class PiboPluginRegistry {
 	}
 
 	getAuthService(): PiboAuthService | undefined {
-		return this.authService;
+		return this.authServices.values().next().value;
 	}
 
 	getWebApps(): PiboWebApp[] {
@@ -819,36 +856,57 @@ export class PiboPluginRegistry {
 		return event;
 	}
 
-	private createApi(pluginId: string): PiboPluginApi {
-		const withPluginToolContext = (tool: ToolProfileRegistration): ToolProfileRegistration => ({ ...tool, pluginId: tool.pluginId ?? pluginId });
+	private createApi(pluginId: string, scope: PluginScope, runtimeDisposers: (() => void)[]): PiboPluginApi {
+		const ownRuntimeRegistration = (remove: () => void) => {
+			let done = false;
+			let failure: unknown;
+			const once = () => {
+				if (done) { if (failure !== undefined) throw failure; return; }
+				done = true;
+				try { remove(); } catch (error) { failure = error; throw error; }
+			};
+			runtimeDisposers.push(once);
+			scope.defer(once);
+		};
+		const withPluginToolContext = (tool: ToolProfileRegistration): ToolProfileRegistration => ({ ...tool, pluginId });
 		const withPluginSkillContext = (skill: SkillProfile): SkillProfile => (
 			skill.kind === "user"
 				? skill
 				: {
 					...skill,
 					kind: skill.kind ?? "plugin",
-					pluginId: skill.pluginId ?? pluginId,
+					pluginId,
 				}
 		);
 		const withPluginContext = (contextFile: ContextFileProfile): ContextFileProfile => (
-			contextFile.source === "managed" ? contextFile : { ...contextFile, pluginId: contextFile.pluginId ?? pluginId }
+			contextFile.source === "managed" ? contextFile : { ...contextFile, pluginId }
 		);
 		const withPluginPackageContext = (pkg: PiboCapabilityPackageInfo): PiboCapabilityPackageInfo => ({
 			...pkg,
 			toolNames: [...pkg.toolNames],
-			pluginId: pkg.pluginId ?? pluginId,
+			pluginId,
 		});
 		const withPluginTranscriptionProviderContext = (provider: PiboTranscriptionProvider): PiboTranscriptionProvider => ({
 			...provider,
-			pluginId: provider.pluginId ?? pluginId,
+			pluginId,
 		});
 		const withPluginSpeechProviderContext = (provider: PiboSpeechProvider): PiboSpeechProvider => ({
 			...provider,
-			pluginId: provider.pluginId ?? pluginId,
+			pluginId,
 		});
-		return {
-			registerAgentRuntimeDriver: (driver) => this.registerAgentRuntimeDriver(driver),
-			registerAgentRuntimeInstance: (instance) => this.registerAgentRuntimeInstance(instance),
+		const api: PiboPluginApi = {
+			registerAgentRuntimeDriver: (driver) => {
+				this.registerAgentRuntimeDriver(driver);
+				ownRuntimeRegistration(() => {
+					if (this.agentRuntimes.getDriver(driver.descriptor.id) === driver) this.agentRuntimes.unregisterDriver(driver.descriptor.id);
+				});
+			},
+			registerAgentRuntimeInstance: (instance) => {
+				const adapter = this.registerAgentRuntimeInstance(instance);
+				ownRuntimeRegistration(() => {
+					if (this.agentRuntimes.getInstance(instance.id) === adapter) this.agentRuntimes.unregisterInstance(instance.id);
+				});
+			},
 			registerTool: (tool) => this.registerTool(withPluginToolContext(tool)),
 			registerTools: (tools) => this.registerTools(tools.map(withPluginToolContext)),
 			registerSubagent: (subagent) => this.registerSubagent(subagent),
@@ -868,10 +926,21 @@ export class PiboPluginRegistry {
 			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
 			registerLoopStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
 			registerRalphStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
-			onEvent: (listener) => this.onEvent(listener),
+			onEvent: (listener) => {
+				const owned: PiboPluginEventListener = (event) => { if (!scope.signal.aborted) listener(event); };
+				this.onEvent(owned);
+				scope.defer(() => { this.eventListeners.delete(owned); });
+			},
 			emitProductEvent: (event) => this.emitProductEvent(event),
-			onProductEvent: (listener) => this.onProductEvent(listener),
+			onProductEvent: (listener) => {
+				const unsubscribe = this.onProductEvent((event) => { if (!scope.signal.aborted) listener(event); });
+				scope.defer(unsubscribe);
+				return unsubscribe;
+			},
 		};
+		return Object.fromEntries(Object.entries(api).map(([name, action]) => [name, (...args: unknown[]) => (
+			this.projection.withScope(scope, () => (action as (...values: unknown[]) => unknown)(...args))
+		)])) as PiboPluginApi;
 	}
 
 	private createProfileBuildContext(): PiboProfileBuildContext {

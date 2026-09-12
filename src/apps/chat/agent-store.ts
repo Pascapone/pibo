@@ -1,3 +1,5 @@
+import type { AgentPluginMigrationReport } from "../chat-ui/src/api-agent-designer-plugin-types.js";
+export type { AgentPluginMigrationReport } from "../chat-ui/src/api-agent-designer-plugin-types.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -6,7 +8,15 @@ import { DatabaseSync } from "node:sqlite";
 import { DEFAULT_AGENT_RUNTIME_INSTANCE_ID, DEFAULT_BUILTIN_TOOL_NAMES, type BuiltinToolsMode, type ModelProfile } from "../../core/profiles.js";
 import type { PiboJsonObject } from "../../core/events.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
-import { findPiPackage } from "../../pi-packages/store.js";
+import { validateAgentPluginSelection } from "../../plugins/selection.js";
+import { resolvePluginContributions } from "../../plugins/resolution.js";
+import type { AgentPluginSelection, PluginCatalog, PluginRuntimeTarget, PluginDiagnostic } from "../../plugins/sdk.js";
+import { PluginConflictError, pluginJson, type PluginStore } from "../../plugins/store.js";
+import { PluginMigrationJournal } from "../../plugins/migration-journal.js";
+import type { PluginConsumer } from "../../plugins/operations.js";
+import { PIBO_GOAL_TOOL_NAMES } from "../../loops/tools.js";
+import { PIBO_RUN_TOOL_NAMES } from "../../runs/tools.js";
+import { PIBO_AGENT_TOOL_NAMES } from "../../subagents/tool.js";
 
 export type CustomAgentSubagent = {
 	name: string;
@@ -30,6 +40,9 @@ export type CustomAgentFolderDefinition = {
 
 export type CustomAgentDefinition = {
 	id: string;
+	revision: number;
+	pluginSelection?: AgentPluginSelection;
+	pluginMigration?: AgentPluginMigrationReport;
 	profileName: string;
 	displayName: string;
 	profileAliases: string[];
@@ -79,6 +92,9 @@ export class CustomAgentTargetReferenceError extends Error {
 const CUSTOM_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 export type CreateCustomAgentInput = {
+	/** Version 2 forbids legacy executable-selection fields. */
+	schemaVersion?: 2;
+	pluginSelection?: AgentPluginSelection;
 	displayName: string;
 	description?: string;
 	folderId?: string;
@@ -125,6 +141,9 @@ type AgentFolderRow = {
 
 type AgentRow = {
 	id: string;
+	revision: number;
+	plugin_selection_json: string | null;
+	plugin_migration_json: string | null;
 	profile_name: string;
 	display_name: string;
 	description: string | null;
@@ -161,10 +180,13 @@ export function previewCustomAgentCreate(
 	input: CreateCustomAgentInput,
 	options: { id?: string; now?: string } = {},
 ): CustomAgentDefinition {
+	assertAgentSelectionInput(input);
 	const now = options.now ?? new Date().toISOString();
 	const id = options.id ?? `agent_${randomUUID()}`;
 	return {
 		id,
+		revision: 1,
+		pluginSelection: input.pluginSelection ? structuredClone(input.pluginSelection) : undefined,
 		profileName: input.displayName,
 		displayName: input.displayName,
 		profileAliases: [],
@@ -178,7 +200,7 @@ export function previewCustomAgentCreate(
 		contextFiles: [...(input.contextFiles ?? [])],
 		subagents: sanitizeSubagents(input.subagents ?? []),
 		mcpServers: uniqueStrings(input.mcpServers ?? []),
-		piPackages: sanitizePiPackages(input.piPackages ?? []),
+		piPackages: uniqueStrings(input.piPackages ?? []),
 		mainModel: sanitizeModelProfile(input.mainModel),
 		mainModelFallbacks: sanitizeModelFallbacks(input.mainModelFallbacks ?? [], input.mainModel),
 		subagentModel: sanitizeModelProfile(input.subagentModel),
@@ -191,8 +213,8 @@ export function previewCustomAgentCreate(
 		builtinTools: input.builtinTools ?? "default",
 		builtinToolNames: sanitizeBuiltinToolNames(input.builtinToolNames),
 		autoContextFiles: sanitizeBoolean(input.autoContextFiles) ?? true,
-		runControl: input.runControl ?? false,
-		goalControl: input.goalControl ?? true,
+		runControl: input.pluginSelection ? false : input.runControl ?? false,
+		goalControl: input.pluginSelection ? false : input.goalControl ?? true,
 		createdAt: now,
 		updatedAt: now,
 	};
@@ -203,9 +225,12 @@ export function previewCustomAgentUpdate(
 	input: UpdateCustomAgentInput,
 	options: { now?: string } = {},
 ): CustomAgentDefinition {
+	assertAgentSelectionInput(input, existing);
 	const profileName = input.displayName ?? existing.displayName;
 	return {
 		...existing,
+		revision: existing.revision + 1,
+		pluginSelection: input.pluginSelection ? structuredClone(input.pluginSelection) : existing.pluginSelection,
 		profileName,
 		displayName: input.displayName ?? existing.displayName,
 		folderId: input.folderId === undefined ? existing.folderId : input.folderId ?? undefined,
@@ -218,7 +243,7 @@ export function previewCustomAgentUpdate(
 		contextFiles: input.contextFiles ? [...input.contextFiles] : existing.contextFiles,
 		subagents: input.subagents ? sanitizeSubagents(input.subagents) : existing.subagents,
 		mcpServers: input.mcpServers ? uniqueStrings(input.mcpServers) : existing.mcpServers,
-		piPackages: input.piPackages ? sanitizePiPackages(input.piPackages) : existing.piPackages,
+		piPackages: input.piPackages ? uniqueStrings(input.piPackages) : existing.piPackages,
 		mainModel: input.mainModel === undefined ? existing.mainModel : sanitizeModelProfile(input.mainModel),
 		mainModelFallbacks: sanitizeModelFallbacks(
 			input.mainModelFallbacks ?? existing.mainModelFallbacks,
@@ -309,6 +334,7 @@ export class CustomAgentStore {
 		this.migrateThinkingOptionColumns();
 		this.migrateBuiltinToolNamesColumn();
 		this.migrateGoalControlColumn();
+		this.migratePluginSelectionColumns();
 		this.migrateAgentHistory();
 		this.migrateLegacyProfileNames();
 		this.migrateDuplicateProfileNames();
@@ -375,17 +401,20 @@ export class CustomAgentStore {
 		return created;
 	}
 
-	update(id: string, input: UpdateCustomAgentInput): CustomAgentDefinition | undefined {
+	update(id: string, input: UpdateCustomAgentInput, options: { expectedRevision?: number } = {}): CustomAgentDefinition | undefined {
 		this.migrateLegacyProfileNames();
 		const existing = this.get(id);
 		if (!existing) return undefined;
+		const expectedRevision = requireAgentRevision(existing, options.expectedRevision);
 		const profileName = input.displayName ?? existing.displayName;
 		this.requireProfileNameAvailable(profileName, id);
 		this.requireFolderExists(input.folderId);
 		const updated = previewCustomAgentUpdate(existing, input);
-		this.db
+		const result = this.db
 			.prepare(`
 				UPDATE chat_agents SET
+					revision = revision + 1,
+					plugin_selection_json = ?,
 					profile_name = ?,
 					display_name = ?,
 					description = ?,
@@ -414,9 +443,10 @@ export class CustomAgentStore {
 					run_control = ?,
 					goal_control = ?,
 					updated_at = ?
-				WHERE id = ?
+				WHERE id = ? AND revision = ?
 			`)
 			.run(
+				updated.pluginSelection ? pluginJson(updated.pluginSelection) : null,
 				updated.profileName,
 				updated.displayName,
 				updated.description ?? null,
@@ -446,18 +476,22 @@ export class CustomAgentStore {
 				updated.goalControl ? 1 : 0,
 				updated.updatedAt,
 				id,
+				expectedRevision,
 			);
+		if (!Number(result.changes)) throw new PluginConflictError("Agent revision changed; reload before saving");
 		return this.get(id);
 	}
 
-	setArchived(id: string, archived: boolean): CustomAgentDefinition | undefined {
+	setArchived(id: string, archived: boolean, options: { expectedRevision?: number } = {}): CustomAgentDefinition | undefined {
 		this.migrateLegacyProfileNames();
 		const existing = this.get(id);
 		if (!existing) return undefined;
+		const expectedRevision = requireAgentRevision(existing, options.expectedRevision);
 		const archivedAt = archived ? existing.archivedAt ?? new Date().toISOString() : null;
-		this.db
-			.prepare("UPDATE chat_agents SET archived_at = ?, updated_at = ? WHERE id = ?")
-			.run(archivedAt, new Date().toISOString(), id);
+		const result = this.db
+			.prepare("UPDATE chat_agents SET archived_at = ?, updated_at = ?, revision = revision + 1 WHERE id = ? AND revision = ?")
+			.run(archivedAt, new Date().toISOString(), id, expectedRevision);
+		if (!Number(result.changes)) throw new PluginConflictError("Agent revision changed; reload before archiving");
 		return this.get(id);
 	}
 
@@ -507,6 +541,7 @@ export class CustomAgentStore {
 			.prepare(`
 				INSERT INTO chat_agents (
 					id,
+					plugin_selection_json,
 					profile_name,
 					display_name,
 					description,
@@ -537,10 +572,11 @@ export class CustomAgentStore {
 					created_at,
 					updated_at,
 					archived_at
-				) VALUES (${Array.from({ length: 31 }, () => "?").join(", ")})
+				) VALUES (${Array.from({ length: 32 }, () => "?").join(", ")})
 			`)
 			.run(
 				agent.id,
+				agent.pluginSelection ? pluginJson(agent.pluginSelection) : null,
 				agent.profileName,
 				agent.displayName,
 				agent.description ?? null,
@@ -822,6 +858,44 @@ export class CustomAgentStore {
 		}
 	}
 
+	private migratePluginSelectionColumns(): void {
+		const columns = this.tableColumns();
+		if (!columns.has("revision")) this.db.exec("ALTER TABLE chat_agents ADD COLUMN revision INTEGER NOT NULL DEFAULT 1");
+		if (!columns.has("plugin_selection_json")) this.db.exec("ALTER TABLE chat_agents ADD COLUMN plugin_selection_json TEXT");
+		if (!columns.has("plugin_migration_json")) this.db.exec("ALTER TABLE chat_agents ADD COLUMN plugin_migration_json TEXT");
+	}
+
+	/** Exact SQLite values, not sanitized public DTOs. Keep private in the management backup. */
+	exportLegacyAgent(id: string): Uint8Array {
+		const row = this.db.prepare("SELECT * FROM chat_agents WHERE id = ?").get(id);
+		if (!row) throw new Error(`Unknown agent "${id}"`);
+		const aliases = this.db.prepare("SELECT * FROM chat_agent_profile_aliases WHERE agent_id = ? ORDER BY id").all(id);
+		return Buffer.from(JSON.stringify({ row, aliases }));
+	}
+
+	/** Owner-local transaction. The management journal checkpoints this separately. */
+	applyPluginMigration(id: string, report: AgentPluginMigrationReport, source: Uint8Array): void {
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const existing = this.get(id);
+			if (!existing) throw new Error(`Unknown agent "${id}"`);
+			if (existing.pluginMigration?.sourceHash === report.sourceHash) {
+				this.db.exec("COMMIT");
+				return;
+			}
+			if (existing.pluginSelection || createHash("sha256").update(source).digest("hex") !== report.sourceHash
+				|| Buffer.compare(Buffer.from(this.exportLegacyAgent(id)), Buffer.from(source)) !== 0) {
+				throw new PluginConflictError("Legacy agent changed since migration preview");
+			}
+			this.db.prepare(`UPDATE chat_agents SET plugin_selection_json = ?, plugin_migration_json = ?, revision = revision + 1,
+				native_tools_json = '[]', mcp_servers_json = '[]', pi_packages_json = '[]', run_control = 0, goal_control = 0,
+				skills_json = ?, context_files_json = ? WHERE id = ? AND revision = ?`).run(
+				pluginJson(report.selection), pluginJson(report), JSON.stringify(report.userSkills), JSON.stringify(report.userContextFiles), id, existing.revision,
+			);
+			this.db.exec("COMMIT");
+		} catch (error) { this.db.exec("ROLLBACK"); throw error; }
+	}
+
 	private migrateAgentHistory(): void {
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS chat_agent_events (
@@ -964,6 +1038,9 @@ export function createDefaultCustomAgentStore(_cwd?: string): CustomAgentStore {
 function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomAgentDefinition {
 	return {
 		id: row.id,
+		revision: row.revision,
+		pluginSelection: row.plugin_selection_json ? JSON.parse(row.plugin_selection_json) : undefined,
+		pluginMigration: row.plugin_migration_json ? JSON.parse(row.plugin_migration_json) : undefined,
 		profileName: row.profile_name,
 		displayName: row.display_name,
 		profileAliases: profileAliases.filter((alias) => alias !== row.profile_name),
@@ -1045,14 +1122,6 @@ function parseRuntimeOptions(value: string): PiboJsonObject {
 	} catch {
 		return {};
 	}
-}
-
-function sanitizePiPackages(value: readonly string[]): string[] {
-	const packages = uniqueStrings(value);
-	for (const pkg of packages) {
-		if (!findPiPackage(pkg)) throw new Error(`Unknown Pi package "${pkg}"`);
-	}
-	return packages;
 }
 
 function sanitizeThinkingLevel(value: unknown): PiboThinkingLevel | undefined {
@@ -1184,4 +1253,173 @@ function uniqueAgentName(baseName: string, used: Set<string>): string {
 		suffix += 1;
 	}
 	return name;
+}
+
+/** The only executable selection accepted by version-2 agent mutations. */
+export const LEGACY_AGENT_SELECTION_FIELDS = ["nativeTools", "mcpServers", "piPackages", "runControl", "goalControl", "capabilityPackages"] as const;
+
+function assertAgentSelectionInput(input: UpdateCustomAgentInput, existing?: CustomAgentDefinition): void {
+	if (input.schemaVersion === 2 || input.pluginSelection !== undefined || existing?.pluginSelection) {
+		for (const key of LEGACY_AGENT_SELECTION_FIELDS) if (Object.hasOwn(input, key)) {
+			throw new Error(`Legacy agent field "${key}" requires explicit versioned migration`);
+		}
+		if (!existing && !input.pluginSelection) throw new Error("Version 2 agents require pluginSelection");
+	}
+	if (input.pluginSelection !== undefined) {
+		const diagnostics = validateAgentPluginSelection(input.pluginSelection);
+		if (diagnostics.length) throw new Error(diagnostics.map((item) => item.message).join("; "));
+	}
+}
+
+function requireAgentRevision(existing: CustomAgentDefinition, expected?: number): number {
+	if (expected === undefined && existing.pluginSelection) throw new PluginConflictError("expectedRevision is required for this agent");
+	if (expected !== undefined && (!Number.isSafeInteger(expected) || expected !== existing.revision)) throw new PluginConflictError("Agent revision changed; reload before saving");
+	return expected ?? existing.revision;
+}
+
+export function profileConsumerCollector(store: CustomAgentStore, catalog?: () => PluginCatalog): (pluginId: string) => Promise<PluginConsumer[]> {
+	return async (pluginId) => store.list({ includeArchived: true }).flatMap((agent): PluginConsumer[] => {
+		if (!agent.pluginSelection || isUnresolvedAgentPluginMigration(agent)) return [{ kind: "profile", id: agent.profileName, usage: "unknown" }];
+		const entry = agent.pluginSelection.plugins.find((item) => item.pluginId === pluginId);
+		if (!entry) return [];
+		const installation = catalog?.().installations.find((item) => item.pluginId === pluginId && item.revision === entry.revision);
+		const usage = !entry.enabled ? "historical" : !installation ? "unknown"
+			: installation.manifest.contributions.some((item) => item.required && entry.contributions[item.id]) ? "required" : "optional";
+		return [{ kind: "profile", id: agent.profileName, usage, revision: entry.revision }];
+	});
+}
+
+export function isUnresolvedAgentPluginMigration(agent: Pick<CustomAgentDefinition, "pluginMigration" | "pluginSelection">): boolean {
+	return agent.pluginMigration?.status === "conflict" && pluginJson(agent.pluginSelection ?? null) === pluginJson(agent.pluginMigration.selection);
+}
+
+/** Baseline inventory is supplied by the resource owner, never guessed from new defaults. */
+export type LegacyAgentContribution = { kind: string; name: string; pluginId: string; config?: import("../../plugins/sdk.js").PluginJsonObject };
+
+
+export function planLegacyAgentPluginMigration(options: {
+	agent: CustomAgentDefinition;
+	source: Uint8Array;
+	catalog: PluginCatalog;
+	runtime: PluginRuntimeTarget;
+	/** Exact previously effective plugin-owned contributions, including generated Goal/Run infrastructure. */
+	contributions: LegacyAgentContribution[];
+	userSkills: string[];
+	userContextFiles: string[];
+	inventoryDiagnostics?: PluginDiagnostic[];
+}): AgentPluginMigrationReport {
+	const { agent, catalog, runtime } = options;
+	const diagnostics: PluginDiagnostic[] = [...options.inventoryDiagnostics ?? []];
+	const selection: AgentPluginSelection = { schemaVersion: 1, plugins: [] };
+	const expected = new Set<string>();
+	const note = (code: string, message: string) => diagnostics.push({ code, message, severity: "error", path: [agent.id] });
+	for (const legacy of options.contributions) {
+		const installation = catalog.installations.find((item) => item.pluginId === legacy.pluginId);
+		const matches = installation?.manifest.contributions.filter((item) => item.scope === "agent" && item.kind === legacy.kind && item.name === legacy.name) ?? [];
+		if (matches.length !== 1 || !installation) {
+			note("legacy-contribution-unresolved", `No unique owner for ${legacy.pluginId}:${legacy.kind}:${legacy.name}`);
+			continue;
+		}
+		let entry = selection.plugins.find((item) => item.pluginId === legacy.pluginId);
+		if (!entry) {
+			entry = { pluginId: installation.pluginId, revision: installation.revision, enabled: true, config: {},
+				contributions: Object.fromEntries(installation.manifest.contributions.filter((item) => item.scope === "agent").map((item) => [item.id, false])) };
+			selection.plugins.push(entry);
+		}
+		entry.contributions[matches[0].id] = true;
+		if (legacy.config) (entry.contributionConfig ??= {})[matches[0].id] = structuredClone(legacy.config);
+		expected.add(`${legacy.pluginId}/${matches[0].id}`);
+	}
+	const plan = resolvePluginContributions({ catalog, runtime, selection, selectionRevision: agent.revision, kind: "preview" });
+	diagnostics.push(...plan.diagnostics);
+	const before = [...expected].sort();
+	const after = plan.contributions.filter((item) => item.contribution.scope === "agent").map((item) => item.id).sort();
+	const beforeTools = [...new Set(options.contributions.filter((item) => item.kind === "tool").map((item) => item.name))].sort();
+	const afterTools = [...new Set(plan.contributions.filter((item) => item.contribution.scope === "agent" && item.contribution.kind === "tool").map((item) => item.contribution.name!))].sort();
+	if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(beforeTools) !== JSON.stringify(afterTools)) note("legacy-contribution-set-changed", "Migration must preserve the exact effective contribution and tool sets");
+	// Unresolved dependencies remain desired but all executable entries are inactive until explicitly reconciled.
+	const conflict = diagnostics.some((item) => item.severity === "error");
+	if (conflict) for (const entry of selection.plugins) entry.enabled = false;
+	return { schemaVersion: 1, status: conflict ? "conflict" : "ready", sourceHash: createHash("sha256").update(options.source).digest("hex"),
+		selection, before, after: conflict ? [] : after, beforeTools, afterTools: conflict ? [] : afterTools,
+		userSkills: [...options.userSkills], userContextFiles: [...options.userContextFiles], inactivePiPackages: [...agent.piPackages], diagnostics };
+}
+
+/** Resume with the SAME source export and preview after a crash; journal verifies the backup bytes. */
+export async function migrateLegacyAgentPlugins(options: {
+	agents: CustomAgentStore; plugins: PluginStore; agentId: string; source: Uint8Array;
+	report: AgentPluginMigrationReport; backupRoot: string; dryRun?: boolean;
+	afterStageWrite?: (stageId: string) => void | Promise<void>;
+}) {
+	const { agents, agentId, report, source } = options;
+	if (createHash("sha256").update(source).digest("hex") !== report.sourceHash) throw new PluginConflictError("Migration report belongs to different source bytes");
+	return new PluginMigrationJournal(options.plugins).run({
+		id: `agent-plugins-v1:${agentId}:${report.sourceHash}`, backup: source, backupRoot: options.backupRoot, dryRun: options.dryRun,
+		afterStageWrite: options.afterStageWrite,
+		stages: [{ id: `agent:${agentId}`, isApplied: () => agents.get(agentId)?.pluginMigration?.sourceHash === report.sourceHash,
+			apply: () => agents.applyPluginMigration(agentId, report, source) }],
+	});
+}
+
+export type LegacyAgentCatalogInventory = {
+	nativeTools: { name: string; pluginId?: string; yieldable?: boolean; portable?: boolean }[];
+	skills: { name: string; kind: string; pluginId?: string }[];
+	contextFiles: { key: string; pluginId?: string }[];
+};
+/** Read-only baseline projection, used only by the migration. No factories or plugin setup run. */
+export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, options: {
+	catalog: LegacyAgentCatalogInventory; runtime: PluginRuntimeTarget;
+	/** Authoritative AP00/AP12 owner map. Required for core families; no inferred replacement owner. */
+	owners: Record<string, string>;
+}) {
+	const contributions: LegacyAgentContribution[] = [];
+	const diagnostics: PluginDiagnostic[] = [];
+	const userSkills: string[] = [];
+	const userContextFiles: string[] = [];
+	const add = (kind: string, name: string, previousOwner?: string) => {
+		const pluginId = options.owners[`${kind}:${name}`] ?? (previousOwner !== "pibo.core" ? previousOwner : undefined);
+		if (!pluginId) diagnostics.push({ code: "legacy-owner-unknown", severity: "error", path: [agent.id, kind, name], message: `Legacy ${kind} ${name} has no verified plugin owner` });
+		else if (!contributions.some((item) => item.kind === kind && item.name === name && item.pluginId === pluginId)) contributions.push({ kind, name, pluginId });
+	};
+	const selectedTools = agent.nativeTools.map((name) => options.catalog.nativeTools.find((tool) => tool.name === name));
+	for (const name of agent.nativeTools) {
+		const tool = options.catalog.nativeTools.find((item) => item.name === name);
+		if (!tool) diagnostics.push({ code: "legacy-tool-unknown", severity: "error", path: [agent.id, name], message: `Unknown legacy tool ${name}; retained inactive` });
+		else add("tool", name, tool.pluginId);
+	}
+	for (const name of agent.skills) {
+		const skill = options.catalog.skills.find((item) => item.name === name);
+		if (skill?.kind === "user") userSkills.push(name);
+		else add("skill", name, skill?.pluginId);
+	}
+	for (const name of agent.contextFiles) {
+		const context = options.catalog.contextFiles.find((item) => item.key === name);
+		if (context && !context.pluginId) userContextFiles.push(name);
+		else add("context-file", name, context?.pluginId);
+	}
+	for (const name of agent.mcpServers) add("mcp-server", name, "pibo.mcp-cli");
+	if (agent.goalControl !== false) for (const name of PIBO_GOAL_TOOL_NAMES) add("tool", name, "pibo.goal-control");
+	// send_message is yielded-only; the other three tools remain direct. Do not enable general Run targets.
+	const manualSubagents = agent.subagents.length > 0;
+	if (manualSubagents) for (const name of PIBO_AGENT_TOOL_NAMES) add("tool", name, "pibo.subagents");
+	// Baseline Pi wraps only bash (not read/edit/write) when full Run Control is enabled.
+	const piNativeYielding = options.runtime.adapterId === "pi" && agent.runControl;
+	if (piNativeYielding && (agent.builtinTools === "disabled" || !agent.builtinToolNames.includes("bash"))) diagnostics.push({
+		code: "legacy-implicit-bash-override", severity: "error", path: [agent.id, "builtinToolNames"],
+		message: "Legacy Run Control implicitly exposed bash despite disabled Pi built-ins; explicit harness selection reconciliation is required",
+	});
+	const hasYieldable = piNativeYielding || selectedTools.some((tool) => tool && tool.yieldable !== false);
+	if (manualSubagents || (agent.runControl && hasYieldable)) for (const name of PIBO_RUN_TOOL_NAMES) add("tool", name, "pibo.run-control");
+	const runTargetNames = manualSubagents && !agent.runControl ? ["pibo_agents_send_message"] : agent.runControl ? [
+		...selectedTools.filter((tool) => tool && tool.yieldable !== false).map((tool) => tool!.name),
+		...(manualSubagents ? [...PIBO_AGENT_TOOL_NAMES] : []), ...(piNativeYielding ? ["bash"] : []),
+	] : [];
+	const start = contributions.find((item) => item.pluginId === "pibo.run-control" && item.name === "pibo_run_start");
+	if (start) start.config = { allowedToolNames: runTargetNames };
+	return { contributions, userSkills, userContextFiles, inventoryDiagnostics: diagnostics,
+		harnessTools: options.runtime.adapterId === "pi" && agent.builtinTools !== "disabled" ? [...agent.builtinToolNames] : [],
+		yieldedOnlyTools: manualSubagents ? ["pibo_agents_send_message"] : [],
+		/** Migrator/runtime must preserve this filter, not broaden manual infrastructure to all tools. */
+		runTargetNames,
+	};
 }

@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type DragEvent, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, ExternalLink, GripVertical, Plus, Power, PowerOff, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, GripVertical, Plus, X } from "lucide-react";
 import { THINKING_LEVELS, type AgentRuntimeCapabilityDelivery, type AgentRuntimeCatalogEntry, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
-import { CATALOG_GROUP_RENDER_LIMIT, piPackageMeta, type CatalogGroup, type PiPackageCatalogItem } from "./agent-designer-model";
+import { CATALOG_GROUP_RENDER_LIMIT, type CatalogGroup } from "./agent-designer-model";
 
 export function DesignerPanel({ title, children }: { title: string; children: ReactNode }) {
 	return (
@@ -162,128 +162,6 @@ export function CatalogToggle({
 				{meta ? <span className={`mt-1 block break-words font-mono text-[10px] leading-4 ${metaClass ?? "text-slate-600"}`}>{meta}</span> : null}
 			</span>
 		</button>
-	);
-}
-
-
-export function PiPackageCard({
-	pkg,
-	selected,
-	readOnly,
-	expanded,
-	busy,
-	onToggleSelected,
-	onToggleExpanded,
-	onToggleEnabled,
-	onUnregister,
-}: {
-	pkg: PiPackageCatalogItem;
-	selected: boolean;
-	readOnly: boolean;
-	expanded: boolean;
-	busy: boolean;
-	onToggleSelected: () => void;
-	onToggleExpanded: () => void;
-	onToggleEnabled?: () => void;
-	onUnregister?: () => void;
-}) {
-	const hasErrors = pkg.diagnostics.some((diagnostic) => diagnostic.type === "error");
-	const selectable = !readOnly && (pkg.enabled || selected);
-	return (
-		<div className={`border rounded-sm ${selected ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24]"} ${!pkg.enabled ? "opacity-75" : ""}`}>
-			<div className="grid grid-cols-[1fr_auto] gap-2 p-2">
-				<button type="button" disabled={!selectable} aria-pressed={selected} onClick={onToggleSelected} className="min-w-0 grid grid-cols-[18px_1fr] gap-2 text-left disabled:cursor-not-allowed">
-					<SelectionCheckbox checked={selected} disabled={!selectable} className="mt-0.5" />
-					<span className="min-w-0">
-						<span className="flex items-center gap-2">
-							<span className="min-w-0 truncate text-sm text-slate-200">{pkg.name}</span>
-							<span className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${pkg.enabled ? "border-[#11a4d4]/60 text-[#7dd3fc]" : "border-slate-700 text-slate-500"}`}>{pkg.enabled ? "enabled" : "disabled"}</span>
-						</span>
-						<span className="block text-xs text-slate-500 truncate">{pkg.description ?? pkg.source}</span>
-						<span className={`block font-mono text-[10px] mt-1 ${hasErrors ? "text-[#f59e0b]" : "text-[#11a4d4]"}`}>{piPackageMeta(pkg)}</span>
-					</span>
-				</button>
-				<div className="flex items-start gap-1">
-					<button type="button" onClick={onToggleExpanded} title={expanded ? "Hide Details" : "Show Details"} aria-label={expanded ? "Hide Details" : "Show Details"} className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
-						{expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-					</button>
-					{onToggleEnabled ? (
-						<button type="button" disabled={busy} onClick={onToggleEnabled} title={pkg.enabled ? "Disable Package" : "Enable Package"} aria-label={pkg.enabled ? "Disable Package" : "Enable Package"} className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">
-							{pkg.enabled ? <PowerOff size={13} /> : <Power size={13} />}
-						</button>
-					) : null}
-					{onUnregister ? (
-						<button type="button" disabled={busy} onClick={onUnregister} title="Unregister Package" aria-label="Unregister Package" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-red-400 hover:text-red-300 disabled:opacity-50">
-							<Trash2 size={13} />
-						</button>
-					) : null}
-				</div>
-			</div>
-			{expanded ? <PiPackageDetails pkg={pkg} /> : null}
-		</div>
-	);
-}
-
-export function PiPackageDetails({ pkg }: { pkg: PiPackageCatalogItem }) {
-	return (
-		<div className="border-t border-slate-800 p-3 grid gap-3 text-xs text-slate-300">
-			<PackageDetailGrid rows={[
-				["Source", pkg.source],
-				["Install", pkg.installSpec],
-				["Version", pkg.version],
-				["Added", pkg.addedAt],
-				["Updated", pkg.updatedAt],
-			]} />
-			{pkg.repositoryUrl ? (
-				<a href={pkg.repositoryUrl} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1 text-[#7dd3fc] hover:text-sky-100">
-					<ExternalLink size={12} />
-					Source repository
-				</a>
-			) : null}
-			<PackageResourceList title="Extensions" values={pkg.extensionPaths} />
-			<PackageResourceList title="Skills" values={pkg.skillNames} />
-			<PackageResourceList title="Prompts" values={pkg.promptNames} />
-			<PackageResourceList title="Themes" values={pkg.themeNames} />
-			<PackageResourceList title="Tools" values={pkg.discoveredToolNames} />
-			{pkg.diagnostics.length ? (
-				<div className="grid gap-1">
-					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Diagnostics</div>
-					{pkg.diagnostics.map((diagnostic, index) => (
-						<div key={`${diagnostic.type}:${index}`} className={`border px-2 py-1 rounded-sm ${diagnostic.type === "error" ? "border-red-500/50 text-red-200 bg-red-500/10" : diagnostic.type === "warning" ? "border-[#f59e0b]/50 text-amber-100 bg-[#f59e0b]/10" : "border-slate-700 text-slate-400 bg-[#0e1116]"}`}>
-							<span className="font-mono uppercase text-[10px] mr-2">{diagnostic.type}</span>
-							{diagnostic.message}
-						</div>
-					))}
-				</div>
-			) : null}
-		</div>
-	);
-}
-
-function PackageDetailGrid({ rows }: { rows: Array<[string, string | undefined]> }) {
-	const visibleRows = rows.filter(([, value]) => value);
-	if (visibleRows.length === 0) return null;
-	return (
-		<div className="grid gap-1">
-			{visibleRows.map(([label, value]) => (
-				<div key={label} className="grid grid-cols-[84px_minmax(0,1fr)] gap-2">
-					<span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{label}</span>
-					<span className="min-w-0 break-all font-mono text-[11px] text-slate-300">{value}</span>
-				</div>
-			))}
-		</div>
-	);
-}
-
-function PackageResourceList({ title, values }: { title: string; values?: string[] }) {
-	if (!values?.length) return null;
-	return (
-		<div className="grid gap-1">
-			<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{title}</div>
-			<div className="flex flex-wrap gap-1">
-				{values.map((value) => <span key={value} className="max-w-full break-all border border-slate-700 bg-[#0e1116] px-2 py-1 font-mono text-[11px] text-slate-300 rounded-sm">{value}</span>)}
-			</div>
-		</div>
 	);
 }
 
@@ -1039,4 +917,9 @@ function ModelSelector({
 			{hasStaleModel ? <div className="text-xs text-amber-100">Stored model is no longer present in the catalog.</div> : null}
 		</div>
 	);
+}
+
+/** @deprecated Read-only recovery marker for the old shell; no package controls or imports. */
+export function PiPackageDetails({ pkg }: { pkg: { name: string } }) {
+	return <p role="status" className="p-3 text-xs text-amber-200">{pkg.name}: legacy Pi package retained inactive. Use the unified plugin system; this package cannot execute.</p>;
 }

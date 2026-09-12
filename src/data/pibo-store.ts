@@ -11,6 +11,7 @@ import { PayloadStore } from "./payload-store.js";
 import { applyPiboDataSchema, assertSupportedPiboDataSchemaVersion } from "./schema.js";
 import { TelemetryStore } from "./telemetry.js";
 import { SessionStore } from "./session-store.js";
+import { PluginStore } from "../plugins/store.js";
 
 export type PiboDataStoreOptions = {
 	payloadRootDir?: string;
@@ -28,6 +29,7 @@ export class PiboDataStore {
 	readonly navigation: NavigationStore;
 	readonly sessions: SessionStore;
 	readonly telemetry: TelemetryStore;
+	readonly plugins: PluginStore;
 
 	constructor(path = piboHomePath("pibo.sqlite"), options: PiboDataStoreOptions = {}) {
 		this.path = path === ":memory:" ? path : resolve(path);
@@ -53,6 +55,7 @@ export class PiboDataStore {
 		this.navigation = new NavigationStore(this.db);
 		this.sessions = new SessionStore(this.db);
 		this.telemetry = new TelemetryStore(this.db);
+		this.plugins = new PluginStore(this.db);
 	}
 
 	transaction<T>(action: () => T): T {

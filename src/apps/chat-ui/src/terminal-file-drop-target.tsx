@@ -1,11 +1,14 @@
 import {
   useEffect,
+  useContext,
+  useMemo,
   useRef,
   useState,
   type ComponentPropsWithoutRef,
   type DragEvent,
 } from "react";
 import { LoaderCircle, Upload } from "lucide-react";
+import { BrowserPluginContext, runPluginInputHooks } from "./plugins/browser-host";
 
 type TerminalFileDropTargetProps = Omit<
   ComponentPropsWithoutRef<"main">,
@@ -22,6 +25,10 @@ export function TerminalFileDropTarget({
   className,
   ...mainProps
 }: TerminalFileDropTargetProps) {
+  const pluginContext = useContext(BrowserPluginContext);
+  const dropAbort = useMemo(() => new AbortController(), [pluginContext?.host]);
+  useEffect(() => () => dropAbort.abort(), [dropAbort]);
+  const [dropError, setDropError] = useState<string | null>(null);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const [uploadingFileCount, setUploadingFileCount] = useState(0);
@@ -70,8 +77,16 @@ export function TerminalFileDropTarget({
     if (!files.length) return;
 
     setUploadingFileCount(files.length);
+    setDropError(null);
     try {
+      if (pluginContext?.host.plan.piboSessionId) {
+        const result = await runPluginInputHooks(pluginContext.host.hooks, "drop", files.map((file) => ({ name: file.name, size: file.size, type: file.type })), pluginContext.host.plan.piboSessionId, dropAbort.signal);
+        if (result.transformations.length) throw new Error("File drop hooks may accept or reject files; file transformations require a registered upload adapter");
+      }
+      dropAbort.signal.throwIfAborted();
       await onFilesDropped(files);
+    } catch (error) {
+      if (!dropAbort.signal.aborted) setDropError(String(error));
     } finally {
       setUploadingFileCount(0);
     }
@@ -91,6 +106,7 @@ export function TerminalFileDropTarget({
       onDrop={handleDrop}
     >
       {children}
+      {dropError ? <p role="alert" className="absolute bottom-0 p-2 text-xs text-orange-300 bg-[#151f24]">{dropError}</p> : null}
       {dragActive || uploading ? (
         <TerminalFileDropOverlay uploadingFileCount={uploadingFileCount} />
       ) : null}
