@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-12T06:43:00Z",
+  "generated_at": "2026-09-13T23:24:20Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -25,9 +25,9 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 117568,
-      "file_sha256": "7a4b290f07c54dc170ac037755016d1412b06309921894f08599e737571026fa",
-      "body_sha256": "ed655182b6249f0346d5eb461572b6f70877de219ab1f99356a26ab70c98a5ac"
+      "file_bytes": 136122,
+      "file_sha256": "01d6d602c28601cc3372ebc54adbf082b718a15d53123b7fb210755baf9bc77e",
+      "body_sha256": "0cb082e3c707bb83077c327fb7816d11e1d7410e81d1ec93ffc1ec7034784a2d"
     },
     {
       "path": "docs/plans/unified-plugin-system-execution.md",
@@ -37,9 +37,9 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 15047,
-      "file_sha256": "a39e548a6f98b7cb87631859ec8410bf5a7cf1638066c357aa9db63ec3bec6d0",
-      "body_sha256": "b8dd2c57753f453ff0745ae98345c790686df507cd874234bc6d2840964ab144"
+      "file_bytes": 41397,
+      "file_sha256": "0db81aa963a5cca91368831086901bed35c7ddba9e3092f1981a16e74363deb9",
+      "body_sha256": "85508858ac91e84314570a50722b0db21567375d0264137bfe76c51c0ec7014f"
     },
     {
       "path": "docs/reports/cordis-plugin-architecture-feasibility-2026-09-11.md",
@@ -8577,9 +8577,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 14241,
-      "file_sha256": "ab5068a7decc92aecc65a649d2b01323a776cb068eb431d06ec1271e31c2454b",
-      "body_sha256": "ab5068a7decc92aecc65a649d2b01323a776cb068eb431d06ec1271e31c2454b"
+      "file_bytes": 43258,
+      "file_sha256": "f68eed4ce7ff1119df7e1ca31a27215045dc00ff37ea33d98eaf8b1eb1ef621b",
+      "body_sha256": "f68eed4ce7ff1119df7e1ca31a27215045dc00ff37ea33d98eaf8b1eb1ef621b"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -13225,9 +13225,9 @@
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": false,
       "synthetic": true,
-      "file_bytes": 2888,
-      "file_sha256": "6133f0f0bc85baf8215d0b4220c3babde7a5a2f883ee75087d87da9bd0213d9b",
-      "body_sha256": "6133f0f0bc85baf8215d0b4220c3babde7a5a2f883ee75087d87da9bd0213d9b"
+      "file_bytes": 2934,
+      "file_sha256": "e5b81b0e505287aae86fda70e99091f987078fba97ec2832c4ae139608d279fa",
+      "body_sha256": "e5b81b0e505287aae86fda70e99091f987078fba97ec2832c4ae139608d279fa"
     },
     {
       "path": "docs/specs/web/jobs-and-workflows-ui.md",
@@ -13251,6 +13251,18 @@
       "file_bytes": 22887,
       "file_sha256": "bd678f7cff1df813a1b5e501e837af2b2ec91069b18e9c34bb2137bc1ae8c003",
       "body_sha256": "cc3fc520542b928ff8bc8d7bececcaafecfa32a6ee6f82e4f03433ee54f520e9",
+      "lineage": null
+    },
+    {
+      "path": "docs/specs/web/session-workspace-lifecycle.md",
+      "state": "conformant",
+      "classification": "canonical specification",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "stable",
+      "file_bytes": 10257,
+      "file_sha256": "686c6a992a3640b09ea61acac848dc270e7c2845a05d54cb4e14240a9b5055ed",
+      "body_sha256": "343a3060b4a85c32991ec79d7c0c2bd7ba64093655180402baada264934f550e",
       "lineage": null
     },
     {
