@@ -11,6 +11,7 @@ import { createAgentPluginSelection } from '../dist/plugins/selection.js';
 import { InitialSessionContext } from '../dist/core/profiles.js';
 import { profileFromPluginPlan } from '../dist/agent-runtime/plugin-plan.js';
 import { startPluginProductRuntime } from '../dist/plugins/product-runtime.js';
+import { productUiPackageManifest } from '../dist/plugins/default-packages.js';
 import { PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
 import { WebAnnotationStore } from '../dist/web-annotations/index.js';
 
@@ -24,6 +25,25 @@ async function stagedInstallation(t, data, root) {
   const installed = data.plugins.getInstallation('test.runtime');
   data.plugins.putInstallation({ ...installed, enabled: true, state: 'active', updatedAt: new Date().toISOString() }, installed.stateRevision);
   return data.plugins.getInstallation('test.runtime');
+}
+
+async function stagedLegacyProductUi(data, artifactRoot, { enabled = true } = {}) {
+  const source = join(artifactRoot, 'default-sources', 'pibo.product-ui', '1.0.0');
+  await mkdir(source, { recursive: true });
+  const current = productUiPackageManifest();
+  const manifest = {
+    ...current,
+    contributions: current.contributions.map((contribution) => contribution.id === 'settings'
+      ? { ...contribution, view: { ...contribution.view, subviews: contribution.view.subviews.filter((subview) => subview.id !== 'plugins') } }
+      : contribution),
+  };
+  await writeFile(join(source, 'pibo.plugin.json'), JSON.stringify(manifest));
+  await writeFile(join(source, 'backend.mjs'), 'export { setupProductUi as setup } from "@pasko70/pibo/plugin-builtin/product-ui";\n');
+  await writeFile(join(source, 'browser.mjs'), 'export { UserResourcesView, AgentDesignerView, GlobalSettingsView, WorkflowsView, CronView, LoopsView } from "/apps/chat/assets/pibo-builtin-plugin.js?v=1.0.0";\n');
+  const manager = new PluginManager({ store: data.plugins, artifactRoot });
+  await manager.install({ kind: 'local', path: source }, { expectedRevision: 0 });
+  const installed = data.plugins.getInstallation(manifest.id);
+  return data.plugins.putInstallation({ ...installed, enabled, state: enabled ? 'active' : 'installed', updatedAt: new Date().toISOString() }, installed.stateRevision);
 }
 
 test('product runtime starts persisted plugins and publishes one manager/host/session-plan service', async t => {
@@ -71,6 +91,43 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.equal(data.plugins.getInstallation('pibo.web-annotations').stateRevision, annotations.stateRevision);
   assert.equal(host.inspect().plugins.filter((plugin) => plugin.pluginId === 'pibo.web-annotations').length, 1);
   await restarted.dispose();
+});
+
+test('active managed default packages upgrade coherently when their packaged manifest changes', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'plugin-product-default-upgrade-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
+  const artifactRoot = join(root, 'artifacts');
+  const legacy = await stagedLegacyProductUi(data, artifactRoot);
+  assert.equal(legacy.manifest.contributions.find((contribution) => contribution.id === 'settings').view.subviews.some((subview) => subview.id === 'plugins'), false);
+
+  const host = new PluginHost();
+  const product = await startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [] });
+  t.after(() => product.dispose());
+
+  const upgraded = data.plugins.getInstallation('pibo.product-ui');
+  assert.notEqual(upgraded.revision, legacy.revision);
+  assert.equal(upgraded.state, 'active');
+  assert.equal(upgraded.enabled, true);
+  assert.equal(upgraded.manifest.contributions.find((contribution) => contribution.id === 'settings').view.subviews.some((subview) => subview.id === 'plugins'), true);
+  assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings').contribution.view.subviews.some((subview) => subview.id === 'plugins'), true);
+});
+
+test('disabled managed defaults remain pinned and are not silently re-enabled or upgraded', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'plugin-product-default-disabled-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
+  const artifactRoot = join(root, 'artifacts');
+  const disabled = await stagedLegacyProductUi(data, artifactRoot, { enabled: false });
+
+  const host = new PluginHost();
+  const product = await startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [] });
+  t.after(() => product.dispose());
+
+  const retained = data.plugins.getInstallation('pibo.product-ui');
+  assert.equal(retained.revision, disabled.revision);
+  assert.equal(retained.state, 'installed');
+  assert.equal(retained.enabled, false);
+  assert.equal(retained.manifest.contributions.find((contribution) => contribution.id === 'settings').view.subviews.some((subview) => subview.id === 'plugins'), false);
+  assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings'), undefined);
 });
 
 test('AP11 Web Annotations survives failed activation and exact reinstall without losing data', async t => {

@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
@@ -349,15 +349,32 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 	return { manifest, source };
 }
 
-/** Seed only never-seen packages. Explicit disable/uninstall and stored selections remain authoritative. */
+/** Seed missing defaults and upgrade only active Pibo-managed defaults. Explicit disable/uninstall remains authoritative. */
 export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string): Promise<void> {
 	for (const descriptor of DEFAULT_PACKAGES) {
 		const expected = descriptor.manifest();
-		if (manager.store.getInstallation(expected.id)) continue;
+		const existing = manager.store.getInstallation(expected.id);
+		const defaultSourceRoot = resolve(artifactRoot, "default-sources", expected.id);
+		if (existing) {
+			const existingSource = existing.source.kind === "local" ? resolve(existing.source.path) : undefined;
+			const managedSource = Boolean(existingSource?.startsWith(`${defaultSourceRoot}${sep}`));
+			if (!managedSource || !existing.enabled || existing.state !== "active") continue;
+		}
 		const { manifest, source } = await materializeDefaultPackage(artifactRoot, descriptor);
-		await manager.install({ kind: "local", path: source }, { expectedRevision: 0 });
-		const installed = manager.store.getInstallation(manifest.id);
-		if (!installed) throw new Error(`Default plugin ${manifest.id} was not installed`);
-		await manager.activate(manifest.id, { expectedRevision: installed.stateRevision });
+		if (!existing) {
+			await manager.install({ kind: "local", path: source }, { expectedRevision: 0 });
+			const installed = manager.store.getInstallation(manifest.id);
+			if (!installed) throw new Error(`Default plugin ${manifest.id} was not installed`);
+			const activation = await manager.activate(manifest.id, { expectedRevision: installed.stateRevision });
+			if (activation.state !== "complete") throw new Error(`Default plugin ${manifest.id} activation did not complete: ${activation.state}`);
+			continue;
+		}
+		const inspected = await manager.inspect({ kind: "local", path: source });
+		if (inspected.contentHash === existing.contentHash) continue;
+		await manager.install({ kind: "local", path: source }, { expectedRevision: existing.stateRevision });
+		const pending = manager.store.getInstallation(manifest.id);
+		if (!pending) throw new Error(`Default plugin ${manifest.id} update was not staged`);
+		const activation = await manager.activate(manifest.id, { expectedRevision: pending.stateRevision });
+		if (activation.state !== "complete") throw new Error(`Default plugin ${manifest.id} update did not complete: ${activation.state}`);
 	}
 }
