@@ -53,6 +53,8 @@ test("Agent Designer persists runtime selection, validates JSON options, and sho
 	assert.match(agentsViewSource, /runtimeOptionsErrorRef\.current/);
 	assert.match(designerUiSource, /Agent Runtime/);
 	assert.match(designerUiSource, /Effective runtime capabilities/);
+	assert.match(designerUiSource, /<details className="border border-slate-800 bg-\[#151f24\] rounded-sm p-2"><summary[^>]*>Runtime supported features/);
+	assert.match(designerUiSource, /<summary className="cursor-pointer text-\[10px\] uppercase tracking-wider text-slate-500">Profile option schema/);
 	assert.match(designerUiSource, /Options are validated by the selected runtime before saving/);
 	assert.match(designerUiSource, /Schema generated runtime options/);
 	assert.match(designerUiSource, /runtimeOptionFields\(schema\)/);
@@ -92,15 +94,16 @@ test("Agent Designer exposes only truthful runtime-owned context and native-suba
 test("Agent Designer keeps Pibo subagents and plugin-delivered control tools capability-gated", () => {
 	assert.match(agentsViewSource, /<SubagentDesigner[\s\S]*capabilityUnavailableReason=\{pluginToolsUnavailableReason\}/);
 	assert.match(agentsViewSource, /unsupportedDeliveryReason\(selectedRuntime\?\.capabilities\.tools\.piboManaged, "Plugin-managed tools"\)/);
-	assert.match(pluginDesignerSource, /plan \? plan\.valid \? "Server preview valid" : "Activation blocked — see contribution reasons"/);
+	assert.match(pluginDesignerSource, /plan \? plan\.valid \? "Selection is supported" : "Selection is blocked — review the reasons below"/);
 	assert.match(pluginDesignerSource, /plan\?\.diagnostics\.map/);
 });
 
-test("Agent Designer exposes goal lifecycle tooling as a default-enabled ordinary plugin", () => {
+test("Agent Designer keeps Goal system functionality separate from selectable Goal tools", () => {
 	assert.match(packageSource, /GOAL_CONTROL_PLUGIN_ID = "pibo\.goal-control"/);
-	assert.match(packageSource, /goalControlPackageManifest[\s\S]*PIBO_GOAL_TOOL_NAMES\.map[\s\S]*defaultEnabled: true/);
+	assert.match(packageSource, /function toolContribution[\s\S]*scope: "agent"/);
+	assert.match(packageSource, /goalControlPackageManifest[\s\S]*PIBO_GOAL_TOOL_NAMES\.map\(\(name\) => toolContribution\(name, \{ defaultEnabled: true/);
 	assert.match(pluginDesignerSource, /catalog\?\.plugins\.map/);
-	assert.match(pluginDesignerSource, /checked=\{entry\?\.enabled \?\? false\}/);
+	assert.match(pluginDesignerSource, /aria-pressed=\{entry\?\.enabled \?\? false\}/);
 	assert.match(pluginDesignerSource, /setAgentPluginEnabled\(current\.pluginSelection, plugin, !entry\?\.enabled\)/);
 	assert.match(modelSource, /defaultPluginSelection[\s\S]*schemaVersion: 1, plugins: \[\]/);
 });

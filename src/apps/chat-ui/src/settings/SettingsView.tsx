@@ -63,6 +63,7 @@ export function SettingsView({
 	onUserSkillChanged,
 	onUserSkillRemoved,
 	piboSessionId,
+	agentId,
 	onProviderAuthChanged,
 }: {
 	activePanel: SettingsPanel;
@@ -83,6 +84,7 @@ export function SettingsView({
 	onUserSkillChanged: (skill: UserSkill) => void;
 	onUserSkillRemoved: (skillId: string) => void;
 	piboSessionId?: string | null;
+	agentId?: string;
 	onProviderAuthChanged?: () => void | Promise<void>;
 }) {
 	if (activePanel === "skills") {
@@ -104,7 +106,7 @@ export function SettingsView({
 					<PackageOpen size={16} />
 					Plugins
 				</h1>
-				<PluginManagement onChanged={() => undefined} />
+				<PluginManagement onChanged={() => undefined} piboSessionId={piboSessionId ?? undefined} agentId={agentId} />
 			</div>
 		);
 	}

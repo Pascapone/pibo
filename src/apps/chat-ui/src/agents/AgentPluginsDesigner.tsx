@@ -1,21 +1,38 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import type { EffectivePluginPlan, PluginConfigurationTarget, PluginQualifiedId } from "../../../../plugins/sdk.js";
-import { getAgentPluginCatalog, previewAgentPlugins, type AgentPluginCatalog } from "../api-agent-designer";
+import { Check, ChevronDown, ChevronRight } from "lucide-react";
+import type { EffectivePluginPlan, PluginContribution } from "../../../../plugins/sdk.js";
+import { applyLegacyAgentPluginMigration, getAgentPluginCatalog, previewAgentPlugins, previewLegacyAgentPluginMigration, type AgentPluginCatalog, type AgentPluginMigrationReport, type DesignerPluginFields } from "../api-agent-designer";
+import type { CustomAgent } from "../types";
 import { acceptAgentPluginRevision, buildPluginBuiltinToolReplacementMap, setAgentPluginContribution, setAgentPluginEnabled, type AgentDraft } from "./agent-designer-model";
-import { CatalogToggle, DesignerPanel } from "./designer-ui";
+import { DesignerPanel } from "./designer-ui";
 
-export type AgentPluginSettingsTarget = {
-	piboSessionId: string; pluginId: string; viewId: PluginQualifiedId; subviewId: string; configurationTarget: PluginConfigurationTarget;
-};
-export function AgentPluginsDesigner({ draft, setDraft, readOnly, piboSessionId, sessionProfileName, onOpenPluginSettings, onBuiltinToolReplacementsChange }: {
+const CATEGORY_ORDER = ["Tools", "Skills", "Context", "Subagents", "Views", "MCP", "Input handling", "Other"];
+function contributionCategory(contribution: PluginContribution): string {
+	if (contribution.kind === "tool") return "Tools";
+	if (contribution.kind === "skill") return "Skills";
+	if (contribution.kind === "context-file") return "Context";
+	if (contribution.kind === "subagent") return "Subagents";
+	if (contribution.kind === "view" || contribution.kind === "terminal-card" || contribution.kind === "renderer") return "Views";
+	if (contribution.kind.startsWith("mcp")) return "MCP";
+	if (contribution.kind === "hook") return "Input handling";
+	return "Other";
+}
+function contributionLabel(contribution: PluginContribution): string {
+	return contribution.title ?? contribution.name?.replaceAll("_", " ") ?? contribution.id.replaceAll("-", " ");
+}
+
+export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApplied, onBuiltinToolReplacementsChange }: {
 	draft: AgentDraft; setDraft: Dispatch<SetStateAction<AgentDraft>>; readOnly: boolean;
-	piboSessionId?: string; sessionProfileName?: string; onOpenPluginSettings?: (target: AgentPluginSettingsTarget) => void;
+	onMigrationApplied?: (agent: CustomAgent & DesignerPluginFields) => void;
 	onBuiltinToolReplacementsChange?: (replacements: Map<string, string[]>) => void;
 }) {
 	const [catalog, setCatalog] = useState<AgentPluginCatalog>();
 	const [plan, setPlan] = useState<EffectivePluginPlan>();
 	const [error, setError] = useState<string>();
 	const [pending, setPending] = useState(false);
+	const [openPlugins, setOpenPlugins] = useState<Set<string>>(() => new Set());
+	const [migration, setMigration] = useState<AgentPluginMigrationReport>();
+	const [migrationBusy, setMigrationBusy] = useState(false);
 	useEffect(() => {
 		let current = true;
 		void getAgentPluginCatalog().then((result) => { if (current) setCatalog(result.catalog); }).catch((caught) => { if (current) setError(String(caught)); });
@@ -41,64 +58,82 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, piboSessionId,
 		onBuiltinToolReplacementsChange?.(replacements);
 		return () => onBuiltinToolReplacementsChange?.(new Map());
 	}, [onBuiltinToolReplacementsChange, replacements]);
+	const reviewMigration = async () => {
+		if (!draft.id || migrationBusy) return;
+		setMigrationBusy(true); setError(undefined);
+		try { setMigration((await previewLegacyAgentPluginMigration(draft.id)).report); }
+		catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+		finally { setMigrationBusy(false); }
+	};
+	const applyMigration = async () => {
+		if (!draft.id || draft.revision === undefined || !migration || migrationBusy) return;
+		setMigrationBusy(true); setError(undefined);
+		try {
+			const result = await applyLegacyAgentPluginMigration(draft.id, draft.revision, migration.sourceHash);
+			if (result.agent) onMigrationApplied?.(result.agent);
+			setMigration(result.report);
+		} catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+		finally { setMigrationBusy(false); }
+	};
 	const selection = draft.pluginSelection;
 	return <DesignerPanel title="Plugins">
-		<div className="text-xs text-slate-400">Selection applies to future runtime generations. Running sessions keep their pinned plugin revisions.</div>
-		{!selection ? <div role="alert" className="text-sm text-amber-200">Legacy selection needs an explicit migration. No plugin defaults have been enabled.</div> : null}
+		<div className="text-xs text-slate-400">Choose only capabilities delivered to this agent. Installation, system services, workspace modules, and configuration are managed separately.</div>
+		{!selection ? <div role="alert" className="space-y-2 border border-amber-700/60 bg-amber-950/20 p-3 text-sm text-amber-100">
+			<p>This agent still uses its previous tool, skill, and context selection. Review an exact migration before editing.</p>
+			<button type="button" disabled={readOnly || !draft.id || migrationBusy} className="border border-amber-500/70 px-2 py-1 text-xs disabled:opacity-50" onClick={() => void reviewMigration()}>{migrationBusy ? "Checking…" : "Review previous selection"}</button>
+		</div> : null}
+		{migration ? <section className="border border-slate-700 bg-[#101d22] p-3 text-xs" aria-label="Legacy plugin migration preview">
+			<h3 className="font-semibold text-slate-100">Migration preview</h3>
+			<p className="mt-1 text-slate-400">{migration.beforeTools.length} previous tools → {migration.afterTools.length} matched tools. User skills and context remain independent resources.</p>
+			{migration.beforeTools.length ? <p className="mt-2 text-slate-300">Tools: {migration.beforeTools.join(", ")}</p> : null}
+			<p className="mt-1 text-slate-400">Independent skills: {migration.userSkills.length}; independent context files: {migration.userContextFiles.length}.</p>
+			{migration.diagnostics.map((item, index) => <p key={`${item.code}:${index}`} className={item.severity === "error" ? "mt-1 text-amber-200" : "mt-1 text-slate-400"}>{item.message}</p>)}
+			{!selection && migration.status === "ready" ? <button type="button" disabled={readOnly || migrationBusy} className="mt-3 border border-[#11a4d4] bg-[#11a4d4]/10 px-2 py-1 text-[#7dd3fc] disabled:opacity-50" onClick={() => void applyMigration()}>{migrationBusy ? "Migrating…" : "Migrate this exact selection"}</button> : null}
+			{migration.status === "conflict" ? <p className="mt-2 text-amber-200">Migration is blocked until the listed ownership or collision is resolved. Nothing has been enabled.</p> : null}
+		</section> : null}
 		{draft.pluginMigration ? <details className="border border-slate-700 p-2 text-xs">
-			<summary>Migration: {draft.pluginMigration.status} · {draft.pluginMigration.beforeTools.length} previous tools / {draft.pluginMigration.afterTools.length} migrated tools</summary>
+			<summary>Previous selection migration · {draft.pluginMigration.status}</summary>
+			<p className="mt-2">{draft.pluginMigration.beforeTools.length} previous tools / {draft.pluginMigration.afterTools.length} migrated tools</p>
 			{draft.pluginMigration.diagnostics.map((item, index) => <p key={index}>{item.message}</p>)}
 			{draft.pluginMigration.inactivePiPackages.length ? <p>Inactive legacy Pi packages: {draft.pluginMigration.inactivePiPackages.join(", ")}. Original data is backed up; no package code is loaded.</p> : null}
 		</details> : null}
-		{error ? <div role="alert" className="text-xs text-amber-200">Plugin preview unavailable: {error}</div> : null}
-		<div role="status" className="text-xs text-slate-400">{pending ? "Checking server runtime requirements…" : plan ? plan.valid ? "Server preview valid" : "Activation blocked — see contribution reasons" : "No server preview"}</div>
+		{error ? <div role="alert" className="text-xs text-amber-200">{error}</div> : null}
+		<div role="status" className="text-xs text-slate-400">{pending ? "Checking runtime support…" : plan ? plan.valid ? "Selection is supported" : "Selection is blocked — review the reasons below" : selection ? "No server preview" : "Migration required"}</div>
 		{plan?.diagnostics.map((item, index) => <p key={`${item.code}:${index}`} className="text-xs text-amber-200">{item.message}</p>)}
 		{catalog?.plugins.map((plugin) => {
 			const entry = selection?.plugins.find((item) => item.pluginId === plugin.pluginId);
-			const agentContributions = plugin.contributions.filter((item) => item.scope === "agent");
 			const changedRevision = !!entry && entry.revision !== plugin.revision;
-			return <section key={plugin.pluginId} className="border border-slate-700 rounded-sm p-3 space-y-2" aria-label={`Plugin ${plugin.name}`}>
-				{agentContributions.length ? <CatalogToggle title={plugin.name} checked={entry?.enabled ?? false}
-					description={`${plugin.pluginId} · ${plugin.version} · ${plugin.state}`} meta={entry ? `Pinned ${entry.revision}` : "Not selected"}
-					disabled={readOnly || !selection || (!entry?.enabled && (!plugin.enabled || !["active", "pending-activation"].includes(plugin.state)))}
-					onToggle={() => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: setAgentPluginEnabled(current.pluginSelection, plugin, !entry?.enabled) } : current)} />
-					: <div className="text-sm">{plugin.name}<span className="ml-2 text-xs text-slate-400">App infrastructure — no agent tools</span></div>}
-				{changedRevision ? <div className="text-xs text-amber-200">Installed revision changed. Existing selection is preserved.
-					<button type="button" disabled={readOnly} className="ml-2 underline" onClick={() => {
-						if (window.confirm(`Accept revision ${plugin.revision} of ${plugin.name}? Required contributions become selected. New optional contributions stay off.`)) setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: acceptAgentPluginRevision(current.pluginSelection, plugin) } : current);
-					}}>Review and accept revision</button></div> : null}
-				<ul className="space-y-2">
-					{plugin.contributions.map((contribution) => {
+			const open = openPlugins.has(plugin.pluginId);
+			const selectedCount = plugin.contributions.filter((contribution) => entry?.contributions[contribution.id] === true).length;
+			const categories = new Map<string, PluginContribution[]>();
+			for (const contribution of plugin.contributions) {
+				const category = contributionCategory(contribution);
+				categories.set(category, [...categories.get(category) ?? [], contribution]);
+			}
+			return <section key={plugin.pluginId} className="overflow-hidden rounded-sm border border-slate-700 bg-[#151f24]" aria-label={`Plugin ${plugin.name}`}>
+				<div className="flex items-center gap-2 p-2">
+					<button type="button" aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpenPlugins((current) => { const next = new Set(current); if (next.has(plugin.pluginId)) next.delete(plugin.pluginId); else next.add(plugin.pluginId); return next; })}>
+						<span className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-slate-700 text-slate-400">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
+						<span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-100">{plugin.name}</span><span className="block text-xs text-slate-500">{entry?.enabled ? `${selectedCount} of ${plugin.contributions.length} capabilities selected` : "Not selected for this agent"}{changedRevision ? " · update review required" : ""}</span></span>
+					</button>
+					<button type="button" aria-pressed={entry?.enabled ?? false} disabled={readOnly || !selection || changedRevision || (!entry?.enabled && (!plugin.enabled || !["active", "pending-activation"].includes(plugin.state)))} className={`shrink-0 border px-2 py-1 text-xs disabled:opacity-50 ${entry?.enabled ? "border-[#11a4d4] bg-[#11a4d4]/10 text-[#7dd3fc]" : "border-slate-700 text-slate-400"}`} onClick={() => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: setAgentPluginEnabled(current.pluginSelection, plugin, !entry?.enabled) } : current)}>{entry?.enabled ? "Selected" : "Select"}</button>
+				</div>
+				{changedRevision ? <div className="border-t border-amber-800/50 p-2 text-xs text-amber-200">An installed update changed this plugin. Existing choices are preserved until review.
+					<button type="button" disabled={readOnly} className="ml-2 underline" onClick={() => { if (window.confirm(`Accept the installed update for ${plugin.name}? Required capabilities become selected; new optional capabilities stay off.`)) setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: acceptAgentPluginRevision(current.pluginSelection, plugin) } : current); }}>Review update</button></div> : null}
+				{open ? <div className="grid gap-3 border-t border-slate-800 p-3">{CATEGORY_ORDER.flatMap((category) => {
+					const contributions = categories.get(category); if (!contributions?.length) return [];
+					return [<section key={category}><h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{category}</h4><ul className="grid gap-1">{contributions.map((contribution) => {
 						const node = plan?.nodes.find((item) => item.contributionId === `${plugin.pluginId}/${contribution.id}`);
 						const required = node?.required ?? contribution.required;
-						return <li key={contribution.id} className="border-t border-slate-800 pt-2">
-							<label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 accent-[#11a4d4]"
-								aria-label={`${plugin.name}: ${contribution.title ?? contribution.name ?? contribution.id}${required ? " (required)" : " (optional)"}`}
-								checked={contribution.scope === "app" ? node?.selected ?? false : entry?.contributions[contribution.id] === true}
-								disabled={readOnly || required || contribution.scope === "app" || !entry?.enabled || changedRevision}
-								onChange={(event) => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: setAgentPluginContribution(current.pluginSelection, plugin.pluginId, contribution, event.target.checked) } : current)} />
-								<span>{contribution.title ?? contribution.name ?? contribution.id}<span className="block text-xs text-slate-400">{contribution.kind} · {contribution.scope === "app" ? "App infrastructure" : required ? "Required" : "Optional"} · {plugin.pluginId}/{contribution.id}</span></span></label>
-							<p className="ml-5 text-xs text-slate-400">{node ? `${node.status}: ${node.selectionReason}` : "Awaiting server runtime preview"}</p>
-						</li>;
-					})}
-				</ul>
-				{plugin.contributions.flatMap((view) => (view.view?.subviews ?? []).filter((subview) => subview.purpose !== "content").flatMap((subview) => (subview.settingsScopes ?? []).map((scope) => {
-					const target: PluginConfigurationTarget | undefined = scope === "app" ? { scope, pluginId: plugin.pluginId }
-						: scope === "agent" ? draft.id ? { scope, pluginId: plugin.pluginId, agentId: draft.id } : undefined
-							: piboSessionId ? { scope, pluginId: plugin.pluginId, piboSessionId } : undefined;
-					return <button key={`${view.id}:${subview.id}:${scope}`} type="button" className="mr-3 text-xs text-[#11a4d4] underline disabled:text-slate-500"
-						disabled={!piboSessionId || !target || !onOpenPluginSettings}
-						onClick={() => { if (piboSessionId && target) onOpenPluginSettings?.({ piboSessionId, pluginId: plugin.pluginId, viewId: `${plugin.pluginId}/${view.id}`, subviewId: subview.id, configurationTarget: target }); }}>
-						{subview.title} · {scope === "agent" ? `agent ${draft.profileName ?? draft.displayName}` : scope === "session" ? `session ${piboSessionId ?? "not selected"}` : "app-wide"}
-					</button>;
-				})))}
+						const checked = entry?.contributions[contribution.id] === true;
+						return <li key={contribution.id}><label className={`flex items-start gap-2 border border-slate-800 p-2 text-sm ${required ? "cursor-default" : "cursor-pointer"}`}><input type="checkbox" className="sr-only" aria-label={`${plugin.name}: ${contributionLabel(contribution)}${required ? " (required)" : " (optional)"}`} checked={checked} disabled={readOnly || required || !entry?.enabled || changedRevision} onChange={(event) => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: setAgentPluginContribution(current.pluginSelection, plugin.pluginId, contribution, event.target.checked) } : current)} /><span className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center border ${checked ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-600 text-transparent"}`}>{checked ? <Check size={12} /> : null}</span><span><span className="text-slate-200">{contributionLabel(contribution)}</span><span className="block text-xs text-slate-500">{required ? "Required when this plugin is selected" : "Optional"}{node ? ` · ${node.selectionReason}` : ""}</span></span></label></li>;
+					})}</ul></section>];
+				})}</div> : null}
 			</section>;
 		})}
 		{selection?.plugins.filter((entry) => !catalog?.plugins.some((plugin) => plugin.pluginId === entry.pluginId)).map((entry) => <div key={entry.pluginId} className="border border-amber-700 p-3 text-xs text-amber-200">
-			{entry.pluginId} · pinned {entry.revision} · {entry.enabled ? "selected" : "disabled"} · missing from catalog. Reference and configuration retained.
-			{Object.entries(entry.contributions).map(([id, enabled]) => <p key={id}>{id}: {enabled ? "selected" : "disabled"}</p>)}
-			<button type="button" disabled={readOnly} className="mt-2 underline disabled:opacity-50" onClick={() => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: { ...current.pluginSelection, plugins: current.pluginSelection.plugins.filter((item) => item.pluginId !== entry.pluginId) } } : current)}>Remove retained reference</button>
+			A previously selected plugin is no longer installed. Its choices and configuration are retained for recovery.
+			<button type="button" disabled={readOnly} className="mt-2 block underline disabled:opacity-50" onClick={() => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: { ...current.pluginSelection, plugins: current.pluginSelection.plugins.filter((item) => item.pluginId !== entry.pluginId) } } : current)}>Remove retained reference</button>
 		</div>)}
-		{!piboSessionId ? <p className="text-xs text-slate-400">Select a session to open plugin settings in its fixed session tab.</p> : <p className="text-xs text-slate-400">Settings open in session {piboSessionId}{sessionProfileName && sessionProfileName !== draft.profileName ? ` (${sessionProfileName}); agent-scoped edits still target ${draft.profileName ?? draft.displayName}` : ""}.</p>}
 	</DesignerPanel>;
 }

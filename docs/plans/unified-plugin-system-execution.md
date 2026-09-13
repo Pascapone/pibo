@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-13T06:39:21Z"
+  at: "2026-09-13T12:30:00Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
@@ -16,6 +16,12 @@ sources:
     resource: "scope:owner continuation instruction 2026-09-12 to implement the full plan with subagents; restrictions from the old session explicitly do not apply"
     title: "Full implementation and delegated work authorized for this continuation"
 ---
+
+# Owner feedback: optional modules and activation ownership (2026-09-13)
+
+The active implementation task is [PLG-UX-001 and PLG-MIG-002](/plans/unified-plugin-system-rebuild.md#plg-ux-001-plugin-philosophie-optionale-module-und-getrennte-zuständigkeiten): generic optional workspace-module exposure, Settings → Plugins ownership, system versus agent selection, collapsed categorized Agent Designer, and actionable legacy migration. This supersedes earlier requirements that assigned every plugin its own settings tab. This section records intended work, not completed evidence.
+
+Use existing worker thread `plugin-rebuild-implementation`, isolated Docker/worktree, and quick headful feedback iterations. Preserve existing tests; no fullsuite or heavy gates in this round. Verify existing installed state and existing legacy agents, not only fresh fixtures. Monitor every ten minutes and steer when needed. Current deployed feedback baseline is `71b90d02429cd80bab8a10c66018221b3c572e8e`; prior parent-owned corrections cover cache refresh, managed-default upgrades and current session-plan reads. The broader Goal-service ownership finding remains open and is not resolved by UI filtering.
 
 # Goal and completion
 

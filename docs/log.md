@@ -2,6 +2,8 @@
 
 ## 2026-09-13
 
+- **Plugin philosophy and Designer feedback**: Revised the [rebuild plan](/plans/unified-plugin-system-rebuild.md#plg-ux-001-plugin-philosophie-optionale-module-und-getrennte-zuständigkeiten) and [execution ledger](/plans/unified-plugin-system-execution.md) to make workspace modules optional, route plugin configuration through Settings → Plugins, distinguish system ownership from selectable agent contributions through generic metadata, require collapsed categorized Designer controls and an actionable legacy migration. Planned behavior only; fast headful feedback iterations preserve existing tests without heavy gates.
+
 - **Plugin candidate manual-test deployment**: Recorded the owner-requested canonical Pibo2 test deployment in the [execution ledger](/plans/unified-plugin-system-execution.md#owner-requested-pibo2-test-deployment-2026-09-13), including source commit, package checksum and authenticated API/headful readiness evidence. The Goal ownership finding and full remote acceptance remain open.
 
 ## 2026-09-12

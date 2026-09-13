@@ -4783,9 +4783,18 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (!manager) throw new PiboWebHttpError("Plugin management service is unavailable", 503);
 				const installations = manager.store.listInstallations();
 				const host = context.channelContext.getService?.<import("../../plugins/host.js").PluginHost>(PLUGIN_HOST_SERVICE);
+				const capabilityCatalog = context.channelContext.getCapabilityCatalog?.() ?? { nativeTools: [], skills: [], contextFiles: [] };
+				const userSkills = state.userSkillManager.list().map((skill) => ({ name: skill.name, kind: "user" as const }));
+				const userSkillNames = new Set(userSkills.map((skill) => skill.name));
 				return handleAgentPluginRoute({ route: designerPluginRoute, request, agents: state.agentStore,
 					...catalogPluginServices(host, installations),
 					catalog: { schemaVersion: 1, revision: installations.reduce((sum, i) => sum + i.stateRevision, 0), installations },
+					legacyCatalog: { nativeTools: capabilityCatalog.nativeTools ?? [], contextFiles: capabilityCatalog.contextFiles ?? [], skills: [
+						...userSkills,
+						...(capabilityCatalog.skills ?? []).filter((skill) => !userSkillNames.has(skill.name)),
+					] },
+					pluginStore: manager.store,
+					migrationBackupRoot: piboHomePath("plugins", "migration-backups", "agents"),
 					resolveRuntime: async (instanceId) => {
 						const runtime = (await context.channelContext.inspectAgentRuntimeInstances?.())?.find((r) => r.id === instanceId);
 						if (!runtime?.enabled || !runtime.available) throw new PiboWebHttpError("Runtime instance is unavailable", 400);

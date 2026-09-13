@@ -1,11 +1,11 @@
-import type { EffectivePluginPlan, PluginBrowserCatalog, PluginJsonObject, PluginQualifiedId, PluginSessionTabset, PluginTabInstance } from "../../../../plugins/sdk";
+import { pluginViewPresentation, type EffectivePluginPlan, type PluginBrowserCatalog, type PluginJsonObject, type PluginQualifiedId, type PluginSessionTabset, type PluginTabInstance } from "../../../../plugins/sdk";
 
 export function emptyPluginTabset(piboSessionId: string): PluginSessionTabset {
 	if (!piboSessionId.startsWith("ps_")) throw new Error("Select a Pibo Session before opening tabs");
 	return { schemaVersion: 1, piboSessionId, revision: 0, tabs: [], activeTabId: null, layout: {} };
 }
 export function availablePluginViews(plan: EffectivePluginPlan, catalog: PluginBrowserCatalog) {
-	return plan.contributions.filter((entry) => entry.contribution.view && catalog.plugins.some((plugin) => plugin.pluginId === entry.pluginId && plugin.revision === entry.pluginRevision && plugin.browserEntry));
+	return plan.contributions.filter((entry) => entry.contribution.view && pluginViewPresentation(entry.contribution.view) === "workspace" && catalog.plugins.some((plugin) => plugin.pluginId === entry.pluginId && plugin.revision === entry.pluginRevision && plugin.browserEntry));
 }
 export function openPluginTab(tabset: PluginSessionTabset, plan: EffectivePluginPlan, catalog: PluginBrowserCatalog, viewId: PluginQualifiedId, options: { instanceId?: string; instanceKey?: string; subviewId?: string; state?: PluginJsonObject } = {}): PluginSessionTabset {
 	if (plan.piboSessionId !== tabset.piboSessionId) throw new Error("Plan/session mismatch");

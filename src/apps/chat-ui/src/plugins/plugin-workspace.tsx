@@ -1,9 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "@tanstack/react-router";
-import type { EffectivePluginPlan, PluginBrowserCatalog, PluginJsonObject, PluginQualifiedId, PluginTabInstance } from "../../../../plugins/sdk";
+import { pluginViewPresentation, type EffectivePluginPlan, type PluginBrowserCatalog, type PluginJsonObject, type PluginQualifiedId, type PluginTabInstance } from "../../../../plugins/sdk";
 import { BrowserPluginContext, BrowserPluginHost, PluginErrorBoundary, sessionPluginRequest, type PluginViewProps } from "./browser-host";
 import { availablePluginViews, closePluginTab, openPluginTab, parsePluginTabDeepLink, pluginRequest, pluginTabDeepLink, SessionTabController, updatePluginTab } from "./session-tab-controller";
-import { PluginSettings } from "./plugin-settings";
 import { PluginManagement } from "./plugin-management";
 
 type Workspace = { controller: SessionTabController; host: BrowserPluginHost | null; plan: EffectivePluginPlan | null; catalog: PluginBrowserCatalog | null; agentId?: string; roomId?: string; error: string | null; openView: PluginViewProps["openView"]; refresh: () => void; activateTab: (instanceId: string) => Promise<boolean>; closeTab: (instanceId: string) => Promise<boolean>; registerBeforeLeave: (instanceId: string, handler: () => Promise<void>) => () => void };
@@ -79,7 +78,7 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 			// Provenance links may name a non-view contribution; resolve its owner's declared view.
 			const entry = source.plan.contributions.find((entry) => entry.id === requestedId);
 			const ownerId = entry?.pluginId ?? requestedId.split("/")[0];
-			const viewId = entry?.contribution.view ? requestedId : source.plan.contributions.find((item) => item.pluginId === ownerId && item.contribution.view)?.id;
+			const viewId = entry?.contribution.view && pluginViewPresentation(entry.contribution.view) === "workspace" ? requestedId : source.plan.contributions.find((item) => item.pluginId === ownerId && item.contribution.view && pluginViewPresentation(item.contribution.view) === "workspace")?.id;
 			if (!viewId) { setError(`No effective view for ${requestedId}. Its retained history remains readable.`); return; }
 			try { controller.edit((tabset) => openPluginTab(tabset, source.plan, source.catalog, viewId, { subviewId, state })); } catch (error) { setError(String(error)); }
 		})();
@@ -221,7 +220,6 @@ function PluginTabPanel({ workspace, tab, active, showSubviewNavigation = true }
 	const subview = view.subviews?.find((item) => item.id === tab.subviewId);
 	return <div className="h-full flex flex-col min-h-0">
 		{showSubviewNavigation && view.subviews?.length ? <nav aria-label={`${view.title} subviews`} className="flex gap-1 p-2 border-b border-slate-700">{view.subviews.map((item) => <button key={item.id} aria-current={tab.subviewId === item.id ? "page" : undefined} className={`text-xs px-2 py-1 ${tab.subviewId === item.id ? "text-cyan-300 bg-cyan-500/10" : "text-slate-400"}`} onClick={() => controller.edit((state) => updatePluginTab(state, tab.instanceId, { subviewId: item.id }))}>{item.title}</button>)}</nav> : null}
-		{subview?.settingsScopes?.length ? <PluginSettings key={`${tab.instanceId}:${subview.id}`} pluginId={tab.pluginId} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} scopes={subview.settingsScopes} /> : null}
 		<div className="min-h-0 flex-1 overflow-auto"><PluginErrorBoundary key={`${tab.instanceId}:${tab.pluginRevision}`} fallback={fallback}><Component tab={tab} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} roomId={workspace.roomId} active={active} signal={abort.signal} state={tab.state} updateState={(state) => { if (!abort.signal.aborted) controller.edit((current) => updatePluginTab(current, tab.instanceId, { state })); }}request={sessionPluginRequest(tab.piboSessionId, tab.pluginId, abort.signal)} openView={workspace.openView} registerBeforeLeave={registerBeforeLeave} /></PluginErrorBoundary></div>
 	</div>;
 }

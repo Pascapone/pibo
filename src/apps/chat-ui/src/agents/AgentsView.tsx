@@ -56,7 +56,7 @@ import {
 } from "./designer-ui";
 import { usePaneSidebar, type PaneSurface } from "../responsive-pane-sidebar";
 import { AgentsSidebar } from "./AgentsSidebar";
-import { AgentPluginsDesigner, type AgentPluginSettingsTarget } from "./AgentPluginsDesigner";
+import { AgentPluginsDesigner } from "./AgentPluginsDesigner";
 import type { DesignerPluginFields } from "../api-agent-designer";
 
 const AGENT_AUTOSAVE_DELAY_MS = 900;
@@ -137,9 +137,6 @@ export function AgentsView({
 	modelCatalog,
 	onCreateSession,
 	onEditContextFile,
-	piboSessionId,
-	sessionProfileName,
-	onOpenPluginSettings,
 	onAgentsChanged,
 	onAutosaveHandlerChange,
 	creatingSession,
@@ -155,9 +152,6 @@ export function AgentsView({
 	modelCatalog?: ModelCatalog;
 	onCreateSession: (profile: string) => void;
 	onEditContextFile: (key: string) => void;
-	piboSessionId?: string;
-	sessionProfileName?: string;
-	onOpenPluginSettings?: (target: AgentPluginSettingsTarget) => void;
 	onAgentsChanged: () => void;
 	onAutosaveHandlerChange: (handler: (() => Promise<void>) | null) => void;
 	creatingSession: boolean;
@@ -873,7 +867,14 @@ export function AgentsView({
 						) : null}
 						{selectedRuntime?.adapterId === "pi" ? <BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={pluginBuiltinToolReplacements} /> : null}
 					</DesignerPanel>
-					<AgentPluginsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} piboSessionId={piboSessionId} sessionProfileName={sessionProfileName} onOpenPluginSettings={onOpenPluginSettings ? (target) => void runAfterAutosave(() => onOpenPluginSettings(target)) : undefined} onBuiltinToolReplacementsChange={setPluginBuiltinToolReplacements} />
+					<AgentPluginsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} onMigrationApplied={(agent) => {
+						const nextAgents = [agent, ...customAgentsRef.current.filter((item) => item.id !== agent.id)];
+						customAgentsRef.current = nextAgents;
+						setCustomAgents(nextAgents);
+						const nextDraft = agentToDraft(agent);
+						activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
+						onAgentsChangedRef.current();
+					}} onBuiltinToolReplacementsChange={setPluginBuiltinToolReplacements} />
 					<DesignerPanel title="Skills">
 						{skillsUnavailableReason ? <RuntimeCapabilityNotice reason={skillsUnavailableReason} /> : null}
 						<CatalogGroupGrid

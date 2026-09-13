@@ -6,12 +6,13 @@ export function pluginConfigurationPath(target: PluginConfigurationTarget) {
 	const targetId = target.scope === "agent" ? target.agentId : target.scope === "session" ? target.piboSessionId : "app";
 	return `/api/chat/plugins/${encodeURIComponent(target.pluginId)}/config?${new URLSearchParams({ scope: target.scope, targetId })}`;
 }
-export function PluginSettings({ pluginId, piboSessionId, agentId, scopes }: { pluginId: string; piboSessionId: string; agentId?: string; scopes: PluginSettingsScope[] }) {
-	const [scope, setScope] = useState<PluginSettingsScope>(scopes.includes("session") ? "session" : scopes[0] ?? "app");
-	const target: PluginConfigurationTarget | null = scope === "agent" ? agentId ? { scope, pluginId, agentId } : null : scope === "session" ? { scope, pluginId, piboSessionId } : { scope, pluginId };
-	return <section className="border-b border-slate-700 p-3 text-xs" aria-label="Plugin configuration">
-		<label className="flex flex-wrap items-center gap-2">Configuration scope <select className="bg-[#151f24] border border-slate-600 p-1" value={scope} onChange={(event) => setScope(event.target.value as PluginSettingsScope)}>{scopes.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-		{target ? <ConfigurationEditor key={JSON.stringify(target)} target={target} /> : <p role="status">This session has no editable agent target.</p>}
+export function PluginSettings({ pluginId, piboSessionId, agentId, scopes }: { pluginId: string; piboSessionId?: string; agentId?: string; scopes: PluginSettingsScope[] }) {
+	const [scope, setScope] = useState<PluginSettingsScope>(scopes.includes("app") ? "app" : scopes[0] ?? "app");
+	const target: PluginConfigurationTarget | null = scope === "agent" ? agentId ? { scope, pluginId, agentId } : null : scope === "session" ? piboSessionId ? { scope, pluginId, piboSessionId } : null : { scope, pluginId };
+	const labels: Record<PluginSettingsScope, string> = { app: "App-wide", agent: "Current agent", session: "Current session" };
+	return <section className="border-t border-slate-800 pt-3 text-xs" aria-label="Plugin configuration">
+		<label className="flex flex-wrap items-center gap-2">Configuration target <select className="bg-[#151f24] border border-slate-600 p-1" value={scope} onChange={(event) => setScope(event.target.value as PluginSettingsScope)}>{scopes.map((item) => <option key={item} value={item} disabled={item === "agent" ? !agentId : item === "session" ? !piboSessionId : false}>{labels[item]}</option>)}</select></label>
+		{target ? <ConfigurationEditor key={JSON.stringify(target)} target={target} /> : <p role="status" className="mt-2 text-slate-400">Choose a session using this agent before editing this target.</p>}
 	</section>;
 }
 function ConfigurationEditor({ target }: { target: PluginConfigurationTarget }) {
@@ -40,7 +41,7 @@ function ConfigurationEditor({ target }: { target: PluginConfigurationTarget }) 
 		finally { setSaving(false); }
 	};
 	return <div className="mt-2 space-y-2">
-		<p className="font-mono break-all">Target: {target.scope === "agent" ? target.agentId : target.scope === "session" ? target.piboSessionId : "App · all agents and sessions"}</p>
+		<p className="text-slate-300">Target: {target.scope === "agent" ? "the agent used by this session" : target.scope === "session" ? "this Pibo Session" : "the app and future runtime generations"}</p>
 		<p className="text-slate-400">Saved defaults apply at the next generation boundary. Active generation snapshots are unchanged.</p>
 		<textarea aria-label="Plugin configuration JSON" spellCheck={false} className="w-full min-h-32 bg-[#0e1116] border border-slate-600 p-2 font-mono" value={text} onChange={(event) => setText(event.target.value)} disabled={!snapshot || conflict} />
 		<button type="button" className="border border-slate-600 rounded-sm px-2 py-1 disabled:opacity-50" disabled={!snapshot || saving || conflict} onClick={() => void save()}>{saving ? "Saving…" : `Save ${target.scope} configuration`}</button>

@@ -1,7 +1,7 @@
 import { requestJson } from "./api-http";
 import type { AgentPluginSelection, EffectivePluginPlan } from "../../../plugins/sdk.js";
 import type { AgentPluginCatalog, AgentPluginMigrationReport } from "./api-agent-designer-plugin-types";
-export type { AgentPluginCatalog };
+export type { AgentPluginCatalog, AgentPluginMigrationReport };
 export type DesignerPluginFields = { revision?: number; pluginSelection?: AgentPluginSelection; pluginMigration?: AgentPluginMigrationReport };
 import type { AgentCatalog, AgentRuntimeCapabilities, AgentRuntimeDiagnostic, CustomAgent, CustomAgentFolder, ModelProfile, UserSkill } from "./types";
 
@@ -212,6 +212,12 @@ export async function installUserSkill(url: string): Promise<UserSkill> {
 
 export async function getAgentPluginCatalog(): Promise<{ catalog: AgentPluginCatalog }> {
 	return requestJson("/api/chat/agent-plugin-catalog");
+}
+export async function previewLegacyAgentPluginMigration(agentId: string): Promise<{ schemaVersion: 1; report: AgentPluginMigrationReport }> {
+	return requestJson(`/api/chat/agents/${encodeURIComponent(agentId)}/plugin-migration`);
+}
+export async function applyLegacyAgentPluginMigration(agentId: string, expectedRevision: number, sourceHash: string): Promise<{ schemaVersion: 1; agent: CustomAgent & DesignerPluginFields; report: AgentPluginMigrationReport; idempotent?: boolean }> {
+	return requestJson(`/api/chat/agents/${encodeURIComponent(agentId)}/plugin-migration`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision, sourceHash }) });
 }
 export async function previewAgentPlugins(input: Pick<SaveCustomAgentInput, "schemaVersion" | "expectedRevision" | "runtimeInstanceId" | "pluginSelection" | "skills" | "contextFiles" | "subagents" | "builtinTools" | "builtinToolNames"> & { agentId?: string }): Promise<{ schemaVersion: 1; plan: EffectivePluginPlan }> {
 	return requestJson("/api/chat/agent-plugin-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });

@@ -215,7 +215,10 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 		}
 	}
 	if (m.config !== undefined && (!isPluginRecord(m.config) || !Number.isSafeInteger(m.config.schemaVersion) || Number(m.config.schemaVersion) < 1 || !isPluginRecord(m.config.schema))) fail("invalid-config-schema", "Config requires schemaVersion and schema");
-	if (isPluginRecord(m.config) && isPluginRecord(m.config.schema)) diagnostics.push(...validatePluginConfigSchema(m.config.schema, [root, "config", "schema"]));
+	if (isPluginRecord(m.config)) {
+		if (isPluginRecord(m.config.schema)) diagnostics.push(...validatePluginConfigSchema(m.config.schema, [root, "config", "schema"]));
+		if (m.config.scopes !== undefined && (!strings(m.config.scopes) || (m.config.scopes as string[]).some((scope) => !["app", "agent", "session"].includes(scope)) || new Set(m.config.scopes as string[]).size !== (m.config.scopes as string[]).length)) fail("invalid-config-scope", "Config scopes must be unique app, agent or session values", ["config", "scopes"]);
+	}
 	if (m.dataSchemaVersion !== undefined && (!Number.isSafeInteger(m.dataSchemaVersion) || Number(m.dataSchemaVersion) < 1)) fail("invalid-data-schema", "dataSchemaVersion must be positive");
 	if (!Array.isArray(m.contributions)) { fail("invalid-contributions", "contributions must be an array"); return diagnostics; }
 	const ids = new Set<string>();
@@ -239,11 +242,15 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 		if (c.configSchema !== undefined) diagnostics.push(...validatePluginConfigSchema(c.configSchema, [root, ...at, "configSchema"]));
 		if (c.view !== undefined) {
 			const v = c.view;
-			if (!isPluginRecord(v) || typeof v.title !== "string" || !v.title || typeof v.exportName !== "string" || !v.exportName || !["session", "infrastructure"].includes(String(v.visibility)) || !["singleton", "multiple"].includes(String(v.instance)) || !["unmount", "keep-alive"].includes(String(v.mount)) || !Number.isSafeInteger(v.stateSchemaVersion) || Number(v.stateSchemaVersion) < 1) fail("invalid-view", "Invalid browser view contract", at);
+			const presentationValid = isPluginRecord(v) && ["workspace", "internal"].includes(String(v.presentation));
+			const legacyVisibilityValid = isPluginRecord(v) && ["session", "infrastructure"].includes(String(v.visibility));
+			if (!isPluginRecord(v) || typeof v.title !== "string" || !v.title || typeof v.exportName !== "string" || !v.exportName || (!presentationValid && !legacyVisibilityValid) || !["singleton", "multiple"].includes(String(v.instance)) || !["unmount", "keep-alive"].includes(String(v.mount)) || !Number.isSafeInteger(v.stateSchemaVersion) || Number(v.stateSchemaVersion) < 1) fail("invalid-view", "Invalid browser view contract", at);
 			else {
+				if (v.presentation !== undefined && !presentationValid) fail("invalid-view", "presentation must be workspace or internal", at);
+				if (v.visibility !== undefined && !legacyVisibilityValid) fail("invalid-view", "Legacy visibility must be session or infrastructure", at);
 				if (!isPluginRecord(m.entrypoints) || !m.entrypoints.browser) fail("missing-browser-entrypoint", "Views require a prebuilt browser entrypoint", at);
 				if (v.stateSchema !== undefined) diagnostics.push(...validatePluginConfigSchema(v.stateSchema, [root, ...at, "view", "stateSchema"]));
-				if (v.visibility === "infrastructure" && c.scope !== "app") fail("invalid-view-scope", "Infrastructure views must be app-scoped", at);
+				if ((v.presentation === "internal" || v.presentation === undefined && v.visibility === "infrastructure") && c.scope !== "app") fail("invalid-view-scope", "Internal views must be app-scoped", at);
 				if (v.subviews !== undefined) {
 					const subIds = new Set<string>();
 					if (!Array.isArray(v.subviews)) fail("invalid-subview", "subviews must be an array", at);

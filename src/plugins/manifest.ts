@@ -65,7 +65,10 @@ export type PluginViewDefinition = {
 	icon?: string;
 	/** Export of the prebuilt browser entry, not a backend module path. */
 	exportName: string;
-	visibility: "session" | "infrastructure";
+	/** Workspace modules are user-openable; internal views are host infrastructure only. */
+	presentation?: "workspace" | "internal";
+	/** @deprecated Legacy presentation hint retained for persisted schema-v1 artifacts. */
+	visibility?: "session" | "infrastructure";
 	instance: "singleton" | "multiple";
 	mount: "unmount" | "keep-alive";
 	stateSchemaVersion: number;
@@ -102,7 +105,7 @@ export type PluginManifest = {
 	entrypoints?: { backend?: string; browser?: string };
 	dependencies?: { id: string; version: string; optional?: boolean }[];
 	services?: { provides?: PluginServiceDeclaration[]; requires?: PluginServiceRequirement[] };
-	config?: { schemaVersion: number; schema: PluginJsonSchema };
+	config?: { schemaVersion: number; schema: PluginJsonSchema; scopes?: PluginSettingsScope[] };
 	dataSchemaVersion?: number;
 	contributions: PluginContribution[];
 };
@@ -141,4 +144,21 @@ export type PluginArtifactEnvelope = {
 
 export function qualifyPluginContribution(pluginId: string, contributionId: string): PluginQualifiedId {
 	return `${pluginId}/${contributionId}`;
+}
+
+/** Additive schema-v1 compatibility: old artifacts remain loadable until normal package upgrade. */
+export function pluginViewPresentation(view: PluginViewDefinition): "workspace" | "internal" {
+	if (view.presentation) return view.presentation;
+	if (view.visibility === "session") return "workspace";
+	const subviews = view.subviews ?? [];
+	return subviews.length > 0 && subviews.every((subview) => subview.purpose === "settings" || subview.purpose === "context") ? "internal" : "workspace";
+}
+
+/** Explicit config scopes win; legacy settings subviews retain their declared owner scopes. */
+export function pluginSettingsScopes(manifest: PluginManifest): PluginSettingsScope[] {
+	if (manifest.config?.scopes?.length) return [...manifest.config.scopes];
+	const declared = new Set(manifest.contributions.flatMap((contribution) => contribution.view?.subviews ?? [])
+		.filter((subview) => subview.purpose === "settings").flatMap((subview) => subview.settingsScopes ?? []));
+	const ordered = (["app", "agent", "session"] as PluginSettingsScope[]).filter((scope) => declared.has(scope));
+	return ordered.length > 0 ? ordered : ["app"];
 }

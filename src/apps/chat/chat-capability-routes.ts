@@ -4,17 +4,21 @@ import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js"
 import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import { createAgentInput, createAgentUpdate, type ChatAgentBody } from "./chat-request-normalizers.js";
 import type { CreateCustomAgentInput, UpdateCustomAgentInput } from "./agent-store.js";
-import { LEGACY_AGENT_SELECTION_FIELDS, isUnresolvedAgentPluginMigration, type CustomAgentDefinition, type CustomAgentStore } from "./agent-store.js";
+import { LEGACY_AGENT_SELECTION_FIELDS, inventoryLegacyAgentSelection, isUnresolvedAgentPluginMigration, migrateLegacyAgentPlugins, planLegacyAgentPluginMigration, type CustomAgentDefinition, type CustomAgentStore, type LegacyAgentCatalogInventory } from "./agent-store.js";
 import { createAgentPluginSelection, validateAgentPluginSelection } from "../../plugins/selection.js";
 import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { pluginJson, PluginConflictError } from "../../plugins/store.js";
 import type { AgentPluginSelection, EffectivePluginPlan, IndependentPluginResource, PluginCatalog, PluginConfigurationSnapshot, PluginContribution, PluginResolutionInput, PluginRuntimeTarget } from "../../plugins/sdk.js";
 
 export function buildAgentPluginCatalog(catalog: PluginCatalog): AgentPluginCatalog {
-	return { schemaVersion: 1, revision: catalog.revision, plugins: catalog.installations.map((item) => ({
-		pluginId: item.pluginId, name: item.manifest.name, revision: item.revision, version: item.version, state: item.state, enabled: item.enabled,
-		contributions: structuredClone(item.manifest.contributions), initialSelection: createAgentPluginSelection([item]).plugins[0],
-	})) };
+	return { schemaVersion: 1, revision: catalog.revision, plugins: catalog.installations.flatMap((item) => {
+		const contributions = item.manifest.contributions.filter((contribution) => contribution.scope === "agent");
+		if (!contributions.length) return [];
+		return [{
+			pluginId: item.pluginId, name: item.manifest.name, revision: item.revision, version: item.version, state: item.state, enabled: item.enabled,
+			contributions: structuredClone(contributions), initialSelection: createAgentPluginSelection([item]).plugins[0]!,
+		}];
+	}) };
 }
 
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
@@ -87,18 +91,45 @@ export function validateAgentPluginPlanMutation(options: AgentPluginPreviewOptio
 	}
 	return plan;
 }
-export type AgentPluginRoute = { kind: "catalog" } | { kind: "preview" };
+export type AgentPluginRoute = { kind: "catalog" } | { kind: "preview" } | { kind: "migration"; action: "preview" | "apply"; agentId: string };
 export function agentPluginRoute(pathname: string, method: string): AgentPluginRoute | undefined {
 	if (pathname === `${CHAT_WEB_API_PREFIX}/agent-plugin-catalog` && method === "GET") return { kind: "catalog" };
 	if (pathname === `${CHAT_WEB_API_PREFIX}/agent-plugin-preview` && method === "POST") return { kind: "preview" };
+	const migration = pathname.match(new RegExp(`^${CHAT_WEB_API_PREFIX}/agents/([^/]+)/plugin-migration$`));
+	if (migration && ["GET", "POST"].includes(method)) return { kind: "migration", action: method === "GET" ? "preview" : "apply", agentId: decodeURIComponent(migration[1]!) };
 	return undefined;
 }
 export async function handleAgentPluginRoute(options: {
 	route: AgentPluginRoute; request: Request; agents: CustomAgentStore; catalog: PluginCatalog;
 	resolveRuntime: (instanceId: string) => PluginRuntimeTarget | Promise<PluginRuntimeTarget>;
+	legacyCatalog?: LegacyAgentCatalogInventory; migrationBackupRoot?: string; pluginStore?: import("../../plugins/store.js").PluginStore;
 	configurations?: PluginConfigurationSnapshot[]; services?: Record<string, string>; providers?: PluginResolutionInput["providers"]; serviceProviders?: PluginResolutionInput["serviceProviders"];
 }): Promise<Response> {
 	if (options.route.kind === "catalog") return responseJson({ catalog: buildAgentPluginCatalog(options.catalog) });
+	if (options.route.kind === "migration") {
+		const agent = options.agents.get(options.route.agentId);
+		if (!agent) throw new PiboWebHttpError("Agent not found", 404);
+		if (agent.pluginSelection) {
+			if (options.route.action === "apply") {
+				const body = await readJsonBody<Record<string, unknown>>(options.request);
+				if (typeof body.sourceHash === "string" && body.sourceHash === agent.pluginMigration?.sourceHash) return responseJson({ schemaVersion: 1, agent, report: agent.pluginMigration, idempotent: true });
+			}
+			throw new PiboWebHttpError("Agent already has an explicit plugin selection", 409);
+		}
+		if (!options.legacyCatalog) throw new PiboWebHttpError("Legacy capability inventory is unavailable", 503);
+		const runtime = await options.resolveRuntime(agent.runtimeInstanceId);
+		const source = options.agents.exportLegacyAgent(agent.id);
+		const inventory = inventoryLegacyAgentSelection(agent, { catalog: options.legacyCatalog, pluginCatalog: options.catalog, runtime });
+		const report = planLegacyAgentPluginMigration({ agent, source, catalog: options.catalog, runtime, ...inventory });
+		if (options.route.action === "preview") return responseJson({ schemaVersion: 1, report });
+		const body = await readJsonBody<Record<string, unknown>>(options.request);
+		if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision !== agent.revision) throw new PluginConflictError("Agent revision changed; reload before migrating");
+		if (typeof body.sourceHash !== "string" || body.sourceHash !== report.sourceHash) throw new PluginConflictError("Migration preview is stale; review the current legacy selection");
+		if (report.status !== "ready") throw new PiboWebHttpError("Legacy selection has unresolved contributions; review the migration diagnostics", 409);
+		if (!options.pluginStore || !options.migrationBackupRoot) throw new PiboWebHttpError("Plugin migration service is unavailable", 503);
+		const result = await migrateLegacyAgentPlugins({ agents: options.agents, plugins: options.pluginStore, agentId: agent.id, source, report, backupRoot: options.migrationBackupRoot });
+		return responseJson({ schemaVersion: 1, agent: options.agents.get(agent.id), report, result });
+	}
 	const body = await readJsonBody<Record<string, unknown>>(options.request);
 	const existing = typeof body.agentId === "string" ? options.agents.get(body.agentId) : undefined;
 	if (body.agentId !== undefined && !existing) throw new PiboWebHttpError("Agent not found", 404);

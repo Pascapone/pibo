@@ -10,23 +10,47 @@ globalThis.React = React;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { act, create } = TestRenderer;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const view = { id: "settings", kind: "view", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "UI" }, view: { title: "Feature", exportName: "Feature", visibility: "infrastructure", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, subviews: [{ id: "preferences", title: "Preferences", purpose: "settings", settingsScopes: ["app", "agent", "session"] }] } };
-const tools = ["read", "write"].map((id) => ({ id, name: id, kind: "tool", scope: "agent", required: id === "read", defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Tool" } }));
+const tools = ["read", "write"].map((id) => ({ id, name: id, title: id === "read" ? "Read files" : "Write files", kind: "tool", scope: "agent", required: id === "read", defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Tool" } }));
 const entry = { pluginId: "fixture.feature", revision: "pinned", enabled: true, contributions: { read: true, write: false }, config: {} };
-const plugin = { pluginId: entry.pluginId, name: "Feature", revision: "pinned", version: "1.0.0", state: "active", enabled: true, initialSelection: entry, contributions: [...tools, view] };
+const plugin = { pluginId: entry.pluginId, name: "Feature", revision: "pinned", version: "1.0.0", state: "active", enabled: true, initialSelection: entry, contributions: tools };
 const json = (body) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
-test("rendered plugin toggles preserve mandatory state and exact session/settings scopes; stale preview cannot retarget", async () => {
+test("legacy agents require an explicit review and apply the exact server migration", async () => {
+	const oldFetch = globalThis.fetch; const oldWindow = globalThis.window;
+	globalThis.window = { setTimeout, clearTimeout, confirm: () => true };
+	const legacyDraft = { ...createBlankAgentDraft(), id: "agent_legacy", revision: 7, profileName: "legacy-agent", pluginSelection: undefined };
+	const report = { schemaVersion: 1, status: "ready", sourceHash: "source-hash", selection: { schemaVersion: 1, plugins: [entry] }, before: ["fixture.feature/read"], after: ["fixture.feature/read"], beforeTools: ["read"], afterTools: ["read"], userSkills: ["personal-skill"], userContextFiles: ["personal-context"], inactivePiPackages: [], diagnostics: [] };
+	let applied; let renderer;
+	globalThis.fetch = async (url, init = {}) => {
+		if (url === "/api/chat/agent-plugin-catalog") return json({ catalog: { schemaVersion: 1, revision: 1, plugins: [plugin] } });
+		if (url === "/api/chat/agents/agent_legacy/plugin-migration" && (init.method ?? "GET") === "GET") return json({ schemaVersion: 1, report });
+		if (url === "/api/chat/agents/agent_legacy/plugin-migration" && init.method === "POST") {
+			assert.deepEqual(JSON.parse(init.body), { expectedRevision: 7, sourceHash: "source-hash" });
+			return json({ schemaVersion: 1, report, agent: { ...legacyDraft, revision: 8, pluginSelection: report.selection, pluginMigration: report } });
+		}
+		throw new Error(`unexpected request ${init.method ?? "GET"} ${url}`);
+	};
+	try {
+		await act(async () => { renderer = create(React.createElement(AgentPluginsDesigner, { draft: legacyDraft, setDraft: () => undefined, readOnly: false, onMigrationApplied: (agent) => { applied = agent; } })); await pause(0); });
+		const review = renderer.root.findAllByType("button").find((button) => button.children.join("") === "Review previous selection");
+		await act(async () => { review.props.onClick(); await pause(0); });
+		assert.ok(renderer.root.findAllByType("p").some((paragraph) => paragraph.children.join("").includes("1 previous tools → 1 matched tools")));
+		const migrate = renderer.root.findAllByType("button").find((button) => button.children.join("") === "Migrate this exact selection");
+		await act(async () => { migrate.props.onClick(); await pause(0); });
+		assert.equal(applied.revision, 8);
+		assert.deepEqual(applied.pluginSelection, report.selection);
+	} finally { if (renderer) await act(async () => renderer.unmount()); globalThis.fetch = oldFetch; globalThis.window = oldWindow; }
+});
+
+test("plugin cards start collapsed, categorize only agent contributions, and preserve required/optional state", async () => {
 	const oldFetch = globalThis.fetch; const oldWindow = globalThis.window;
 	globalThis.window = { setTimeout, clearTimeout, confirm: () => true };
 	let resolveFirst;
 	let previewCalls = 0;
-	const opened = [];
 	let draft = { ...createBlankAgentDraft(), id: "agent_edited", revision: 3, profileName: "edited-agent", pluginSelection: { schemaVersion: 1, plugins: [entry] } };
 	let renderer;
-	let session = "ps_A";
-	const render = () => React.createElement(AgentPluginsDesigner, { draft, readOnly: false, piboSessionId: session, sessionProfileName: "different-agent", onOpenPluginSettings: (target) => opened.push(target), setDraft: (change) => { draft = change(draft); renderer.update(render()); } });
-	const plan = (reason) => ({ valid: true, diagnostics: [], nodes: tools.map((tool) => ({ contributionId: `fixture.feature/${tool.id}`, required: tool.required, selected: true, status: "selected", selectionReason: reason })) });
+	const render = () => React.createElement(AgentPluginsDesigner, { draft, readOnly: false, setDraft: (change) => { draft = change(draft); renderer.update(render()); } });
+	const plan = (reason) => ({ valid: true, diagnostics: [], nodes: tools.map((tool) => ({ contributionId: `fixture.feature/${tool.id}`, required: tool.required, selected: tool.id === "read", status: "selected", selectionReason: reason })) });
 	globalThis.fetch = async (url, init) => {
 		if (url === "/api/chat/agent-plugin-catalog") return json({ catalog: { schemaVersion: 1, revision: 1, plugins: [plugin] } });
 		assert.equal(url, "/api/chat/agent-plugin-preview");
@@ -38,30 +62,23 @@ test("rendered plugin toggles preserve mandatory state and exact session/setting
 	try {
 		await act(async () => { renderer = create(render()); });
 		await act(async () => { await pause(180); });
+		const expander = renderer.root.findAllByType("button").find((button) => button.props["aria-expanded"] === false);
+		assert.ok(expander);
+		assert.equal(renderer.root.findAllByType("input").length, 0);
+		assert.equal(JSON.stringify(renderer.toJSON()).includes("Tools"), false);
+		await act(async () => expander.props.onClick());
+		assert.equal(JSON.stringify(renderer.toJSON()).includes("Tools"), true);
 		const inputs = renderer.root.findAllByType("input");
-		assert.equal(inputs.find((item) => item.props["aria-label"] === "Feature: read (required)").props.disabled, true);
-		const optional = inputs.find((item) => item.props["aria-label"] === "Feature: write (optional)");
+		assert.equal(inputs.find((item) => item.props["aria-label"] === "Feature: Read files (required)").props.disabled, true);
+		const optional = inputs.find((item) => item.props["aria-label"] === "Feature: Write files (optional)");
 		assert.equal(optional.props.checked, false);
 		await act(async () => { optional.props.onChange({ target: { checked: true } }); });
 		assert.equal(draft.pluginSelection.plugins[0].contributions.write, true);
 		assert.equal(draft.pluginSelection.plugins[0].revision, "pinned");
 		await act(async () => { await pause(180); });
-		const settingsButtons = renderer.root.findAllByType("button").filter((button) => String(button.props.children).includes("Preferences"));
-		assert.equal(settingsButtons.length, 3);
-		for (const button of settingsButtons) await act(async () => button.props.onClick());
-		assert.deepEqual(opened.map((item) => item.configurationTarget), [
-			{ scope: "app", pluginId: "fixture.feature" },
-			{ scope: "agent", pluginId: "fixture.feature", agentId: "agent_edited" },
-			{ scope: "session", pluginId: "fixture.feature", piboSessionId: "ps_A" },
-		]);
-		assert.equal(opened.every((item) => item.piboSessionId === "ps_A" && item.viewId === "fixture.feature/settings" && item.subviewId === "preferences"), true);
-		const oldSessionClick = settingsButtons[2].props.onClick;
-		session = "ps_B";
-		await act(async () => renderer.update(render()));
 		await act(async () => { resolveFirst(); await pause(0); });
 		assert.equal(JSON.stringify(renderer.toJSON()).includes("STALE-A"), false);
 		assert.equal(JSON.stringify(renderer.toJSON()).includes("CURRENT-B"), true);
-		await act(async () => oldSessionClick());
-		assert.equal(opened.at(-1).piboSessionId, "ps_A");
+		assert.equal(JSON.stringify(renderer.toJSON()).includes("Preferences"), false);
 	} finally { if (renderer) await act(async () => renderer.unmount()); globalThis.fetch = oldFetch; globalThis.window = oldWindow; }
 });

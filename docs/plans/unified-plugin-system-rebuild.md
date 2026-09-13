@@ -7,8 +7,10 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-12T09:59:54Z"
+  at: "2026-09-13T12:30:00Z"
 sources:
+  - id: "optional-modules-owner-feedback"
+    resource: "scope:owner feedback 2026-09-13; optional workspace modules; Settings/Plugins configuration; generic system versus agent contribution contracts; collapsed categorized designer; actionable legacy migration"
   - id: "test-preservation"
     resource: "scope:owner instruction 2026-09-12; preserve existing tests wherever possible and use them to prove behavioral parity after plugin migration; add new tests and justify unavoidable existing-test adjustments"
   - id: "owner-decisions"
@@ -34,7 +36,7 @@ Dieser Plan ist die gemeinsame Ausführungsgrundlage für Coding-Agents. Er besc
 
 **Ziel:** Ein einziges Pibo-Plugin-System besitzt ausführbare Erweiterungen, installierbare Features und deren UI. Auch mitgelieferte Produktfunktionen werden darüber zusammengesetzt. Der Agent-Designer bleibt das zentrale Werkzeug zur Agent-Konfiguration. User-Skills, Kontextdateien und manuelle Subagent-Konfiguration bleiben ohne Plugin nutzbar.
 
-**Fortschreibung zu Context, Settings und Tabs:** Alle Desktop-Tabs gehören fest zu einer Pibo Session und werden als eigenes Tabset dieser Session wiederhergestellt. Plugin-Einstellungen und pluginbezogene Kontextoptionen werden im jeweiligen Plugin-Tab mitgeliefert. Build Context erklärt den gesamten Kontextaufbau aus derselben Auflösung wie die Runtime. Diese Vorgaben ersetzen die zuvor vorgeschlagenen globalen beziehungsweise der Auswahl folgenden Desktop-Tabs; auch Context und Settings sind vom Umbau betroffen.
+**Fortschreibung vom 13. September 2026:** Ein Plugin benötigt keinen Tab. Nur ausdrücklich als fachliches Workspace-Modul deklarierte Views erscheinen in der Modulwahl. Plugin-Konfiguration bleibt unter Settings → Plugins verfügbar, unabhängig von einem eigenen Tab und von der Agent-Auswahl. Systemweite und agentbezogene Beiträge sind getrennte Vertragsdimensionen; die nachfolgende Philosophie ersetzt frühere pauschale Zuordnungen aller Settings zu Plugin-Tabs.
 
 **Technische Arbeitsgrundlage:** Das bestehende Pibo-System wird weiterentwickelt. Cordis dient als Vorbild für Ownership, Dienste, Dependency-Auflösung und Cleanup; Cordis wird nicht als neue Laufzeitabhängigkeit eingeführt. DeepSeek Harness ist ausschließlich ein Implementierungsbeispiel. Die frühere Cordis-Übernahmeempfehlung im [Untersuchungsbericht](/reports/cordis-plugin-architecture-feasibility-2026-09-11.md) ist für diesen Plan nicht maßgeblich.[^planning-direction]
 
@@ -72,10 +74,40 @@ Die folgenden Punkte stammen aus den Produktvorgaben; sie werden von Coding-Agen
 | D13 | Lokale Entwicklung und versionierte Pakete werden unterstützt. Ein späterer Marketplace muss ohne Wechsel von Plugin-Identität und Format ergänzbar sein. |
 | D14 | Produktoberfläche ist die Desktop-first Web-App einschließlich browserbasierter Terminal View. Eigenständige TUI und VS-Code-Erweiterung werden aus dem Produkt entfernt; die Operator-CLI bleibt. |
 | D15 | Jeder Desktop-Tab gehört zur beim Öffnen ausgewählten Pibo Session. Sessionwechsel stellt deren eigenes persistiertes Tabset einschließlich aktivem Tab und View-Zustand wieder her; das gilt auch für Context und Settings. |
-| D16 | Plugin-spezifische Settings sowie MCP-Tools-/Pibo-Native-Kontextoptionen liegen im zugehörigen Plugin-Tab. Context und Settings behalten keine fest verdrahteten Plugin-/Package-Sonderbereiche. Unabhängige User-Ressourcen bleiben zugänglich. |
+| D16 | Plugin-spezifische Settings und Kontextoptionen werden generisch unter Settings → Plugins angeboten. Ein fachlicher Plugin-Tab ist optional; Konfiguration erzeugt keinen eigenen Workspace-Tab. Unabhängige User-Ressourcen bleiben zugänglich. |
 | D17 | Build Context macht die gesamte Kontextzusammensetzung einschließlich aller Plugins und Funktionen nachvollziehbar: Herkunft, Auswahl, Reihenfolge, Transformationen, Lieferung, Ausschlüsse und Grenzen der Einsehbarkeit. |
 | D18 | Ein Plugin kann ausschließlich systemweite, ausschließlich agentbezogene oder beide Arten von Beiträgen enthalten. Systemweite Aktivierung und Agent-Auswahl sind getrennte Zustände desselben Plugins; das Goal-Plugin ist der verbindliche Mischfall. |
 | D19 | Bestehende Tests bleiben möglichst unverändert und bilden den primären Nachweis, dass Pibo nach dem Plugin-Umbau wie zuvor funktioniert. Neue Tests ergänzen diesen Bestand. Unvermeidbare Anpassungen benötigen eine konkrete Begründung und erhalten den Verhaltensnachweis. |
+
+
+## PLG-UX-001: Plugin-Philosophie, optionale Module und getrennte Zuständigkeiten
+
+Diese owner-authorisierte Präzisierung beschreibt Zielverhalten, keine bereits abgenommene Implementierung. Sie hat Vorrang vor älteren Tab-/Settings-Zuordnungen in diesem Plan und dessen Arbeitspaketen.
+
+Ein Plugin ist eine Erweiterungseinheit, kein Synonym für einen Tab. Es kann Dienste, Runtime-Integration, Tools, Skills, Kontext, Settings und fachliche UI in beliebiger unterstützter Kombination beitragen. Kein Plugin MUSS eine View oder ein Workspace-Modul besitzen. Ohne echte Fachoberfläche wird kein leerer oder automatisch erzeugter Settings-Tab angeboten. Loops und Previews sind Beispiele sinnvoller Module; reine File-Editing-Konfiguration ist ein Beispiel für Settings ohne Modul. Diese Beispiele begründen keine Sonderbehandlung einzelner Plugin-IDs.
+
+Der öffentliche Manifest-/SDK-/Resolver-Vertrag MUSS drei voneinander unabhängige Fragen beantworten: Wo gilt ein Beitrag (System/App oder Agent)? Wo wird er präsentiert (Workspace-Modul, Konfiguration oder interne Infrastruktur)? Darf der Agent ihn auswählen (optional, erforderlich oder nicht agentbezogen)? Darstellung, API-Validierung und Lifecycle leiten sich aus denselben Metadaten ab. Namen, Titel, Plugin-ID-Listen oder das bloße Vorhandensein einer View dürfen diese Regeln nicht ersetzen. Ein generischer Beispielanbieter muss dieselben Regeln erfüllen wie mitgelieferte Plugins.
+
+| Oberfläche | Verantwortung |
+|---|---|
+| Modulwahl / Plus-Tab | Ausschließlich deklarierte fachliche Workspace-Module; Desktop und Mobile verwenden dieselbe Verfügbarkeitsregel. Konfigurations- und Infrastruktur-Views erscheinen nicht. |
+| Settings → Plugins | Systeminstallation, Aktivierung und Plugin-Konfiguration mit ausdrücklich sichtbarem App-/Agent-/Session-Ziel. Settings bleiben für installierte Plugins erreichbar, auch ohne Workspace-Modul oder aktivierte Agent-Beiträge; Ausführungs-/Berechtigungsgrenzen gelten weiterhin. |
+| Agent Designer → Plugins | Nur Plugins mit agentbezogenen Beiträgen. Nur optionale agentbezogene Elemente sind umschaltbar; Pflichtbeiträge werden erklärt, aber nicht abwählbar gemacht. Systembeiträge und interne Settings-Views sind keine Agent-Checkboxen. |
+| Agent Designer → Runtime | Auswahl einer systemweit verfügbaren Runtime plus deren Agent-Optionen. Installation/Aktivierung des Runtime-Plugins gehört nicht in die Agent-Pluginliste. |
+
+System-only Plugins erscheinen nicht als aktivierbare Agent-Erweiterung. Bei gemischten Plugins zeigt der Designer ausschließlich die Agent-Seite: z. B. Goal-Tooling auswählbar pro Agent, Goal-Dienst und App-View systemweit verwaltet. Agent-Abwahl darf Systemdienste oder Einstellungen nicht abschalten. System-Abhängigkeiten können eine Agent-Auswahl verhindern; dann wird der Grund mit Verweis auf die zuständige Verwaltung erklärt, ohne das System heimlich einzuschalten. Interne Settings-Verfügbarkeit ist Infrastruktur und nicht selbst ein auswählbares Agent-Feature.
+
+Jede Plugin-Karte im Agent Designer ist standardmäßig eingeklappt. Die Zusammenfassung zeigt Auswahl und relevanten Zustand; ausgeklappt werden Beiträge deterministisch nach Kategorien wie Tools, Skills, Kontext, Views oder Subagents gruppiert, soweit solche Beiträge tatsächlich agentbezogen und exponiert sind. Leere Kategorien fehlen. Runtime-Features und Adapter Profile Options sind separat ausklappbar und standardmäßig geschlossen. Pflicht-/Abhängigkeitsgründe bleiben verständlich und tastaturzugänglich.
+
+## PLG-MIG-002: Bestehende Agent-Auswahl ohne Sackgasse migrieren
+
+Ein vorhandener Agent ohne explizite Plugin-Auswahl MUSS einen ausführbaren, verständlichen Migrationsweg erhalten. Eine reine Warnung wie „Legacy selection needs an explicit migration“ ohne Aktion ist unzulässig. Die Migration leitet ihre Vorschau aus den bisherigen aktivierten Fähigkeiten ab, erhält deaktivierte Optionen, System-/Agent-Grenzen und Pflichtabhängigkeiten und speichert die neue Auswahl revisionsgesichert. Sie aktiviert keine pauschalen Plugin-Defaults und überschreibt keine bereits explizit gespeicherte Auswahl. Konflikte oder fehlende Ressourcen werden konkret erklärt; wiederholtes Laden/Migrieren ist idempotent. Nach erfolgreicher Migration können optionale Agent-Beiträge einzeln geändert und nach Reload wiedergefunden werden. Historische Session-Generationen bleiben unverändert.
+
+## Feedbackrunde: Umsetzung und schlanke Prüfung
+
+Diese Runde priorisiert schnelle Nutzerfeedback-Iteration. Bestehende Tests bleiben wertvoll und werden nur begründet angepasst; keine Fullsuite, Dauertests oder zusätzlichen schweren Gates vor dem nächsten Feedbackcandidate. Gezielte Vertrags-/Migrationschecks und der zum Anzeigen erforderliche Build genügen zusammen mit headful Desktop-/Mobile-Prüfung.
+
+Zu zeigen sind: ein Plugin ohne View, ein Plugin nur mit Settings, ein echtes Workspace-Modul, ein System-only Plugin und ein gemischtes Plugin; alle über öffentliche generische Metadaten. Der bestehende Agent ohne Plugin-Auswahl muss migriert, ein optionales Tool geändert, gespeichert und neu geladen werden können. Settings sind dabei erreichbar und nicht als Capability abwählbar. Runtime- und Plugin-Karten starten geschlossen. Bereits installierte Pakete, bestehende Agenten, Sessionwechsel und alte Browserprofile gehören zur Stichprobe. Der Worker protokolliert verbleibende Lücken und konkrete Screenshots; der Orchestrator kontrolliert Fortschritt und Session-Fehler alle zehn Minuten.
 
 Voll vertrauenswürdiger Code ist keine Garantie gegen Fehlverhalten. Die folgenden Validierungen sichern konsistente normale Ausführung und Kompatibilität; sie behaupten keine Sicherheitsgrenze gegenüber absichtlich eingreifendem Plugin-Code. Bestehende Web-Authentisierung und Session-gebundene Tool-Credentials werden durch diese Vertrauensentscheidung nicht abgeschafft.
 
@@ -227,7 +259,7 @@ Fehlende oder inkompatible Renderer dürfen Historie nicht unlesbar machen. Repl
 
 ## PLG-UI-003: Plugin-eigene Settings und Kontextoptionen
 
-Ein Plugin liefert seine Settings und konfigurierbaren Kontextbeiträge zusammen mit seinem Tab aus, etwa als Unteransichten „Einstellungen“ und „Kontext“. Ein Plugin ohne weitere Fachoberfläche darf einen Settings-/Kontext-Tab bereitstellen. Auswahl und Pflicht-/Optionalregeln bleiben Aufgabe des Agent-Designers; er verlinkt den zuständigen Plugin-Tab derselben Session. Es entstehen keine unabhängig schreibenden Kopien derselben Einstellung in Designer, Context und Settings.
+Ein Plugin liefert seine Settings und konfigurierbaren Kontextbeiträge als generisch deklarierte Konfiguration unter Settings → Plugins. Dafür ist kein Workspace-Tab erforderlich. Fachliche Module können auf denselben Konfigurationseditor verlinken. Der Agent Designer verwaltet nur auswählbare Agent-Beiträge und verlinkt bei Bedarf den zuständigen Editor mit explizitem Ziel. Es entstehen keine unabhängig schreibenden Kopien derselben Einstellung.
 
 Tab-Ownership und Konfigurationsscope sind verschiedene Dinge: Ein sessiongebundener Tab kann globale Plugin-Konfiguration, ein Agent-Profil oder eine ausdrücklich unterstützte Session-Option bearbeiten. Das Ziel und die Auswirkung werden sichtbar ausgewiesen. Defaultänderungen gelten für künftige Auflösungen; Laufzeit-/Kontextänderungen beachten die sichere Generationsgrenze. Plugin-spezifische Sofortänderungen sind nur mit einem expliziten, diagnostizierbaren Vertrag zulässig. Ein Sessionwechsel ändert nie das Ziel eines noch ausstehenden Saves.
 
@@ -235,8 +267,8 @@ Die vorhandenen Flächen werden vollständig zugeordnet:
 
 | Bisherige Fläche | Ziel im Umbau |
 |---|---|
-| Context → MCP Tools; MCP-Beschreibungen und Kontextoptionen | Tab des `pibo.mcp-cli`-Plugins beziehungsweise des zuständigen MCP-Adapters; Serververwaltung, Beschreibungen, Filter und gelieferter Kontext teilen dieselbe Konfiguration. |
-| Pibo Native Tooling sowie Kontextoptionen von Pibo-Toolfamilien | Tab des fachlich zuständigen Plugins aus AP12/AP13; Herkunft, Auswahl und Pflichtstatus jedes Kontextbeitrags werden mitmigriert. |
+| Context → MCP Tools; MCP-Beschreibungen und Kontextoptionen | Konfigurationsbereich unter Settings → Plugins für `pibo.mcp-cli` beziehungsweise den zuständigen MCP-Adapter; Serververwaltung, Beschreibungen, Filter und gelieferter Kontext teilen dieselbe Konfiguration. |
+| Pibo Native Tooling sowie Kontextoptionen von Pibo-Toolfamilien | Konfigurationsbereich des fachlich zuständigen Plugins unter Settings → Plugins; Herkunft, Auswahl und Pflichtstatus jedes Kontextbeitrags werden mitmigriert. |
 | Context → Pibo Tools (`piboTools`, installierte CLI-Tool-Snippets) | Zugehörige Tool-/CLI-Integrationsplugins; kein verbleibender zentraler Spezialkatalog. Diese CLI-Kontexte sind von Harness Built-ins und Pibo Native Tools zu unterscheiden und separat zu inventarisieren. |
 | Settings → Pi Packages und Designer-Pi-Packages | Vollständig entfernen; erhalten bleibt ausschließlich der erklärte Migrationsbefund ohne ausführbare Paketverwaltung. |
 | Settings für Preview, Medien, Provider und weitere extrahierte Funktionen | Mitgelieferte Settings-Views des jeweiligen Feature-Plugins; allgemeine Navigation kann dorthin verlinken, kennt aber keine fest verdrahtete Feature-Union. |
@@ -263,7 +295,7 @@ Pro Knoten werden stabile Beitrags-ID, Plugin-ID/Revision oder unabhängige User
 
 „Gesamter Kontextaufbau“ bedeutet vollständige Erklärung der Pibo-kontrollierten Zusammensetzung einschließlich expliziter Beobachtungsgrenzen. Nicht zugängliche native Harness-Prompts, interne Kompaktion oder fremde Tool-Hooks werden als nicht einsehbar gekennzeichnet, nicht aus Defaults rekonstruiert und als exakter Modellinput ausgegeben. Roh-Secrets werden nicht persistiert/exportiert; Redaktion wird markiert. Tokenwerte unterscheiden Messung und Schätzung. Copy/Export trennt belegten Modellinhalt von Inspector-Metadaten und Diagnose; eine unvollständige Projektion wird nicht als vollständiger Wire-Prompt bezeichnet.
 
-Build Context ist selbst ein mitgelieferter UI-Beitrag mit generischem Knoten-/Provenienzvertrag. Ein späteres Plugin kann Detailrenderer hinzufügen; das Entfernen dieses Renderers lässt Herkunft, Status und textuellen Fallback lesbar. Verweise zu Einstellungen öffnen den Besitzer-Tab für dieselbe Session. Snapshot-Identität und asynchrone Datenwechsel folgen denselben Isolationsregeln wie alle Desktop-Tabs.
+Build Context ist selbst ein mitgelieferter UI-Beitrag mit generischem Knoten-/Provenienzvertrag. Ein späteres Plugin kann Detailrenderer hinzufügen; das Entfernen dieses Renderers lässt Herkunft, Status und textuellen Fallback lesbar. Verweise zu Einstellungen öffnen Settings → Plugins für das betreffende Plugin mit demselben ausdrücklich gebundenen Konfigurationsziel. Snapshot-Identität und asynchrone Datenwechsel folgen denselben Isolationsregeln wie alle Desktop-Tabs.
 
 ## PLG-HOOK-001: Explizite Hook-Semantik
 

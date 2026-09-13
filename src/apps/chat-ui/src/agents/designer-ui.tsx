@@ -272,7 +272,7 @@ export function AgentRuntimeSelector({
 					{selected?.available ? "available" : selected?.enabled === false ? "disabled" : "unavailable"}
 				</span>
 			</div>
-			<div className="grid gap-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)] @max-[720px]:grid-cols-1">
+			<div className="grid gap-2">
 				<div className="grid gap-2 content-start">
 					<label className="text-[11px] uppercase tracking-wider text-slate-500" htmlFor="agent-runtime-instance">Runtime instance</label>
 					<select
@@ -300,8 +300,9 @@ export function AgentRuntimeSelector({
 						</div>
 					) : null}
 				</div>
-				<div className="grid gap-2">
-					<label className="text-[11px] uppercase tracking-wider text-slate-500" htmlFor="agent-runtime-options">Adapter profile options</label>
+				<details className="border border-slate-800 bg-[#151f24] rounded-sm p-2">
+					<summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-slate-400">Adapter Profile Options</summary>
+					<div className="mt-3 grid gap-2">
 					<SchemaRuntimeOptionsFields
 						schema={selected?.capabilities.models.optionsSchema}
 						value={runtimeOptions}
@@ -321,12 +322,13 @@ export function AgentRuntimeSelector({
 					/>
 					{optionsError ? <div className="text-xs text-red-200">{optionsError}</div> : <div className="text-xs text-slate-500">Options are validated by the selected runtime before saving.</div>}
 					{selected?.capabilities.models.optionsSchema ? (
-						<details className="border border-slate-800 bg-[#151f24] rounded-sm px-2 py-1.5">
+						<details className="border border-slate-800 bg-[#101d22] rounded-sm px-2 py-1.5">
 							<summary className="cursor-pointer text-[10px] uppercase tracking-wider text-slate-500">Profile option schema</summary>
 							<pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[10px] text-slate-400">{JSON.stringify(selected.capabilities.models.optionsSchema, null, 2)}</pre>
 						</details>
 					) : null}
-				</div>
+					</div>
+				</details>
 			</div>
 			<div className="grid gap-1">
 				{diagnostics.map((diagnostic, index) => (
@@ -335,7 +337,7 @@ export function AgentRuntimeSelector({
 					</div>
 				))}
 			</div>
-			{selected ? <RuntimeCapabilitySummary runtime={selected} /> : null}
+			{selected ? <details className="border border-slate-800 bg-[#151f24] rounded-sm p-2"><summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-slate-400">Runtime supported features</summary><div className="mt-3"><RuntimeCapabilitySummary runtime={selected} /></div></details> : null}
 		</div>
 	);
 }

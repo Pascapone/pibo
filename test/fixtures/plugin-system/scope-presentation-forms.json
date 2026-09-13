@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "manifests": [
+    {
+      "schemaVersion": 1,
+      "id": "fixture.tabless",
+      "name": "Tabless Tools",
+      "version": "1.0.0",
+      "sdk": "^1.0.0",
+      "contributions": [
+        { "id": "inspect", "kind": "tool", "name": "fixture_inspect", "title": "Inspect fixture", "scope": "agent", "required": false, "defaultEnabled": false, "schemaVersion": 1, "context": { "kind": "none", "reason": "Fixture tool" } }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "fixture.settings-only",
+      "name": "File Preferences",
+      "version": "1.0.0",
+      "sdk": "^1.0.0",
+      "config": { "schemaVersion": 1, "scopes": ["app", "agent", "session"], "schema": { "type": "object", "properties": { "lineEndings": { "type": "string", "enum": ["lf", "crlf"] } }, "additionalProperties": false } },
+      "contributions": []
+    },
+    {
+      "schemaVersion": 1,
+      "id": "fixture.domain-module",
+      "name": "Preview Dashboard",
+      "version": "1.0.0",
+      "sdk": "^1.0.0",
+      "entrypoints": { "browser": "browser.mjs" },
+      "contributions": [
+        { "id": "dashboard", "kind": "view", "title": "Preview Dashboard", "scope": "app", "required": true, "defaultEnabled": true, "schemaVersion": 1, "context": { "kind": "none", "reason": "Product module" }, "view": { "title": "Preview Dashboard", "exportName": "Dashboard", "presentation": "workspace", "instance": "singleton", "mount": "unmount", "stateSchemaVersion": 1 } }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "fixture.system-only",
+      "name": "System Service",
+      "version": "1.0.0",
+      "sdk": "^1.0.0",
+      "services": { "provides": [{ "id": "fixture.system", "version": "1.0.0" }] },
+      "contributions": [
+        { "id": "service", "kind": "web-app", "name": "fixture-system", "title": "Fixture system service", "scope": "app", "required": true, "defaultEnabled": true, "schemaVersion": 1, "context": { "kind": "none", "reason": "System service" } }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "id": "fixture.mixed",
+      "name": "Mixed Goals",
+      "version": "1.0.0",
+      "sdk": "^1.0.0",
+      "entrypoints": { "browser": "browser.mjs" },
+      "services": { "provides": [{ "id": "fixture.mixed.service", "version": "1.0.0" }] },
+      "contributions": [
+        { "id": "workspace", "kind": "view", "title": "Goal Status", "scope": "app", "required": true, "defaultEnabled": true, "schemaVersion": 1, "context": { "kind": "none", "reason": "System workspace" }, "view": { "title": "Goal Status", "exportName": "GoalStatus", "presentation": "workspace", "instance": "singleton", "mount": "keep-alive", "stateSchemaVersion": 1 } },
+        { "id": "control", "kind": "tool", "name": "fixture_goal_control", "title": "Control goals", "scope": "agent", "required": false, "defaultEnabled": false, "schemaVersion": 1, "context": { "kind": "none", "reason": "Optional agent tool" } }
+      ]
+    }
+  ]
+}

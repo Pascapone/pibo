@@ -65,11 +65,11 @@ function settingsView(title: string): PluginContribution {
 		required: true,
 		defaultEnabled: true,
 		schemaVersion: 1,
-		context: { kind: "none", reason: "System settings and delivery explanation; no model context." },
+		context: { kind: "none", reason: "Compatibility view for retained tabs; configuration is owned by Settings > Plugins." },
 		view: {
 			title,
 			exportName: "ToolFamilyView",
-			visibility: "infrastructure",
+			presentation: "internal",
 			instance: "singleton",
 			mount: "unmount",
 			stateSchemaVersion: 1,
@@ -87,7 +87,7 @@ function toolFamilyManifest(input: { id: string; name: string; tools: PluginCont
 		version: DEFAULT_PACKAGE_VERSION,
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
-		config: { schemaVersion: 1, schema: { type: "object", additionalProperties: true } },
+		config: { schemaVersion: 1, scopes: ["app", "agent", "session"], schema: { type: "object", additionalProperties: true } },
 		contributions: [...input.tools, ...(input.extra ?? []), settingsView(`${input.name} settings`)],
 	};
 }
@@ -102,6 +102,7 @@ export function webAnnotationsPackageManifest(): PluginManifest {
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		config: {
 			schemaVersion: 1,
+			scopes: ["app", "agent", "session"],
 			schema: {
 				type: "object",
 				properties: {
@@ -148,7 +149,7 @@ export function webAnnotationsPackageManifest(): PluginManifest {
 					title: "Web Annotations",
 					icon: "message-square-text",
 					exportName: "WebAnnotationsView",
-					visibility: "session",
+					presentation: "workspace",
 					instance: "singleton",
 					mount: "keep-alive",
 					stateSchemaVersion: 1,
@@ -169,7 +170,7 @@ export function webAnnotationsPackageManifest(): PluginManifest {
 				defaultEnabled: true,
 				schemaVersion: 1,
 				context: { kind: "none", reason: "Read-only explanation of the immutable generation plan." },
-				view: { title: "Build Context", icon: "blocks", exportName: "BuildContextView", visibility: "session", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, stateSchema: { type: "object", additionalProperties: true } },
+				view: { title: "Build Context", icon: "blocks", exportName: "BuildContextView", presentation: "workspace", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, stateSchema: { type: "object", additionalProperties: true } },
 			},
 			{
 				id: "terminal",
@@ -252,7 +253,7 @@ function productView(id: string, title: string, exportName: string, subviews?: N
 		defaultEnabled: true,
 		schemaVersion: 1,
 		context: { kind: "none", reason: "Product view; no model context." },
-		view: { title, exportName, visibility: "infrastructure", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, stateSchema: { type: "object", additionalProperties: true }, ...(subviews ? { subviews } : {}) },
+		view: { title, exportName, presentation: "workspace", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, stateSchema: { type: "object", additionalProperties: true }, ...(subviews ? { subviews } : {}) },
 	};
 }
 
@@ -302,7 +303,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 		version: DEFAULT_PACKAGE_VERSION,
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
-		config: { schemaVersion: 1, schema: { type: "object", properties: { toolFilter: { type: "array", items: { type: "string" } }, descriptionMode: { type: "string" } }, additionalProperties: true } },
+		config: { schemaVersion: 1, scopes: ["app", "agent", "session"], schema: { type: "object", properties: { toolFilter: { type: "array", items: { type: "string" } }, descriptionMode: { type: "string" } }, additionalProperties: true } },
 		contributions: [
 			{ id: "adapter", kind: "mcp-adapter", name: "mcp-cli", title: "MCP CLI", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "mcp", description: "Selected external MCP server inventory, descriptions and tool delivery.", loading: "runtime" } },
 			settingsView("MCP CLI settings"),

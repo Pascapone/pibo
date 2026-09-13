@@ -1330,7 +1330,11 @@ export function planLegacyAgentPluginMigration(options: {
 		if (legacy.config) (entry.contributionConfig ??= {})[matches[0].id] = structuredClone(legacy.config);
 		expected.add(`${legacy.pluginId}/${matches[0].id}`);
 	}
-	const plan = resolvePluginContributions({ catalog, runtime, selection, selectionRevision: agent.revision, kind: "preview" });
+	const resources = [
+		...options.userSkills.map((name, order): import("../../plugins/sdk.js").IndependentPluginResource => ({ id: `legacy-user-skill:${name}`, kind: "skill", name, origin: "user", reference: name, order, context: { kind: "context", stage: "skills", description: "Independent user skill preserved from the legacy agent", loading: "progressive" } })),
+		...options.userContextFiles.map((name, order): import("../../plugins/sdk.js").IndependentPluginResource => ({ id: `legacy-user-context:${name}`, kind: "context-file", name, origin: "user", reference: name, order, context: { kind: "context", stage: "context", description: "Independent user context preserved from the legacy agent", loading: "eager" } })),
+	];
+	const plan = resolvePluginContributions({ catalog, runtime, selection, selectionRevision: agent.revision, kind: "preview", resources });
 	diagnostics.push(...plan.diagnostics);
 	const before = [...expected].sort();
 	const after = plan.contributions.filter((item) => item.contribution.scope === "agent").map((item) => item.id).sort();
@@ -1369,16 +1373,27 @@ export type LegacyAgentCatalogInventory = {
 /** Read-only baseline projection, used only by the migration. No factories or plugin setup run. */
 export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, options: {
 	catalog: LegacyAgentCatalogInventory; runtime: PluginRuntimeTarget;
-	/** Authoritative AP00/AP12 owner map. Required for core families; no inferred replacement owner. */
-	owners: Record<string, string>;
+	/** Current installed manifests are the authoritative owner map for product migrations. */
+	pluginCatalog?: PluginCatalog;
+	/** Fixture-only compatibility for preserved historical migration tests. */
+	owners?: Record<string, string>;
 }) {
 	const contributions: LegacyAgentContribution[] = [];
 	const diagnostics: PluginDiagnostic[] = [];
 	const userSkills: string[] = [];
 	const userContextFiles: string[] = [];
+	const candidatesFor = (kind: string, name: string) => [...new Set((options.pluginCatalog?.installations ?? []).flatMap((installation) => installation.manifest.contributions
+		.filter((contribution) => contribution.scope === "agent" && contribution.kind === kind && contribution.name === name)
+		.map(() => installation.pluginId)))];
+	const preserveIndependent = (kind: "skill" | "context-file", name: string, target: string[]) => {
+		target.push(name);
+		const candidates = candidatesFor(kind, name);
+		if (candidates.length > 0) diagnostics.push({ code: "resource-name-conflict", severity: "error", path: [agent.id, kind, name, ...candidates], message: `Independent user ${kind} ${name} conflicts with installed plugin ownership (${candidates.join(", ")}); origin is preserved and migration is blocked` });
+	};
 	const add = (kind: string, name: string, previousOwner?: string) => {
-		const pluginId = options.owners[`${kind}:${name}`] ?? (previousOwner !== "pibo.core" ? previousOwner : undefined);
-		if (!pluginId) diagnostics.push({ code: "legacy-owner-unknown", severity: "error", path: [agent.id, kind, name], message: `Legacy ${kind} ${name} has no verified plugin owner` });
+		const candidates = candidatesFor(kind, name);
+		const pluginId = candidates.length === 1 ? candidates[0] : options.owners?.[`${kind}:${name}`] ?? (candidates.length === 0 && previousOwner !== "pibo.core" ? previousOwner : undefined);
+		if (!pluginId || candidates.length > 1) diagnostics.push({ code: candidates.length > 1 ? "legacy-owner-ambiguous" : "legacy-owner-unknown", severity: "error", path: [agent.id, kind, name], message: candidates.length > 1 ? `Legacy ${kind} ${name} has multiple installed plugin owners` : `Legacy ${kind} ${name} has no verified plugin owner` });
 		else if (!contributions.some((item) => item.kind === kind && item.name === name && item.pluginId === pluginId)) contributions.push({ kind, name, pluginId });
 	};
 	const selectedTools = agent.nativeTools.map((name) => options.catalog.nativeTools.find((tool) => tool.name === name));
@@ -1389,19 +1404,19 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 	}
 	for (const name of agent.skills) {
 		const skill = options.catalog.skills.find((item) => item.name === name);
-		if (skill?.kind === "user") userSkills.push(name);
+		if (skill?.kind === "user") preserveIndependent("skill", name, userSkills);
 		else add("skill", name, skill?.pluginId);
 	}
 	for (const name of agent.contextFiles) {
 		const context = options.catalog.contextFiles.find((item) => item.key === name);
-		if (context && !context.pluginId) userContextFiles.push(name);
+		if (context && !context.pluginId) preserveIndependent("context-file", name, userContextFiles);
 		else add("context-file", name, context?.pluginId);
 	}
-	if (agent.mcpServers.length > 0) add("mcp-adapter", "mcp-cli", "pibo.mcp-cli");
-	if (agent.goalControl !== false) for (const name of PIBO_GOAL_TOOL_NAMES) add("tool", name, "pibo.goal-control");
+	if (agent.mcpServers.length > 0) add("mcp-adapter", "mcp-cli");
+	if (agent.goalControl !== false) for (const name of PIBO_GOAL_TOOL_NAMES) add("tool", name);
 	// send_message is yielded-only; the other three tools remain direct. Do not enable general Run targets.
 	const manualSubagents = agent.subagents.length > 0;
-	if (manualSubagents) for (const name of PIBO_AGENT_TOOL_NAMES) add("tool", name, "pibo.agent-delegation");
+	if (manualSubagents) for (const name of PIBO_AGENT_TOOL_NAMES) add("tool", name);
 	// Baseline Pi wraps only bash (not read/edit/write) when full Run Control is enabled.
 	const piNativeYielding = options.runtime.adapterId === "pi" && agent.runControl;
 	if (piNativeYielding && (agent.builtinTools === "disabled" || !agent.builtinToolNames.includes("bash"))) diagnostics.push({
@@ -1409,12 +1424,12 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		message: "Legacy Run Control implicitly exposed bash despite disabled Pi built-ins; explicit harness selection reconciliation is required",
 	});
 	const hasYieldable = piNativeYielding || selectedTools.some((tool) => tool && tool.yieldable !== false);
-	if (manualSubagents || (agent.runControl && hasYieldable)) for (const name of PIBO_RUN_TOOL_NAMES) add("tool", name, "pibo.run-control");
+	if (manualSubagents || (agent.runControl && hasYieldable)) for (const name of PIBO_RUN_TOOL_NAMES) add("tool", name);
 	const runTargetNames = manualSubagents && !agent.runControl ? ["pibo_agents_send_message"] : agent.runControl ? [
 		...selectedTools.filter((tool) => tool && tool.yieldable !== false).map((tool) => tool!.name),
 		...(manualSubagents ? [...PIBO_AGENT_TOOL_NAMES] : []), ...(piNativeYielding ? ["bash"] : []),
 	] : [];
-	const start = contributions.find((item) => item.pluginId === "pibo.run-control" && item.name === "pibo_run_start");
+	const start = contributions.find((item) => item.kind === "tool" && item.name === "pibo_run_start");
 	if (start) start.config = { allowedToolNames: runTargetNames };
 	return { contributions, userSkills, userContextFiles, inventoryDiagnostics: diagnostics,
 		harnessTools: options.runtime.adapterId === "pi" && agent.builtinTools !== "disabled" ? [...agent.builtinToolNames] : [],

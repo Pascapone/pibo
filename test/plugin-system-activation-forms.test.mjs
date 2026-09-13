@@ -56,7 +56,7 @@ test('A38 ordinary system-only package survives restart and has no agent selecti
   const installation = await install(f, { id: 'test.system-only', name: 'System only', services: { provides: [{ id: 'test.system.service', version: '1.0.0' }] }, contributions: [view('dashboard')] }, `context.services.provide('test.system.service', { instance: 'system' }); context.register('dashboard', {});`);
   const service = f.host.services.get('test.system.service');
   const catalog = buildAgentPluginCatalog({ schemaVersion: 1, revision: 1, installations: [installation] });
-  assert.equal(catalog.plugins[0].initialSelection, undefined);
+  assert.deepEqual(catalog.plugins, []);
   assert.equal(profileFromPluginPlan(profile('empty', []), f.product.runtime.preview(profile('empty', []), runtime, 'ps_a'), f.host).tools.length, 0);
   assert.equal(f.host.services.get('test.system.service'), service);
   await f.product.dispose();

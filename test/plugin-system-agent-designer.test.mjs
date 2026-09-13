@@ -225,3 +225,44 @@ test("unresolved inactive migration is a blocked preview, not a valid empty acti
 		assert.equal(validateAgentPluginPlanMutation({ existing: agent, agent: { ...agent, description: "retained" }, catalog: state.catalog, runtime: runtime() }).valid, false);
 	} finally { agents.close(); }
 });
+
+test("product migration route previews and journal-migrates the exact legacy selection without owner ID lists", async () => {
+	const agents = new CustomAgentStore(":memory:"); const { db, store: plugins } = pluginStore(); const root = mkdtempSync(join(tmpdir(), "designer-route-migration-"));
+	try {
+		const agent = agents.create({ displayName: "legacy-route", nativeTools: ["legacy_search"], skills: ["personal-skill"], contextFiles: ["personal-context"], goalControl: false, runControl: false });
+		const installed = installation("fixture.search", [contribution("search", { name: "legacy_search", title: "Search" })]);
+		const catalog = { schemaVersion: 1, revision: 1, installations: [installed] };
+		const common = { agents, catalog, pluginStore: plugins, migrationBackupRoot: root, resolveRuntime: () => runtime(), legacyCatalog: {
+			nativeTools: [{ name: "legacy_search", yieldable: false }], skills: [{ name: "personal-skill", kind: "user" }], contextFiles: [{ key: "personal-context" }],
+		} };
+		const previewResponse = await handleAgentPluginRoute({ ...common, route: { kind: "migration", action: "preview", agentId: agent.id }, request: new Request("http://fixture/api/chat/agents/x/plugin-migration") });
+		const preview = await previewResponse.json();
+		assert.equal(preview.report.status, "ready");
+		assert.deepEqual(preview.report.beforeTools, ["legacy_search"]);
+		assert.deepEqual(preview.report.userSkills, ["personal-skill"]);
+		assert.deepEqual(preview.report.userContextFiles, ["personal-context"]);
+		const applyResponse = await handleAgentPluginRoute({ ...common, route: { kind: "migration", action: "apply", agentId: agent.id }, request: new Request("http://fixture/api/chat/agents/x/plugin-migration", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: agent.revision, sourceHash: preview.report.sourceHash }) }) });
+		const applied = await applyResponse.json();
+		assert.equal(applied.agent.revision, 2);
+		assert.deepEqual(applied.agent.pluginSelection.plugins[0].contributions, { search: true });
+		assert.deepEqual(applied.agent.skills, ["personal-skill"]);
+		assert.deepEqual(applied.agent.contextFiles, ["personal-context"]);
+		const repeated = await handleAgentPluginRoute({ ...common, route: { kind: "migration", action: "apply", agentId: agent.id }, request: new Request("http://fixture/api/chat/agents/x/plugin-migration", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: agent.revision, sourceHash: preview.report.sourceHash }) }) });
+		assert.equal((await repeated.json()).idempotent, true);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("legacy independent resource collisions are explained and block migration without changing the agent", () => {
+	const agents = new CustomAgentStore(":memory:");
+	try {
+		const agent = agents.create({ displayName: "legacy-collision", skills: ["shared"], goalControl: false });
+		const installed = installation("fixture.skill", [{ ...contribution("shared", { kind: "skill", name: "shared" }) }]);
+		const catalog = { schemaVersion: 1, revision: 1, installations: [installed] };
+		const source = agents.exportLegacyAgent(agent.id);
+		const inventory = inventoryLegacyAgentSelection(agent, { catalog: { nativeTools: [], skills: [{ name: "shared", kind: "user" }], contextFiles: [] }, pluginCatalog: catalog, runtime: runtime() });
+		const report = planLegacyAgentPluginMigration({ agent, source, catalog, runtime: runtime(), ...inventory });
+		assert.equal(report.status, "conflict");
+		assert.ok(report.diagnostics.some((item) => item.code === "resource-name-conflict"));
+		assert.equal(agents.get(agent.id).pluginSelection, undefined);
+	} finally { agents.close(); }
+});

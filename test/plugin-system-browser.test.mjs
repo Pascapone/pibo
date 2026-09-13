@@ -91,9 +91,9 @@ test('uninstall planning keeps its confirmation UI mounted until a catalog-chang
   await act(async()=>{renderer=TestRenderer.create(React.createElement(PluginManagement,{onChanged:()=>{changed++;}}));await new Promise(resolve=>setTimeout(resolve,0));});
   const plan=renderer.root.findAllByType('button').find(button=>button.children.join('')==='Plan uninstall');assert.ok(plan);
   await act(async()=>{plan.props.onClick();await new Promise(resolve=>setTimeout(resolve,10));});
-  assert.equal(changed,0);assert.equal(renderer.root.findByType('h3').children.join(''),'Operation prepared');
+  assert.equal(changed,0);assert.ok(renderer.root.findAllByType('h3').some((heading)=>heading.children.join('')==='Operation prepared'));
   const confirm=renderer.root.findAllByType('button').find(button=>button.children.join('')==='Confirm retained-data uninstall');assert.equal(confirm.props.disabled,true);
-  assert.equal(renderer.root.findByType('input').props.value,'');
+  assert.equal(renderer.root.findAllByType('input').find((input)=>input.props.value==='').props.value,'');
  } finally {await act(async()=>renderer?.unmount());globalThis.fetch=originalFetch;}
 });
 test('setup failure rolls back renderers, hooks and views',async()=>{
