@@ -21,7 +21,7 @@ export type NavigationOptions = {
 type SessionViewSearch = { view: ChatSessionViewId; toolCall?: string };
 type ContextSearch = { piboSessionId?: string };
 
-type SettingsNavigationTo = "/settings/debug" | "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/skills" | "/settings/providers" | "/settings";
+type SettingsNavigationTo = "/settings/plugins" | "/settings/debug" | "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/skills" | "/settings/providers" | "/settings";
 
 type ChatRouteNavigationRequest =
 	| { to: "/workflows/drafts/$draftId"; params: { draftId: string }; replace: boolean }
@@ -31,6 +31,7 @@ type ChatRouteNavigationRequest =
 	| { to: "/cron"; replace: boolean }
 	| { to: "/loops"; replace: boolean }
 	| { to: "/context"; search: ContextSearch; replace: boolean }
+	| { to: "/settings/plugins"; replace: boolean }
 	| { to: "/settings/debug"; replace: boolean }
 	| { to: "/settings/concurrency"; replace: boolean }
 	| { to: "/settings/previews"; replace: boolean }
@@ -166,6 +167,7 @@ export function navigateToChatRoute(
 }
 
 function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
+	if (part === "plugins") return "plugins";
 	if (part === "debug") return "debug";
 	if (part === "concurrency") return "concurrency";
 	if (part === "previews") return "previews";
@@ -179,6 +181,7 @@ function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
 }
 
 function settingsPathForPanel(panel: SettingsPanel | undefined): SettingsNavigationTo {
+	if (panel === "plugins") return "/settings/plugins";
 	if (panel === "debug") return "/settings/debug";
 	if (panel === "concurrency") return "/settings/concurrency";
 	if (panel === "previews") return "/settings/previews";

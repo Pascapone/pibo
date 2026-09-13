@@ -32,6 +32,7 @@ import {
 } from "react";
 import type { ChatAppRoute } from "./app-routes";
 import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH, DESKTOP_TERMINAL_MIN_WIDTH } from "./desktop-session-sidebar-model";
+import { usePluginWorkspaceCatalogViews } from "./plugins/plugin-workspace";
 import {
 	activateDesktopTab,
 	activeDesktopTab,
@@ -150,7 +151,28 @@ export function DesktopTabSidebar({
 	const [dragInsertion, setDragInsertion] = useState<DesktopTabDragInsertion | null>(null);
 	const focusAfterCloseRef = useRef(false);
 	const activeTab = activeDesktopTab(state);
-	const entries = useMemo(() => desktopTabCatalog(), []);
+	const pluginViews = usePluginWorkspaceCatalogViews();
+	const entries = useMemo(() => {
+		const representedViews = new Set([
+			"pibo.product-ui/user-resources",
+			"pibo.product-ui/agent-designer",
+			"pibo.product-ui/settings",
+			"pibo.product-ui/workflows",
+			"pibo.product-ui/cron",
+			"pibo.product-ui/loops",
+			"pibo.web-annotations/annotations",
+		]);
+		return [
+			...desktopTabCatalog(),
+			...pluginViews.filter((view) => !representedViews.has(view.id)).map((view) => ({
+				id: `plugin:${view.id}`,
+				label: view.title,
+				description: `Plugin module · ${view.pluginId}`,
+				icon: Layers3,
+				target: { kind: "plugin-view" as const, piboSessionId: view.piboSessionId, viewId: view.id, title: view.title },
+			})),
+		];
+	}, [pluginViews]);
 
 	useLayoutEffect(() => {
 		if (activeTab?.target.kind === "new-tab") catalogRef.current?.querySelector<HTMLButtonElement>("button[data-catalog-entry]")?.focus();

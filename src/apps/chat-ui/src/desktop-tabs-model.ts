@@ -1,3 +1,4 @@
+import type { PluginQualifiedId } from "../../../plugins/sdk";
 import type { ChatAppRoute } from "./app-routes";
 
 export const DESKTOP_TABS_STORAGE_KEY = "pibo.chat.desktopTabs.v1";
@@ -11,6 +12,7 @@ export type DesktopSessionTool = "preview" | "raw-events" | "web-annotations" | 
 
 export type DesktopTabTarget =
 	| { kind: "route"; route: Exclude<ChatAppRoute, { area: "sessions" }> }
+	| { kind: "plugin-view"; piboSessionId: string; viewId: PluginQualifiedId; title: string }
 	| { kind: "session-tool"; tool: DesktopSessionTool }
 	| { kind: "new-tab"; instanceId: string };
 
@@ -44,6 +46,7 @@ export function emptyDesktopTabState(): DesktopTabState {
 
 export function desktopTabTargetKey(target: DesktopTabTarget): string {
 	if (target.kind === "new-tab") return `new-tab:${target.instanceId}`;
+	if (target.kind === "plugin-view") return `plugin:${target.piboSessionId}:${target.viewId}`;
 	if (target.kind === "session-tool") return `tool:${target.tool}`;
 	const route = target.route;
 	if (route.area === "workflows") {
@@ -56,6 +59,7 @@ export function desktopTabTargetKey(target: DesktopTabTarget): string {
 
 export function desktopTabTitle(target: DesktopTabTarget): string {
 	if (target.kind === "new-tab") return "New Tab";
+	if (target.kind === "plugin-view") return target.title;
 	if (target.kind === "session-tool") {
 		if (target.tool === "preview") return "Preview";
 		if (target.tool === "raw-events") return "Raw Events";
@@ -339,6 +343,7 @@ function parseDesktopTab(value: unknown): DesktopTab | null {
 function isDesktopTabTarget(value: unknown): value is DesktopTabTarget {
 	if (!isRecord(value)) return false;
 	if (value.kind === "new-tab") return typeof value.instanceId === "string" && Boolean(value.instanceId);
+	if (value.kind === "plugin-view") return typeof value.piboSessionId === "string" && value.piboSessionId.startsWith("ps_") && typeof value.viewId === "string" && /^[^/]+\/[^/]+$/.test(value.viewId) && typeof value.title === "string" && Boolean(value.title);
 	if (value.kind === "session-tool") return isDesktopSessionTool(value.tool);
 	return value.kind === "route" && isRecord(value.route) && isDesktopRoute(value.route);
 }

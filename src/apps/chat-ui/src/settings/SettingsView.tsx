@@ -13,6 +13,7 @@ import {
 	Layers,
 	Mic,
 	MonitorPlay,
+	PackageOpen,
 	Plus,
 	Power,
 	PowerOff,
@@ -40,6 +41,7 @@ import type { DebugFeatureSettings } from "../../../../shared/debug-features.js"
 import type { ToolMetricThresholds } from "../tool-metric-settings";
 import { DebugSettingsView } from "./DebugSettingsView";
 import { ProviderSettingsView } from "./ProviderSettingsView";
+import { PluginManagement } from "../plugins/plugin-management";
 import type { SettingsPanel } from "./types";
 
 export function SettingsView({
@@ -91,6 +93,18 @@ export function SettingsView({
 					Skills
 				</h1>
 				<UserSkillsSettings skills={userSkills} onSkillChanged={onUserSkillChanged} onSkillRemoved={onUserSkillRemoved} />
+			</div>
+		);
+	}
+
+	if (activePanel === "plugins") {
+		return (
+			<div className="overflow-auto p-6 max-[640px]:p-3">
+				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
+					<PackageOpen size={16} />
+					Plugins
+				</h1>
+				<PluginManagement onChanged={() => undefined} />
 			</div>
 		);
 	}

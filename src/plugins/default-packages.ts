@@ -273,7 +273,7 @@ export function productUiPackageManifest(): PluginManifest {
 			]),
 			productView("agent-designer", "Agent Designer", "AgentDesignerView"),
 			productView("settings", "Settings", "GlobalSettingsView", [
-				...(["general", "debug", "concurrency", "previews", "transcription", "speech", "shortcuts", "maintenance", "skills", "providers"] as const).map((id) => ({ id, title: id[0]!.toUpperCase() + id.slice(1), purpose: "content" as const })),
+				...(["general", "plugins", "debug", "concurrency", "previews", "transcription", "speech", "shortcuts", "maintenance", "skills", "providers"] as const).map((id) => ({ id, title: id[0]!.toUpperCase() + id.slice(1), purpose: "content" as const })),
 			]),
 			productView("workflows", "Workflows", "WorkflowsView"),
 			productView("cron", "Cron", "CronView"),

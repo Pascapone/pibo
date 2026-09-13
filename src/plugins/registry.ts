@@ -883,7 +883,7 @@ export class PiboPluginRegistry {
 				}
 		);
 		const withPluginContext = (contextFile: ContextFileProfile): ContextFileProfile => (
-			contextFile.source === "managed" ? contextFile : { ...contextFile, pluginId }
+			contextFile.source === "managed" ? contextFile : { ...contextFile, source: contextFile.source ?? "plugin", pluginId }
 		);
 		const withPluginTranscriptionProviderContext = (provider: PiboTranscriptionProvider): PiboTranscriptionProvider => ({
 			...provider,

@@ -81,6 +81,10 @@ const settingsRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings",
 });
+const settingsPluginsRoute = createRoute({
+	getParentRoute: () => rootRoute,
+	path: "settings/plugins",
+});
 const settingsConcurrencyRoute = createRoute({
 	getParentRoute: () => rootRoute,
 	path: "settings/concurrency",
@@ -114,7 +118,7 @@ const settingsProvidersRoute = createRoute({
 	path: "settings/providers",
 });
 const router = createRouter({
-	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsConcurrencyRoute, settingsPreviewsRoute, settingsTranscriptionRoute, settingsSpeechRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsSkillsRoute, settingsProvidersRoute]),
+	routeTree: rootRoute.addChildren([indexRoute, sessionRoute, roomRoute, roomSessionRoute, workflowsRoute, workflowDraftRoute, workflowViewRoute, agentsRoute, cronRoute, loopsRoute, legacyRalphRoute, contextRoute, settingsRoute, settingsPluginsRoute, settingsConcurrencyRoute, settingsPreviewsRoute, settingsTranscriptionRoute, settingsSpeechRoute, settingsShortcutsRoute, settingsMaintenanceRoute, settingsSkillsRoute, settingsProvidersRoute]),
 	basepath: "/apps/chat",
 	stringifySearch: stringifyChatSearch,
 });

@@ -7,7 +7,8 @@ import { SettingsView, UserSkillsSettings } from "../settings/SettingsView";
 import { SettingsSidebar } from "../settings/SettingsSidebar";
 import type { SettingsPanel } from "../settings/types";
 import { AgentsView } from "../agents/AgentsView";
-import { WorkflowsArea } from "../WorkflowsArea";
+import { MinimalWorkflowsArea } from "../MinimalWorkflowsArea";
+import { WorkflowVersionPanel } from "../desktop-workflow-version-panel";
 import { CronArea } from "../CronArea";
 import { LoopArea } from "../LoopArea";
 import { getBootstrap, postSession } from "../api-chat-sessions";
@@ -67,7 +68,7 @@ export function UserResourcesView(props: PluginViewProps) {
 	if (subview === "compaction-prompt") return <CompactionPromptView />;
 	return <ContextFilesView agentProfiles={profiles} selectedFileKey={typeof props.state.selectedFileKey === "string" ? props.state.selectedFileKey : undefined} />;
 }
-const SETTINGS_PANELS = new Set<SettingsPanel>(["general", "debug", "concurrency", "previews", "transcription", "speech", "shortcuts", "maintenance", "skills", "providers"]);
+const SETTINGS_PANELS = new Set<SettingsPanel>(["general", "plugins", "debug", "concurrency", "previews", "transcription", "speech", "shortcuts", "maintenance", "skills", "providers"]);
 export function GlobalSettingsView(props: PluginViewProps) {
 	const { bootstrap, setBootstrap, refresh, error } = useBoundBootstrap(props);
 	const [showThinking, setShowThinking] = useState(readStoredShowThinking);
@@ -98,7 +99,15 @@ export function AgentDesignerView(props: PluginViewProps) {
 }
 export function WorkflowsView(props: PluginViewProps) {
 	const { bootstrap, error } = useBoundBootstrap(props);
-	return bootstrap ? <WorkflowsArea room={bootstrap.room} draftId={typeof props.state.draftId === "string" ? props.state.draftId : undefined} viewWorkflowId={typeof props.state.viewWorkflowId === "string" ? props.state.viewWorkflowId : undefined} viewWorkflowVersion={typeof props.state.viewWorkflowVersion === "string" ? props.state.viewWorkflowVersion : undefined} /> : <p role={error ? "alert" : "status"}>{error ?? "Loading workflows…"}</p>;
+	const viewWorkflowId = typeof props.state.viewWorkflowId === "string" ? props.state.viewWorkflowId : undefined;
+	const viewWorkflowVersion = typeof props.state.viewWorkflowVersion === "string" ? props.state.viewWorkflowVersion : undefined;
+	if (!bootstrap) return <p role={error ? "alert" : "status"}>{error ?? "Loading workflows…"}</p>;
+	if (viewWorkflowId && viewWorkflowVersion) return <WorkflowVersionPanel workflowId={viewWorkflowId} workflowVersion={viewWorkflowVersion} />;
+	return <MinimalWorkflowsArea
+		room={bootstrap.room}
+		draftId={typeof props.state.draftId === "string" ? props.state.draftId : undefined}
+		onNavigateDraft={(draftId) => props.updateState({ ...props.state, draftId })}
+	/>;
 }
 export function CronView(props: PluginViewProps) {
 	const { bootstrap, error } = useBoundBootstrap(props);

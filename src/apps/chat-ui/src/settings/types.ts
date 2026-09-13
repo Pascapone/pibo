@@ -1,1 +1,1 @@
-export type SettingsPanel = "general" | "debug" | "concurrency" | "previews" | "transcription" | "speech" | "shortcuts" | "maintenance" | "skills" | "providers";
+export type SettingsPanel = "general" | "plugins" | "debug" | "concurrency" | "previews" | "transcription" | "speech" | "shortcuts" | "maintenance" | "skills" | "providers";

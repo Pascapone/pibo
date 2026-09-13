@@ -40,14 +40,14 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 	assert.match(styles, /prefers-reduced-motion: reduce[\s\S]*desktop-tab-drop-gap/);
 });
 
-test("App keeps the three-region plugin workspace and exposes narrow-screen navigation", async () => {
+test("App keeps the three-region desktop workspace and exposes narrow-screen header navigation", async () => {
 	const [app, chrome, pane, desktopSidebar] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/app-chrome.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8"),
 	]);
-	assert.match(app, /const desktopTabsEnabled = true/);
+	assert.match(app, /const desktopTabsEnabled = !isMobileSidebarViewport/);
 	assert.match(app, /<PluginWorkspaceProvider piboSessionId=\{selectedPiboSessionId\}>/);
 	assert.match(app, /<DesktopSessionSidebar/);
 	assert.match(desktopSidebar, /data-pibo-debug="desktop-session-sidebar"/);
@@ -58,10 +58,13 @@ test("App keeps the three-region plugin workspace and exposes narrow-screen navi
 	assert.match(app, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
 	assert.match(app, /sessionViewId=\{sessionViewId\}[\s\S]*currentSessionView=\{currentSessionView\}[\s\S]*containerResponsive/);
 	assert.match(app, /data-pibo-debug="desktop-route-shell"/);
-	assert.match(app, /aria-label="Workspace navigation"/);
-	assert.match(app, />Sessions<\/button>.*>Terminal<\/button>.*>Plugins<\/button>/s);
+	assert.match(app, /<DesktopTabSidebar/);
+	assert.match(app, /renderPanel=\{\(tab, active\) => renderDesktopPanel\(tab, active\)\}/);
+	assert.match(app, /<PluginWorkspaceView viewId=\{view\.viewId\}/);
 	assert.match(app, /hidden=\{isAppFullscreen \|\| \(isMobileSidebarViewport && !mobileSidebarOpen\)\}/);
-	assert.match(app, /<PluginWorkspaceTabs hidden=\{isTerminalFullscreen \|\| \(isMobileSidebarViewport && !pluginPanelOpen\)\} narrow=\{isMobileSidebarViewport\} \/>/);
+	assert.doesNotMatch(app, /aria-label="Workspace navigation"/);
+	assert.doesNotMatch(app, /<PluginWorkspaceTabs/);
+	assert.doesNotMatch(app, /Open plugin|Manage plugins|pluginPanelOpen/);
 	assert.match(app, /<DesktopSessionSidebar[\s\S]*identity=\{identity\}/);
 	assert.match(desktopSidebar, /data-pibo-debug="desktop-sidebar-app-header"/);
 	assert.match(desktopSidebar, />Pibo Chat</);

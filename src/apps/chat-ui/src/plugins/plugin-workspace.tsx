@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useBlocker } from "@tanstack/react-router";
-import type { EffectivePluginPlan, PluginBrowserCatalog, PluginQualifiedId, PluginTabInstance } from "../../../../plugins/sdk";
+import type { EffectivePluginPlan, PluginBrowserCatalog, PluginJsonObject, PluginQualifiedId, PluginTabInstance } from "../../../../plugins/sdk";
 import { BrowserPluginContext, BrowserPluginHost, PluginErrorBoundary, sessionPluginRequest, type PluginViewProps } from "./browser-host";
 import { availablePluginViews, closePluginTab, openPluginTab, parsePluginTabDeepLink, pluginRequest, pluginTabDeepLink, SessionTabController, updatePluginTab } from "./session-tab-controller";
 import { PluginSettings } from "./plugin-settings";
@@ -71,7 +71,7 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 		enableBeforeUnload: false,
 		shouldBlockFn: async ({ current, next }) => current.pathname === next.pathname ? false : !await runBeforeLeave([...leaveGuards.current.keys()]),
 	});
-	const openView: PluginViewProps["openView"] = (requestedId, subviewId, state) => {
+	const openView: PluginViewProps["openView"] = useCallback((requestedId, subviewId, state) => {
 		if (!source) return;
 		void (async () => {
 			const activeTabId = controller.state.activeTabId;
@@ -83,7 +83,7 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 			if (!viewId) { setError(`No effective view for ${requestedId}. Its retained history remains readable.`); return; }
 			try { controller.edit((tabset) => openPluginTab(tabset, source.plan, source.catalog, viewId, { subviewId, state })); } catch (error) { setError(String(error)); }
 		})();
-	};
+	}, [controller, runBeforeLeave, source]);
 	useEffect(() => {
 		if (!source || !controller.ready || linkHandled.current) return;
 		const link = parsePluginTabDeepLink(new URL(location.href));
@@ -99,6 +99,70 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 	const shellContent = Shell ? <PluginErrorBoundary fallback={children}><Shell piboSessionId={piboSessionId}>{children}</Shell></PluginErrorBoundary> : children;
 	return <WorkspaceContext.Provider value={workspace}><BrowserPluginContext.Provider value={host ? { host, openView } : null}>{shellContent}</BrowserPluginContext.Provider></WorkspaceContext.Provider>;
 }
+export type PluginWorkspaceCatalogView = { id: PluginQualifiedId; title: string; pluginId: string; piboSessionId: string };
+
+export function usePluginWorkspaceCatalogViews(): readonly PluginWorkspaceCatalogView[] {
+	const workspace = useContext(WorkspaceContext);
+	return useMemo(() => workspace?.plan && workspace.catalog
+		? availablePluginViews(workspace.plan, workspace.catalog).map((entry) => ({
+			id: entry.id,
+			title: entry.contribution.view!.title,
+			pluginId: entry.pluginId,
+			piboSessionId: workspace.controller.piboSessionId,
+		}))
+		: [], [workspace?.plan, workspace?.catalog]);
+}
+
+export function PluginWorkspaceView({
+	viewId,
+	subviewId,
+	state,
+	active = true,
+}: {
+	viewId: PluginQualifiedId;
+	subviewId?: string;
+	state?: PluginJsonObject;
+	active?: boolean;
+}) {
+	const workspace = useContext(WorkspaceContext);
+	const stateKey = JSON.stringify(state ?? {});
+	const effectiveEntry = workspace?.plan?.contributions.find((entry) => entry.id === viewId && entry.contribution.view);
+	const current = workspace?.controller.state.tabs.find((tab) => tab.viewId === viewId && tab.pluginRevision === effectiveEntry?.pluginRevision);
+	const stale = workspace?.controller.state.tabs.find((tab) => tab.viewId === viewId && tab.pluginRevision !== effectiveEntry?.pluginRevision);
+	useEffect(() => {
+		if (!active || !workspace?.controller.ready || !workspace.plan || !workspace.catalog || !effectiveEntry?.contribution.view) return;
+		void (async () => {
+			if (!current && stale && stale.stateSchemaVersion === effectiveEntry.contribution.view!.stateSchemaVersion) {
+				const mergedState = state ? { ...stale.state, ...state } : stale.state;
+				workspace.controller.edit((tabset) => openPluginTab(
+					closePluginTab(tabset, stale.instanceId),
+					workspace.plan!,
+					workspace.catalog!,
+					viewId,
+					{ instanceId: stale.instanceId, subviewId: subviewId ?? stale.subviewId, state: mergedState },
+				));
+				return;
+			}
+			if (!current) {
+				workspace.openView(viewId, subviewId, state);
+				return;
+			}
+			if (workspace.controller.state.activeTabId !== current.instanceId && !await workspace.activateTab(current.instanceId)) return;
+			const mergedState = state ? { ...current.state, ...state } : current.state;
+			const subviewChanged = Boolean(subviewId && current.subviewId !== subviewId);
+			const stateChanged = state ? JSON.stringify(mergedState) !== JSON.stringify(current.state) : false;
+			if (subviewChanged || stateChanged) workspace.controller.edit((tabset) => updatePluginTab(tabset, current.instanceId, {
+				...(subviewId ? { subviewId } : {}),
+				...(stateChanged ? { state: mergedState } : {}),
+			}));
+		})();
+	}, [active, workspace?.controller.ready, workspace?.plan, workspace?.catalog, workspace?.activateTab, workspace?.openView, effectiveEntry, current, stale, viewId, subviewId, stateKey]);
+	if (!workspace) return <div className="grid h-full place-items-center p-4 text-xs text-slate-400">Select or create a session to open this module.</div>;
+	if (workspace.error || workspace.controller.error) return <div role="alert" className="p-4 text-xs text-orange-300">{workspace.error ?? workspace.controller.error?.message}</div>;
+	if (!workspace.controller.ready || !current || !workspace.host) return <div className="grid h-full place-items-center p-4 text-xs text-slate-400">Loading {viewId}…</div>;
+	return <div className="h-full min-h-0 overflow-hidden"><PluginTabPanel workspace={workspace} tab={current} active={active} showSubviewNavigation={viewId !== "pibo.product-ui/settings"} /></div>;
+}
+
 export function PluginWorkspaceTabs({ hidden = false, narrow = false }: { hidden?: boolean; narrow?: boolean }) {
 	const workspace = useContext(WorkspaceContext);
 	const [catalogOpen, setCatalogOpen] = useState(false); const [recovery, setRecovery] = useState(false); const [management, setManagement] = useState(false);
@@ -138,7 +202,7 @@ export function PluginWorkspaceTabs({ hidden = false, narrow = false }: { hidden
 		<footer className="border-t border-slate-800 px-2 py-1 text-[10px] text-slate-500">Revision {state.revision} · {controller.dirty ? "Unsaved local changes" : "Saved"}{active ? <a className="ml-2 text-cyan-400" href={pluginTabDeepLink(active)}>Session deep link</a> : null}{host?.errors.size ? <span className="ml-2 text-orange-300">{host.errors.size} module failure(s)</span> : null}</footer>
 	</aside>;
 }
-function PluginTabPanel({ workspace, tab, active }: { workspace: Workspace; tab: PluginTabInstance; active: boolean }) {
+function PluginTabPanel({ workspace, tab, active, showSubviewNavigation = true }: { workspace: Workspace; tab: PluginTabInstance; active: boolean; showSubviewNavigation?: boolean }) {
 	const { host, plan, controller } = workspace;
 	const registerBeforeLeave = useCallback((handler: () => Promise<void>) => workspace.registerBeforeLeave(tab.instanceId, handler), [tab.instanceId, workspace.registerBeforeLeave]);
 	const abort = useMemo(() => new AbortController(), [tab.instanceId, active, host]);
@@ -150,7 +214,7 @@ function PluginTabPanel({ workspace, tab, active }: { workspace: Workspace; tab:
 	if (!view || !Component || view.stateSchemaVersion !== tab.stateSchemaVersion) return fallback;
 	const subview = view.subviews?.find((item) => item.id === tab.subviewId);
 	return <div className="h-full flex flex-col min-h-0">
-		{view.subviews?.length ? <nav aria-label={`${view.title} subviews`} className="flex gap-1 p-2 border-b border-slate-700">{view.subviews.map((item) => <button key={item.id} aria-current={tab.subviewId === item.id ? "page" : undefined} className={`text-xs px-2 py-1 ${tab.subviewId === item.id ? "text-cyan-300 bg-cyan-500/10" : "text-slate-400"}`} onClick={() => controller.edit((state) => updatePluginTab(state, tab.instanceId, { subviewId: item.id }))}>{item.title}</button>)}</nav> : null}
+		{showSubviewNavigation && view.subviews?.length ? <nav aria-label={`${view.title} subviews`} className="flex gap-1 p-2 border-b border-slate-700">{view.subviews.map((item) => <button key={item.id} aria-current={tab.subviewId === item.id ? "page" : undefined} className={`text-xs px-2 py-1 ${tab.subviewId === item.id ? "text-cyan-300 bg-cyan-500/10" : "text-slate-400"}`} onClick={() => controller.edit((state) => updatePluginTab(state, tab.instanceId, { subviewId: item.id }))}>{item.title}</button>)}</nav> : null}
 		{subview?.settingsScopes?.length ? <PluginSettings key={`${tab.instanceId}:${subview.id}`} pluginId={tab.pluginId} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} scopes={subview.settingsScopes} /> : null}
 		<div className="min-h-0 flex-1 overflow-auto"><PluginErrorBoundary key={`${tab.instanceId}:${tab.pluginRevision}`} fallback={fallback}><Component tab={tab} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} roomId={workspace.roomId} active={active} signal={abort.signal} state={tab.state} updateState={(state) => { if (!abort.signal.aborted) controller.edit((current) => updatePluginTab(current, tab.instanceId, { state })); }}request={sessionPluginRequest(tab.piboSessionId, tab.pluginId, abort.signal)} openView={workspace.openView} registerBeforeLeave={registerBeforeLeave} /></PluginErrorBoundary></div>
 	</div>;
