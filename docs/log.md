@@ -173,3 +173,5 @@
 - **Relocation**: Moved two guides and four operator runbooks from top-level `guides/` and `ops/` into `project/guides/` and `project/operations/`; their concept conversion remains pending.
 
 - 2026-09-13: Parent review of optional plugin modules found and corrected legacy host-skill migration classification; see `/plans/unified-plugin-system-execution.md`. Existing references remain preserved; unavailable references produce warnings instead of blocking unrelated plugin selection.
+
+- 2026-09-13: Corrected candidate `112ca544` accepted on Pibo2 for optional modules, mobile configuration and existing-agent migration; evidence in `/plans/unified-plugin-system-execution.md`.
