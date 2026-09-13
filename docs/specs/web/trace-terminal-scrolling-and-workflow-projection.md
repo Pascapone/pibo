@@ -9,21 +9,21 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-09T06:20:36Z"
+  at: "2026-09-13T13:38:58Z"
 sources:
   - id: "integrated-source-and-tests"
     resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Integrated trace and Workflow projection source and named-test evidence"
 implementation:
   state: "current"
-  baseline_commit: "4d89b3c6d822f997c1f133c6bbf1bad541022205"
+  baseline_commit: "cedf186fede9a94e955d140ac76eb7259cef434e"
   package: "WP-06+07-WEB"
   source_evidence: "performed"
-  test_execution: "the isolated Docker worker passed the full 2,982-test repository suite with 2,972 passed, 10 skipped, and 0 failed, including focused cache, Debug CLI, trace replay, live projection, and Compact Terminal coverage"
-  build_typecheck_package_execution: "workflow build, root TypeScript build, Chat UI build, and all package typechecks passed in the isolated Docker worker"
-  browser_execution: "headful local Compact Terminal cache rails and warning disclosure passed at 1439x822 and 390x844; CDP reload reported no console exceptions, log errors, network failures, or horizontal overflow"
+  test_execution: "the isolated Docker worker passed a focused 180-test Terminal, image-preview, Codex Native, default-group, and Web matrix; the complete 3,004-test run reached 2,991 passed and 10 skipped, its transient compile failure passed alone, and its remaining two failures reproduced unchanged on upstream/dev"
+  build_typecheck_package_execution: "workflow build, root TypeScript build, Chat UI build, all package typechecks, and the production Web builds passed in the isolated Docker worker"
+  browser_execution: "headful Compact Terminal acceptance showed two ordinary bundles separated by one purple two-image gallery; both previews returned 200 image/png, the carousel exposed Previous/Next, and the 390x844 viewport had no horizontal overflow"
 traceability:
-  commit: "4d89b3c6d822f997c1f133c6bbf1bad541022205"
+  commit: "cedf186fede9a94e955d140ac76eb7259cef434e"
   requirements:
     - id: "WEB-TRACE-PAYLOAD-010"
       status: "implemented"
@@ -34,6 +34,8 @@ traceability:
           symbol: "PayloadRefDetail"
         - path: "src/apps/chat/web-app.ts"
           symbol: "writeChatEventFrames"
+        - path: "src/session-ui/terminalRows.ts"
+          symbol: "groupConsecutiveToolCandidates"
       tests:
         - path: "test/chat-large-payload-replay.test.mjs"
           name: "large live outputs retain full references across SSE replay and timeline"
@@ -41,8 +43,10 @@ traceability:
           name: "payload chunks reconstruct UTF-8 without full reads for identity and gzip"
         - path: "test/session-ui-terminal-rows.test.mjs"
           name: "referenced assistant messages expose expandable full content"
-      public: ["GET /api/chat/trace/payload/:ref", "GET /api/chat/trace/payload/:ref?download=1", "Terminal full-content reader"]
-      failures: ["Read failures retain the previous section for retry; reference changes invalidate pending loads; downloads require the same authenticated session resolution as chunk reads."]
+        - path: "test/session-ui-terminal-rows.test.mjs"
+          name: "default tool mode keeps image calls separate from ordinary tool bundles"
+      public: ["GET /api/chat/trace/payload/:ref", "GET /api/chat/trace/payload/:ref?download=1", "Terminal full-content reader", "Default tool display mode"]
+      failures: ["Read failures retain the previous section for retry; reference changes invalidate pending loads; downloads require the same authenticated session resolution as chunk reads; image rows never disappear inside ordinary Default-mode tool bundles."]
       confidence: "high"
     - id: "WEB-TRACE-VIEWPORT-009"
       status: "implemented"
@@ -635,6 +639,6 @@ Large assistant, reasoning, and tool content retains its stored reference throug
 
 Collapsed Default-mode tool rows show at most five visual lines. Clicking the row or pressing Enter/Space expands it; referenced content loads through that expansion without a separate “Show full content” button. The expanded reader displays one 4-KiB section at a time, with forward and backward navigation; a UTF-8 boundary may include up to three additional bytes. The reader retains section offsets rather than an ever-growing text buffer. The full content can also be downloaded through a streaming attachment response. Conversation-level lazy history paging and Infinite Scrolling remain independent of this single-content reader.
 
-Consecutive image reads in Default mode form one expandable gallery, including when Debug metrics are enabled. The gallery shows an image count and horizontally scrollable thumbnails on expansion. Appending another read preserves the first row's identity and expansion; an intervening tool call ends the group. Thumbnails open a keyboard-navigable dialog on desktop and mobile. Dialog images load eagerly rather than depending on lazy visibility, while collapsed galleries do not mount thumbnails. Exact payload references remain authoritative and never fall back to a different filesystem image.
+Default mode groups only consecutive rows of the same display class. Ordinary Tool Calls form ordinary bundles. An image row ends the current ordinary bundle and remains a standalone purple image row unless adjacent groupable image reads form their own expandable gallery. Generated and edited image operations remain standalone instead of being mislabeled as image reads. The gallery shows an image count and horizontally scrollable thumbnails on expansion. Appending another read preserves the first row's identity and expansion; an intervening ordinary Tool Call ends the image group. Thumbnails open a keyboard-navigable dialog on desktop and mobile. Dialog images load eagerly rather than depending on lazy visibility, while collapsed galleries do not mount thumbnails. Exact payload references remain authoritative and never fall back to a different filesystem image.
 
 Chunk reads use bounded file ranges for identity payloads and streaming decompression for gzip payloads. Byte cursors preserve complete UTF-8 code points. The download pipeline closes its input on cancellation and does not build the complete response in application memory.

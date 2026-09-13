@@ -1158,17 +1158,20 @@ function groupConsecutiveToolCandidates(candidates: readonly RowCandidate[]): Ro
 	const grouped: RowCandidate[] = [];
 	for (let index = 0; index < candidates.length; index += 1) {
 		const candidate = candidates[index];
-		if (!isBundledToolDisplayRow(candidate.row)) {
+		const groupKind = defaultToolGroupKind(candidate);
+		if (!groupKind) {
 			grouped.push(candidate);
 			continue;
 		}
 		const run: RowCandidate[] = [candidate];
 		let cursor = index + 1;
-		while (cursor < candidates.length && isBundledToolDisplayRow(candidates[cursor].row) && candidates[cursor].turnId === candidate.turnId) {
+		while (cursor < candidates.length && defaultToolGroupKind(candidates[cursor]) === groupKind && candidates[cursor].turnId === candidate.turnId) {
 			run.push(candidates[cursor]);
 			cursor += 1;
 		}
-		if (run.length === 1) {
+		if (groupKind === "images") {
+			grouped.push(run.length === 1 ? candidate : { row: createImageGroup(run), turnId: candidate.turnId });
+		} else if (run.length === 1) {
 			grouped.push({ ...candidate, row: compactToolDisplayRow(candidate.row) });
 		} else {
 			grouped.push({ row: createToolCallGroup(run), turnId: candidate.turnId });
@@ -1176,6 +1179,12 @@ function groupConsecutiveToolCandidates(candidates: readonly RowCandidate[]): Ro
 		index = cursor - 1;
 	}
 	return grouped;
+}
+
+function defaultToolGroupKind(candidate: RowCandidate): "calls" | "images" | undefined {
+	if (candidate.image) return "images";
+	if (candidate.row.kind === "tool.image" || candidate.row.kind === "tool.group.images") return undefined;
+	return isBundledToolDisplayRow(candidate.row) ? "calls" : undefined;
 }
 
 function isBundledToolDisplayRow(row: CompactTerminalRow): boolean {
