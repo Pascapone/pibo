@@ -206,7 +206,7 @@ export class PiboPluginRegistry {
 	private readonly tools = this.projection.map<ToolProfile>("tool", (value, _contribution, pluginId) => normalizeToolProfile({ ...(value as ToolProfileRegistration), pluginId }));
 	private readonly subagents = this.projection.map<SubagentProfile>("subagent", (value) => value as SubagentProfile);
 	private readonly skills = this.projection.map<SkillProfile>("skill", (value, _contribution, pluginId) => ({ ...(value as SkillProfile), pluginId }));
-	private readonly contextFiles = this.projection.map<ContextFileProfile>("context-file", (value, _contribution, pluginId) => ({ ...(value as ContextFileProfile), pluginId }));
+	private readonly contextFiles = this.projection.map<ContextFileProfile>("context-file", (value, _contribution, pluginId) => ({ ...(value as ContextFileProfile), source: (value as ContextFileProfile).source ?? "plugin", pluginId }));
 	private readonly profiles = this.projection.map<PiboProfileDefinition>("profile", (value) => value as PiboProfileDefinition);
 	private readonly profileAliases = this.projection.map<string>("profile-alias");
 	private readonly gatewayActions = this.projection.map<PiboGatewayAction>("gateway-action", (value) => value as PiboGatewayAction);

@@ -29,3 +29,21 @@ test("plugin-registered context defaults to plugin ownership and is not planned 
 		.createSession();
 	assert.deepEqual(independentProfileResources(profile), []);
 });
+
+
+test("installed host contributions retain context ownership in the legacy profile catalog", async () => {
+	const { PluginHost } = await tsImport("../src/plugins/host.ts", import.meta.url);
+	const { PluginScope } = await tsImport("../src/plugins/scope.ts", import.meta.url);
+	const host = new PluginHost();
+	const scope = new PluginScope("pibo.browser-tools");
+	host.contributions.register(scope, "contribution", "pibo.browser-tools/native-tooling-context", {
+		contribution: { id: "native-tooling-context", name: "Pibo Native Tooling", kind: "context-file" },
+		value: { key: "Pibo Native Tooling", path: "/fixture/native-tooling.md" },
+	});
+	const registry = PiboPluginRegistry.create({ host });
+	const contextFile = registry.getCapabilityCatalog().contextFiles.find((entry) => entry.key === "Pibo Native Tooling");
+	assert.equal(contextFile.source, "plugin");
+	assert.equal(contextFile.pluginId, "pibo.browser-tools");
+	const profile = new InitialSessionContextBuilder("installed-fixture").addContextFile(contextFile).createSession();
+	assert.deepEqual(independentProfileResources(profile), []);
+});
