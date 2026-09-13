@@ -2,6 +2,8 @@
 
 ## 2026-09-13
 
+- **Managed-package startup upgrade**: Recorded the real Pibo2 manifest/backend mismatch, restoration of the previous candidate, and corrected startup ordering with 12 passing targeted regressions in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-upgrade-finding-and-local-correction).
+
 - **Pibo 4.0 integration review**: Recorded verified historical v1 migration-journal recovery and retryable authenticated browser import in the [execution ledger](/plans/unified-plugin-system-execution.md#orchestrator-integration-review-2026-09-13), with 33 passing targeted tests and the current clean staged Docker build. Pibo2 upgrade acceptance remains pending.
 
 - **Pibo 4.0 automatic upgrade correction**: Corrected the [execution ledger](/plans/unified-plugin-system-execution.md#active-direction-pibo-40-clean-migration-2026-09-13) after parent review found that old Session databases and browser-v1 tabs still required manual import. Gateway startup now detects and journal-imports a retained `pibo-sessions.sqlite` into `pibo.sqlite`; first Chat UI load snapshots and server-backs up `desktopTabs.v1`, then imports only explicitly Session-bound tabs through CAS. Unbound or conflicting records remain preserved with precise repair instructions. The post-correction focused set passes 35/35; the earlier 113-test result is no longer described as current-candidate aggregate evidence.

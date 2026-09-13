@@ -11,7 +11,7 @@ import { createAgentPluginSelection } from '../dist/plugins/selection.js';
 import { InitialSessionContext } from '../dist/core/profiles.js';
 import { profileFromPluginPlan } from '../dist/agent-runtime/plugin-plan.js';
 import { startPluginProductRuntime } from '../dist/plugins/product-runtime.js';
-import { productUiPackageManifest } from '../dist/plugins/default-packages.js';
+import { builtinProfilesPackageManifest, productUiPackageManifest } from '../dist/plugins/default-packages.js';
 import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PIBO_USER_RESOURCES_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
 import { WebAnnotationStore } from '../dist/web-annotations/index.js';
 
@@ -237,4 +237,26 @@ test('product runtime added to an existing host removes only its own roots on di
   assert.deepEqual(host.services.get('test.system.service'), { alive: true });
   assert.equal(host.services.get(PLUGIN_MANAGEMENT_SERVICE), undefined);
   await host.stop();
+});
+
+
+test('product upgrade replaces an incompatible managed manifest before importing its new packaged backend', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'plugin-product-before-import-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
+  const artifactRoot = join(root, 'artifacts');
+  const source = join(artifactRoot, 'default-sources', 'pibo.builtin-profiles', '1.0.0');
+  await mkdir(source, { recursive: true });
+  const current = builtinProfilesPackageManifest();
+  await writeFile(join(source, 'pibo.plugin.json'), JSON.stringify({ ...current, contributions: current.contributions.filter(c => c.id !== 'gateway-producer') }));
+  await writeFile(join(source, 'backend.mjs'), 'export { setupBuiltinProfiles as setup } from "@pasko70/pibo/plugin-builtin/profiles";\n');
+  const manager = new PluginManager({ store: data.plugins, artifactRoot });
+  await manager.install({ kind: 'local', path: source }, { expectedRevision: 0 });
+  const old = data.plugins.getInstallation(current.id);
+  data.plugins.putInstallation({ ...old, enabled: true, state: 'active' }, old.stateRevision);
+  const host = new PluginHost();
+  const product = await startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [] });
+  t.after(() => product.dispose());
+  assert.ok(host.contributions.get('contribution', 'pibo.builtin-profiles/gateway-producer'));
+  assert.notEqual(data.plugins.getInstallation(current.id).revision, old.revision);
+  assert.equal(data.plugins.getInstallation(current.id).state, 'active');
 });

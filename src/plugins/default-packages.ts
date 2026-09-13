@@ -4,7 +4,7 @@ import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { FACT_COUNT_STOP_CONDITION, GOAL_STATUS_STOP_CONDITION, MAX_ITERATIONS_STOP_CONDITION, PROMISE_COMPLETE_STOP_CONDITION } from "../loops/stopping.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
-import type { PluginContribution, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
+import type { PluginContribution, PluginInstallation, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
 import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PIBO_USER_RESOURCES_SERVICE } from "./product-services.js";
 
@@ -457,7 +457,7 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 }
 
 /** Seed missing defaults and upgrade only active Pibo-managed defaults. Explicit disable/uninstall remains authoritative. */
-export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean; includeUserResources?: boolean } = {}): Promise<void> {
+export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean; includeUserResources?: boolean; activateExisting?: (installation: PluginInstallation) => Promise<void> } = {}): Promise<void> {
 	for (const descriptor of DEFAULT_PACKAGES) {
 		if (descriptor.webOnly && !options.includeWebProduct || descriptor.userResourcesOnly && !options.includeUserResources) continue;
 		const expected = descriptor.manifest();
@@ -478,7 +478,10 @@ export async function ensureDefaultPluginInstallations(manager: PluginManager, a
 			continue;
 		}
 		const inspected = await manager.inspect({ kind: "local", path: source });
-		if (inspected.contentHash === existing.contentHash) continue;
+		if (inspected.contentHash === existing.contentHash) {
+			await options.activateExisting?.(existing);
+			continue;
+		}
 		await manager.install({ kind: "local", path: source }, { expectedRevision: existing.stateRevision });
 		const pending = manager.store.getInstallation(manifest.id);
 		if (!pending) throw new Error(`Default plugin ${manifest.id} update was not staged`);

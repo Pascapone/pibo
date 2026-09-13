@@ -155,6 +155,12 @@ The integration review added two narrowly scoped upgrade corrections: historical
 
 The worker-only no-commit instruction does not restrict authorized orchestrator integration or the owner's Pibo2 test deployment. No new fullsuite is required for this feedback deployment; full release acceptance remains separate. The candidate is being prepared for canonical Pibo2 upgrade validation against preserved existing profiles. Remote migration and model acceptance are not yet claimed.
 
+### Pibo2 upgrade finding and local correction
+
+The first committed cutover candidate `1ec061ae711a0404a7535857692a4189c9e662fb` failed before gateway readiness against the real previous installation: `pibo.builtin-profiles did not declare contribution gateway-producer`. Persisted managed manifests were imported through the new package backend before default-package reconciliation. Pibo2 was restored to candidate `112ca5446f052d0d89d1468fcfe59a24d63aaf2e`; a private complete home snapshot was taken with the remote gateway stopped before the attempted upgrade.
+
+Startup now establishes management first, reconciles/activates managed defaults before importing their persisted backend definitions, then loads remaining installed packages. Existing unchanged defaults are loaded once; disabled installations remain untouched. Root TypeScript emit and 12 targeted product/gateway tests pass, including the incompatible persisted-manifest regression and existing-host cleanup. Corrected remote acceptance is pending.
+
 # Orchestrator handover audit, 2026-09-12
 
 The implementation worker reported its local candidate complete at 19:49 UTC. Its subsequent loop continuation was rejected with `budget_limited` at 19:50 UTC; the orchestrator has not restarted or increased that loop budget. This does not invalidate the completed local checks, and it does not establish final acceptance.

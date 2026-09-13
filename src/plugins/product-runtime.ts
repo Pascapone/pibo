@@ -102,15 +102,25 @@ export async function startPluginProductRuntime(options: {
 	};
 
 	try {
-		const installations = data.plugins.listInstallations().filter((installation) => installation.enabled && ["active", "pending-activation"].includes(installation.state));
-		if (installations.some((installation) => installation.pluginId === MANAGEMENT_PLUGIN_ID)) throw new PluginValidationError(`${MANAGEMENT_PLUGIN_ID} is reserved for the product composition`);
+		// Packaged backends resolve against this product version. Upgrade their
+		// managed manifests before importing any persisted backend definition.
+		if (initialState.state === "idle") await host.start({ plugins: [management] });
+		else await host.add({ plugins: [management] });
+		ownedPluginIds.add(MANAGEMENT_PLUGIN_ID);
+		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot, {
+			includeWebProduct: options.includeWebProduct, includeUserResources: options.includeUserResources,
+			activateExisting: async (installation) => {
+				if (!host.inspect().plugins.some((plugin) => plugin.pluginId === installation.pluginId)) await lifecycle.activate(installation);
+			},
+		});
+		const activeIds = new Set(host.inspect().plugins.map((plugin) => plugin.pluginId));
+		const installations = data.plugins.listInstallations().filter((installation) => installation.enabled && ["active", "pending-activation"].includes(installation.state) && !activeIds.has(installation.pluginId));
 		for (const installation of installations) await verifyPluginArtifact(installation);
-		if (installations.length) await preparePluginSdkResolution(artifactRoot);
-		const definitions = [management, ...installations.map(createStagedPluginDefinition)];
-		if (initialState.state === "idle") await host.start({ plugins: definitions });
-		else await host.add({ plugins: definitions });
-		for (const definition of definitions) ownedPluginIds.add(definition.installation.pluginId);
-		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot, { includeWebProduct: options.includeWebProduct, includeUserResources: options.includeUserResources });
+		if (installations.length) {
+			await preparePluginSdkResolution(artifactRoot);
+			await host.add({ plugins: installations.map(createStagedPluginDefinition) });
+			for (const installation of installations) ownedPluginIds.add(installation.pluginId);
+		}
 	} catch (error) {
 		const cleanupErrors: unknown[] = [];
 		if (initialState.state === "idle") {
