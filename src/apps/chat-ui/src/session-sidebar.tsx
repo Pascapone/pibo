@@ -20,6 +20,7 @@ import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
 import { ActionMenu, ActionMenuItem } from "./action-menu";
 import { copyTextToClipboard } from "./clipboard";
 import { SessionNode } from "./session-node";
+import type { OptimisticSessionTitleIntent } from "./optimistic-session-title";
 import {
 	findSharedDefaultRoom,
 	isArchivedRoom,
@@ -96,8 +97,10 @@ export type SessionSidebarProps = {
 	onDeleteSession: (node: PiboWebSessionNode) => void;
 	onViewContext: (piboSessionId: string) => void;
 	loadingPiboSessionId?: string | null;
-	autoRenameSessionId?: string | null;
-	onAutoRenameConsumed: () => void;
+	optimisticTitleIntents?: Readonly<Record<string, OptimisticSessionTitleIntent>>;
+	onOptimisticTitleDraftChange?: (operationId: string, draftTitle: string) => void;
+	onOptimisticTitleConfirm?: (operationId: string) => void;
+	onOptimisticTitleCancel?: (operationId: string) => void;
 };
 
 export function SessionSidebar({
@@ -146,8 +149,10 @@ export function SessionSidebar({
 	onDeleteSession,
 	onViewContext,
 	loadingPiboSessionId,
-	autoRenameSessionId,
-	onAutoRenameConsumed,
+	optimisticTitleIntents = {},
+	onOptimisticTitleDraftChange = () => undefined,
+	onOptimisticTitleConfirm = () => undefined,
+	onOptimisticTitleCancel = () => undefined,
 }: SessionSidebarProps) {
 	const roomsSupported = Boolean(bootstrap.selectedRoomId || bootstrap.room || bootstrap.rooms.length);
 	const newSessionProfileOptions = bootstrap.agents;
@@ -353,8 +358,10 @@ export function SessionSidebar({
 				{visibleActiveSessions.map((session, index) => {
 					const showPinnedDivider = firstUnpinnedSessionIndex > 0 && index === firstUnpinnedSessionIndex;
 					const indicator = dropIndicator?.targetPiboSessionId === session.piboSessionId ? dropIndicator.position : null;
+					const optimisticTitleIntent = optimisticTitleIntents[session.piboSessionId];
+					const pendingCreation = optimisticTitleIntent?.createStatus === "pending";
 					return (
-						<div key={session.piboSessionId}>
+						<div key={optimisticTitleIntent?.operationId ?? session.piboSessionId}>
 							{showPinnedDivider ? <div data-pibo-debug="pinned-session-divider" className="mx-2 my-1 border-t border-slate-700/80" aria-hidden="true" /> : null}
 							<SessionNode
 								node={session}
@@ -368,9 +375,12 @@ export function SessionSidebar({
 								onDelete={onDeleteSession}
 								onViewContext={onViewContext}
 								loadingPiboSessionId={loadingPiboSessionId}
-								autoRename={autoRenameSessionId === session.piboSessionId}
-								onAutoRenameConsumed={() => onAutoRenameConsumed()}
-								draggable={!selectedRoomArchived}
+								mutationsDisabled={pendingCreation}
+								optimisticTitleIntent={optimisticTitleIntent}
+								onOptimisticTitleDraftChange={onOptimisticTitleDraftChange}
+								onOptimisticTitleConfirm={onOptimisticTitleConfirm}
+								onOptimisticTitleCancel={onOptimisticTitleCancel}
+								draggable={!selectedRoomArchived && !pendingCreation}
 								dropPosition={indicator}
 								onSessionDragStart={(event) => {
 									setDraggedSessionId(session.piboSessionId);
@@ -439,8 +449,6 @@ export function SessionSidebar({
 								onDelete={onDeleteSession}
 								onViewContext={onViewContext}
 								loadingPiboSessionId={loadingPiboSessionId}
-								autoRenameSessionId={autoRenameSessionId}
-								onAutoRenameConsumed={() => onAutoRenameConsumed()}
 							/>
 							{hasMoreArchivedSessions ? (
 								<SessionSidebarLoadMoreButton

@@ -74,8 +74,10 @@ test("post-create hydration is nonblocking and cannot navigate or report stale e
 	const create = app.slice(app.indexOf("const createSession = async"), app.indexOf("const toggleArchivedSessions = async"));
 	assert.doesNotMatch(create, /await loadBootstrap/);
 	assert.equal((create.match(/navigateToSelectedSession\(/g) ?? []).length, 1, "Only POST completion may navigate");
-	assert.match(create, /const hydrationRequestId = bootstrapRequestId.current;\s*void hydration.catch/);
-	assert.match(create, /if \(hydrationRequestId === bootstrapRequestId.current\) setError\(errorMessage\(caught\)\)/);
+	assert.match(create, /ownsDeferredOptimisticSessionHydration/);
+	assert.match(create, /hydrateBootstrapCacheQueryData/);
+	assert.doesNotMatch(create, /loadBootstrap\(created\.session\.id/);
+	assert.match(create, /if \(ownsHydration\(\)\) setError\(errorMessage\(caught\)\)/);
 });
 
 test("optimistic session create keeps selecting the created session when untouched", async () => {

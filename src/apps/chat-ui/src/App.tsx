@@ -149,6 +149,18 @@ import { useAppDeleteActions } from "./app-delete-actions";
 import { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";
 import { selectedSessionBackendId } from "./selected-session-backend";
 import {
+	beginOptimisticSessionTitlePatch,
+	cancelOptimisticSessionTitle,
+	confirmOptimisticSessionTitle,
+	createOptimisticSessionTitleIntent,
+	failOptimisticSessionTitlePatch,
+	handoffOptimisticSessionTitle,
+	optimisticSessionTitleDisplay,
+	ownsDeferredOptimisticSessionHydration,
+	updateOptimisticSessionTitleDraft,
+	type OptimisticSessionTitleIntent,
+} from "./optimistic-session-title";
+import {
 	DesktopTabSidebar,
 	activateTabInDesktopTabs,
 	desktopTabTool,
@@ -269,6 +281,19 @@ async function loadBootstrapQueryData(
 	return getBootstrap(input.piboSessionId, input.includeArchived, input.roomId, Boolean(input.markRead), { signal: input.signal });
 }
 
+async function hydrateBootstrapCacheQueryData(
+	queryClient: QueryClient,
+	input: {
+		piboSessionId?: string;
+		includeArchived?: boolean;
+		roomId?: string;
+	},
+): Promise<BootstrapData> {
+	const data = await loadBootstrapQueryData(queryClient, { ...input, markRead: false, force: true });
+	queryClient.setQueryData(chatBootstrapQueryKey(input.piboSessionId, input.includeArchived, input.roomId), data);
+	return data;
+}
+
 async function loadNavigationQueryData(
 	queryClient: QueryClient,
 	input: {
@@ -300,17 +325,29 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeToolCallNodeId = route.area === "sessions" ? route.toolCallNodeId : undefined;
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
 	const selectedPiboSessionIdRef = useRef<string | null>(null);
+	const sessionSelectionGenerationRef = useRef(0);
 	const optimisticSessionCreateOutcomeRef = useRef<OptimisticSessionCreateOutcome | null>(null);
+	const optimisticSessionTitleIntentsRef = useRef<Record<string, OptimisticSessionTitleIntent>>({});
+	const [optimisticSessionTitleIntents, setOptimisticSessionTitleIntents] = useState<Record<string, OptimisticSessionTitleIntent>>({});
+	const commitOptimisticSessionTitleIntents = useCallback((
+		updater: (current: Record<string, OptimisticSessionTitleIntent>) => Record<string, OptimisticSessionTitleIntent>,
+	) => {
+		const next = updater(optimisticSessionTitleIntentsRef.current);
+		optimisticSessionTitleIntentsRef.current = next;
+		setOptimisticSessionTitleIntents(next);
+	}, []);
 	const [selectedPiboSessionId, setSelectedPiboSessionIdState] = useState<string | null>(null);
 	const setSelectedPiboSessionId = useCallback<Dispatch<SetStateAction<string | null>>>((next) => {
 		if (typeof next === "function") {
 			setSelectedPiboSessionIdState((current) => {
 				const resolved = next(current);
+				if (selectedPiboSessionIdRef.current !== resolved) sessionSelectionGenerationRef.current += 1;
 				selectedPiboSessionIdRef.current = resolved;
 				return resolved;
 			});
 			return;
 		}
+		if (selectedPiboSessionIdRef.current !== next) sessionSelectionGenerationRef.current += 1;
 		selectedPiboSessionIdRef.current = next;
 		setSelectedPiboSessionIdState(next);
 	}, []);
@@ -365,7 +402,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [visibleArchivedSessionCount, setVisibleArchivedSessionCount] = useState(ARCHIVED_SESSION_PAGE_SIZE);
 	const [loadingPiboSessionId, setLoadingPiboSessionId] = useState<string | null>(null);
 	const [loadingRoomId, setLoadingRoomId] = useState<string | null>(null);
-	const [autoRenameSessionId, setAutoRenameSessionId] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const roomCreationOwnerRef = useRef<string | null>(null);
 	useEffect(() => {
@@ -417,6 +453,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	);
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
+	const optimisticTitleIntentsBySessionId = useMemo(() => Object.values(optimisticSessionTitleIntents).reduce<Record<string, OptimisticSessionTitleIntent>>((bySessionId, intent) => {
+		bySessionId[intent.piboSessionId] = intent;
+		return bySessionId;
+	}, {}), [optimisticSessionTitleIntents]);
 	const [roomMutations] = useState(() => new RoomMutationTracker());
 	const overlayCurrentSignals = useCallback((data: BootstrapData): BootstrapData => {
 		const statusSnapshot = sessionStatusSignalsRef.current;
@@ -725,7 +765,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	);
 
 	const viewSessionContext = useCallback((piboSessionId: string) => {
-		navigateToRoute({ area: "context", piboSessionId });
+		const backendPiboSessionId = selectedSessionBackendId(piboSessionId);
+		if (!backendPiboSessionId) {
+			setError("Session creation is still pending. Context is available after the Session has a persisted ID.");
+			return;
+		}
+		navigateToRoute({ area: "context", piboSessionId: backendPiboSessionId });
 	}, [navigateToRoute]);
 
 	const fetchNavigation = useCallback((input: {
@@ -850,10 +895,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [activeRoomId, area, loadNavigation, selectedBackendPiboSessionId, selectedPiboSessionId]);
 
 	useEffect(() => {
+		let cancelled = false;
 		const stored = readStoredSelection();
 		const { requestedRoomId, requestedPiboSessionId } = routeSelectionRequest(route, stored);
 
 		const canonicalizeSessionsRoute = (data: BootstrapData, replace = true) => {
+			if (cancelled) return;
 			const selection = sessionsRouteCanonicalSelection(route, data);
 			if (!selection) return;
 			navigateToSelectedSession(selection.selectedRoomId, selection.selectedPiboSessionId, replace, {
@@ -866,10 +913,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 		const loadRouteData = bootstrap ? loadNavigation : loadBootstrap;
 		const clearBootstrapError = () => {
+			if (cancelled) return;
 			setBootstrapError(null);
 			setError(null);
 		};
 		const reportBootstrapError = (caught: unknown) => {
+			if (cancelled) return;
 			if (!bootstrapRef.current) setBootstrapError(classifyBootstrapError(caught));
 			setError(errorMessage(caught));
 		};
@@ -880,6 +929,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 				clearBootstrapError();
 			})
 			.catch((caught) => {
+				if (cancelled) return;
 				if (route.area === "sessions" && routeRoomId && !routePiboSessionId && requestedPiboSessionId) {
 					removeStoredRoomSelection(routeRoomId);
 					loadRouteData(undefined, showArchivedRef.current, routeRoomId)
@@ -903,6 +953,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					})
 					.catch(reportBootstrapError);
 			});
+		return () => { cancelled = true; };
 	}, [bootstrap, loadBootstrap, loadNavigation, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
 
 	useEffect(() => {
@@ -1111,21 +1162,20 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setError,
 	});
 
+	type CreateSessionMutationInput = {
+		profile: string;
+		roomId?: string;
+		operationId: string;
+		tempId: string;
+		previousSelectedPiboSessionId: string | null;
+		originRoomId: string;
+	};
 	const createSessionMutation = useMutation({
-		mutationFn: ({ profile, roomId }: { profile: string; roomId?: string }) => postSession(profile || undefined, roomId),
-		onMutate: async ({ profile, roomId }) => {
+		mutationFn: ({ profile, roomId }: CreateSessionMutationInput) => postSession(profile || undefined, roomId),
+		onMutate: async (input: CreateSessionMutationInput) => {
 			optimisticSessionCreateOutcomeRef.current = null;
 			await prepareSessionNavigationMutation();
-			const originRoomId = roomId ?? bootstrap?.selectedRoomId ?? "";
-			const previousSelectedPiboSessionId = selectedPiboSessionIdRef.current;
-			const tempId = `optimistic-session-${createClientTxnId()}`;
-			if (bootstrapRef.current?.selectedRoomId === originRoomId) setSelectedPiboSessionId(tempId);
-			updateBootstrapCacheForRoom(originRoomId, (current) => {
-				const optimisticNode = createOptimisticSessionNode(tempId, profile || defaultProfileFromBootstrap(current));
-				const next = addSessionNodeToBootstrap(current, optimisticNode);
-				return { ...next, selectedPiboSessionId: tempId };
-			});
-			return { tempId, previousSelectedPiboSessionId, originRoomId };
+			return input;
 		},
 		onError: (_error, _variables, context) => {
 			const outcome = resolveOptimisticSessionCreateOutcome({
@@ -1135,12 +1185,22 @@ export function App({ route }: { route: ChatAppRoute }) {
 				previousSelectedPiboSessionId: context?.previousSelectedPiboSessionId,
 			});
 			optimisticSessionCreateOutcomeRef.current = outcome;
-			if (context?.originRoomId && context.tempId) {
-				updateBootstrapCacheForRoom(context.originRoomId, (current) =>
-					rollbackOptimisticSessionNode(current, context.tempId, context.previousSelectedPiboSessionId ?? null),
-				);
-			}
-			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
+			flushSync(() => {
+				if (context?.operationId) {
+					commitOptimisticSessionTitleIntents((current) => {
+						if (!current[context.operationId]) return current;
+						const next = { ...current };
+						delete next[context.operationId];
+						return next;
+					});
+				}
+				if (context?.originRoomId && context.tempId) {
+					updateBootstrapCacheForRoom(context.originRoomId, (current) =>
+						rollbackOptimisticSessionNode(current, context.tempId, context.previousSelectedPiboSessionId ?? null),
+					);
+				}
+				setSelectedPiboSessionId(outcome.selectedPiboSessionId);
+			});
 		},
 		onSuccess: (created, _variables, context) => {
 			const outcome = resolveOptimisticSessionCreateOutcome({
@@ -1151,14 +1211,123 @@ export function App({ route }: { route: ChatAppRoute }) {
 				createdPiboSessionId: created.session.id,
 			});
 			optimisticSessionCreateOutcomeRef.current = outcome;
-			if (context?.originRoomId) {
-				updateBootstrapCacheForRoom(context.originRoomId, (current) =>
-					replaceOptimisticSessionNode(current, context.tempId, sessionNodeFromSession(created.session)),
-				);
-			}
-			setSelectedPiboSessionId(outcome.selectedPiboSessionId);
+			const existingIntent = context?.operationId ? optimisticSessionTitleIntentsRef.current[context.operationId] : undefined;
+			const persistedTitle = created.session.title || "Untitled Session";
+			const handedOffIntent = existingIntent ? handoffOptimisticSessionTitle(existingIntent, created.session.id, persistedTitle) : undefined;
+			const createdNode = sessionNodeFromSession(created.session);
+			if (handedOffIntent?.editorStatus === "confirmed") createdNode.title = optimisticSessionTitleDisplay(handedOffIntent);
+			flushSync(() => {
+				if (context?.operationId && handedOffIntent) {
+					commitOptimisticSessionTitleIntents((current) => {
+						if (handedOffIntent.editorStatus !== "cancelled") return { ...current, [context.operationId]: handedOffIntent };
+						const next = { ...current };
+						delete next[context.operationId];
+						return next;
+					});
+				}
+				if (context?.originRoomId) {
+					updateBootstrapCacheForRoom(context.originRoomId, (current) =>
+						replaceOptimisticSessionNode(current, context.tempId, createdNode),
+					);
+				}
+				setSelectedPiboSessionId(outcome.selectedPiboSessionId);
+			});
 		},
 	});
+
+	const startOptimisticSessionTitlePatch = useCallback((operationId: string): Promise<void> | null => {
+		const currentIntent = optimisticSessionTitleIntentsRef.current[operationId];
+		const patch = currentIntent ? beginOptimisticSessionTitlePatch(currentIntent) : null;
+		if (!patch) return null;
+		commitOptimisticSessionTitleIntents((current) => current[operationId] === currentIntent
+			? { ...current, [operationId]: patch.intent }
+			: current);
+		const request = patch.request;
+		const backendPiboSessionId = selectedSessionBackendId(request.piboSessionId);
+		if (!backendPiboSessionId) {
+			commitOptimisticSessionTitleIntents((current) => {
+				const intent = current[operationId];
+				return intent ? { ...current, [operationId]: failOptimisticSessionTitlePatch(intent, request.confirmationVersion) } : current;
+			});
+			setError("Session creation has not produced a persisted Session ID. Edit the title and try again after creation completes.");
+			return null;
+		}
+		return (async () => {
+			try {
+				await prepareSessionNavigationMutation();
+				const { session } = await patchSession(backendPiboSessionId, { title: request.title });
+				flushSync(() => {
+					updateBootstrapCacheForRoom(request.originRoomId, (current) => updateSessionFromPiboSession(current, session));
+					commitOptimisticSessionTitleIntents((current) => {
+						const intent = current[operationId];
+						if (!intent || intent.confirmationVersion !== request.confirmationVersion) return current;
+						const next = { ...current };
+						delete next[operationId];
+						return next;
+					});
+				});
+				setError(null);
+			} catch (caught) {
+				let persistedTitle: string | undefined;
+				flushSync(() => {
+					commitOptimisticSessionTitleIntents((current) => {
+						const intent = current[operationId];
+						if (!intent) return current;
+						persistedTitle = intent.persistedTitle;
+						return { ...current, [operationId]: failOptimisticSessionTitlePatch(intent, request.confirmationVersion) };
+					});
+					if (persistedTitle) {
+						updateBootstrapCacheForRoom(request.originRoomId, (current) =>
+							updateSessionNodeInBootstrap(current, backendPiboSessionId, (node) => ({ ...node, title: persistedTitle! })),
+						);
+					}
+				});
+				setError(`Session was created, but its title was not saved: ${errorMessage(caught)} Edit the title and try again.`);
+			}
+		})();
+	}, [commitOptimisticSessionTitleIntents, prepareSessionNavigationMutation, updateBootstrapCacheForRoom]);
+
+	const updateOptimisticSessionTitle = useCallback((operationId: string, draftTitle: string) => {
+		commitOptimisticSessionTitleIntents((current) => {
+			const intent = current[operationId];
+			return intent ? { ...current, [operationId]: updateOptimisticSessionTitleDraft(intent, draftTitle) } : current;
+		});
+	}, [commitOptimisticSessionTitleIntents]);
+
+	const confirmOptimisticSessionTitleIntent = useCallback((operationId: string) => {
+		let confirmed: OptimisticSessionTitleIntent | undefined;
+		commitOptimisticSessionTitleIntents((current) => {
+			const intent = current[operationId];
+			if (!intent) return current;
+			confirmed = confirmOptimisticSessionTitle(intent);
+			return { ...current, [operationId]: confirmed };
+		});
+		if (!confirmed) return;
+		updateBootstrapCacheForRoom(confirmed.originRoomId, (current) =>
+			updateSessionNodeInBootstrap(current, confirmed!.piboSessionId, (node) => ({ ...node, title: optimisticSessionTitleDisplay(confirmed!) })),
+		);
+		setError(null);
+		if (confirmed.createStatus === "created") void startOptimisticSessionTitlePatch(operationId);
+	}, [commitOptimisticSessionTitleIntents, startOptimisticSessionTitlePatch, updateBootstrapCacheForRoom]);
+
+	const cancelOptimisticSessionTitleIntent = useCallback((operationId: string) => {
+		let cancelled: OptimisticSessionTitleIntent | undefined;
+		commitOptimisticSessionTitleIntents((current) => {
+			const intent = current[operationId];
+			if (!intent) return current;
+			cancelled = cancelOptimisticSessionTitle(intent);
+			if (cancelled.createStatus === "pending") return { ...current, [operationId]: cancelled };
+			const next = { ...current };
+			delete next[operationId];
+			return next;
+		});
+		if (cancelled) {
+			updateBootstrapCacheForRoom(cancelled.originRoomId, (current) =>
+				updateSessionNodeInBootstrap(current, cancelled!.piboSessionId, (node) => ({ ...node, title: cancelled!.persistedTitle })),
+			);
+		}
+		setError(null);
+	}, [commitOptimisticSessionTitleIntents, updateBootstrapCacheForRoom]);
 
 	const renameSessionMutation = useMutation({
 		mutationFn: ({ piboSessionId, title }: { piboSessionId: string; title: string | null }) => patchSession(piboSessionId, { title }),
@@ -1341,26 +1510,68 @@ export function App({ route }: { route: ChatAppRoute }) {
 	}, [activeRoomId, bootstrap, selectRoom, showArchivedRooms]);
 
 	const createSession = async (profile = newSessionProfile) => {
-		if (creatingSession || selectedRoomArchived) return;
+		if (creatingSessionRef.current || selectedRoomArchived) return;
 		const originRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? "";
+		const previousSelectedPiboSessionId = selectedPiboSessionIdRef.current;
+		const operationId = createClientTxnId();
+		const tempId = `optimistic-session-${operationId}`;
+		const titleIntent = createOptimisticSessionTitleIntent({ operationId, originRoomId, tempId });
 		creatingSessionRef.current = true;
-		setCreatingSession(true);
+		flushSync(() => {
+			setCreatingSession(true);
+			if (desktopSessionSidebar.state.collapsed) desktopSessionSidebar.setState({ ...desktopSessionSidebar.state, collapsed: false });
+			if (isMobileSidebarViewport) setMobileSidebarOpen(true);
+			commitOptimisticSessionTitleIntents((current) => ({ ...current, [operationId]: titleIntent }));
+			if (bootstrapRef.current?.selectedRoomId === originRoomId) setSelectedPiboSessionId(tempId);
+			updateBootstrapCacheForRoom(originRoomId, (current) => {
+				const optimisticNode = createOptimisticSessionNode(tempId, profile || defaultProfileFromBootstrap(current));
+				const next = addSessionNodeToBootstrap(current, optimisticNode);
+				return { ...next, selectedPiboSessionId: tempId };
+			});
+		});
 		try {
-			const created = await createSessionMutation.mutateAsync({ profile, roomId: originRoomId || undefined });
+			const created = await createSessionMutation.mutateAsync({
+				profile,
+				roomId: originRoomId || undefined,
+				operationId,
+				tempId,
+				previousSelectedPiboSessionId,
+				originRoomId,
+			});
 			const outcome = optimisticSessionCreateOutcomeRef.current;
-			if (outcome?.autoRenameCreatedSession) setAutoRenameSessionId(created.session.id);
 			if (outcome?.navigateToCreatedSession) {
 				navigateToSelectedSession(originRoomId || undefined, created.session.id, false, { closeMobileSidebar: false });
-				// POST completes creation. Background hydration must not lock creation or browser navigation.
-				const hydration = loadBootstrap(created.session.id, showArchivedRef.current, originRoomId || undefined, { force: true });
-				const hydrationRequestId = bootstrapRequestId.current;
-				void hydration.catch((caught) => {
-					if (hydrationRequestId === bootstrapRequestId.current) setError(errorMessage(caught));
+				const titlePatch = startOptimisticSessionTitlePatch(operationId);
+				const hydrationOwner = {
+					piboSessionId: created.session.id,
+					bootstrapRequestId: bootstrapRequestId.current,
+					roomSwitchGeneration: roomSwitchGenerationRef.current,
+					sessionSelectionGeneration: sessionSelectionGenerationRef.current,
+				};
+				const ownsHydration = () => ownsDeferredOptimisticSessionHydration(hydrationOwner, {
+					selectedPiboSessionId: selectedPiboSessionIdRef.current,
+					bootstrapRequestId: bootstrapRequestId.current,
+					roomSwitchGeneration: roomSwitchGenerationRef.current,
+					sessionSelectionGeneration: sessionSelectionGenerationRef.current,
 				});
+				// POST completes creation. Start deferred hydration only while this operation still owns navigation.
+				const hydration = (titlePatch ?? Promise.resolve()).then(() => {
+					if (!ownsHydration()) return undefined;
+					return hydrateBootstrapCacheQueryData(queryClient, {
+						piboSessionId: created.session.id,
+						includeArchived: showArchivedRef.current,
+						roomId: originRoomId || undefined,
+					});
+				});
+				void hydration.catch((caught) => {
+					if (ownsHydration()) setError(errorMessage(caught));
+				});
+			} else {
+				void startOptimisticSessionTitlePatch(operationId);
 			}
 			setError(null);
 		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : String(caught));
+			setError(`Session was not created: ${errorMessage(caught)} Your temporary title was not sent to the server.`);
 		} finally {
 			optimisticSessionCreateOutcomeRef.current = null;
 			creatingSessionRef.current = false;
@@ -1392,8 +1603,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 	};
 
 	const renameSession = async (piboSessionId: string, title: string | null) => {
+		const backendPiboSessionId = selectedSessionBackendId(piboSessionId);
+		if (!backendPiboSessionId) {
+			setError("Session creation is still pending. Use the open title editor while creation completes.");
+			return;
+		}
 		try {
-			await renameSessionMutation.mutateAsync({ piboSessionId, title });
+			await renameSessionMutation.mutateAsync({ piboSessionId: backendPiboSessionId, title });
 			const data = await loadBootstrap(selectedPiboSessionId ?? undefined, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 			if (area === "sessions") await refreshTrace(data.selectedPiboSessionId);
 			if (area === "sessions") navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, { closeMobileSidebar: false });
@@ -1404,8 +1620,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 	};
 
 	const setSessionPinned = async (piboSessionId: string, pinned: boolean) => {
+		const backendPiboSessionId = selectedSessionBackendId(piboSessionId);
+		if (!backendPiboSessionId) {
+			setError("Session creation is still pending. Pinning is available after creation completes.");
+			return;
+		}
 		try {
-			await pinSessionMutation.mutateAsync({ piboSessionId, pinned });
+			await pinSessionMutation.mutateAsync({ piboSessionId: backendPiboSessionId, pinned });
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
@@ -1413,8 +1634,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 	};
 
 	const reorderSession = async (piboSessionId: string, targetPiboSessionId: string, position: "before" | "after") => {
+		const backendPiboSessionId = selectedSessionBackendId(piboSessionId);
+		const backendTargetPiboSessionId = selectedSessionBackendId(targetPiboSessionId);
+		if (!backendPiboSessionId || !backendTargetPiboSessionId) {
+			setError("Session creation is still pending. Reordering is available after creation completes.");
+			return;
+		}
 		try {
-			await reorderSessionMutation.mutateAsync({ piboSessionId, targetPiboSessionId, position });
+			await reorderSessionMutation.mutateAsync({ piboSessionId: backendPiboSessionId, targetPiboSessionId: backendTargetPiboSessionId, position });
 			setError(null);
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
@@ -1422,8 +1649,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 	};
 
 	const setSessionArchived = async (piboSessionId: string, archived: boolean) => {
+		const backendPiboSessionId = selectedSessionBackendId(piboSessionId);
+		if (!backendPiboSessionId) {
+			setError("Session creation is still pending. Archiving is available after creation completes.");
+			return;
+		}
 		try {
-			await archiveSessionMutation.mutateAsync({ piboSessionId, archived });
+			await archiveSessionMutation.mutateAsync({ piboSessionId: backendPiboSessionId, archived });
 			const keepSelected = !(archived && !showArchived && selectedPiboSessionId === piboSessionId);
 			const data = await loadBootstrap(
 				keepSelected ? (selectedPiboSessionId ?? undefined) : undefined,
@@ -1922,8 +2154,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onDeleteSession={requestSessionDelete}
 							onViewContext={viewSessionContext}
 							loadingPiboSessionId={loadingPiboSessionId}
-							autoRenameSessionId={autoRenameSessionId}
-							onAutoRenameConsumed={() => setAutoRenameSessionId(null)}
+							optimisticTitleIntents={optimisticTitleIntentsBySessionId}
+							onOptimisticTitleDraftChange={updateOptimisticSessionTitle}
+							onOptimisticTitleConfirm={confirmOptimisticSessionTitleIntent}
+							onOptimisticTitleCancel={cancelOptimisticSessionTitleIntent}
 						/>
 					</DesktopSessionSidebar>
 					<main data-pibo-debug="desktop-session-center" hidden={isDesktopPreviewFullscreen} aria-hidden={isDesktopPreviewFullscreen || undefined} className="min-h-0 min-w-[250px] flex-1 overflow-hidden">

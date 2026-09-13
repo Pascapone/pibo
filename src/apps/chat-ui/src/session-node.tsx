@@ -18,6 +18,7 @@ import {
 import type { PiboWebSessionNode } from "./types";
 import { ActionMenu, ActionMenuItem } from "./action-menu";
 import { sessionNodeSignal, sessionNodeTitle, sessionNodeTooltip } from "./session-sidebar-helpers";
+import { optimisticSessionTitleDisplay, type OptimisticSessionTitleIntent } from "./optimistic-session-title";
 
 export function SessionNode({
 	node,
@@ -42,6 +43,10 @@ export function SessionNode({
 	onSessionDragEnd,
 	showWorkflowSessionKindMarkers = false,
 	mutationsDisabled = false,
+	optimisticTitleIntent,
+	onOptimisticTitleDraftChange,
+	onOptimisticTitleConfirm,
+	onOptimisticTitleCancel,
 }: {
 	node: PiboWebSessionNode;
 	signalNow: number;
@@ -65,8 +70,13 @@ export function SessionNode({
 	onSessionDragEnd?: DragEventHandler<HTMLDivElement>;
 	showWorkflowSessionKindMarkers?: boolean;
 	mutationsDisabled?: boolean;
+	optimisticTitleIntent?: OptimisticSessionTitleIntent;
+	onOptimisticTitleDraftChange?: (operationId: string, draftTitle: string) => void;
+	onOptimisticTitleConfirm?: (operationId: string) => void;
+	onOptimisticTitleCancel?: (operationId: string) => void;
 }) {
-	const safeTitle = sessionNodeTitle(node);
+	const persistedSafeTitle = sessionNodeTitle(node);
+	const safeTitle = optimisticTitleIntent ? optimisticSessionTitleDisplay(optimisticTitleIntent) : persistedSafeTitle;
 	const sessionTooltip = sessionNodeTooltip(node);
 	const [editing, setEditing] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(safeTitle);
@@ -77,31 +87,36 @@ export function SessionNode({
 	const [expanded, setExpanded] = useState(hasSelectedDescendant);
 	const previousSelectedPiboSessionIdRef = useRef(selectedPiboSessionId);
 	const subsessionsRegionId = useId();
+	const optimisticEditing = optimisticTitleIntent?.editorStatus === "editing";
+	const isEditing = optimisticEditing || editing;
+	const visibleDraftTitle = optimisticEditing ? optimisticTitleIntent.draftTitle : draftTitle;
 
 	useEffect(() => {
-		if (!editing) setDraftTitle(safeTitle);
-	}, [editing, safeTitle]);
+		if (!editing && !optimisticTitleIntent) setDraftTitle(safeTitle);
+	}, [editing, optimisticTitleIntent, safeTitle]);
 
 	useEffect(() => {
 		if (!autoRename) {
 			autoRenameStartedRef.current = false;
 			return;
 		}
-		if (mutationsDisabled || autoRenameStartedRef.current) return;
+		if (optimisticTitleIntent || mutationsDisabled || autoRenameStartedRef.current) return;
 		autoRenameStartedRef.current = true;
 		setDraftTitle(safeTitle === "Untitled Session" ? "" : safeTitle);
 		setEditing(true);
-	}, [autoRename, mutationsDisabled, safeTitle]);
+	}, [autoRename, mutationsDisabled, optimisticTitleIntent, safeTitle]);
 
 	useEffect(() => {
-		if (mutationsDisabled) setEditing(false);
-	}, [mutationsDisabled]);
+		if (mutationsDisabled && !optimisticTitleIntent) setEditing(false);
+	}, [mutationsDisabled, optimisticTitleIntent]);
 
 	useLayoutEffect(() => {
-		if (!editing) return;
-		titleInputRef.current?.focus();
-		titleInputRef.current?.select();
-	}, [editing]);
+		if (!isEditing) return;
+		const input = titleInputRef.current;
+		if (!input || document.activeElement === input) return;
+		input.focus();
+		input.select();
+	}, [isEditing, optimisticTitleIntent?.operationId]);
 
 	useLayoutEffect(() => {
 		if (previousSelectedPiboSessionIdRef.current !== selectedPiboSessionId) {
@@ -116,7 +131,19 @@ export function SessionNode({
 		setEditing(false);
 		if (autoRename) onAutoRenameConsumed?.();
 	};
+	const cancelRename = () => {
+		if (optimisticTitleIntent) {
+			onOptimisticTitleCancel?.(optimisticTitleIntent.operationId);
+			return;
+		}
+		finishEditing();
+		setDraftTitle(safeTitle);
+	};
 	const submitRename = () => {
+		if (optimisticTitleIntent) {
+			onOptimisticTitleConfirm?.(optimisticTitleIntent.operationId);
+			return;
+		}
 		if (mutationsDisabled) return;
 		const title = draftTitle.trim();
 		onRename(node.piboSessionId, title ? title : null);
@@ -152,7 +179,7 @@ export function SessionNode({
 				title={sessionTooltip}
 			>
 				{dropPosition === "before" ? <span className="pointer-events-none absolute inset-x-1 -top-px z-10 h-px bg-[#11a4d4]" /> : null}
-				{editing && !mutationsDisabled ? (
+				{isEditing && (!mutationsDisabled || optimisticTitleIntent) ? (
 					<form
 						className="min-w-0 grid grid-cols-[1fr_auto_auto] gap-1 py-1 pr-1"
 						onSubmit={(event) => {
@@ -162,15 +189,17 @@ export function SessionNode({
 					>
 						<input
 							ref={titleInputRef}
-							value={draftTitle}
+							value={visibleDraftTitle}
 							aria-label={`Session title for ${safeTitle}`}
-							disabled={mutationsDisabled}
-							onChange={(event) => setDraftTitle(event.target.value)}
+							disabled={mutationsDisabled && !optimisticTitleIntent}
+							onChange={(event) => {
+								if (optimisticTitleIntent) onOptimisticTitleDraftChange?.(optimisticTitleIntent.operationId, event.target.value);
+								else setDraftTitle(event.target.value);
+							}}
 							onKeyDown={(event) => {
 								if (event.key === "Escape") {
 									event.preventDefault();
-									finishEditing();
-									setDraftTitle(safeTitle);
+									cancelRename();
 								}
 							}}
 							autoFocus
@@ -178,7 +207,7 @@ export function SessionNode({
 						/>
 						<button
 							type="submit"
-							disabled={mutationsDisabled}
+							disabled={mutationsDisabled && !optimisticTitleIntent}
 							title="Save Session Title"
 							aria-label="Save Session Title"
 							className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
@@ -187,11 +216,8 @@ export function SessionNode({
 						</button>
 						<button
 							type="button"
-							disabled={mutationsDisabled}
-							onClick={() => {
-								finishEditing();
-								setDraftTitle(safeTitle);
-							}}
+							disabled={mutationsDisabled && !optimisticTitleIntent}
+							onClick={cancelRename}
 							title="Cancel Rename"
 							aria-label="Cancel Rename"
 							className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
@@ -250,7 +276,7 @@ export function SessionNode({
 						</span>
 					</div>
 				)}
-				{editing && !mutationsDisabled ? null : (
+				{isEditing && (!mutationsDisabled || optimisticTitleIntent) ? null : (
 					<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 						<ActionMenu
 							label={`Actions for session ${safeTitle}`}

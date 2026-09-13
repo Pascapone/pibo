@@ -15,7 +15,7 @@ test("sidebar inline rename inputs have stable contextual accessible names", () 
 	const roomSource = readFileSync(resolve("src/apps/chat-ui/src/session-sidebar.tsx"), "utf8");
 
 	assert.match(
-		inputWithValue(sessionSource, "draftTitle"),
+		inputWithValue(sessionSource, "visibleDraftTitle"),
 		/aria-label=\{`Session title for \$\{safeTitle\}`\}/,
 	);
 	assert.match(
@@ -32,13 +32,15 @@ test("sidebar inline rename inputs have stable contextual accessible names", () 
 	);
 });
 
-test("automatic Session rename survives list remounts until the editor finishes", () => {
+test("automatic and optimistic Session rename keep editor ownership until the user finishes", () => {
 	const source = readFileSync(resolve("src/apps/chat-ui/src/session-node.tsx"), "utf8");
-	const initialization = source.slice(source.indexOf("if (!autoRename)"), source.indexOf("useEffect(() => {\n\t\tif (mutationsDisabled)"));
+	const initialization = source.slice(source.indexOf("if (!autoRename)"), source.indexOf("useEffect(() => {\n\t\tif (mutationsDisabled &&"));
 	const finish = source.slice(source.indexOf("const finishEditing"), source.indexOf("const signal ="));
 
 	assert.match(initialization, /autoRenameStartedRef\.current = true/);
 	assert.doesNotMatch(initialization, /onAutoRenameConsumed/);
 	assert.match(finish, /if \(autoRename\) onAutoRenameConsumed\?\.\(\)/);
-	assert.match(source, /event\.key === "Escape"[\s\S]*?finishEditing\(\)/);
+	assert.match(source, /const optimisticEditing = optimisticTitleIntent\?\.editorStatus === "editing"/);
+	assert.match(source, /document\.activeElement === input/);
+	assert.match(source, /event\.key === "Escape"[\s\S]*?cancelRename\(\)/);
 });

@@ -195,14 +195,15 @@ test("cross-room failure rolls back only cached origin-room data", async () => {
 
 test("App scopes pending insertion, replacement, and rollback to the origin room", async () => {
 	const source = await readFile("src/apps/chat-ui/src/App.tsx", "utf8");
-	assert.match(source, /onMutate: async \(\{ profile, roomId \}\)/);
-	assert.match(source, /const originRoomId = roomId \?\? bootstrap\?\.selectedRoomId \?\? ""/);
+	assert.match(source, /onMutate: async \(input: CreateSessionMutationInput\)/);
+	assert.match(source, /const originRoomId = selectedRoomId \?\? bootstrap\?\.selectedRoomId \?\? ""/);
 	assert.match(source, /updateBootstrapCacheForRoom\(originRoomId/);
 	assert.match(source, /rollbackOptimisticSessionNode\(current, context\.tempId, context\.previousSelectedPiboSessionId \?\? null\)/);
-	assert.match(source, /replaceOptimisticSessionNode\(current, context\.tempId, sessionNodeFromSession\(created\.session\)\)/);
+	assert.match(source, /replaceOptimisticSessionNode\(current, context\.tempId, createdNode\)/);
 	const createMutation = source.slice(source.indexOf("const createSessionMutation"), source.indexOf("const renameSessionMutation"));
 	assert.doesNotMatch(createMutation, /restoreBootstrapSnapshot/);
-	assert.match(source, /if \(outcome\?\.autoRenameCreatedSession\) setAutoRenameSessionId/);
+	assert.match(source, /createOptimisticSessionTitleIntent/);
+	assert.match(source, /handoffOptimisticSessionTitle/);
 	assert.match(source, /if \(outcome\?\.navigateToCreatedSession\)/);
 });
 
@@ -216,7 +217,8 @@ test("every Room Session create entrypoint uses the App router and inline-rename
 	assert.match(browserEntry, /props\.createSession\(profile\)/, "Agent Designer delegates to the App-owned creation flow");
 	assert.match(app, /onCreateSession=\{\(profile\) => createSession\(profile\)\}/);
 	assert.match(app, /navigateToSelectedSession\(originRoomId \|\| undefined, created\.session\.id, false/);
-	assert.match(app, /if \(outcome\?\.autoRenameCreatedSession\) setAutoRenameSessionId\(created\.session\.id\)/);
+	assert.match(app, /createOptimisticSessionTitleIntent\(\{ operationId, originRoomId, tempId \}\)/);
+	assert.match(app, /const titlePatch = startOptimisticSessionTitlePatch\(operationId\)/);
 	assert.match(app, /piboSessionId=\{selectedBackendPiboSessionId \?\? null\}/, "the optimistic placeholder cannot mount a fake Session workspace");
-	assert.match(sessionNode, /titleInputRef\.current\?\.focus\(\);\s*titleInputRef\.current\?\.select\(\);/);
+	assert.match(sessionNode, /input\.focus\(\);\s*input\.select\(\);/);
 });
