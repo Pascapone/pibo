@@ -4591,6 +4591,7 @@ async function sendChatMessage(input: {
 			piboSessionId: selectedSession.id,
 			roomId: room.id,
 			text: fileAttachmentContext.messageText,
+			userText: text,
 			delivery,
 			...(webAnnotationContext.attachments.length ? {
 				webAnnotationIds: webAnnotationContext.ids,

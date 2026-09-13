@@ -745,6 +745,80 @@ test("persisted steering messages remain attached to the active turn after reloa
 	assert.equal(steered.parentId, "event:message:turn-1");
 });
 
+test("persisted steering attachments remain previewable after trace reconstruction", () => {
+	const clientTxnId = "steer-with-image";
+	const imagePath = "/root/.pibo/uploads/steering-shot.png";
+	const attachmentContext = "<attached-uploaded-files>...</attached-uploaded-files>";
+	const routedText = `Adjust course\n\n${attachmentContext}`;
+	const view = buildTraceViewFromEvents({
+		session: { id: "chat:test", piSessionId: "pi-test" },
+		status: "idle",
+		transcriptEntries: [
+			{
+				id: clientTxnId,
+				type: "message",
+				timestamp: "2026-04-29T08:00:01.000Z",
+				message: { role: "user", content: [{ type: "text", text: routedText }] },
+			},
+		],
+		events: [
+			createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Start", source: "user" } }),
+			createEvent({
+				seq: 2,
+				type: "user.message.accepted",
+				payload: {
+					type: "user.message.accepted",
+					clientTxnId,
+					delivery: "steer",
+					text: routedText,
+					fileAttachmentPaths: [imagePath],
+					fileAttachments: [{ name: "steering-shot.png", path: imagePath, bytes: 1234 }],
+					fileAttachmentContext: attachmentContext,
+				},
+			}),
+			createEvent({ seq: 3, type: "message_steered", payload: { type: "message_steered", eventId: clientTxnId, activeEventId: "turn-1", text: routedText, source: "user" } }),
+		],
+	});
+
+	const steered = flatNodes(view).find((node) => node.id === `event:message_steered:${clientTxnId}`);
+	assert.equal(steered?.output, "Adjust course");
+	assert.deepEqual(steered?.fileAttachments, [{ name: "steering-shot.png", path: imagePath, bytes: 1234 }]);
+	const row = buildCompactTerminalRows(view, { showThinking: true }).find((candidate) => candidate.id === steered?.id);
+	assert.deepEqual(row?.imagePreviews, [{
+		id: `${steered?.id}:attachment:0`,
+		label: "steering-shot.png",
+		path: imagePath,
+		mimeType: undefined,
+	}]);
+});
+
+test("accepted attachment metadata enriches an optimistic steering message", () => {
+	const clientTxnId = "live-steer-with-image";
+	const imagePath = "/root/.pibo/uploads/live-steering-shot.png";
+	const baseView = createBaseView([
+		createEvent({ seq: 1, type: "message_started", payload: { type: "message_started", eventId: "turn-1", text: "Start", source: "user" } }),
+		createEvent({
+			seq: 2,
+			type: "message_steered",
+			payload: { type: "message_steered", eventId: clientTxnId, clientTxnId, delivery: "steer", text: "Adjust live", source: "user", fileAttachmentPaths: [imagePath] },
+		}),
+	], "running");
+	const accepted = createEvent({
+		seq: 3,
+		type: "user.message.accepted",
+		payload: {
+			type: "user.message.accepted",
+			clientTxnId,
+			delivery: "steer",
+			text: "Adjust live",
+			fileAttachments: [{ name: "live-steering-shot.png", path: imagePath, bytes: 4321 }],
+		},
+	});
+	const patched = patchTraceViewWithEvent(baseView, accepted, "running");
+	const steered = flatNodes(patched).find((node) => node.id === `event:message_steered:${clientTxnId}`);
+	assert.deepEqual(steered?.fileAttachments, [{ name: "live-steering-shot.png", path: imagePath, bytes: 4321 }]);
+});
+
 test("persisted steering messages retain event-backed identity after the event ages out of the tail", () => {
 	const view = buildTraceViewFromEvents({
 		session: { id: "chat:test", piSessionId: "pi-test" },

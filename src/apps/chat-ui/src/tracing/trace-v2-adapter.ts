@@ -65,6 +65,7 @@ function traceNodeFromTimelineNode(row: TraceTimelineNode): PiboTraceNode {
 		startedAt: row.startedAt,
 		completedAt: row.completedAt,
 		durationMs: row.durationMs,
+		fileAttachments: row.fileAttachments,
 		toolMetrics: row.toolMetrics,
 		modelInferences: row.modelInferences,
 		compactionStats: row.compactionStats,

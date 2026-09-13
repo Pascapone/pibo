@@ -560,6 +560,15 @@ function debugFields(node: PiboTraceNode): Pick<
 
 function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 	const text = stringValue(node.output) || stringValue(node.summary) || node.title;
+	const imagePreviews = node.fileAttachments?.flatMap((attachment, index) => {
+		if (!isImageFileAttachment(attachment.path, attachment.contentType)) return [];
+		return [{
+			id: `${node.id}:attachment:${index}`,
+			label: attachment.name,
+			path: attachment.path,
+			mimeType: attachment.contentType,
+		}];
+	});
 	return {
 		id: node.id,
 		kind: "message.user",
@@ -572,7 +581,13 @@ function createUserMessageRow(node: PiboTraceNode): CompactTerminalRow {
 		startedAt: node.startedAt,
 		output: text,
 		payloadRefs: node.payloadRefs,
+		imagePreviews: imagePreviews?.length ? imagePreviews : undefined,
 	};
+}
+
+function isImageFileAttachment(path: string, contentType: string | undefined): boolean {
+	return contentType?.toLowerCase().startsWith("image/") === true
+		|| /\.(?:avif|bmp|gif|jpe?g|png|svg|webp)$/i.test(path);
 }
 
 function createAssistantMessageRow(node: PiboTraceNode): CompactTerminalRow {
