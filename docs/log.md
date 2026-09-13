@@ -2,6 +2,8 @@
 
 ## 2026-09-13
 
+- **Session workspace Pibo2 acceptance**: Installed candidate `03429d4f` and recorded authenticated headful desktop/mobile confirmation before create completion, draft handoff, per-Session tab restoration, Settings cache and targeted Refresh in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-session-workspace-acceptance-2026-09-13). New Sessions start with no workspace tabs; no model turn or release was performed.
+
 - **Immediate optimistic Session rename and owned workspace lifecycle**: Consolidated the implemented [Session creation and workspace contract](/specs/web/session-workspace-lifecycle.md), aligned [PLG-UX-002](/plans/unified-plugin-system-rebuild.md#plg-ux-002-session-erstellung-und-session-eigener-workspace-lifecycle) and the [execution ledger](/plans/unified-plugin-system-execution.md#active-correction-session-owned-workspace-ux-2026-09-13), and recorded commit-backed focused tests, Chat UI build/typecheck, desktop/mobile delayed-POST evidence, and the delayed-PATCH selection race. An earlier headful Agent Designer run confirms the shared callback, while exact-candidate delayed-POST timing through that button remains an evidence limit; no full suite, Pibo2 deployment, push, PR, or release is claimed.
 
 - **Pibo 4.0 corrected Pibo2 test candidate**: Recorded exact candidate/checksum, automatic profile migration parity, byte-identical user resources, valid Pi/Codex session plans and headful mobile Designer evidence in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-upgrade-finding-and-local-correction). New remote model turns and release acceptance remain unverified.
