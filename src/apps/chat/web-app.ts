@@ -524,21 +524,37 @@ type ChatGatewayResourceMetrics = {
 	recentWarnings: Array<{ at: string; message: string }>;
 };
 
-type ChatBootstrapCatalog = {
+type ChatBootstrapCoreCatalog = {
 	agents: ReturnType<NonNullable<PiboWebAppContext["channelContext"]["getProfiles"]>>;
 	customAgents: ReturnType<typeof serializeCustomAgents>;
 	agentFolders: ReturnType<CustomAgentStore["listFolders"]>;
 	modelDefaults: PiboModelDefaults;
-	modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>>;
-	agentCatalog: Awaited<ReturnType<typeof buildAgentCatalog>>;
 	capabilities: { actions: ReturnType<PiboWebAppContext["channelContext"]["getGatewayActions"]> };
 	integrations: ChatWebIntegrations;
+};
+
+type ChatBootstrapCatalog = ChatBootstrapCoreCatalog & {
+	modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>>;
+	agentCatalog: Awaited<ReturnType<typeof buildAgentCatalog>>;
 };
 
 const BOOTSTRAP_CATALOG_CACHE_TTL_MS = 30_000;
 
 function invalidateBootstrapCatalogCache(state: ChatWebAppState): void {
 	state.bootstrapCatalogCache = undefined;
+}
+
+function loadBootstrapCoreCatalog(state: ChatWebAppState, context: PiboWebAppContext): ChatBootstrapCoreCatalog {
+	return {
+		agents: context.channelContext.getProfiles?.() ?? [],
+		customAgents: serializeCustomAgents(state.agentStore.list({ includeArchived: true }), context),
+		agentFolders: state.agentStore.listFolders(),
+		modelDefaults: loadChatModelDefaults(process.cwd()),
+		capabilities: {
+			actions: context.channelContext.getGatewayActions(),
+		},
+		integrations: state.integrations,
+	};
 }
 
 function loadBootstrapCatalog(
@@ -548,20 +564,14 @@ function loadBootstrapCatalog(
 ): Promise<ChatBootstrapCatalog> {
 	const now = Date.now();
 	if (state.bootstrapCatalogCache && state.bootstrapCatalogCache.expiresAt > now) return state.bootstrapCatalogCache.value;
+	const core = loadBootstrapCoreCatalog(state, context);
 	const value = Promise.all([
 		loadModelCatalog(process.cwd()),
 		buildAgentCatalog(context, state),
 	]).then(([modelCatalog, agentCatalog]) => ({
-		agents: context.channelContext.getProfiles?.() ?? [],
-		customAgents: serializeCustomAgents(state.agentStore.list({ includeArchived: true }), context),
-		agentFolders: state.agentStore.listFolders(),
-		modelDefaults: loadChatModelDefaults(process.cwd()),
+		...core,
 		modelCatalog,
 		agentCatalog,
-		capabilities: {
-			actions: context.channelContext.getGatewayActions(),
-		},
-		integrations: state.integrations,
 	}));
 	state.bootstrapCatalogCache = { expiresAt: now + BOOTSTRAP_CATALOG_CACHE_TTL_MS, value };
 	value.catch(() => {
@@ -733,6 +743,7 @@ function writeJsonSse(controller: ReadableStreamDefaultController<Uint8Array>, e
 function compactSignalStatusPatch(patch: PiboSignalPatch): PiboSignalStatusPatch {
 	return {
 		type: "signal_status_patch",
+		epoch: patch.epoch,
 		rootPiboSessionId: patch.rootPiboSessionId,
 		fromVersion: patch.fromVersion,
 		toVersion: patch.toVersion,
@@ -5002,8 +5013,19 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				}, { headers: { "server-timing": "navigation;desc=\"no_catalog_no_jsonl\"" } });
 			}
 
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/bootstrap/catalog` && request.method === "GET") {
+				const webSession = await requireSession(request, context);
+				return responseJson(await loadBootstrapCatalog(state, context, webSession), {
+					headers: {
+						"cache-control": "private, no-store",
+						"server-timing": "bootstrap_catalog;desc=\"deferred_model_and_agent_catalog\"",
+					},
+				});
+			}
+
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/bootstrap` && request.method === "GET") {
 				const webSession = await requireSession(request, context);
+				const coreOnly = parseBooleanSearchParam(url, "core");
 				const includeArchived = parseBooleanSearchParam(url, "includeArchived");
 				const markRead = parseBooleanSearchParam(url, "markRead");
 				const requestedRoomId = url.searchParams.get("roomId") || undefined;
@@ -5044,9 +5066,9 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
 						process.cwd(),
 						sessionUnreadCounts,
-						sessionNodeHistoryOptions(context),
+						coreOnly ? { skipPiMetadataFallback: true } : sessionNodeHistoryOptions(context),
 					),
-					loadBootstrapCatalog(state, context, webSession),
+					coreOnly ? loadBootstrapCoreCatalog(state, context) : loadBootstrapCatalog(state, context, webSession),
 				]);
 				const roomTree = state.roomService.listRoomTree();
 				const roomUnreadCounts = buildRoomUnreadCounts(ownedSessions, sessionUnreadCounts, defaultRoom.id);
@@ -5062,7 +5084,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					rooms,
 					sessions,
 					...catalog,
-				});
+				}, coreOnly ? {
+					headers: {
+						"cache-control": "private, no-store",
+						"server-timing": "bootstrap_core;desc=\"no_model_agent_catalog_no_jsonl\"",
+					},
+				} : undefined);
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/context-build` && request.method === "GET") {

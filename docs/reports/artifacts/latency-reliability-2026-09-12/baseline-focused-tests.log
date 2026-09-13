@@ -1,0 +1,34 @@
+✔ app signal status helpers preserve snapshot and patch semantics (783.205304ms)
+✔ optimistic session status updates are not overwritten by the previous signal snapshot (2.261301ms)
+✔ the sidebar keeps one global status feed while selected signal updates share its tree stream (1.523931ms)
+✔ restored or newly visible pages reconnect and arm a delayed selected-tree fallback (1.432077ms)
+✔ selected sessions recover missing snapshots and reconcile active turns without duplicating healthy stream snapshots (1.939293ms)
+✔ an admission arriving during an empty claim does not wait for the polling timer (16.168628ms)
+✔ a persisted terminal event releases the local claim and starts the next command without polling (16.60477ms)
+✔ runtime queue capacity failures persist dimension-specific numeric diagnostics without message content (4.882517ms)
+✔ frequent dispatch checks renew active ownership only on the separate lease cadence (25.432258ms)
+✔ different assistant finals in one turn receive distinct durable identities while exact replay reattaches (135.446634ms)
+✔ equivalent assistant aliases fingerprint identically and compact queued/completed results do not collide (199.104271ms)
+✔ collision diagnostics are redacted and dead-letter reconciliation is explicit, audited, and idempotent (465.146157ms)
+✔ keep-existing repair accepts the exact legacy compact collision key (126.634582ms)
+✔ closing storage forbids creating a lazy reader and waits for failed worker exit (479.322221ms)
+✔ async output ingest returns compaction enrichments to the live event object (314.458464ms)
+✔ slow worker CPU leaves the calling thread responsive and enforces queue counts and bytes (240.655033ms)
+✔ admission bypasses queued background work without changing FIFO within a priority (197.449994ms)
+✔ worker crash and execution deadline release all queued promises with uncertain in-flight state (237.062916ms)
+✔ payload accounting rejects cycles, wide input and oversized UTF-8 strings (71.990596ms)
+✔ large payload compression finishes before the short metadata transaction (37.66918ms)
+✔ chat projections do not overwrite a concurrently advanced runtime binding (54.148345ms)
+✔ atomic worker admissions have one winner, persist after restart and avoid main-thread lock waiting (1026.12852ms)
+✔ room fairness rotates storage admission and reserves control queue space (168.922485ms)
+✔ storage fairness remembers Rooms across drained bursts without delaying control work (50.126566ms)
+✔ payload accounting permits shared acyclic metadata and counts every serialized occurrence (0.595412ms)
+✔ an exited storage worker is replaced instead of disabling durable admission permanently (1490.850008ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4810.396071

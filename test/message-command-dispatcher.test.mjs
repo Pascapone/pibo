@@ -11,9 +11,45 @@ test('an admission arriving during an empty claim does not wait for the polling 
  const storage={claimCommand:async()=>{if(++calls===1)return await initial;const next=available;available=undefined;return next;},heartbeatCommand:async()=>true,transitionCommand:async()=>true};
  const dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>({id:'session'}),emit:async event=>{outputs.push(event);return {type:'message_queued'};}});
  try {
-  available=claim(1);dispatcher.wake();release(undefined);await yieldLoop();
+  available=claim(1);dispatcher.wake();release(undefined);await yieldLoop();await yieldLoop();
   assert.equal(outputs.length,1,'an explicit wake must survive an in-flight empty claim');
  }finally{release(undefined);await dispatcher.dispose();}
+});
+
+test('idle recovery is jittered in seconds and discovers work without a local wakeup',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});t.mock.method(Math,'random',()=>0.5);
+ let calls=0;let available;const outputs=[];
+ const storage={claimCommand:async()=>{calls++;const next=available;available=undefined;return next;},heartbeatCommand:async()=>true,transitionCommand:async()=>true};
+ const dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>({id:'session'}),emit:async event=>{outputs.push(event);return {type:'message_queued'};}});
+ try {
+  await yieldLoop();assert.equal(calls,1);
+  available=claim(1);t.mock.timers.tick(4999);await yieldLoop();assert.equal(calls,1);
+  t.mock.timers.tick(1);await yieldLoop();assert.equal(outputs.length,1,'cross-process admission is recovered without an in-process signal');
+ }finally{await dispatcher.dispose();}
+});
+
+test('many wakes during one storage claim coalesce without losing admission',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ let release;const initial=new Promise(resolve=>{release=resolve;});let calls=0;let available;const outputs=[];
+ const storage={claimCommand:async()=>{if(++calls===1)return initial;const next=available;available=undefined;return next;},heartbeatCommand:async()=>true,transitionCommand:async()=>true};
+ const dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>({id:'session'}),emit:async event=>{outputs.push(event);return {type:'message_queued'};}});
+ try {
+  await yieldLoop();available=claim(1);for(let i=0;i<1000;i++)dispatcher.wake();
+  release(undefined);await yieldLoop();await yieldLoop();
+  assert.equal(outputs.length,1);assert.equal(calls,3,'one empty claim, one admitted command, one empty drain check');
+ }finally{release(undefined);await dispatcher.dispose();}
+});
+
+test('a synchronous completion burst yields to other event-loop work',async()=>{
+ let next=0;let atYield;let dispatcher;
+ const storage={claimCommand:async()=>next<100?claim(++next):undefined,heartbeatCommand:async()=>true,transitionCommand:async()=>true};
+ dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>undefined,emit:async()=>{throw new Error('missing sessions cannot emit');}});
+ try {
+  await yieldLoop();atYield=next;
+  assert.ok(atYield>0 && atYield<=12,`processed ${atYield} claims before yielding`);
+  for(let i=0;i<20 && next<100;i++)await yieldLoop();
+  assert.equal(next,100);
+ }finally{await dispatcher.dispose();}
 });
 
 test('a persisted terminal event releases the local claim and starts the next command without polling',async t=>{

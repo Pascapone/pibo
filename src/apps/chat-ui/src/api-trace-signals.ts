@@ -132,21 +132,32 @@ export async function fetchSignalStatuses(init?: RequestInit): Promise<PiboSigna
 
 export function subscribeSignalStatuses(
 	handlers: {
+		isCurrent?: () => boolean;
 		onSnapshot?: (snapshot: PiboSignalStatusSnapshot) => void;
 		onPatch?: (patch: PiboSignalStatusPatch) => void;
 		onError?: (event: Event) => void;
 	},
 ): () => void {
 	const events = new EventSource("/api/chat/signals/status-events");
-	events.addEventListener("signal_status_snapshot", (message) => handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot));
-	events.addEventListener("signal_status_patch", (message) => handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch));
-	events.onerror = (event) => handlers.onError?.(event);
-	return closeEventSourceOnPageHide(events);
+	const isCurrent = () => handlers.isCurrent?.() ?? true;
+	events.addEventListener("signal_status_snapshot", (message) => {
+		if (!isCurrent()) return;
+		handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot);
+	});
+	events.addEventListener("signal_status_patch", (message) => {
+		if (!isCurrent()) return;
+		handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch);
+	});
+	events.onerror = (event) => {
+		if (isCurrent()) handlers.onError?.(event);
+	};
+	return () => events.close();
 }
 
 export function subscribeSignalTree(
 	rootPiboSessionId: string,
 	handlers: {
+		isCurrent?: () => boolean;
 		onSnapshot?: (snapshot: PiboSignalSnapshot) => void;
 		onPatch?: (patch: PiboSignalPatch) => void;
 		onStatusSnapshot?: (snapshot: PiboSignalStatusSnapshot) => void;
@@ -157,21 +168,27 @@ export function subscribeSignalTree(
 	const params = new URLSearchParams({ rootPiboSessionId });
 	if (handlers.onStatusSnapshot || handlers.onStatusPatch) params.set("includeStatuses", "true");
 	const events = new EventSource(`/api/chat/signals/events?${params.toString()}`);
-	events.addEventListener("signal_snapshot", (message) => handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalSnapshot));
-	events.addEventListener("signal_patch", (message) => handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalPatch));
-	events.addEventListener("signal_status_snapshot", (message) => handlers.onStatusSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot));
-	events.addEventListener("signal_status_patch", (message) => handlers.onStatusPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch));
-	events.onerror = (event) => handlers.onError?.(event);
-	return closeEventSourceOnPageHide(events);
-}
-
-function closeEventSourceOnPageHide(events: EventSource): () => void {
-	const close = () => events.close();
-	window.addEventListener("pagehide", close);
-	return () => {
-		window.removeEventListener("pagehide", close);
-		close();
+	const isCurrent = () => handlers.isCurrent?.() ?? true;
+	events.addEventListener("signal_snapshot", (message) => {
+		if (!isCurrent()) return;
+		handlers.onSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalSnapshot);
+	});
+	events.addEventListener("signal_patch", (message) => {
+		if (!isCurrent()) return;
+		handlers.onPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalPatch);
+	});
+	events.addEventListener("signal_status_snapshot", (message) => {
+		if (!isCurrent()) return;
+		handlers.onStatusSnapshot?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusSnapshot);
+	});
+	events.addEventListener("signal_status_patch", (message) => {
+		if (!isCurrent()) return;
+		handlers.onStatusPatch?.(JSON.parse((message as MessageEvent).data) as PiboSignalStatusPatch);
+	});
+	events.onerror = (event) => {
+		if (isCurrent()) handlers.onError?.(event);
 	};
+	return () => events.close();
 }
 
 function toEtag(version: string): string {

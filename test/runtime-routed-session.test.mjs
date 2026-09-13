@@ -982,12 +982,309 @@ test("cold-start ramps remain bounded across rooms and do not activate historica
  }
 });
 
+test("runtime capacity reports bounded cold-start phases for ready and failed initialization", async () => {
+ const fixture = createFakeRuntimeFixture({ runtimeCapacity: { coldStarts: 1, maxRuntimes: 20 } });
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ const original = adapter.openSession.bind(adapter);
+ fixture.store.create({ id: "ps_phase_ready", channel: "test", kind: "chat", profile: "router-fake-profile", workspace: process.cwd(), runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" }, metadata: { chatRoomId: "room-phase" } });
+ fixture.store.create({ id: "ps_phase_failed", channel: "test", kind: "chat", profile: "router-fake-profile", workspace: process.cwd(), runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" }, metadata: { chatRoomId: "room-phase" } });
+ try {
+  adapter.openSession = async (input) => { await delay(25); return original(input); };
+  await fixture.router.emit({ type: "message", piboSessionId: "ps_phase_ready", id: "phase-ready", text: "ready" });
+  const ready = fixture.router.getRuntimeCapacityStatus().recentInitializations.at(-1);
+  assert.equal(ready.sessionId, "ps_phase_ready");
+  assert.equal(ready.outcome, "ready");
+  assert.ok(ready.waitMs >= 0);
+  assert.ok(ready.totalMs >= 20);
+  assert.deepEqual(Object.keys(ready.phases), ["bindingAndProfileMs", "portableHistoryMs", "resourcesAndToolsMs", "adapterOpenAndBindingMs"]);
+  for (const value of Object.values(ready.phases)) assert.ok(Number.isFinite(value) && value >= 0);
+  assert.ok(ready.phases.adapterOpenAndBindingMs >= 20, "adapter opening is measured independently from optional bootstrap reads");
+
+  adapter.openSession = async () => { await delay(5); throw new Error("fixture native open failed"); };
+  await assert.rejects(fixture.router.emit({ type: "message", piboSessionId: "ps_phase_failed", id: "phase-failed", text: "fail" }), /fixture native open failed/);
+  const failed = fixture.router.getRuntimeCapacityStatus().recentInitializations.at(-1);
+  assert.equal(failed.sessionId, "ps_phase_failed");
+  assert.equal(failed.outcome, "failed");
+  assert.ok(failed.totalMs >= 4);
+  assert.ok(Object.keys(failed.phases).length >= 3, "failed starts retain every completed phase without claiming readiness");
+ } finally {
+  await fixture.router.disposeAll();
+ }
+});
+
+test("provider-free actions stay responsive while an independent runtime cold start is blocked", async () => {
+ const fixture = createFakeRuntimeFixture({ runtimeCapacity: { coldStarts: 1, coldStartsPerRoom: 1, maxRuntimes: 20 } });
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high", "xhigh"] };
+ for (const id of ["ps_capacity_blocker", "ps_independent_control"]) {
+  fixture.store.create({ id, channel: "test", kind: "chat", profile: "router-fake-profile", workspace: process.cwd(), metadata: { initialThinkingLevel: "medium", chatRoomId: id }, runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" } });
+ }
+ adapter.peekModelCatalog = () => ({
+  runtimeInstanceId: "router-fake",
+  models: [
+   { provider: "openai-codex", id: "gpt-5.6-luna", reasoningOptions: ["off", "low", "medium", "high", "xhigh"] },
+   { provider: "fixture", id: "plain-model" },
+   { provider: "fixture", id: "limited-model", reasoningOptions: ["off", "low"] },
+  ],
+ });
+ fixture.store.update("ps_independent_control", { activeModel: { provider: "openai-codex", id: "gpt-5.6-luna" } });
+ const original = adapter.openSession.bind(adapter);
+ const blockerGate = deferred();
+ let blockerEntered = false;
+ adapter.openSession = async (input) => {
+  if (input.piboSession.id === "ps_capacity_blocker") {
+   blockerEntered = true;
+   await blockerGate.promise;
+  }
+  const session = await original(input);
+  let level = input.services?.compatibility?.thinkingLevel ?? "medium";
+  const reasoning = () => ({ value: level, availableValues: ["off", "low", "medium", "high", "xhigh"], supported: true });
+  session.controls = {
+   getReasoning: reasoning,
+   setReasoning(value) { level = value; return reasoning(); },
+   cycleReasoning: reasoning,
+  };
+  const getStatus = session.getStatus.bind(session);
+  session.getStatus = () => ({ ...getStatus(), reasoning: reasoning() });
+  return session;
+ };
+ const events = [];
+ fixture.router.subscribe((event) => events.push(event));
+ try {
+  await fixture.router.emit({ type: "message", piboSessionId: "ps_router_fake", id: "warm-owner", text: "warm" });
+  await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === "warm-owner"));
+  const ownerThinking = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", id: "owner-thinking", action: "thinking" });
+  assert.equal(ownerThinking.result.level, "medium");
+
+  const blocker = fixture.router.emit({ type: "message", piboSessionId: "ps_capacity_blocker", id: "blocked-open", text: "block" });
+  await waitFor(() => blockerEntered && fixture.router.getRuntimeCapacityStatus().coldStarts.active === 1);
+
+  const passiveStatus = await fixture.router.emit({ type: "execution", piboSessionId: "ps_independent_control", id: "control-status", action: "status" });
+  assert.equal(passiveStatus.result.processing, false);
+  const passiveSessionId = await fixture.router.emit({ type: "execution", piboSessionId: "ps_independent_control", id: "control-session", action: "session_id" });
+  assert.equal(passiveSessionId.result.piboSessionId, "ps_independent_control");
+  assert.equal(adapter.openInputs.some((input) => input.piboSession.id === "ps_independent_control"), false);
+
+  const controlMessage = fixture.router.emit({ type: "message", piboSessionId: "ps_independent_control", id: "control-message", text: "control" });
+  await waitFor(() => fixture.router.getRuntimeCapacityStatus().coldStarts.waiting === 1);
+  const initializingStatus = await fixture.router.emit({ type: "execution", piboSessionId: "ps_independent_control", id: "control-status-initializing", action: "status" });
+  assert.equal(initializingStatus.result.runtimeState, "initializing");
+  assert.equal(initializingStatus.result.processing, true);
+  assert.match(initializingStatus.result.warnings[0], /initialization/i);
+  const thinking = fixture.router.emit({ type: "execution", piboSessionId: "ps_independent_control", id: "control-thinking", action: "thinking", params: { level: "high" } });
+  const immediate = await Promise.race([thinking, delay(100).then(() => undefined)]);
+  assert.ok(immediate, "provider-free thinking must not wait for runtime cold-start admission");
+  assert.equal(immediate.result.level, "high");
+  assert.equal(fixture.store.get("ps_independent_control").metadata.initialThinkingLevel, "high");
+  assert.equal(adapter.openInputs.some((input) => input.piboSession.id === "ps_independent_control"), false);
+
+  blockerGate.resolve();
+  await blocker;
+  await controlMessage;
+  await waitFor(() => events.some((event) => event.type === "message_finished" && event.eventId === "control-message"));
+  const activeThinking = await fixture.router.emit({ type: "execution", piboSessionId: "ps_independent_control", id: "control-thinking-active", action: "thinking" });
+  assert.equal(activeThinking.result.level, "high");
+
+  const changedOwner = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", id: "owner-thinking-high", action: "thinking", params: { level: "high" } });
+  assert.equal(changedOwner.result.level, "high");
+  assert.equal(fixture.store.get("ps_router_fake").metadata.initialThinkingLevel, "high");
+ } finally {
+  blockerGate.resolve();
+  await fixture.router.disposeAll();
+ }
+});
+
+test("passive thinking uses selected-model levels and never persists rejected or disabled selections", async () => {
+ const fixture = createFakeRuntimeFixture();
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ adapter.peekModelCatalog = () => ({
+  runtimeInstanceId: "router-fake",
+  models: [
+   { provider: "fixture", id: "plain-model" },
+   { provider: "fixture", id: "limited-model", reasoningOptions: ["off", "low"] },
+  ],
+ });
+ for (const [id, model] of [["ps_plain_model", "plain-model"], ["ps_limited_model", "limited-model"], ["ps_disabled_runtime", "limited-model"]]) {
+  fixture.store.create({ id, channel: "test", kind: "chat", profile: "router-fake-profile", workspace: process.cwd(), activeModel: { provider: "fixture", id: model }, metadata: { initialThinkingLevel: "medium" }, runtimeBinding: { runtimeInstanceId: "router-fake", adapterId: "router-fake", state: "unbound" } });
+ }
+ try {
+  const plain = await fixture.router.emit({ type: "execution", piboSessionId: "ps_plain_model", action: "thinking" });
+  assert.deepEqual({ supported: plain.result.supported, availableLevels: plain.result.availableLevels, level: plain.result.level }, { supported: false, availableLevels: [], level: "off" });
+  await assert.rejects(fixture.router.emit({ type: "execution", piboSessionId: "ps_plain_model", action: "thinking", params: { level: "low" } }), /does not support reasoning-level selection/);
+  assert.equal(fixture.store.get("ps_plain_model").metadata.initialThinkingLevel, "medium");
+
+  const limited = await fixture.router.emit({ type: "execution", piboSessionId: "ps_limited_model", action: "thinking" });
+  assert.deepEqual(limited.result.availableLevels, ["off", "low"]);
+  assert.equal(limited.result.level, "off", "an unavailable persisted level must not be reported as effective");
+  await assert.rejects(fixture.router.emit({ type: "execution", piboSessionId: "ps_limited_model", action: "thinking", params: { level: "high" } }), /does not support reasoning level "high"/);
+  assert.equal(fixture.store.get("ps_limited_model").metadata.initialThinkingLevel, "medium");
+  const accepted = await fixture.router.emit({ type: "execution", piboSessionId: "ps_limited_model", action: "thinking", params: { level: "low" } });
+  assert.equal(accepted.result.level, "low");
+  assert.equal(fixture.store.get("ps_limited_model").metadata.initialThinkingLevel, "low");
+
+  adapter.enabled = false;
+  const disabled = await fixture.router.emit({ type: "execution", piboSessionId: "ps_disabled_runtime", action: "thinking" });
+  assert.equal(disabled.result.supported, false);
+  await assert.rejects(fixture.router.emit({ type: "execution", piboSessionId: "ps_disabled_runtime", action: "thinking", params: { level: "low" } }), /selected runtime is disabled/i);
+  assert.equal(fixture.store.get("ps_disabled_runtime").metadata.initialThinkingLevel, "medium");
+  assert.equal(adapter.openInputs.length, 0);
+ } finally {
+  await fixture.router.disposeAll();
+ }
+});
+
+test("passive thinking never awaits an unresolved model catalog", async () => {
+ const fixture = createFakeRuntimeFixture();
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ fixture.store.update("ps_router_fake", { activeModel: { provider: "fixture", id: "reasoning-model" } });
+ let listCalls = 0;
+ adapter.listModels = async () => {
+  listCalls++;
+  return await new Promise(() => {});
+ };
+ try {
+  const action = fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  const result = await Promise.race([action, delay(100).then(() => undefined)]);
+  assert.ok(result, "passive thinking must return without starting or awaiting model discovery");
+  assert.equal(result.result.availability, "unavailable");
+  assert.equal(result.result.retryable, true);
+  assert.equal(result.result.message, "Thinking options are loading. Try again shortly.");
+  assert.equal(listCalls, 1, "a cold catalog starts one adapter discovery without opening a routed session");
+  const retry = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(retry.result.availability, "unavailable");
+  assert.equal(listCalls, 1, "retries share the unresolved discovery instead of spawning background work");
+  assert.equal(adapter.openInputs.length, 0);
+ } finally {
+  await fixture.router.disposeAll();
+ }
+});
+
+test("passive thinking recovers from a cold catalog through one bounded adapter discovery", async () => {
+ const fixture = createFakeRuntimeFixture();
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ fixture.store.update("ps_router_fake", { activeModel: { provider: "fixture", id: "reasoning-model" }, metadata: { initialThinkingLevel: "medium" } });
+ const releaseCatalog = deferred();
+ let cachedCatalog;
+ let listCalls = 0;
+ adapter.peekModelCatalog = () => cachedCatalog;
+ adapter.listModels = async () => {
+  listCalls++;
+  await releaseCatalog.promise;
+  cachedCatalog = { runtimeInstanceId: "router-fake", models: [{ provider: "fixture", id: "reasoning-model", reasoningOptions: ["off", "low", "medium", "high"] }] };
+  return cachedCatalog;
+ };
+ try {
+  const cold = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(cold.result.availability, "unavailable");
+  assert.equal(cold.result.retryable, true);
+  assert.equal(listCalls, 1);
+  assert.equal(adapter.openInputs.length, 0, "catalog discovery must not consume an agent-session cold-start slot");
+  releaseCatalog.resolve();
+  await waitFor(() => Boolean(adapter.peekModelCatalog()));
+  const recovered = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.deepEqual({ availability: recovered.result.availability, supported: recovered.result.supported, level: recovered.result.level, availableLevels: recovered.result.availableLevels }, { availability: "ready", supported: true, level: "medium", availableLevels: ["off", "low", "medium", "high"] });
+  assert.equal(listCalls, 1);
+  assert.equal(adapter.openInputs.length, 0);
+ } finally {
+  releaseCatalog.resolve();
+  await fixture.router.disposeAll();
+ }
+});
+
+test("passive thinking retains a bounded listModels catalog when peekModelCatalog is absent", async () => {
+ const fixture = createFakeRuntimeFixture();
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ fixture.store.update("ps_router_fake", { activeModel: { provider: "fixture", id: "reasoning-model" }, metadata: { initialThinkingLevel: "medium" } });
+ delete adapter.peekModelCatalog;
+ const originalNow = Date.now;
+ let now = originalNow();
+ let listCalls = 0;
+ adapter.listModels = async () => {
+  listCalls++;
+  return {
+   runtimeInstanceId: "router-fake",
+   models: [{ provider: "fixture", id: "reasoning-model", reasoningOptions: listCalls === 1 ? ["off", "medium"] : ["off", "high"] }],
+  };
+ };
+ Date.now = () => now;
+ try {
+  const cold = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(cold.result.availability, "unavailable");
+  assert.equal(cold.result.retryable, true);
+  await waitFor(() => listCalls === 1);
+  await delay(0);
+
+  const recovered = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.deepEqual({ availability: recovered.result.availability, supported: recovered.result.supported, level: recovered.result.level, availableLevels: recovered.result.availableLevels }, { availability: "ready", supported: true, level: "medium", availableLevels: ["off", "medium"] });
+  assert.equal(adapter.openInputs.length, 0, "listModels-only recovery must not open an agent session");
+
+  now += 5_001;
+  const expired = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.equal(expired.result.availability, "unavailable");
+  assert.equal(expired.result.retryable, true);
+  await waitFor(() => listCalls === 2);
+  await delay(0);
+  const refreshed = await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "thinking" });
+  assert.deepEqual(refreshed.result.availableLevels, ["off", "high"]);
+  assert.equal(adapter.openInputs.length, 0);
+ } finally {
+  Date.now = originalNow;
+  await fixture.router.disposeAll();
+ }
+});
+
+test("thinking menu remains responsive during the owner session's active provider turn", async () => {
+ const fixture = createFakeRuntimeFixture({}, { waitForAbort: true });
+ const adapter = fixture.registry.requireAgentRuntimeAdapter("router-fake");
+ adapter.descriptor.capabilities.output.reasoning = true;
+ adapter.descriptor.capabilities.reasoning = { supported: true, values: ["off", "low", "medium", "high"] };
+ const original = adapter.openSession.bind(adapter);
+ adapter.openSession = async (input) => {
+  const session = await original(input);
+  let level = "medium";
+  const reasoning = () => ({ value: level, availableValues: ["off", "low", "medium", "high"], supported: true });
+  session.controls = {
+   getReasoning: reasoning,
+   setReasoning(value) { level = value; return reasoning(); },
+   cycleReasoning: reasoning,
+  };
+  const getStatus = session.getStatus.bind(session);
+  session.getStatus = () => ({ ...getStatus(), activeModel: { provider: "openai-codex", id: "gpt-5.6-luna" }, reasoning: reasoning() });
+  return session;
+ };
+ const events = [];
+ fixture.router.subscribe((event) => events.push(event));
+ try {
+  await fixture.router.emit({ type: "message", piboSessionId: "ps_router_fake", id: "owner-running", text: "keep running" });
+  await waitFor(() => events.some((event) => event.type === "message_started" && event.eventId === "owner-running"));
+  assert.equal(fixture.router.getSessionRuntimeStatus("ps_router_fake").processing, true);
+  const action = fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", id: "owner-thinking-running", action: "thinking" });
+  const result = await Promise.race([action, delay(100).then(() => undefined)]);
+  assert.ok(result, "thinking menu must not wait for the active provider turn");
+  assert.equal(result.result.level, "medium");
+  assert.equal(result.result.action, "show_thinking_menu");
+  await fixture.router.emit({ type: "execution", piboSessionId: "ps_router_fake", action: "abort" });
+  await waitFor(() => fixture.router.getSessionRuntimeStatus("ps_router_fake").processing === false);
+ } finally {
+  await fixture.router.disposeAll();
+ }
+});
+
 test("bounded active runtime pool evicts idle generations and can reopen their durable sessions",async()=>{
  const fixture=createFakeRuntimeFixture({runtimeCapacity:{maxRuntimes:1}});
  fixture.store.create({id:"ps_capacity_second",channel:"test",kind:"chat",profile:"router-fake-profile",workspace:process.cwd(),runtimeBinding:{runtimeInstanceId:"router-fake",adapterId:"router-fake",state:"unbound"}});
  try {
   for(const id of ["ps_router_fake","ps_capacity_second","ps_router_fake"]){
-   await fixture.router.emit({type:"execution",piboSessionId:id,action:"status"});
+   await fixture.router.emit({type:"execution",piboSessionId:id,action:"model"});
    assert.equal(fixture.router.getRuntimeCapacityStatus().activeRuntimes,1);
    assert.ok(fixture.store.get("ps_router_fake"));assert.ok(fixture.store.get("ps_capacity_second"));
   }

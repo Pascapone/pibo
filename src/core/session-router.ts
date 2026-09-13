@@ -11,6 +11,7 @@ import {
 } from "./profiles.js";
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
+import type { PiboGatewayPassiveActionContext } from "../plugins/types.js";
 import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
 import {
 	RUN_REMINDER_MAX_DURATION_MS,
@@ -33,6 +34,7 @@ import {
 	type PiboOutputEvent,
 	type PiboSessionOperationResult,
 	type PiboSessionStatus,
+	type PiboThinkingResult,
 } from "./events.js";
 import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
 import {
@@ -58,7 +60,13 @@ import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, t
 import { PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, waitForRunCancellationSettlement } from "../runs/lifecycle.js";
 import { PiboRunResourceLimitError } from "../runs/resource-isolation.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
-import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
+import type {
+	PiboSessionSignalSnapshot,
+	PiboSignalPatch,
+	PiboSignalRegistry,
+	PiboSignalSnapshot,
+	PiboSignalStatusSnapshot,
+} from "../signals/types.js";
 import type { PiboRunToolController } from "../runs/tools.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
@@ -80,8 +88,10 @@ import {
 } from "../sessions/runtime-binding.js";
 import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
 import type {
+	AgentRuntimeAdapter,
 	AgentRuntimeAuthStatus,
 	AgentRuntimeAuthTargetOperationResult,
+	AgentRuntimeModelCatalog,
 	AgentRuntimeSession,
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
@@ -90,7 +100,12 @@ import type {
 } from "../agent-runtime/types.js";
 import { validateAgentRuntimeProfileCapabilities } from "../agent-runtime/profile-validation.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
-import { loadPiboModelDefaults, selectRequestedFastMode, type PiboModelDefaults } from "./model-defaults.js";
+import {
+	loadPiboModelDefaults,
+	selectRequestedFastMode,
+	selectRequestedThinkingLevel,
+	type PiboModelDefaults,
+} from "./model-defaults.js";
 import { loadPiboGatewaySettings } from "./gateway-settings.js";
 import { loadPiboUserSettings } from "./user-settings.js";
 import {
@@ -181,6 +196,7 @@ const MAX_SUBAGENT_THREAD_KEY_BYTES = 512;
 const MAX_AGENT_OBSERVATIONS = 5_000;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
+const PASSIVE_MODEL_CATALOG_TTL_MS = 5_000;
 
 export const LOOP_RUNTIME_RETRY_DEFAULTS = {
 	enabled: true,
@@ -605,11 +621,17 @@ export class PiboSessionRouter {
 	private readonly initializationTimings: RuntimeInitializationTiming[] = [];
 	private readonly pendingStartAborts = new Map<string,AbortController>();
 	private readonly pendingSessions = new Map<string, Promise<RoutedSession>>();
+	private readonly passiveModelCatalogDiscoveries = new Map<string, Promise<void>>();
+	private readonly passiveModelCatalogs = new Map<string, { catalog: AgentRuntimeModelCatalog; expiresAt: number }>();
+	private readonly passiveModelCatalogRetryAfter = new Map<string, number>();
 	private readonly listeners = new Set<PiboEventListener>();
 	private readonly outputRenderSequencer: OutputRenderSequencer;
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
+	private projectedSessionStructureRevision?: number;
+	private projectedSessionStructureChangeCursor?: number;
+	private projectedKnownSessionIds = new Set<string>();
 	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly portableToolService: PiboPortableToolService;
 	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
@@ -711,6 +733,9 @@ export class PiboSessionRouter {
 			}
 		}
 		for (const piboSessionId of recoveredRunReminderControllers) this.scheduleRunReminder(piboSessionId, false);
+		// Build the initial session projection before request handling begins. Later
+		// readers use the store revision to avoid rescanning an unchanged store.
+		this.projectKnownSessionSignals();
 	}
 
 	subscribe(listener: PiboEventListener): () => void {
@@ -720,16 +745,254 @@ export class PiboSessionRouter {
 		};
 	}
 
+	private desiredThinkingLevel(piboSessionId: string): PiboThinkingLevel {
+		const stored = this.resolvePiboSession(piboSessionId);
+		return resolvePiboSessionInitialThinkingLevel(stored)
+			?? selectRequestedThinkingLevel(this.getSessionRuntimeProfile(piboSessionId), this.resolveModelDefaults())
+			?? this.options.thinkingLevel
+			?? "off";
+	}
+
+	private peekPassiveModelCatalog(runtimeInstanceId: string): AgentRuntimeModelCatalog | undefined {
+		const cached = this.passiveModelCatalogs.get(runtimeInstanceId);
+		if (!cached) return undefined;
+		if (cached.expiresAt <= Date.now()) {
+			this.passiveModelCatalogs.delete(runtimeInstanceId);
+			return undefined;
+		}
+		return cached.catalog;
+	}
+
+	private schedulePassiveModelCatalogDiscovery(adapter: AgentRuntimeAdapter): boolean {
+		if (!adapter.listModels) return false;
+		if (this.peekPassiveModelCatalog(adapter.instanceId)) return false;
+		if (this.passiveModelCatalogDiscoveries.has(adapter.instanceId)) return true;
+		if ((this.passiveModelCatalogRetryAfter.get(adapter.instanceId) ?? 0) > Date.now()) return true;
+		const discovery = Promise.resolve()
+			.then(async () => {
+				const catalog = await adapter.listModels!();
+				this.passiveModelCatalogs.set(adapter.instanceId, {
+					catalog,
+					expiresAt: Date.now() + PASSIVE_MODEL_CATALOG_TTL_MS,
+				});
+				this.passiveModelCatalogRetryAfter.delete(adapter.instanceId);
+			})
+			.catch(() => {
+				this.passiveModelCatalogRetryAfter.set(adapter.instanceId, Date.now() + 1_000);
+			})
+			.finally(() => {
+				if (this.passiveModelCatalogDiscoveries.get(adapter.instanceId) === discovery) {
+					this.passiveModelCatalogDiscoveries.delete(adapter.instanceId);
+				}
+			});
+		this.passiveModelCatalogDiscoveries.set(adapter.instanceId, discovery);
+		return true;
+	}
+
+	private resolvePassiveThinkingResult(piboSessionId: string): PiboThinkingResult {
+		const stored = this.resolvePiboSession(piboSessionId);
+		const binding = this.resolveSessionRuntimeBinding(stored);
+		const adapter = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId)
+			.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+		if (!adapter) throw new Error(`Unknown agent runtime instance "${binding.runtimeInstanceId}".`);
+		const desiredLevel = this.desiredThinkingLevel(piboSessionId);
+		if (!adapter.enabled) {
+			return {
+				level: "off",
+				availableLevels: [],
+				supported: false,
+				availability: "unavailable",
+				retryable: false,
+				message: "The selected runtime is disabled.",
+			};
+		}
+		const profile = this.getSessionRuntimeProfile(piboSessionId);
+		const selectedModel = resolvePiboSessionActiveModel({
+			profile,
+			piboSession: stored,
+			modelDefaults: this.resolveModelDefaults(),
+		});
+		const catalog = this.peekPassiveModelCatalog(adapter.instanceId) ?? adapter.peekModelCatalog?.();
+		if (!selectedModel || !catalog) {
+			const discoveryScheduled = Boolean(selectedModel) && this.schedulePassiveModelCatalogDiscovery(adapter);
+			return {
+				level: "off",
+				availableLevels: [],
+				supported: false,
+				availability: "unavailable",
+				retryable: discoveryScheduled,
+				message: selectedModel
+					? discoveryScheduled
+						? "Thinking options are loading. Try again shortly."
+						: "Thinking options are unavailable for this runtime."
+					: "Select a model first.",
+			};
+		}
+		const model = catalog.models.find((candidate) => (
+			candidate.id === selectedModel.id
+			&& (candidate.provider ?? catalog.runtimeInstanceId) === selectedModel.provider
+		));
+		if (!model) {
+			const discoveryScheduled = this.schedulePassiveModelCatalogDiscovery(adapter);
+			return {
+				level: "off",
+				availableLevels: [],
+				supported: false,
+				availability: "unavailable",
+				retryable: discoveryScheduled,
+				message: discoveryScheduled
+					? "Thinking options are loading. Try again shortly."
+					: "Thinking options are unavailable for the selected model.",
+			};
+		}
+		const availableLevels = (model.reasoningOptions ?? []).filter(isPiboThinkingLevel);
+		if (availableLevels.length === 0) {
+			return { level: "off", availableLevels: [], supported: false, availability: "ready", retryable: false };
+		}
+		const level = availableLevels.includes(desiredLevel)
+			? desiredLevel
+			: availableLevels.includes("off") ? "off" : availableLevels[0]!;
+		return { level, availableLevels, supported: true, availability: "ready", retryable: false };
+	}
+
+	private persistSessionThinkingLevel(piboSessionId: string, level: PiboThinkingLevel): PiboSession {
+		const stored = this.resolvePiboSession(piboSessionId);
+		const updated = this.sessionStore.update(piboSessionId, {
+			metadata: { ...(stored.metadata ?? {}), initialThinkingLevel: level },
+		});
+		if (!updated) throw new Error(`Pibo session "${piboSessionId}" no longer exists.`);
+		this.signalRegistry.project({ type: "session_created", session: updated });
+		return updated;
+	}
+
+	private createPassiveActionContext(piboSessionId: string): PiboGatewayPassiveActionContext {
+		const getStatus = (): PiboSessionStatus => {
+			const stored = this.resolvePiboSession(piboSessionId);
+			const binding = this.resolveSessionRuntimeBinding(stored);
+			const registry = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId);
+			const adapter = registry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+			if (!adapter) throw new Error(`Unknown agent runtime instance "${binding.runtimeInstanceId}".`);
+			const profile = this.getSessionRuntimeProfile(piboSessionId);
+			const invalidProfile = [
+				...validateAgentRuntimeProfileCapabilities(profile, adapter.descriptor.capabilities),
+				...adapter.validateProfile({ profile, workspace: stored.workspace ?? this.options.cwd }),
+			].find((diagnostic) => diagnostic.severity === "error");
+			if (invalidProfile) throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
+			const initializing = this.pendingSessions.has(piboSessionId);
+			const warnings = [
+				...(initializing ? ["Runtime initialization is in progress."] : []),
+				...(!adapter.enabled ? ["The selected runtime is disabled."] : []),
+			];
+			return {
+				piboSessionId,
+				...(stored.activeModel ? { activeModel: { ...stored.activeModel } } : {}),
+				runtimeBinding: {
+					runtimeInstanceId: binding.runtimeInstanceId,
+					adapterId: binding.adapterId,
+					nativeSessionId: binding.nativeSessionId,
+					state: binding.state,
+					protocol: binding.protocol,
+					protocolVersion: binding.protocolVersion,
+					adapterVersion: binding.adapterVersion,
+					revision: binding.revision,
+				},
+				queuedMessages: 0,
+				processing: initializing,
+				streaming: false,
+				activeTools: [],
+				enabledTools: [],
+				cwd: stored.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace(),
+				disposed: false,
+				thinkingLevel: this.desiredThinkingLevel(piboSessionId),
+				contextUsage: null,
+				runtimeState: initializing ? "initializing" : "inactive",
+				...(warnings.length > 0 ? { warnings } : {}),
+			};
+		};
+		return {
+			piboSessionId,
+			getStatus,
+			getStatusSnapshot: async () => getStatus(),
+			getThinkingLevel: () => this.resolvePassiveThinkingResult(piboSessionId),
+			setThinkingLevel: (level) => {
+				const active = this.sessions.get(piboSessionId);
+				if (active) return active.setThinkingLevel(level);
+				const current = this.resolvePassiveThinkingResult(piboSessionId);
+				if (!current.supported) {
+					throw new Error(current.message ?? `Selected model for Pibo session "${piboSessionId}" does not support reasoning-level selection.`);
+				}
+				if (!current.availableLevels.includes(level)) {
+					throw new Error(`Selected model for Pibo session "${piboSessionId}" does not support reasoning level "${level}".`);
+				}
+				this.persistSessionThinkingLevel(piboSessionId, level);
+				return { ...current, level };
+			},
+		};
+	}
+
+	private async executeWithoutRuntime(event: PiboExecutionEvent): Promise<PiboOutputEvent | undefined> {
+		const action = this.pluginRegistry.getGatewayAction(event.action);
+		if (!action?.executeWithoutRuntime) return undefined;
+		this.resolvePiboSession(event.piboSessionId);
+		const context = this.createPassiveActionContext(event.piboSessionId);
+		let result = await action.executeWithoutRuntime(context, event);
+		const params = "params" in event && event.params && typeof event.params === "object" && !Array.isArray(event.params)
+			? event.params as PiboJsonObject
+			: undefined;
+		const refreshPassiveRead = event.action === "status"
+			|| (event.action === "thinking" && typeof params?.level !== "string");
+		if (refreshPassiveRead) {
+			const active = this.sessions.get(event.piboSessionId);
+			if (active) return await active.executeAction(event);
+			result = await action.executeWithoutRuntime(this.createPassiveActionContext(event.piboSessionId), event);
+		}
+		const output: PiboOutputEvent = {
+			type: "execution_result",
+			piboSessionId: event.piboSessionId,
+			eventId: event.id,
+			action: event.action,
+			result,
+		};
+		this.emitOutput(output);
+		return output;
+	}
+
+	private persistRuntimeControlSelection(event: PiboExecutionEvent, output: PiboOutputEvent): void {
+		if (event.action !== "thinking" || output.type !== "execution_result") return;
+		const params = "params" in event && event.params && typeof event.params === "object" && !Array.isArray(event.params)
+			? event.params as PiboJsonObject
+			: undefined;
+		if (!params || typeof params.level !== "string" || !isPiboThinkingLevel(params.level)) return;
+		const result = output.result && typeof output.result === "object" && !Array.isArray(output.result)
+			? output.result as { level?: unknown }
+			: undefined;
+		const level = typeof result?.level === "string" && isPiboThinkingLevel(result.level)
+			? result.level
+			: params.level;
+		this.persistSessionThinkingLevel(event.piboSessionId, level);
+	}
+
 	async emit(event: PiboInputEvent): Promise<PiboOutputEvent> {
 		if (this.closing) throw new Error("Pibo session router is disposed.");
-		if(event.type === "execution" && !this.sessions.has(event.piboSessionId) && (event.action === "abort" || event.action === "clear_queue")) {
-			this.resolvePiboSession(event.piboSessionId);
-			if(event.action === "abort") {
-				this.invalidateRunReminders([event.piboSessionId]);
-				this.pendingStartAborts.get(event.piboSessionId)?.abort(Object.assign(new Error("Runtime start aborted before message dispatch."),{code:"runtime_start_cancelled"}));
+		if (event.type === "execution" && !this.sessions.has(event.piboSessionId)) {
+			if (event.action === "abort" || event.action === "clear_queue") {
+				this.resolvePiboSession(event.piboSessionId);
+				if (event.action === "abort") {
+					this.invalidateRunReminders([event.piboSessionId]);
+					this.pendingStartAborts.get(event.piboSessionId)?.abort(Object.assign(new Error("Runtime start aborted before message dispatch."), { code: "runtime_start_cancelled" }));
+				}
+				const output: PiboOutputEvent = {
+					type: "execution_result",
+					piboSessionId: event.piboSessionId,
+					eventId: event.id,
+					action: event.action,
+					result: event.action === "abort" ? { aborted: true } : { cleared: previouslyClearedMessages(event) },
+				};
+				this.emitOutput(output);
+				return output;
 			}
-			const output: PiboOutputEvent={type:"execution_result",piboSessionId:event.piboSessionId,eventId:event.id,action:event.action,result:event.action === "abort" ? {aborted:true} : {cleared:previouslyClearedMessages(event)}};
-			this.emitOutput(output);return output;
+			const passive = await this.executeWithoutRuntime(event);
+			if (passive) return passive;
 		}
 		let messageSignalAccepted = false;
 		const acceptMessageSignal = () => {
@@ -824,6 +1087,7 @@ export class PiboSessionRouter {
 			} else {
 				output = await session.executeAction(event);
 			}
+			this.persistRuntimeControlSelection(event, output);
 			if (event.action === "kill" || event.action === "kill_all") {
 				await this.disposeSessionSubtree(event.piboSessionId, `${event.action} action`, { cancelRuns: event.action === "kill_all" });
 				teardownCompleted = true;
@@ -1332,6 +1596,16 @@ export class PiboSessionRouter {
 	snapshotSignalSession(piboSessionId: string): PiboSignalSnapshot {
 		this.projectKnownSessionSignals();
 		return this.signalRegistry.snapshotSession(piboSessionId);
+	}
+
+	snapshotSignalSessions(piboSessionIds: readonly string[]): Record<string, PiboSessionSignalSnapshot> {
+		this.projectKnownSessionSignals();
+		const snapshots: Record<string, PiboSessionSignalSnapshot> = {};
+		for (const piboSessionId of new Set(piboSessionIds)) {
+			const snapshot = this.signalRegistry.snapshotSession(piboSessionId).sessions[piboSessionId];
+			if (snapshot) snapshots[piboSessionId] = snapshot;
+		}
+		return snapshots;
 	}
 
 	snapshotSignalTree(rootPiboSessionId: string): PiboSignalSnapshot {
@@ -1875,6 +2149,7 @@ export class PiboSessionRouter {
 						persistSession: this.options.persistSession,
 						piPackageStoreCwd: this.options.piPackageStoreCwd,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
+						thinkingLevelOverride: initialThinkingLevel,
 						retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
 						extensionFactories: [
 						createProviderCapacityExtension(this.capacity,piboRoomIdFromMetadata(piboSession.metadata) ?? piboSession.id,Boolean(piboSession.parentId)),
@@ -2015,6 +2290,8 @@ export class PiboSessionRouter {
 				now: this.options.runtimeQueueNow,
 			},
 		);
+		const latestThinkingLevel = resolvePiboSessionInitialThinkingLevel(this.resolvePiboSession(piboSession.id));
+		if (latestThinkingLevel) session.setThinkingLevel(latestThinkingLevel);
 		this.sessions.set(piboSession.id, session);
 		return session;
 	}
@@ -3180,13 +3457,55 @@ export class PiboSessionRouter {
 	}
 
 	private projectKnownSessionSignals(): void {
-		const sessions = this.sessionStore.list?.() ?? [];
-		// The complete list is already loaded; avoid an additional store query for every ancestor.
-		const sessionsById = new Map(sessions.map((session) => [session.id, session]));
-		const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id, sessionsById)]));
-		sessions.sort((left, right) => (depthBySessionId.get(left.id) ?? 0) - (depthBySessionId.get(right.id) ?? 0));
-		for (const session of sessions) {
-			this.signalRegistry.project({ type: "session_created", session });
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			const beforeRevision = this.sessionStore.getStructureRevision?.();
+			if (beforeRevision !== undefined && beforeRevision === this.projectedSessionStructureRevision) return;
+			if (
+				beforeRevision !== undefined
+				&& this.projectedSessionStructureRevision !== undefined
+				&& this.projectedSessionStructureChangeCursor !== undefined
+				&& this.sessionStore.getStructureChangesSince
+			) {
+				const changes = this.sessionStore.getStructureChangesSince(this.projectedSessionStructureChangeCursor);
+				if (changes.complete && changes.structureRevision === beforeRevision) {
+					for (const sessionId of changes.sessionIds) {
+						const session = this.sessionStore.get(sessionId);
+						if (session) {
+							this.signalRegistry.project({ type: "session_created", session });
+							this.projectedKnownSessionIds.add(sessionId);
+						} else {
+							this.signalRegistry.removeSession?.(sessionId);
+							this.projectedKnownSessionIds.delete(sessionId);
+						}
+					}
+					this.projectedSessionStructureRevision = changes.structureRevision;
+					this.projectedSessionStructureChangeCursor = changes.cursor;
+					if (this.sessionStore.getStructureRevision?.() === changes.structureRevision) return;
+					continue;
+				}
+			}
+			const sessions = this.sessionStore.list?.() ?? [];
+			const currentSessionIds = new Set(sessions.map((session) => session.id));
+			for (const previousSessionId of this.projectedKnownSessionIds) {
+				if (!currentSessionIds.has(previousSessionId)) this.signalRegistry.removeSession?.(previousSessionId);
+			}
+			// The complete list is already loaded; avoid an additional store query for every ancestor.
+			const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+			const depthBySessionId = new Map(sessions.map((session) => [session.id, this.getSubagentDepth(session.id, sessionsById)]));
+			sessions.sort((left, right) => (depthBySessionId.get(left.id) ?? 0) - (depthBySessionId.get(right.id) ?? 0));
+			for (const session of sessions) {
+				this.signalRegistry.project({ type: "session_created", session });
+			}
+			this.projectedKnownSessionIds = currentSessionIds;
+			const afterChangeCursor = this.sessionStore.getStructureChangeCursor?.();
+			const afterRevision = this.sessionStore.getStructureRevision?.();
+			if (beforeRevision !== undefined && beforeRevision === afterRevision) {
+				this.projectedSessionStructureRevision = beforeRevision;
+				this.projectedSessionStructureChangeCursor = afterChangeCursor;
+				return;
+			}
+			this.projectedSessionStructureRevision = undefined;
+			this.projectedSessionStructureChangeCursor = undefined;
 		}
 	}
 

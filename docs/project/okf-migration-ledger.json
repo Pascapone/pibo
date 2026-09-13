@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-06T19:38:08Z",
+  "generated_at": "2026-09-12T08:35:06Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,24 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/reports/latency-reliability-validation-2026-09-12.md",
+      "state": "conformant",
+      "classification": "latency remediation implementation and acceptance evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/pibo-latency-reliability-remediation.md",
+      "state": "conformant",
+      "classification": "latency and reliability implementation plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
     {
       "path": "docs/reports/run-reminder-admission-validation-2026-09-08.md",
       "state": "conformant",
@@ -13922,6 +13940,15 @@
       "type": "Validation Report",
       "authority": "evidentiary",
       "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/latency-reliability-handoff-2026-09-12.md",
+      "state": "conformant",
+      "classification": "latency remediation continuation handoff and preserved execution state",
+      "type": "Status",
+      "authority": "informative",
+      "status": "draft",
       "lineage": null
     }
   ]

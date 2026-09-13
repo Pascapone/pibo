@@ -214,6 +214,8 @@ export interface AgentRuntimeAdapter {
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[];
 	openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession>;
 	inspectProfile?(input: InspectAgentRuntimeProfileInput): Promise<AgentRuntimeAssemblyInspection>;
+	/** Return only an already-resolved, still-fresh catalog; never starts discovery. */
+	peekModelCatalog?(): AgentRuntimeModelCatalog | undefined;
 	listModels?(): Promise<AgentRuntimeModelCatalog>;
 	getAuthStatus?(): Promise<readonly AgentRuntimeAuthStatus[]>;
 	startAuth?(input: StartAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult>;

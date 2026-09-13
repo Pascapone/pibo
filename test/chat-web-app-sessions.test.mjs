@@ -157,6 +157,51 @@ test("Chat Web disposal releases its channel event subscription", async () => {
 	assert.deepEqual(harness.subscriptionCounts(), { subscriptions: 1, unsubscriptions: 1 });
 });
 
+test("Chat Web core bootstrap is independently usable while model and tool catalogs load separately", async () => {
+	const harness = createHarness();
+	try {
+		const roomResponse = await harness.request("/api/chat/rooms", {
+			method: "POST",
+			body: JSON.stringify({ name: "Core bootstrap" }),
+		});
+		const { room } = await json(roomResponse);
+		const session = harness.sessions.create({
+			channel: "pibo.chat-web",
+			kind: "chat",
+			profile: "base",
+			title: "Immediately usable",
+			metadata: { chatRoomId: room.id },
+		});
+		const path = `roomId=${encodeURIComponent(room.id)}&piboSessionId=${encodeURIComponent(session.id)}`;
+		const coreResponse = await harness.request(`/api/chat/bootstrap?core=true&${path}`);
+		assert.equal(coreResponse.status, 200);
+		assert.match(coreResponse.headers.get("server-timing") ?? "", /bootstrap_core/);
+		const coreText = await coreResponse.text();
+		const core = JSON.parse(coreText);
+		assert.equal(core.selectedPiboSessionId, session.id);
+		assert.equal(core.session.id, session.id);
+		assert.equal(core.agents[0].name, "base");
+		assert.deepEqual(core.capabilities.actions.map((action) => action.name), ["session.clone"]);
+		assert.equal("modelCatalog" in core, false);
+		assert.equal("agentCatalog" in core, false);
+
+		const catalogResponse = await harness.request("/api/chat/bootstrap/catalog");
+		assert.equal(catalogResponse.status, 200);
+		assert.match(catalogResponse.headers.get("server-timing") ?? "", /bootstrap_catalog/);
+		assert.match(catalogResponse.headers.get("cache-control") ?? "", /private/);
+		const catalog = await json(catalogResponse);
+		assert.ok(catalog.modelCatalog);
+		assert.ok(catalog.agentCatalog);
+		assert.equal("sessions" in catalog, false);
+
+		const fullResponse = await harness.request(`/api/chat/bootstrap?${path}`);
+		const fullText = await fullResponse.text();
+		assert.ok(Buffer.byteLength(coreText) < Buffer.byteLength(fullText), "the core payload excludes deferred catalog bytes");
+	} finally {
+		await harness.cleanup();
+	}
+});
+
 test("Chat Web lists, opens, and sends to mixed historical sessions without partition equality", async () => {
 	const harness = createHarness();
 	try {

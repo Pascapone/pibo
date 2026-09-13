@@ -11,6 +11,7 @@ import { PiboDataStore } from '../dist/data/pibo-store.js';
 import { ChatDataIngestService } from '../dist/data/ingest-service.js';
 import { ChatSessionQueryService } from '../dist/apps/chat/data/session-query-service.js';
 const controlled = new URL('./fixtures/storage-worker/controlled-worker.mjs', import.meta.url);
+const completionBeforeStall = new URL('./fixtures/storage-worker/completion-before-stall-worker.mjs', import.meta.url);
 
 test('closing storage forbids creating a lazy reader and waits for failed worker exit', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pibo-storage-close-'));
@@ -106,6 +107,35 @@ test('slow worker CPU leaves the calling thread responsive and enforces queue co
   } finally { await client.close(); }
 });
 
+test('a committed completion queued before a caller stall wins over the expired timer', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'pibo-storage-caller-stall-'));
+  const path = join(root, 'fixture.sqlite');
+  const completion = new SharedArrayBuffer(4);
+  const client = new BoundedWorkerClient(completionBeforeStall, {
+    maxAgeMs: 100,
+    workerOptions: { workerData: { path, completion } },
+  });
+  try {
+    await ready(client);
+    await new Promise((resolve) => setImmediate(resolve));
+    const request = client.request({ operation: 'commit' }, { timeoutMs: 100 });
+    const completionView = new Int32Array(completion);
+    const barrier = Atomics.wait(completionView, 0, 0, 1000);
+    assert.ok(barrier === 'ok' || barrier === 'not-equal');
+    assert.equal(Atomics.load(completionView, 0), 1, 'the worker posted completion before the caller stall');
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    assert.equal(await request, 'committed');
+    assert.equal(client.status().closed, false);
+    assert.equal(client.status().completed, 1);
+    const db = new DatabaseSync(path, { readOnly: true });
+    try { assert.equal(db.prepare('SELECT count(*) AS count FROM effects').get().count, 1); }
+    finally { db.close(); }
+  } finally {
+    await client.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('admission bypasses queued background work without changing FIFO within a priority', async () => {
   const client = new BoundedWorkerClient(controlled, { maxAgeMs: 2000, agingMs: 1000 });
   try {
@@ -132,6 +162,37 @@ test('worker crash and execution deadline release all queued promises with uncer
       assert.equal(client.status().closed, true);
     } finally { await client.close(); }
   }
+});
+
+test('a queued request expires without fencing a healthy in-flight worker', async () => {
+  const client = new BoundedWorkerClient(controlled, { maxAgeMs: 1000 });
+  try {
+    await ready(client);
+    const inFlight = client.request({ blockMs: 150, value: 'committed' });
+    const queued = client.request({ value: 'too-late' }, { timeoutMs: 30 });
+    await assert.rejects(queued, { code: 'storage_deadline' });
+    assert.equal(await inFlight, 'committed');
+    assert.equal(client.status().closed, false);
+    assert.equal(await client.request({ value: 'still-healthy' }), 'still-healthy');
+  } finally { await client.close(); }
+});
+
+test('close fences an in-flight unknown result, rejects queued work, and forbids reuse', async () => {
+  const client = new BoundedWorkerClient(controlled, { maxAgeMs: 1000 });
+  await ready(client);
+  const inFlight = client.request({ blockMs: 500, value: 'must-not-ack' });
+  const queued = client.request({ value: 'must-not-run' });
+  const settled = Promise.allSettled([inFlight, queued]);
+  await delay(20);
+  await client.close();
+  const [inFlightResult, queuedResult] = await settled;
+  assert.equal(inFlightResult.status, 'rejected');
+  assert.equal(inFlightResult.reason.code, 'storage_unknown');
+  assert.equal(queuedResult.status, 'rejected');
+  assert.equal(queuedResult.reason.code, 'storage_closed');
+  await assert.rejects(client.request({ value: 'after-close' }), { code: 'storage_closed' });
+  assert.equal(client.status().closed, true);
+  assert.equal(client.status().pendingBytes, 0);
 });
 
 test('payload accounting rejects cycles, wide input and oversized UTF-8 strings', () => {

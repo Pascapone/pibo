@@ -112,6 +112,9 @@ export type PiboThinkingResult = {
 	level: PiboThinkingLevel;
 	availableLevels: PiboThinkingLevel[];
 	supported: boolean;
+	availability?: "ready" | "unavailable";
+	retryable?: boolean;
+	message?: string;
 	action?: "show_thinking_menu" | "set_thinking_level";
 	previousLevel?: PiboThinkingLevel;
 	changed?: boolean;
@@ -223,6 +226,8 @@ export type PiboSessionStatus = {
 		revision?: number;
 	};
 	queuedMessages: number;
+	/** Runtime lifecycle without forcing passive status readers to activate a session. */
+	runtimeState?: "inactive" | "initializing" | "active";
 	/** Semantic work identities used for snapshot-bound restart approval. */
 	activeEventId?: string;
 	queuedEventIds?: string[];

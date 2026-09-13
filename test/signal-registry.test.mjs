@@ -47,6 +47,9 @@ test("global status snapshots and subscribers cover independent roots", async ()
 		assert.equal(snapshot.sessions.second.status, "running", "active work outranks a historical error in the command-center status");
 		assert.equal("activeToolCalls" in snapshot.sessions.second, false, "global snapshots contain compact sidebar summaries");
 		assert.equal(snapshot.rootVersions.second, patches.at(-1).toVersion);
+		assert.equal(typeof snapshot.epoch, "string");
+		assert.equal(patches.at(-1).epoch, snapshot.epoch, "snapshots and patches share one registry epoch");
+		assert.equal(createPiboSignalRegistry().snapshotStatuses().epoch === snapshot.epoch, false, "a restarted registry receives a new epoch");
 		assert.equal(patches.at(-1).rootPiboSessionId, "second");
 	} finally {
 		unsubscribe();
@@ -134,6 +137,53 @@ test("child session creation is published on the parent signal root", () => {
 	assert.equal(childPatch.rootPiboSessionId, "root");
 	assert.equal(childPatch.upserts[0].rootPiboSessionId, "root");
 	assert.equal(registry.snapshotTree("child").rootPiboSessionId, "root");
+});
+
+test("authoritative session projection reparents and detaches a child", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("ps_a") });
+	registry.project({ type: "session_created", session: session("ps_b") });
+	registry.project({ type: "session_created", session: session("child", "ps_a") });
+	assert.equal(registry.snapshotSession("child").sessions.child.parentPiboSessionId, "ps_a");
+	assert.equal(registry.snapshotSession("child").rootPiboSessionId, "ps_a");
+
+	registry.project({ type: "session_created", session: session("child", "ps_b") });
+	assert.equal(registry.snapshotSession("child").sessions.child.parentPiboSessionId, "ps_b");
+	assert.equal(registry.snapshotSession("child").rootPiboSessionId, "ps_b");
+
+	registry.project({ type: "session_created", session: session("child") });
+	const detached = registry.snapshotSession("child");
+	assert.equal(detached.sessions.child.parentPiboSessionId, undefined);
+	assert.equal(detached.rootPiboSessionId, "child");
+});
+
+test("reparenting an active subtree clears the old root and moves descendant activity", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("ps_a") });
+	registry.project({ type: "session_created", session: session("ps_b") });
+	registry.project({ type: "session_created", session: session("child", "ps_a") });
+	registry.project({ type: "session_created", session: session("grandchild", "child") });
+	registry.project({ type: "pibo_output", event: { type: "message_started", piboSessionId: "grandchild", eventId: "active", text: "running" } });
+	assert.equal(registry.snapshotSession("ps_a").sessions.ps_a.isTreeActive, true);
+
+	registry.project({ type: "session_created", session: session("child", "ps_b") });
+	const oldRoot = registry.snapshotSession("ps_a").sessions.ps_a;
+	const newRoot = registry.snapshotTree("ps_b");
+	assert.equal(oldRoot.isTreeActive, false);
+	assert.deepEqual(oldRoot.activeChildren, []);
+	assert.equal(newRoot.sessions.ps_b.isTreeActive, true);
+	assert.equal(newRoot.sessions.child.rootPiboSessionId, "ps_b");
+	assert.equal(newRoot.sessions.grandchild.rootPiboSessionId, "ps_b");
+
+	registry.project({ type: "session_created", session: session("child") });
+	assert.equal(registry.snapshotSession("ps_b").sessions.ps_b.isTreeActive, false);
+	const detached = registry.snapshotTree("child");
+	assert.equal(detached.sessions.child.isTreeActive, true);
+	assert.equal(detached.sessions.grandchild.rootPiboSessionId, "child");
+
+	registry.removeSession("grandchild");
+	assert.equal(registry.snapshotSession("child").sessions.child.isTreeActive, false);
+	assert.equal(registry.snapshotStatuses().sessions.grandchild, undefined);
 });
 
 test("signal registry aggregates a three-level active descendant", () => {

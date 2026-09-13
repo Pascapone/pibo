@@ -8,6 +8,7 @@ import {
 	AgentRuntimeUnavailableError,
 } from "../../agent-runtime/errors.js";
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
+import { SettledTtlCache } from "../../agent-runtime/settled-ttl-cache.js";
 import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthOperationResult,
@@ -974,6 +975,7 @@ export class CodexNativeThreadSession implements AgentRuntimeSession {
 
 type CodexNativeCompatibilityServices = {
 	thinkingLevel?: string;
+	thinkingLevelOverride?: string;
 	modelDefaults?: PiboModelDefaults;
 	initialFastMode?: boolean;
 	testOnlyFirstUseFailpoints?: CodexNativeFirstUseTestFailpoints;
@@ -1024,7 +1026,7 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly config: CodexNativeRuntimeConfig;
 	readonly displayName: string;
 	readonly enabled: boolean;
-	private modelCatalogCache?: { expiresAt: number; value: Promise<CodexNativeModelCatalog> };
+	private readonly modelCatalogCache = new SettledTtlCache<CodexNativeModelCatalog>(5_000);
 	private readonly historyInspectionCache = new Map<string, { expiresAt: number; value: Promise<AgentRuntimeHistoryInspection> }>();
 	private readonly authController: CodexNativeAuthController;
 
@@ -1073,6 +1075,11 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	diagnose(): Promise<readonly AgentRuntimeDiagnostic[]> {
 		return diagnoseCodexNativeRuntime(this.config, this.instanceId);
+	}
+
+	peekModelCatalog(): AgentRuntimeModelCatalog | undefined {
+		const catalog = this.modelCatalogCache.peek();
+		return catalog ? toAgentRuntimeModelCatalog(this.instanceId, catalog) : undefined;
 	}
 
 	async listModels(): Promise<AgentRuntimeModelCatalog> {
@@ -1280,7 +1287,8 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				activeModel: input.activeModel
 					?? persisted.activeModel
 					?? selectRequestedModelProfile(input.profile, compatibility?.modelDefaults),
-				reasoningLevel: persisted.reasoningLevel
+				reasoningLevel: compatibility?.thinkingLevelOverride
+					?? persisted.reasoningLevel
 					?? compatibility?.thinkingLevel
 					?? selectRequestedThinkingLevel(input.profile, compatibility?.modelDefaults),
 				initialFastMode: hasPersistedServiceTier
@@ -1491,17 +1499,10 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	private loadModelCatalog(client?: CodexNativeAppServerProcess["client"]): Promise<CodexNativeModelCatalog> {
-		const now = Date.now();
-		if (this.modelCatalogCache && this.modelCatalogCache.expiresAt > now) return this.modelCatalogCache.value;
-		const value = client
+		return this.modelCatalogCache.load(() => client
 			? readCodexNativeModelCatalog(client)
 			: this.withProcess("model-catalog", process.cwd(), async (catalogProcess) =>
-				await readCodexNativeModelCatalog(catalogProcess.client));
-		this.modelCatalogCache = { expiresAt: now + 5_000, value };
-		value.catch(() => {
-			if (this.modelCatalogCache?.value === value) this.modelCatalogCache = undefined;
-		});
-		return value;
+				await readCodexNativeModelCatalog(catalogProcess.client)));
 	}
 
 	private async withProcess<T>(

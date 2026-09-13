@@ -67,10 +67,19 @@ export type FindPiboSessionsInput = {
 	activeModel?: ModelProfile | null;
 };
 
+export type PiboSessionStructureChanges = {
+	cursor: number;
+	structureRevision: number;
+	complete: boolean;
+	sessionIds: string[];
+};
+
 export type PiboSessionStore = {
 	get(id: string): PiboSession | undefined;
 	list?(): PiboSession[];
 	getStructureRevision?(): number;
+	getStructureChangeCursor?(): number;
+	getStructureChangesSince?(cursor: number): PiboSessionStructureChanges;
 	create(input: CreatePiboSessionInput): PiboSession;
 	update(id: string, input: UpdatePiboSessionInput): PiboSession | undefined;
 	delete?(id: string): boolean;
@@ -150,6 +159,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 	private readonly agentObservationNextSequence = new Map<string, number>();
 	private readonly agentObservationAutoCursors = new Map<string, number>();
 	private readonly outputToolInvocationNextOrdinal = new Map<string, number>();
+	private structureRevision = 0;
 
 	get(id: string): PiboSession | undefined {
 		return this.byId.get(id);
@@ -157,6 +167,10 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 
 	list(): PiboSession[] {
 		return this.sort([...this.byId.values()]);
+	}
+
+	getStructureRevision(): number {
+		return this.structureRevision;
 	}
 
 	create(input: CreatePiboSessionInput): PiboSession {
@@ -169,6 +183,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		}
 		this.assertNativeSessionAvailable(session.runtimeBinding, session.id);
 		this.set(session);
+		this.structureRevision += 1;
 		return session;
 	}
 
@@ -205,6 +220,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		};
 		this.assertNativeSessionAvailable(updated.runtimeBinding, id);
 		this.set(updated, existing.piSessionId, existing.runtimeBinding);
+		this.structureRevision += 1;
 		return updated;
 	}
 
@@ -294,6 +310,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 			updatedAt: updatedBinding.updatedAt,
 		};
 		this.set(updatedSession, existing.piSessionId, current);
+		this.structureRevision += 1;
 		return structuredClone(updatedBinding);
 	}
 
@@ -314,6 +331,7 @@ export class InMemoryPiboSessionStore implements PiboSessionStore {
 		for (const key of this.outputToolInvocationNextOrdinal.keys()) {
 			if (key.startsWith(counterPrefix)) this.outputToolInvocationNextOrdinal.delete(key);
 		}
+		this.structureRevision += 1;
 		return true;
 	}
 

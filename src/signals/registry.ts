@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { DEFAULT_TELEMETRY_STALE_THRESHOLD_MS } from "../core/telemetry-staleness.js";
 import { errorFromNode, isActiveSignalStatus, isTerminalSignalStatus, phaseForStatus, strongestStatus } from "./aggregate.js";
 import { createDefaultSignalProducers } from "./projector.js";
@@ -243,6 +244,7 @@ function sessionSnapshotSemanticallyEqual(a: PiboSessionSignalSnapshot | undefin
 }
 
 export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
+	private readonly epoch = randomUUID();
 	private readonly nodesById = new Map<string, PiboSignalNode>();
 	private readonly nodeIdsBySessionId = new Map<string, Set<string>>();
 	private readonly childSessionIdsByParentId = new Map<string, Set<string>>();
@@ -311,6 +313,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 			const changedSnapshots = this.recomputeAncestors([...changedSessionIds].filter((id) => this.getSessionRoot(id) === rootId), before + 1);
 			const patch: PiboSignalPatch = {
 				type: "signal_patch",
+				epoch: this.epoch,
 				rootPiboSessionId: rootId,
 				fromVersion: before,
 				toVersion: before + 1,
@@ -326,12 +329,41 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		return patches[0];
 	}
 
+	removeSession(piboSessionId: string): void {
+		const parentId = this.parentSessionIdByChildId.get(piboSessionId);
+		if (parentId) this.childSessionIdsByParentId.get(parentId)?.delete(piboSessionId);
+		this.invalidateAncestorSnapshots(parentId);
+		this.parentSessionIdByChildId.delete(piboSessionId);
+		for (const childId of this.childSessionIdsByParentId.get(piboSessionId) ?? []) {
+			this.parentSessionIdByChildId.delete(childId);
+			this.setSubtreeRoot(childId, childId);
+			this.invalidateSessionDepth(childId);
+		}
+		this.childSessionIdsByParentId.delete(piboSessionId);
+		for (const nodeId of this.nodeIdsBySessionId.get(piboSessionId) ?? []) this.nodesById.delete(nodeId);
+		this.nodeIdsBySessionId.delete(piboSessionId);
+		for (const [nodeId, node] of this.nodesById) {
+			if (node.childPiboSessionId === piboSessionId) {
+				this.nodesById.delete(nodeId);
+				if (node.piboSessionId) this.nodeIdsBySessionId.get(node.piboSessionId)?.delete(nodeId);
+			}
+		}
+		this.rootSessionIdBySessionId.delete(piboSessionId);
+		this.sessionDepthById.delete(piboSessionId);
+		this.sessionSnapshotById.delete(piboSessionId);
+		this.queuedMessagesBySessionId.delete(piboSessionId);
+		const liveRoots = new Set(this.rootSessionIdBySessionId.values());
+		for (const rootId of [...this.versionByRootId.keys()]) {
+			if (!liveRoots.has(rootId)) this.versionByRootId.delete(rootId);
+		}
+	}
+
 	snapshotSession(piboSessionId: string): PiboSignalSnapshot {
 		this.ensureSession(piboSessionId);
 		const rootId = this.getSessionRoot(piboSessionId);
 		const session = this.sessionSnapshotById.get(piboSessionId) ?? this.computeSessionSnapshot(piboSessionId, this.versionByRootId.get(rootId) ?? 0);
 		const nodes = Object.fromEntries([...this.nodesForSession(piboSessionId)].map((node) => [node.id, node]));
-		return { rootPiboSessionId: rootId, version: this.versionByRootId.get(rootId) ?? 0, generatedAt: now(), sessions: { [piboSessionId]: session }, nodes };
+		return { epoch: this.epoch, rootPiboSessionId: rootId, version: this.versionByRootId.get(rootId) ?? 0, generatedAt: now(), sessions: { [piboSessionId]: session }, nodes };
 	}
 
 	snapshotTree(rootPiboSessionId: string): PiboSignalSnapshot {
@@ -345,7 +377,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 			sessions[sessionId] = this.sessionSnapshotById.get(sessionId) ?? this.computeSessionSnapshot(sessionId, version);
 			for (const node of this.nodesForSession(sessionId)) nodes[node.id] = node;
 		}
-		return { rootPiboSessionId: rootId, version, generatedAt: now(), sessions, nodes };
+		return { epoch: this.epoch, rootPiboSessionId: rootId, version, generatedAt: now(), sessions, nodes };
 	}
 
 	snapshotStatuses(): PiboSignalStatusSnapshot {
@@ -358,6 +390,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		}
 		return {
 			type: "signal_status_snapshot",
+			epoch: this.epoch,
 			generatedAt: now(),
 			rootVersions: Object.fromEntries(this.versionByRootId),
 			sessions,
@@ -422,15 +455,26 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const existing = this.nodesById.get(incoming.id);
 		const merged = existing ? { ...existing, ...incoming, metadata: incoming.metadata ?? existing.metadata } : incoming;
 		if (signalNodeEqual(existing, merged)) return;
+		const previousSessionParent = merged.kind === "session" && merged.piboSessionId
+			? this.parentSessionIdByChildId.get(merged.piboSessionId)
+			: undefined;
 		this.nodesById.set(merged.id, merged);
 		if (merged.piboSessionId) {
-			this.ensureSession(merged.piboSessionId, merged.kind === "session" ? merged.parentPiboSessionId : undefined, merged.rootPiboSessionId);
+			this.ensureSession(
+				merged.piboSessionId,
+				merged.kind === "session" ? merged.parentPiboSessionId : undefined,
+				merged.rootPiboSessionId,
+				merged.kind === "session",
+			);
 			const ids = this.nodeIdsBySessionId.get(merged.piboSessionId) ?? new Set<string>();
 			ids.add(merged.id);
 			this.nodeIdsBySessionId.set(merged.piboSessionId, ids);
 			changedSessionIds.add(merged.piboSessionId);
 		}
-		if (merged.kind === "session" && merged.piboSessionId) this.ensureSession(merged.piboSessionId, merged.parentPiboSessionId, merged.rootPiboSessionId);
+		if (merged.kind === "session" && merged.piboSessionId && previousSessionParent !== merged.parentPiboSessionId) {
+			if (previousSessionParent) changedSessionIds.add(previousSessionParent);
+			for (const sessionId of this.collectSessionTree(merged.piboSessionId)) changedSessionIds.add(sessionId);
+		}
 		if (merged.childPiboSessionId && merged.piboSessionId) this.ensureSession(merged.childPiboSessionId, merged.piboSessionId, this.getSessionRoot(merged.piboSessionId));
 		upserts.push(merged);
 	}
@@ -441,18 +485,28 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		return { ...existing, ...patch, id: existing.id, updatedAt: now() };
 	}
 
-	private ensureSession(piboSessionId: string, parentPiboSessionId?: string, rootPiboSessionId?: string): void {
+	private ensureSession(
+		piboSessionId: string,
+		parentPiboSessionId?: string,
+		rootPiboSessionId?: string,
+		authoritativeParent = false,
+	): void {
 		const previousParent = this.parentSessionIdByChildId.get(piboSessionId);
-		if (parentPiboSessionId && previousParent !== parentPiboSessionId) {
+		if ((authoritativeParent && previousParent !== parentPiboSessionId) || (parentPiboSessionId && previousParent !== parentPiboSessionId)) {
 			if (previousParent) this.childSessionIdsByParentId.get(previousParent)?.delete(piboSessionId);
-			this.parentSessionIdByChildId.set(piboSessionId, parentPiboSessionId);
-			const children = this.childSessionIdsByParentId.get(parentPiboSessionId) ?? new Set<string>();
-			children.add(piboSessionId);
-			this.childSessionIdsByParentId.set(parentPiboSessionId, children);
+			if (parentPiboSessionId) {
+				this.parentSessionIdByChildId.set(piboSessionId, parentPiboSessionId);
+				const children = this.childSessionIdsByParentId.get(parentPiboSessionId) ?? new Set<string>();
+				children.add(piboSessionId);
+				this.childSessionIdsByParentId.set(parentPiboSessionId, children);
+			} else {
+				this.parentSessionIdByChildId.delete(piboSessionId);
+			}
 		}
-		const effectiveParent = parentPiboSessionId ?? this.parentSessionIdByChildId.get(piboSessionId);
+		const effectiveParent = authoritativeParent ? parentPiboSessionId : parentPiboSessionId ?? this.parentSessionIdByChildId.get(piboSessionId);
 		const rootId = rootPiboSessionId ?? (effectiveParent ? this.getSessionRoot(effectiveParent) : piboSessionId);
-		this.rootSessionIdBySessionId.set(piboSessionId, rootId);
+		if (this.rootSessionIdBySessionId.get(piboSessionId) !== rootId) this.setSubtreeRoot(piboSessionId, rootId);
+		this.invalidateSessionDepth(piboSessionId);
 		this.refreshSessionDepth(piboSessionId);
 		if (!this.versionByRootId.has(rootId)) this.versionByRootId.set(rootId, 0);
 		if (!this.nodesById.has(`session:${piboSessionId}`)) {
@@ -463,11 +517,13 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		}
 	}
 
-	private getSessionRoot(piboSessionId: string): string {
+	private getSessionRoot(piboSessionId: string, visiting = new Set<string>()): string {
 		const known = this.rootSessionIdBySessionId.get(piboSessionId);
 		if (known) return known;
+		if (visiting.has(piboSessionId)) return piboSessionId;
+		visiting.add(piboSessionId);
 		const parent = this.parentSessionIdByChildId.get(piboSessionId);
-		return parent ? this.getSessionRoot(parent) : piboSessionId;
+		return parent ? this.getSessionRoot(parent, visiting) : piboSessionId;
 	}
 
 	private nodesForSession(piboSessionId: string): PiboSignalNode[] {
@@ -478,8 +534,16 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 	}
 
 	private collectSessionTree(rootId: string): string[] {
-		const output = [rootId];
-		for (const child of this.childSessionIdsByParentId.get(rootId) ?? []) output.push(...this.collectSessionTree(child));
+		const output: string[] = [];
+		const pending = [rootId];
+		const visited = new Set<string>();
+		while (pending.length > 0) {
+			const current = pending.pop()!;
+			if (visited.has(current)) continue;
+			visited.add(current);
+			output.push(current);
+			for (const child of this.childSessionIdsByParentId.get(current) ?? []) pending.push(child);
+		}
 		return output;
 	}
 
@@ -487,7 +551,9 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const toRecompute = new Set<string>();
 		for (const sessionId of sessionIds) {
 			let current: string | undefined = sessionId;
-			while (current) {
+			const visited = new Set<string>();
+			while (current && !visited.has(current)) {
+				visited.add(current);
 				toRecompute.add(current);
 				current = this.parentSessionIdByChildId.get(current);
 			}
@@ -512,16 +578,65 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		return this.refreshSessionDepth(sessionId);
 	}
 
-	private refreshSessionDepth(sessionId: string): number {
+	private setSubtreeRoot(sessionId: string, rootId: string): void {
+		const pending = [sessionId];
+		const visited = new Set<string>();
+		while (pending.length > 0) {
+			const current = pending.pop()!;
+			if (visited.has(current)) continue;
+			visited.add(current);
+			this.rootSessionIdBySessionId.set(current, rootId);
+			this.sessionSnapshotById.delete(current);
+			for (const nodeId of this.nodeIdsBySessionId.get(current) ?? []) {
+				const node = this.nodesById.get(nodeId);
+				if (node && node.rootPiboSessionId !== rootId) this.nodesById.set(nodeId, { ...node, rootPiboSessionId: rootId, updatedAt: now() });
+			}
+			pending.push(...(this.childSessionIdsByParentId.get(current) ?? []));
+		}
+	}
+
+	private invalidateAncestorSnapshots(sessionId: string | undefined): void {
+		const visited = new Set<string>();
+		let current = sessionId;
+		while (current && !visited.has(current)) {
+			visited.add(current);
+			this.sessionSnapshotById.delete(current);
+			current = this.parentSessionIdByChildId.get(current);
+		}
+	}
+
+	private invalidateSessionDepth(sessionId: string): void {
+		const pending = [sessionId];
+		const visited = new Set<string>();
+		while (pending.length > 0) {
+			const current = pending.pop()!;
+			if (visited.has(current)) continue;
+			visited.add(current);
+			this.sessionDepthById.delete(current);
+			pending.push(...(this.childSessionIdsByParentId.get(current) ?? []));
+		}
+	}
+
+	private refreshSessionDepth(sessionId: string, visiting = new Set<string>()): number {
+		const cached = this.sessionDepthById.get(sessionId);
+		if (cached !== undefined) return cached;
+		if (visiting.has(sessionId)) return 0;
+		visiting.add(sessionId);
 		const parentId = this.parentSessionIdByChildId.get(sessionId);
-		const depth = parentId ? this.depth(parentId) + 1 : 0;
+		const depth = parentId ? this.refreshSessionDepth(parentId, visiting) + 1 : 0;
+		visiting.delete(sessionId);
 		this.sessionDepthById.set(sessionId, depth);
-		for (const childId of this.childSessionIdsByParentId.get(sessionId) ?? []) this.refreshSessionDepth(childId);
 		return depth;
 	}
 
-	private computeSessionSnapshot(piboSessionId: string, version: number, updatedAt: string = now()): PiboSessionSignalSnapshot {
+	private computeSessionSnapshot(
+		piboSessionId: string,
+		version: number,
+		updatedAt: string = now(),
+		visiting = new Set<string>(),
+	): PiboSessionSignalSnapshot {
 		this.ensureSession(piboSessionId);
+		visiting.add(piboSessionId);
 		const rootPiboSessionId = this.getSessionRoot(piboSessionId);
 		const nodes = this.nodesForSession(piboSessionId);
 		const activeLocalNodes = nodes.filter((node) => node.kind !== "session" && node.kind !== "queue" && isActiveSignalStatus(node.status));
@@ -534,7 +649,12 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const localStatus = sessionNode && (sessionNode.status === "unknown" || isTerminalSignalStatus(sessionNode.status))
 			? sessionNode.status
 			: strongestStatus(localStatuses);
-		const childSnapshots = [...(this.childSessionIdsByParentId.get(piboSessionId) ?? [])].map((id) => this.sessionSnapshotById.get(id) ?? this.computeSessionSnapshot(id, version));
+		const childSnapshots = [...(this.childSessionIdsByParentId.get(piboSessionId) ?? [])].flatMap((id) => {
+			const cached = this.sessionSnapshotById.get(id);
+			if (cached) return [cached];
+			if (visiting.has(id)) return [];
+			return [this.computeSessionSnapshot(id, version, now(), visiting)];
+		});
 		const aggregateStatus = strongestStatus([localStatus, ...childSnapshots.map((snapshot) => snapshot.aggregateStatus)]);
 		const activeToolCalls: ToolCallSignalSummary[] = nodes.filter((node) => node.kind === "tool_call" && isActiveSignalStatus(node.status)).map((node) => ({ nodeId: node.id, toolCallId: typeof node.metadata?.toolCallId === "string" ? node.metadata.toolCallId : undefined, toolName: typeof node.metadata?.toolName === "string" ? node.metadata.toolName : undefined, status: node.status, startedAt: node.startedAt, updatedAt: node.updatedAt }));
 		const activeRuns: RunSignalSummary[] = nodes.filter((node) => node.kind === "yielded_run" && isActiveSignalStatus(node.status)).map((node) => ({ nodeId: node.id, runId: String(node.metadata?.runId ?? node.id.replace(/^run:/, "")), toolName: typeof node.metadata?.toolName === "string" ? node.metadata.toolName : undefined, status: node.status, completionPolicy: typeof node.metadata?.completionPolicy === "string" ? node.metadata.completionPolicy : undefined, consumed: typeof node.metadata?.consumed === "boolean" ? node.metadata.consumed : undefined, startedAt: node.startedAt, updatedAt: node.updatedAt }));
@@ -549,6 +669,7 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const errors = dedupeErrors([...localErrors, ...childErrors]);
 		const isLocalActive = isActiveSignalStatus(localStatus);
 		const hasActiveDescendant = childSnapshots.some((snapshot) => snapshot.isTreeActive);
+		visiting.delete(piboSessionId);
 		return {
 			piboSessionId,
 			runtimeInstanceId: typeof sessionNode?.metadata?.runtimeInstanceId === "string" ? sessionNode.metadata.runtimeInstanceId : undefined,

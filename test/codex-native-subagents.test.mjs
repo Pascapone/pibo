@@ -50,10 +50,10 @@ async function openStatus(router, piboSessionId) {
 	const output = await router.emit({
 		type: "execution",
 		piboSessionId,
-		action: "status",
+		action: "model",
 	});
 	assert.equal(output.type, "execution_result");
-	return output.result;
+	return router.getSessionRuntimeStatus(piboSessionId);
 }
 
 async function callFixtureMcp(client, threadId, tool, args) {

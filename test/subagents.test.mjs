@@ -162,7 +162,7 @@ function createYieldedSubagentFixture(suffix, script, capabilities) {
 }
 
 async function yieldedSubagentTools(fixture) {
-	await fixture.router.emit({ type: "execution", piboSessionId: fixture.parentId, action: "status" });
+	await fixture.router.emit({ type: "execution", piboSessionId: fixture.parentId, action: "model" });
 	const runtime = fixture.router.sessions.get(fixture.parentId).runtime;
 	return {
 		start: runtime.session.getToolDefinition("pibo_run_start"),
@@ -901,6 +901,7 @@ test("profiles can expose subagents as active router tools", async () => {
 	});
 
 	try {
+		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "model" });
 		const output = await router.emit({
 			type: "execution",
 			piboSessionId: "ps_parent",
@@ -1021,6 +1022,8 @@ test("router omits subagent tools that have reached their max depth", async () =
 		assert.equal(childProfile.sessionId, "child-session");
 		assert.equal(childProfile.parentSessionId, "root-session");
 
+		await router.emit({ type: "execution", piboSessionId: "ps_root", action: "model" });
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "model" });
 		const rootOutput = await router.emit({
 			type: "execution",
 			piboSessionId: "ps_root",
@@ -1537,13 +1540,13 @@ test("agents controller lists, filters observations, kills owned children, and d
 		});
 
 		const defaults = controller.observe({});
-		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message"]);
+		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message", "session_error"]);
 		assert.equal(defaults.filters.order, "desc");
 		assert.equal(defaults.filters.limit, 20);
 		assert.equal(defaults.filters.includeTools, false);
 		assert.equal(defaults.filters.toolDetail, "summary");
-		assert.deepEqual(defaults.observations.map((observation) => observation.eventType), ["assistant_message"]);
-		assert.equal(defaults.observations[0].text, "Alpha complete");
+		assert.deepEqual(defaults.observations.map((observation) => observation.eventType), ["session_error", "assistant_message"]);
+		assert.equal(defaults.observations.find((observation) => observation.eventType === "assistant_message")?.text, "Alpha complete");
 		assert.deepEqual(
 			controller.observe({ eventTypes: ["assistant_delta"], limit: 50 }).observations.map((observation) => observation.eventType),
 			["assistant_delta"],
@@ -1569,13 +1572,14 @@ test("agents controller lists, filters observations, kills owned children, and d
 		);
 
 		const withToolSummaries = controller.observe({ includeTools: true, order: "asc", limit: 50 });
-		assert.deepEqual(withToolSummaries.filters.eventTypes, ["assistant_message", "tool_call", "tool_execution_finished"]);
+		assert.deepEqual(withToolSummaries.filters.eventTypes, ["assistant_message", "session_error", "tool_call", "tool_execution_finished"]);
 		assert.deepEqual(withToolSummaries.observations.map((observation) => observation.eventType), [
 			"assistant_message",
 			"tool_call",
 			"tool_execution_finished",
 			"tool_call",
 			"tool_execution_finished",
+			"session_error",
 		]);
 		const summarizedToolResult = withToolSummaries.observations.find((observation) => observation.eventType === "tool_execution_finished");
 		assert.match(summarizedToolResult.text, /"outputBytes":5000/);
@@ -1882,7 +1886,7 @@ test("agent kill retries subtree cleanup after a partial failure", async () => {
 	});
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "model" });
 		assert.equal(router.sessions.has("ps_child"), true);
 		const originalDispose = router.disposeSessionSubtree.bind(router);
 		let attempts = 0;
@@ -1966,7 +1970,7 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 	});
 	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "model" });
 		const runtime = router.sessions.get("ps_abort_parent").runtime;
 		assert.equal(runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
 		const startTool = runtime.session.getToolDefinition("pibo_run_start");
@@ -2201,7 +2205,7 @@ test("killing an active delegated agent cancels its parent-owned yielded run dur
 			profile: parentProfile,
 			runtimeBinding: { piboSessionId: parentId, runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
 		});
-		await router.emit({ type: "execution", piboSessionId: parentId, action: "status" });
+		await router.emit({ type: "execution", piboSessionId: parentId, action: "model" });
 		const runtime = router.sessions.get(parentId).runtime;
 		const started = await runtime.session.getToolDefinition("pibo_run_start").execute("start-active-child", {
 			toolName: "pibo_agents_send_message",
@@ -2282,7 +2286,7 @@ test("cancelling a queued delegated run leaves the active request on the shared 
 	});
 	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
 	try {
-		await router.emit({ type: "execution", piboSessionId: "ps_targeted_cancel_parent", action: "status" });
+		await router.emit({ type: "execution", piboSessionId: "ps_targeted_cancel_parent", action: "model" });
 		const runtime = router.sessions.get("ps_targeted_cancel_parent").runtime;
 		const startTool = runtime.session.getToolDefinition("pibo_run_start");
 		const cancelTool = runtime.session.getToolDefinition("pibo_run_cancel");

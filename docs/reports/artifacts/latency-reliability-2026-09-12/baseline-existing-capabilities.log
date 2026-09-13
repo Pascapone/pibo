@@ -1,0 +1,16 @@
+✔ cold persisted fork inspection does not open a runtime or change the binding (15.416081ms)
+✔ passive header status does not activate or retain idle runtimes (21.73206ms)
+✔ unsupported persisted reads retain the live runtime fallback (16.454377ms)
+✔ a runtime opened during persisted inspection wins over the stale candidate result (6.316028ms)
+✔ Pi persisted fork candidates preserve all user entries and text without rewriting native history (34.533525ms)
+✔ capture is off by default and requires explicit scope and quotas (2.620647ms)
+✔ scoped metadata capture bounds rows, excludes arbitrary payload fields and archives separately (32.198957ms)
+✔ stopping an open capture fences its existing writer before producing an immutable archive (25.376755ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2944.647323

@@ -1,4 +1,9 @@
-import { withMessageReceipts } from "./tracing/message-receipts";
+import {
+  isAcceptanceUnknownError,
+  MessageReceiptReconciliationTracker,
+  terminalMessageReceiptRevision,
+  withMessageReceipts,
+} from "./tracing/message-receipts";
 import {
   useCallback,
   useEffect,
@@ -22,7 +27,8 @@ import type {
 } from "./types";
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ChatSessionViewProps, ToolDisplayMode } from "./session-views/types";
-import { getMessageReceipts, getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
+import { getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
+import { useMessageReceiptsQuery } from "./tracing/use-message-receipts-query";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
@@ -230,6 +236,9 @@ export function SessionTracePane({
   const queryClient = useQueryClient();
   const [initialRetryTransaction] = useState(readPendingMessageTransaction);
   const retrySendPlanRef = useRef<ReturnType<typeof readPendingMessageTransaction>>(initialRetryTransaction);
+  const [pendingReceiptTransaction, setPendingReceiptTransaction] = useState(initialRetryTransaction);
+  const receiptReconciliationTrackerRef = useRef(new MessageReceiptReconciliationTracker(initialRetryTransaction?.clientTxnId));
+  const terminalReceiptTraceRevisionBySessionRef = useRef(new Map<string, string>());
   const liveEventSeqRef = useRef(0);
   const liveTraceOverlayCacheRef = useRef<Map<string, LiveTraceOverlay>>(new Map());
   const [liveTraceOverlay, setLiveTraceOverlayState] =
@@ -432,13 +441,42 @@ export function SessionTracePane({
   });
   const forkSupported = sessionSupportsFork(bootstrap, selectedPiboSessionId, selectedSessionProfile);
   const forkWhileRunningSupported = sessionSupportsForkWhileRunning(bootstrap, selectedPiboSessionId, selectedSessionProfile);
-  const messageReceiptsQuery = useQuery({
-    queryKey: ["chat", "message-receipts", selectedBackendPiboSessionId],
-    queryFn: () => getMessageReceipts(selectedBackendPiboSessionId!),
-    enabled: Boolean(selectedBackendPiboSessionId),
-    refetchInterval: 1_000,
-    retry: false,
-  });
+  const selectedPendingReceiptTransaction = pendingReceiptTransaction?.piboSessionId === selectedBackendPiboSessionId
+    ? pendingReceiptTransaction
+    : null;
+  const { query: messageReceiptsQuery } = useMessageReceiptsQuery(
+    selectedBackendPiboSessionId,
+    selectedPendingReceiptTransaction,
+  );
+  const terminalReceiptRevision = useMemo(() => terminalMessageReceiptRevision(rawCurrentTraceView), [rawCurrentTraceView]);
+  useEffect(() => {
+    if (!selectedBackendPiboSessionId || terminalReceiptRevision === "none") return;
+    const revisions = terminalReceiptTraceRevisionBySessionRef.current;
+    if (revisions.get(selectedBackendPiboSessionId) === terminalReceiptRevision) return;
+    revisions.delete(selectedBackendPiboSessionId);
+    revisions.set(selectedBackendPiboSessionId, terminalReceiptRevision);
+    while (revisions.size > 128) revisions.delete(revisions.keys().next().value!);
+    void messageReceiptsQuery.refetch().catch(() => undefined);
+  }, [messageReceiptsQuery, selectedBackendPiboSessionId, terminalReceiptRevision]);
+  useEffect(() => {
+    const receipts = messageReceiptsQuery.data?.receipts ?? [];
+    const reconciliation = receiptReconciliationTrackerRef.current.observe(receipts, selectedPendingReceiptTransaction);
+    if (reconciliation.pendingReceipt && selectedPendingReceiptTransaction) {
+      retrySendPlanRef.current = null;
+      rememberPendingMessageTransaction(null);
+      setPendingReceiptTransaction(null);
+      onComposerTextChange((current) => current === selectedPendingReceiptTransaction.text ? "" : current);
+      if (selectedWebAnnotations.map((annotation) => annotation.id).join("\u0000") === selectedPendingReceiptTransaction.webAnnotationIds.join("\u0000")) {
+        clearSelectedWebAnnotationAttachments();
+      }
+      if (selectedUploadAttachments.map((attachment) => attachment.path).join("\u0000") === selectedPendingReceiptTransaction.fileAttachmentPaths.join("\u0000")) {
+        clearSelectedUploadAttachments();
+      }
+    }
+    if (reconciliation.terminalReceipts.length > 0) {
+      void tracePageQuery.refetch().catch((caught) => onError(errorMessage(caught)));
+    }
+  }, [clearSelectedUploadAttachments, clearSelectedWebAnnotationAttachments, messageReceiptsQuery.data, onComposerTextChange, onError, selectedPendingReceiptTransaction, selectedUploadAttachments, selectedWebAnnotations, tracePageQuery]);
   const currentTraceView = useMemo(() => withMessageReceipts(rawCurrentTraceView, messageReceiptsQuery.data?.receipts ?? []), [rawCurrentTraceView,messageReceiptsQuery.data]);
 
   const forkCandidateRevision = traceUserMessageRevision(currentTraceView);
@@ -559,6 +597,8 @@ export function SessionTracePane({
     );
     retrySendPlanRef.current = sendPlan;
     rememberPendingMessageTransaction(sendPlan);
+    setPendingReceiptTransaction(sendPlan);
+    receiptReconciliationTrackerRef.current.track(sendPlan.clientTxnId);
     await onSend(
       sendPlan.text,
       sendPlan.webAnnotationIds,
@@ -580,6 +620,16 @@ export function SessionTracePane({
   };
 
   const rollbackComposerSend = (sendPlan: ComposerSendPlan, caught: unknown) => {
+    if (isAcceptanceUnknownError(caught)) {
+      onComposerTextChange((current) => current || sendPlan.text);
+      onError(errorMessage(caught));
+      void messageReceiptsQuery.refetch().catch(() => undefined);
+      return;
+    }
+    retrySendPlanRef.current = null;
+    rememberPendingMessageTransaction(null);
+    setPendingReceiptTransaction(null);
+    receiptReconciliationTrackerRef.current.abandon(sendPlan.clientTxnId);
     setLiveTraceOverlay((current) => {
       const target = current?.piboSessionId === sendPlan.piboSessionId
         ? current
