@@ -9,6 +9,8 @@ generated:
   by: "openai-codex/gpt-6"
   at: "2026-09-13T12:30:00Z"
 sources:
+  - id: "v4-clean-cut"
+    resource: "scope:owner decision 2026-09-13; plugin rebuild is Pibo 4.0; breaking interfaces accepted; automatic lossless migration; only new plugin delivery ships, no dual legacy runtime"
   - id: "optional-modules-owner-feedback"
     resource: "scope:owner feedback 2026-09-13; optional workspace modules; Settings/Plugins configuration; generic system versus agent contribution contracts; collapsed categorized designer; actionable legacy migration"
   - id: "test-preservation"
@@ -43,6 +45,20 @@ Dieser Plan ist die gemeinsame Ausführungsgrundlage für Coding-Agents. Er besc
 Der Plan legt bewusst einen begrenzten ersten Lifecycle fest. Eine reaktive Neuimplementierung von Cordis, beliebiges Hot-Reload und gleichzeitig aktive Versionen desselben Plugins sind nicht Teil der ersten Migration. Sollte ein Agent feststellen, dass der vereinbarte Umfang ohne solche Mechanismen nicht erreichbar ist, dokumentiert er den konkreten Konflikt, statt unbemerkt ein zweites Framework einzuführen.
 
 Für den Einstieg liest ein Agent diese Abschnitte: Produktentscheidungen, Zielverträge, das übernommene Arbeitspaket, seine Abhängigkeiten und die zugehörigen Abnahmeszenarien. Der historische Bericht und die Referenz-Repositories sind vertiefende Quellen, keine Pflichtlektüre für jedes Paket.
+
+## PLG-V4-001: Pibo 4.0 mit automatischer Datenmigration
+
+Der Plugin-Umbau ist die nächste Hauptversion **4.0**. Breaking Changes an alten Erweiterungs-, Konfigurations- und internen APIs sind zulässig. Datenverlust oder eine stillschweigende Änderung der wirksamen Agent-Konfiguration sind es nicht. Diese Entscheidung ersetzt frühere Anforderungen an dauerhaft parallele Legacy-Delivery sowie die manuelle Migration einzelner Agents im Designer.
+
+- **Ein Betriebsmodell:** Nach dem Upgrade laufen Registrierung, Capability-Auswahl, Kontextaufbau und Delivery ausschließlich über den neuen Plugin-Host und dessen effektiven Plan. Auch mitgelieferte Pibo-Funktionen und systemweite Dienste haben dort ihre Zuständigkeit. Entfernte alte Pfade dürfen nicht als stiller Fallback weiterlaufen.
+- **Automatische Migration:** Vor der Aufnahme neuer Runtime-Generationen werden alte gespeicherte Daten erkannt, gesichert, anhand nachvollziehbarer Eigentümerzuordnungen übersetzt und geprüft. Kleine versionierte Datenimporter bleiben isoliert am Upgrade-/Restore-Eingang; wiederholtes Starten und Unterbrechungen müssen durch Journal, Quellprüfsumme, atomare lokale Schritte und Wiederaufnahme sicher sein. Bereits migrierte Daten werden nicht nochmals verändert.
+- **Erhaltene Konfiguration:** Aktive und archivierte Profile, IDs/Aliase, Runtime-Bindings und Optionen, Modelle, Tool-Schemata und Auswahl, direkte/ausgelagerte Ausführung, Goal-/Run-Filter, MCP-Auswahl, Subagent-Ziele und Overrides, Skills, Kontextdateien und deren Inhalte, Referenzen, Herkunft, Reihenfolge und Ladeverhalten bleiben erhalten. Session-Historie und Verknüpfungen bleiben lesbar; historische Snapshots werden nicht umgeschrieben.
+- **Keine falsche Plugin-Pflicht für Dateien:** Eigene Skills und Kontextdateien dürfen weiterhin unabhängige Ressourcen sein; sie durchlaufen denselben Plan und Delivery-Vertrag. Harness-eigene Tools und native Transkripte bleiben unter Harness-Kontrolle. Alte Pibo-Registrierung darf nicht einfach als Harness-Ressource umetikettiert werden, um ihre Migration zu umgehen.
+- **Nachweis statt Defaults:** Der vorher wirksame Capability-/Kontextaufbau wird gegen den migrierten Aufbau verglichen. Keine pauschalen Defaults, keine verlorenen Filter, keine doppelte Kontextbeigabe. Bereits fehlende Referenzen bleiben mit Diagnose erhalten; vorhandene Ressourcen dürfen nicht durch Warnungen als erfolgreich ersetzt gelten. Echte nicht auflösbare Zuordnungen erzeugen einen präzisen Upgrade-Reparaturfall mit gesicherten Quelldaten, keinen Datenverlust und keinen alten Ausführungsfallback.
+- **Produktfluss:** Erfolgreich migrierte Agents sind unmittelbar editierbar. Es gibt keinen regulären Hinweis oder Review-/Apply-Knopf für alte Tool-Auswahlen. Das Deployment auf Pibo2 prüft reale bestehende Profile zusätzlich zu isolierten Altzustands-Fixtures.
+- **Tests:** Bestehende Tests bleiben der primäre Verhaltensvertrag. Ergänzende gezielte Upgrade-, Wiederaufnahme- und Kontext-Paritätstests sichern die Migration. Unvermeidbare Anpassungen wegen entfallender APIs werden mit erhaltenem Verhaltensnachweis begründet; Erwartungen dürfen nicht an verlorenes Verhalten angepasst werden. Die vereinbarte schnelle UI-Iteration ohne Fullsuite bleibt bestehen; die abschließende 4.0-Abnahme wird separat vollständig belegt.
+
+Die 4.0-Entscheidung ist kein Auftrag zur sofortigen Veröffentlichung, zum Merge oder zur NPM-Publikation. Fertigstellung verlangt einen Audit der tatsächlich ausgelieferten alten Ausführungspfade; eine neue Versionsnummer oder entfernte UI-Meldung allein erfüllt sie nicht.
 
 ## Baseline und Arbeitsumgebung
 

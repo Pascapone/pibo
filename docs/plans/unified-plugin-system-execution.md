@@ -17,6 +17,12 @@ sources:
     title: "Full implementation and delegated work authorized for this continuation"
 ---
 
+# Active direction: Pibo 4.0 clean migration (2026-09-13)
+
+[PLG-V4-001](/plans/unified-plugin-system-rebuild.md#plg-v4-001-pibo-40-mit-automatischer-datenmigration) supersedes manual per-agent migration and dual legacy execution. Automatic backed-up, resumable migration must preserve existing effective agent/context setup; only the new plugin delivery ships. Small isolated upgrade/restore data readers may remain. Runtime-native capabilities are not old Pibo delivery. Open: inventory remaining legacy registration/delivery and Goal-service ownership, implement the automatic upgrade boundary, remove superseded paths, prove retained configuration with existing tests and realistic state. This is intended 4.0 work, not release readiness.
+
+Also open: headful reproduction/fix of Agent Designer clipping after toggling a plugin tool; switching tabs currently restores the layout. Owner screenshots `/root/.pibo/uploads/screenshot-20260913-161651.png` and `/root/.pibo/uploads/screenshot-20260913-161656.png`. Preserve the accepted mobile/desktop tab design and generic system/agent scope model.
+
 # Owner feedback: optional modules and activation ownership (2026-09-13)
 
 The active implementation task is [PLG-UX-001 and PLG-MIG-002](/plans/unified-plugin-system-rebuild.md#plg-ux-001-plugin-philosophie-optionale-module-und-getrennte-zuständigkeiten): generic optional workspace-module exposure, Settings → Plugins ownership, system versus agent selection, collapsed categorized Agent Designer, and actionable legacy migration. This supersedes earlier requirements that assigned every plugin its own settings tab. This section records intended work, not completed evidence.
