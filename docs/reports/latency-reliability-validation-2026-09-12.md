@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-13T01:03:47Z" }
+generated: { by: "openai/codex", at: "2026-09-13T01:28:32Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -19,6 +19,9 @@ sources:
   - id: "continuation-evidence"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
     title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
+  - id: "final-pr-candidate-evidence"
+    resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-13/final-candidate-c917b544; exact packaged commit c917b544cfe71e6d697637ca9b9b3b538b636ad3"
+    title: "Finale Docker-Paket-, AP-08- und öffentliche Pibo2-Nachprüfung für PR #1017"
 implementation_state: "implemented; exact-candidate soak complete; physical-device acceptance external"
 ---
 
@@ -30,7 +33,7 @@ Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwi
 
 # Abschluss der Fortsetzung auf Kandidat `722883c4`
 
-Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der exakt last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Das aktuelle `upstream/dev` wurde danach per Merge `d5f37fe2` integriert. Der abschließende Gesamtdiff-Review fand und behob in `34cb7270` eine unabhängige AP-08-Ungewissheitsmarkierung; diese Nachkorrektur wird nicht als Bestandteil des `722883c4`-Soaks oder Pakets ausgegeben. Der fokussierte Fork-Branch `feature/latency-reliability-remediation` wurde gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet. Kein Merge, Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
+Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der exakt last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Das aktuelle `upstream/dev` wurde danach per Merge `d5f37fe2` integriert. Der abschließende Gesamtdiff-Review fand und behob in `34cb7270` eine unabhängige AP-08-Ungewissheitsmarkierung; diese Nachkorrektur wird nicht als Bestandteil des `722883c4`-Soaks oder Pakets ausgegeben. Der committed PR-Source-Stand `c917b544cfe71e6d697637ca9b9b3b538b636ad3` wurde danach als eigenes exaktes Dockerpaket begrenzt auf Pibo2 nachgeprüft. Der fokussierte Fork-Branch `feature/latency-reliability-remediation` wurde gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet. Kein Merge, Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
 
 ## Exakt dem finalen Kandidaten zugeordnete Ergebnisse
 
@@ -46,7 +49,8 @@ Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-late
 | Sichtbare Lifecycle-Recovery | 60,061 s hidden/frozen; Entwurf erhalten; Traceversion und Signalversion 1→3 fortgeschritten; Signalepoche stabil; Event-, Signal- und Trace-Timeline-Verbindungen nach Resume erneuert; Zielseite ohne erfassten Core-Network-/Runtime-Fehler | Der absichtlich mitgesendete Modellturn war kein Erfolgsgate und blieb wegen eines nicht angemeldeten frischen Pi-Providerstores `interrupted`; genau ein Receipt, kein Replay, anschließend explizit als fehlgeschlagen reconciliert |
 | Kanonische Testsuite | 476 kanonische Dateien, 476 eindeutige erfolgreiche Dateipfade, 0 fehlende, 0 zusätzliche, 0 Hashabweichungen; Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c` | Pfad-/Hash-Coverage aus disjunkten erfolgreichen Shards und einem fokussierten Wiederholungstest; abgebrochene Logs nicht gezählt |
 | Zwei-Stunden-Soak | Gemessene Soakphase 7.200,496 s ohne Vorbereitung; 6.484 kontinuierliche Soak-Commands; insgesamt 7.504 eindeutige Admissions, 7.504 eindeutige Effekte und 7.504 genau einmal abgeschlossene Commands; Admission-p95 15,22 ms; Status-p95 11,98 ms; 0 Failures, Incomplete oder nichtterminale Queuezeilen | Exakter `722883c4`-Run bei 3.250 gespeicherten Sessions, 20 Runtimes, `concurrency=1`, `burst=1`, Intervall 1.000 ms; äußere Schutzschicht erfolgreich, kein OOM, Spitzen Memory-/I/O-Full-PSI 1,08/4,04 bei Grenzen 5/10 |
-| Pibo2-Leases | `lease_0e34ee90319d825b87` für Provider-/Portfolioarbeit, freigegeben um 21:24:14 UTC; `lease_8b448039c94bde2e01` für die öffentliche headful Abnahme, freigegeben um 22:19:20 UTC | Beide verwendeten Slot 01 und das checksumgebundene Paket; danach `active: 0`, `free: 10` |
+| Pibo2-Leases | `lease_0e34ee90319d825b87` für Provider-/Portfolioarbeit, freigegeben um 21:24:14 UTC; `lease_8b448039c94bde2e01` für die öffentliche headful Abnahme, freigegeben um 22:19:20 UTC | Beide verwendeten Slot 01 und das checksumgebundene `722883c4`-Paket; danach `active: 0`, `free: 10` |
+| Finaler PR-Source-Stand | `c917b544cfe71e6d697637ca9b9b3b538b636ad3`, Paket-SHA-256 `ae1e8cb84658441168ea2bd78ba0f9454b628a1b71fa6d74a10ec5ceec992261`; AP-08-Cursorpfad und öffentliche Health-/Statuspfade bestanden auf Pibo2 | Begrenzte Nachprüfung des finalen Codes nach Upstream-Merge und `34cb7270`; keine Umdeutung oder Wiederholung der 476-Dateien-, Last-, Soak-, Provider-, Portfolio-, MCP- oder Browserbelege |
 
 ## AP-03-Vorher/Nachher und ressourcenbegrenzte Gates
 
@@ -92,6 +96,14 @@ Der vollständige Topic-Diff wurde gegen das am 2026-09-13 gefetchte `upstream/d
 
 Ein konkreter Reviewbefund betraf AP-08: Erschöpfte die begrenzte Beziehungssuche exakt ihren Scananteil, blieb `relatedIdentityCollision` zwar korrekt unbekannt, aber `classificationComplete` konnte wahr bleiben. `34cb7270` setzt in diesem Fall die Ungewissheit, bewahrt sie im Cursor und ergänzt eine Ablaufregression. Der Server-TypeScript-Compile mit dem projektierten 1.200-MiB-Heap bestand; `test/output-inspection-bounded.test.mjs` bestand mit 10/10 Tests. Zwei vorherige Compilerläufe mit künstlich reduzierten 768 beziehungsweise 1.024 MiB endeten erwartungsgemäß am V8-Heaplimit und zählen nicht als Produktfehler. Die 476-Dateien-Suite wurde nicht vollständig wiederholt: Vor dem Soak waren alle neun Kandidatenquellhashes unverändert; nach der isolierten Reviewkorrektur deckten Compile und die direkt betroffene Suite den geänderten Pfad ab.
 
+## Exakte Nachprüfung des finalen PR-Source-Standes
+
+Der saubere Commit `c917b544cfe71e6d697637ca9b9b3b538b636ad3` bindet `upstream/dev`-Merge `d5f37fe2`, Reviewfix `34cb7270` und die bis dahin committed Dokumentation. Ein isolierter Docker-Dev-Worker prüfte 2.849 tracked Dateien gegen den Commit und erzeugte `pasko70-pibo-1.7.2.tgz` mit 4.039.035 Bytes, 1.109 Einträgen und SHA-256 `ae1e8cb84658441168ea2bd78ba0f9454b628a1b71fa6d74a10ec5ceec992261`. Die gebaute und später auf Pibo2 installierte `dist/debug/output-dead-letters.js` war auf beiden Seiten bytegleich, SHA-256 `d46b04d1c5ea3f55a2709b9228ad12100846463d54af5a38e4395900e9f4e070`.[^final-pr-candidate-evidence]
+
+Die unveränderte äußere Schutzschicht stoppte den Pack-Wrapper bei Host-Memory-Full-PSI 6,14 an der Grenze 5, nachdem `npm pack` samt `postpack` bereits beendet und das Archiv samt Checksumme geschrieben war. Es gab keinen OOM und keinen verbleibenden Buildprozess. Statt einen zweiten Paketbuild zu starten, wurden Quellmanifest, sauberer Worktree, Pack-Ausgabe, Archivstruktur und Paketchecksumme separat geprüft; anschließend installierte Pibo2 exakt denselben Artefakthash. Drei frühere generische One-time-Worker-Vorbereitungen waren ebenfalls vor Containererzeugung an Memory-Full-PSI 5,98, 5,34 und 5,30 gestoppt worden. Keine Schutzgrenze wurde verändert.
+
+Pibo2-Lease `lease_142a8b738a5705212f` band Commit `c917b544` und den Paketdigest. Die installierte CLI erhielt einen Dead-Letter mit genau ausgeschöpftem Beziehungsscan: Seite eins blieb `classificationComplete=false` und lieferte einen Cursor; die Folgeseite war traversal-vollständig, blieb klassifikatorisch unvollständig und endete korrekt mit `complete=false`, `reason=scope_unclassified`. Beide Datenbanken blieben bytegleich. Über dieselbe öffentliche Lease bestanden drei `/health`-Aufrufe in 139,684/16,697/4,013 ms, fünf passive Statusaufrufe in 5,920–8,183 ms und eine `/status`-Action in 26,570 ms; alle Antworten waren HTTP 200, unter 500 ms und ließen `runtimeActive=false`. Die 1-CPU-/1.536-MiB-/512-PID-Pibo2-Grenzen blieben unverändert, der Container meldete kein OOM. Die Lease wurde am 2026-09-13 um 01:26:55 UTC freigegeben; anschließend `active: 0`, `free: 10`.
+
 ## Verbleibende Abnahmegrenzen
 
 - Das physische Zielgerät bleibt extern; Desktop-/Mobile-Viewport-Emulation ersetzt es nicht.
@@ -118,6 +130,11 @@ Ein konkreter Reviewbefund betraf AP-08: Erschöpfte die begrenzte Beziehungssuc
 | `soak-3250-722883c4-light-final/sessions-3250/summary.json` | `fed89bd7ae7932a5d9d5e9af090c19ba84098b4dcbfac12403594c445a08379b` |
 | `soak-3250-722883c4-light-final/soak-audit.json` | `14937ae978c437ad26fd2927ef4cc8e69b8b22f91e5b0fb71749a8a2f2819ed3` |
 | `soak-3250-722883c4-light-final/SHA256SUMS` | `f7195c24e8dabb8218cf20ec76b5435698e3cc330e6b8a7ed856cf05acbf77d3` |
+| `../latency-continuation-2026-09-13/final-candidate-c917b544/pasko70-pibo-1.7.2.tgz` | `ae1e8cb84658441168ea2bd78ba0f9454b628a1b71fa6d74a10ec5ceec992261` |
+| `../latency-continuation-2026-09-13/final-candidate-c917b544/final-candidate-audit.json` | `2142dc56b48a39a24054133350863dfb529a1f18a78f9f9036ad1966b2fda09f` |
+| `../latency-continuation-2026-09-13/final-candidate-c917b544/ap08-pibo2/summary.json` | `6e58ee548b4b7799cf15a0fb3b244acc29d2cf10257c0f231dc558f4adba1291` |
+| `../latency-continuation-2026-09-13/final-candidate-c917b544/public-health-status.json` | `6cebba9667a2d03bf44a5f23e5e03376c7ae776481350c34ba21f9ce038b756f` |
+| `../latency-continuation-2026-09-13/final-candidate-c917b544/SHA256SUMS` | `68306fd8a3c580b515462a5bac792de84a5c2bf4e1f1fbd90f23658f47a2f558` |
 
 # Historischer Ausführungsverlauf
 

@@ -5,7 +5,7 @@ description: "Verzeichnet den finalen Produktkandidaten, Prüfbelege, Evidenzgre
 tags: ["latency", "reliability", "handoff", "implementation"]
 status: "draft"
 authority: "informative"
-generated: { by: "openai/codex", at: "2026-09-13T01:03:47Z" }
+generated: { by: "openai/codex", at: "2026-09-13T01:28:32Z" }
 sources:
   - id: "plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -19,14 +19,17 @@ sources:
   - id: "continuation-evidence"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
     title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
+  - id: "final-pr-candidate-evidence"
+    resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-13/final-candidate-c917b544; exact packaged commit c917b544cfe71e6d697637ca9b9b3b538b636ad3"
+    title: "Finale Docker-Paket-, AP-08- und öffentliche Pibo2-Nachprüfung für PR #1017"
 implementation_state: "implemented; exact-candidate soak complete; physical-device acceptance external"
 ---
 
 # Aktueller Übergabestand
 
-Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` last- und browsergeprüft abgeschlossen. Der exakte Zwei-Stunden-Soak ist bestanden; die Gesamtabnahme bleibt nur wegen des externen physischen Geräts teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Das aktuelle `upstream/dev` wurde am 2026-09-13 per Merge `d5f37fe2` integriert. Ein abschließender Gesamtdiff-Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Ungewissheitsfall. Der fokussierte Fork-Branch `feature/latency-reliability-remediation` wurde gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet; Merge, Veröffentlichung, Release und Controller-Deployment bleiben ausgeschlossen.[^continuation-evidence]
+Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` last- und browsergeprüft abgeschlossen. Der exakte Zwei-Stunden-Soak ist bestanden; die Gesamtabnahme bleibt nur wegen des externen physischen Geräts teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Das aktuelle `upstream/dev` wurde am 2026-09-13 per Merge `d5f37fe2` integriert. Ein abschließender Gesamtdiff-Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Ungewissheitsfall. Der committed PR-Source-Stand `c917b544cfe71e6d697637ca9b9b3b538b636ad3` wurde anschließend als exaktes Dockerpaket auf Pibo2 nachgeprüft. Der fokussierte Fork-Branch `feature/latency-reliability-remediation` wurde gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet; Merge, Veröffentlichung, Release und Controller-Deployment bleiben ausgeschlossen.[^continuation-evidence]
 
-Der lastgeprüfte Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8a7bbb67`, `00a7d5ca`, `04ca34cc`, `082dfb6d`, `b87a00d5`, `beb89780`, `d52f0f95`, `717e9a85`, `09375bbb` und `722883c4`. Der letzte dieser Commits ergänzt die inkrementelle, prozessübergreifende Session-Strukturreconciliation. Das checksumgebundene Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Die spätere Ein-Zeilen-Korrektur `34cb7270` liegt nicht im Paket und wird nicht rückwirkend als Teil der Soak-Evidenz bezeichnet; sie betrifft ausschließlich die konservative Debug-Klassifikationsvollständigkeit und bestand den Kern-Compile sowie 10/10 fokussierte Audit-Tests.
+Der lastgeprüfte Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8a7bbb67`, `00a7d5ca`, `04ca34cc`, `082dfb6d`, `b87a00d5`, `beb89780`, `d52f0f95`, `717e9a85`, `09375bbb` und `722883c4`. Der letzte dieser Commits ergänzt die inkrementelle, prozessübergreifende Session-Strukturreconciliation. Das checksumgebundene Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Die spätere Ein-Zeilen-Korrektur `34cb7270` liegt nicht in diesem älteren Paket und wird nicht rückwirkend als Teil der Soak-Evidenz bezeichnet. Für den finalen PR-Source-Stand wurde deshalb ein neues Paket aus Commit `c917b544cfe71e6d697637ca9b9b3b538b636ad3` erstellt. Das Archiv `pasko70-pibo-1.7.2.tgz` hat SHA-256 `ae1e8cb84658441168ea2bd78ba0f9454b628a1b71fa6d74a10ec5ceec992261`; es enthält den Upstream-Merge und `34cb7270` und bestand die begrenzte AP-08-/Public-Health-/Status-Abnahme auf Pibo2.[^final-pr-candidate-evidence]
 
 ## Was auf `722883c4` belegt ist
 
@@ -39,6 +42,14 @@ Der lastgeprüfte Produktkandidat enthält die fokussierten Commits `20be897f`, 
 - **Sichtbare Recovery:** 60,061 Sekunden hidden/frozen; Entwurf, Fokus und Composer erhalten; Trace- und Signal-Catch-up bei stabiler Epoche; Event-, Signal- und Trace-Timeline-Verbindungen nach Resume erneuert. Genau ein währenddessen angenommener Command blieb wegen `openai-codex` `disconnected/configured=false` im frischen Pi-Store `interrupted`, wurde nie wiederholt und nach Prüfung als fehlgeschlagen reconciliert. Queue danach gesund, scoped Dead-Letter-Traversierung leer.
 - **Testsuite:** Exakt 476/476 kanonische Dateipfade erfolgreich, keine fehlenden/zusätzlichen Pfade und keine Hashabweichung. Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c`. Abgebrochene Teilprotokolle wurden nicht gezählt.
 - **Zwei-Stunden-Soak:** 7.200,496 Sekunden echte Soakphase ohne Vorbereitung mit 6.484 kontinuierlichen Commands; insgesamt 7.504 eindeutige Admissions, Effekte und terminale `completed`-Commands, keine Lücken oder Mehrfachterminals, Queue vollständig drainiert. Admission-p95 15,22 ms, Status-p95 11,98 ms. Äußere Schutzschicht erfolgreich, kein OOM; Spitzen Memory-/I/O-Full-PSI 1,08/4,04 bei Grenzen 5/10.
+
+## Was auf dem finalen PR-Source-Stand `c917b544` zusätzlich belegt ist
+
+- 2.849 tracked Quelldateien wurden im isolierten Dockerworker gegen den sauberen Commit geprüft; das Paket umfasst 4.039.035 Bytes und 1.109 Einträge.
+- Die auf Pibo2 installierte `dist/debug/output-dead-letters.js` war bytegleich zum Paket. Ein exakt ausgeschöpfter Beziehungsscan blieb auf beiden Cursor-Seiten klassifikatorisch unvollständig und endete read-only mit `scope_unclassified`; die Stores blieben bytegleich.
+- Drei öffentliche `/health`-Aufrufe, fünf passive Statusaufrufe und eine `/status`-Action waren HTTP 200 und unter 500 ms; `runtimeActive` blieb `false`.
+- Der Pack-Wrapper wurde nach bereits abgeschlossenem `npm pack` von der unveränderten Memory-Full-PSI-Grenze gestoppt. Archiv, Quellmanifest, Pack-Ausgabe, sauberer Worktree, Pibo2-Installation und installierter Dateihash wurden separat verifiziert; kein zweiter Paketbuild wurde gestartet.
+- Pibo2-Lease `lease_142a8b738a5705212f` wurde freigegeben; der Pool meldete danach `active: 0`, `free: 10`. Der temporäre Dockerworker wurde ebenfalls freigegeben und sein Hilfsworktree entfernt.
 
 ## Grenzen, die nicht umetikettiert werden dürfen
 
@@ -56,9 +67,9 @@ Die Suite wurde nach Schutzstopps in kleinere geschützte Shards mit `--test-con
 
 ## Betriebs- und Abschlusszustand
 
-Die explizite Pibo2-Lease `lease_0e34ee90319d825b87` auf Slot 01 wurde am 2026-09-12 um 21:24:14 UTC ordnungsgemäß freigegeben. Die spätere headful Lease `lease_8b448039c94bde2e01` wurde am selben Tag um 22:19:20 UTC freigegeben; der Pool meldete danach `active: 0`, `free: 10`. Browser-Slot `pibo-chat-slot-002` wurde freigegeben und sein Cookieprofil gelöscht. Temporäre Slotprofile und MCP-Konfiguration werden nicht weiter betrieben. GitHub-Issue #1013 bleibt der einzige Ort für langfristige Reminder-Read/Ack-Discovery; #1016 behandelt die allgemeine Pibo2-Providerauth. Beides ist nicht Teil dieses Produktpatches.
+Die explizite Pibo2-Lease `lease_0e34ee90319d825b87` auf Slot 01 wurde am 2026-09-12 um 21:24:14 UTC ordnungsgemäß freigegeben. Die spätere headful Lease `lease_8b448039c94bde2e01` wurde am selben Tag um 22:19:20 UTC freigegeben. Die finale Paketlease `lease_142a8b738a5705212f` wurde am 2026-09-13 um 01:26:55 UTC freigegeben; der Pool meldete danach `active: 0`, `free: 10`. Browser-Slot `pibo-chat-slot-002` wurde freigegeben und sein Cookieprofil gelöscht. Temporäre Slotprofile und MCP-Konfiguration werden nicht weiter betrieben. GitHub-Issue #1013 bleibt der einzige Ort für langfristige Reminder-Read/Ack-Discovery; #1016 behandelt die allgemeine Pibo2-Providerauth. Beides ist nicht Teil dieses Produktpatches.
 
-Private Kernartefakte liegen unter `/root/.pibo/investigations/latency-continuation-2026-09-12/`:
+Private Kernartefakte liegen unter `/root/.pibo/investigations/latency-continuation-2026-09-12/` sowie für die finale PR-Nachprüfung unter `/root/.pibo/investigations/latency-continuation-2026-09-13/final-candidate-c917b544/`:
 
 - `full-suite-coverage-summary-722883c4.json` und `full-suite-coverage-files-722883c4.tsv`;
 - `ap03-http-foreign-writes-722883c4.json`;
@@ -71,11 +82,12 @@ Private Kernartefakte liegen unter `/root/.pibo/investigations/latency-continuat
 - `headful-722883c4/headful-slash-responsive.json` und `visible-recovery-60s.json`;
 - `headful-722883c4/message-queue-reconcile-applied.json` und `persistence-dead-letters-after.json`;
 - `headful-722883c4/pibo2-pool-release-final.json`;
-- `soak-3250-722883c4-light-final/run.json`, `sessions-3250/summary.json`, `soak-audit.json` und `SHA256SUMS`.
+- `soak-3250-722883c4-light-final/run.json`, `sessions-3250/summary.json`, `soak-audit.json` und `SHA256SUMS`;
+- finales Paket `pasko70-pibo-1.7.2.tgz`, `final-candidate-audit.json`, `ap08-pibo2/summary.json`, `public-health-status.json`, `pibo2-release.json` und das neue `SHA256SUMS`.
 
 Der Soak-Ordner umfasst 7.520 erfolgreich geprüfte Hashzeilen. Die Kernhashes lauten: `run.json` `593560b13385ebaedfe4c8d17d0ac58d20f197e6064619cc8dd9dc80058ddcaf`, `summary.json` `fed89bd7ae7932a5d9d5e9af090c19ba84098b4dcbfac12403594c445a08379b`, `soak-audit.json` `14937ae978c437ad26fd2927ef4cc8e69b8b22f91e5b0fb71749a8a2f2819ed3` und `SHA256SUMS` `f7195c24e8dabb8218cf20ec76b5435698e3cc330e6b8a7ed856cf05acbf77d3`.
 
-Operativ ist keine weitere Produktimplementierung vorgesehen. Der vollständige Topic-Diff gegen das aktuelle `upstream/dev` wurde geprüft; der konkrete AP-08-Befund ist behoben und fokussiert getestet. Der fokussierte Fork-Branch ist gepusht und Draft-PR #1017 gegen `upstream/dev` offen; weitere Produktarbeit ist in diesem Handoff nicht vorgesehen. Die externe Smartphone-Abnahme kann separat nachgeholt werden; sie rechtfertigt keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
+Operativ ist keine weitere Produktimplementierung vorgesehen. Der vollständige Topic-Diff gegen das aktuelle `upstream/dev` wurde geprüft; der konkrete AP-08-Befund ist behoben, fokussiert getestet und auf dem exakten finalen Paket in Pibo2 nachgeprüft. Der fokussierte Fork-Branch ist gepusht und Draft-PR #1017 gegen `upstream/dev` offen; weitere Produktarbeit ist in diesem Handoff nicht vorgesehen. Die externe Smartphone-Abnahme kann separat nachgeholt werden; sie rechtfertigt keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
 
 # Historischer Ersthandoff
 
