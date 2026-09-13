@@ -84,9 +84,9 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApp
 		</div> : null}
 		{migration ? <section className="border border-slate-700 bg-[#101d22] p-3 text-xs" aria-label="Legacy plugin migration preview">
 			<h3 className="font-semibold text-slate-100">Migration preview</h3>
-			<p className="mt-1 text-slate-400">{migration.beforeTools.length} previous tools → {migration.afterTools.length} matched tools. User skills and context remain independent resources.</p>
+			<p className="mt-1 text-slate-400">{migration.beforeTools.length} previous tools → {migration.afterTools.length} matched tools. Existing independent skill and context references are preserved.</p>
 			{migration.beforeTools.length ? <p className="mt-2 text-slate-300">Tools: {migration.beforeTools.join(", ")}</p> : null}
-			<p className="mt-1 text-slate-400">Independent skills: {migration.userSkills.length}; independent context files: {migration.userContextFiles.length}.</p>
+			<p className="mt-1 text-slate-400">Retained skill references: {migration.userSkills.length}; independent context files: {migration.userContextFiles.length}.</p>
 			{migration.diagnostics.map((item, index) => <p key={`${item.code}:${index}`} className={item.severity === "error" ? "mt-1 text-amber-200" : "mt-1 text-slate-400"}>{item.message}</p>)}
 			{!selection && migration.status === "ready" ? <button type="button" disabled={readOnly || migrationBusy} className="mt-3 border border-[#11a4d4] bg-[#11a4d4]/10 px-2 py-1 text-[#7dd3fc] disabled:opacity-50" onClick={() => void applyMigration()}>{migrationBusy ? "Migrating…" : "Migrate this exact selection"}</button> : null}
 			{migration.status === "conflict" ? <p className="mt-2 text-amber-200">Migration is blocked until the listed ownership or collision is resolved. Nothing has been enabled.</p> : null}

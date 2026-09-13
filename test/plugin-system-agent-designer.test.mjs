@@ -266,3 +266,26 @@ test("legacy independent resource collisions are explained and block migration w
 		assert.equal(agents.get(agent.id).pluginSelection, undefined);
 	} finally { agents.close(); }
 });
+
+
+test("unavailable saved skill references survive migration without blocking selected tools or enabling replacements", async () => {
+	const agents = new CustomAgentStore(":memory:");
+	const { db, store: plugins } = pluginStore();
+	const root = mkdtempSync(join(tmpdir(), "legacy-unavailable-skill-"));
+	try {
+		const agent = agents.create({ displayName: "retained-skills", nativeTools: ["legacy_search"], skills: ["unavailable-personal-reference", "host-skill"], goalControl: false, runControl: false });
+		const catalog = { schemaVersion: 1, revision: 1, installations: [installation("fixture.search", [contribution("legacy_search")])] };
+		const inventory = inventoryLegacyAgentSelection(agent, { catalog: { nativeTools: [{ name: "legacy_search", yieldable: false }], skills: [{ name: "host-skill", kind: "builtin", pluginId: "legacy.owner" }], contextFiles: [] }, pluginCatalog: catalog, runtime: runtime() });
+		const source = agents.exportLegacyAgent(agent.id);
+		const report = planLegacyAgentPluginMigration({ agent, source, catalog, runtime: runtime(), ...inventory });
+		assert.equal(report.status, "ready");
+		assert.deepEqual(report.beforeTools, ["legacy_search"]);
+		assert.deepEqual(report.afterTools, report.beforeTools);
+		assert.deepEqual(report.userSkills, ["unavailable-personal-reference", "host-skill"]);
+		assert.deepEqual(inventory.harnessSkills, ["host-skill"]);
+		assert.equal(report.diagnostics.find(item => item.code === "legacy-resource-unavailable")?.severity, "warning");
+		await migrateLegacyAgentPlugins({ agents, plugins, agentId: agent.id, source, report, backupRoot: root });
+		assert.deepEqual(agents.get(agent.id).skills, agent.skills);
+		assert.deepEqual(agents.get(agent.id).pluginSelection.plugins.map(item => item.pluginId), ["fixture.search"]);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});

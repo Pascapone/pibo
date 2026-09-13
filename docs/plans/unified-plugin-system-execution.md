@@ -23,6 +23,8 @@ The active implementation task is [PLG-UX-001 and PLG-MIG-002](/plans/unified-pl
 
 Use existing worker thread `plugin-rebuild-implementation`, isolated Docker/worktree, and quick headful feedback iterations. Preserve existing tests; no fullsuite or heavy gates in this round. Verify existing installed state and existing legacy agents, not only fresh fixtures. Monitor every ten minutes and steer when needed. Current deployed feedback baseline is `71b90d02429cd80bab8a10c66018221b3c572e8e`; prior parent-owned corrections cover cache refresh, managed-default upgrades and current session-plan reads. The broader Goal-service ownership finding remains open and is not resolved by UI filtering.
 
+Parent review deployed `030ed92e` to Pibo2 and found a real-state gap that the single-tool fixture missed: legacy host-provided skills were incorrectly required to have an installed plugin owner, and unavailable saved skill references blocked all migration. The correction preserves host/harness skill delivery and unavailable references without claiming replacement ownership or enabling defaults. Genuine installed-owner ambiguity and name collisions remain blocking. The focused migration test now includes both a host skill and an unavailable saved reference; 24 tests pass in Docker. Final remote migration confirmation follows the corrected candidate.
+
 # Goal and completion
 
 Implement the [complete rebuild plan](/plans/unified-plugin-system-rebuild.md). All AP00–AP19 packages and A01–A42 scenarios remain subject to explicit evidence. Neither an implementation report nor passing unit tests alone closes the product-level acceptance gate.

@@ -867,7 +867,7 @@ export function AgentsView({
 						) : null}
 						{selectedRuntime?.adapterId === "pi" ? <BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={pluginBuiltinToolReplacements} /> : null}
 					</DesignerPanel>
-					<AgentPluginsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} onMigrationApplied={(agent) => {
+					<AgentPluginsDesigner key={draft.id ?? "new-agent"} draft={draft} setDraft={setDraft} readOnly={readOnly} onMigrationApplied={(agent) => {
 						const nextAgents = [agent, ...customAgentsRef.current.filter((item) => item.id !== agent.id)];
 						customAgentsRef.current = nextAgents;
 						setCustomAgents(nextAgents);

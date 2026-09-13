@@ -1305,6 +1305,7 @@ export function planLegacyAgentPluginMigration(options: {
 	/** Exact previously effective plugin-owned contributions, including generated Goal/Run infrastructure. */
 	contributions: LegacyAgentContribution[];
 	userSkills: string[];
+	harnessSkills?: string[];
 	userContextFiles: string[];
 	inventoryDiagnostics?: PluginDiagnostic[];
 }): AgentPluginMigrationReport {
@@ -1331,7 +1332,7 @@ export function planLegacyAgentPluginMigration(options: {
 		expected.add(`${legacy.pluginId}/${matches[0].id}`);
 	}
 	const resources = [
-		...options.userSkills.map((name, order): import("../../plugins/sdk.js").IndependentPluginResource => ({ id: `legacy-user-skill:${name}`, kind: "skill", name, origin: "user", reference: name, order, context: { kind: "context", stage: "skills", description: "Independent user skill preserved from the legacy agent", loading: "progressive" } })),
+		...options.userSkills.map((name, order): import("../../plugins/sdk.js").IndependentPluginResource => ({ id: `legacy-user-skill:${name}`, kind: "skill", name, origin: options.harnessSkills?.includes(name) ? "harness" : "user", reference: name, order, context: { kind: "context", stage: "skills", description: "Independent skill reference preserved from the legacy agent", loading: "progressive" } })),
 		...options.userContextFiles.map((name, order): import("../../plugins/sdk.js").IndependentPluginResource => ({ id: `legacy-user-context:${name}`, kind: "context-file", name, origin: "user", reference: name, order, context: { kind: "context", stage: "context", description: "Independent user context preserved from the legacy agent", loading: "eager" } })),
 	];
 	const plan = resolvePluginContributions({ catalog, runtime, selection, selectionRevision: agent.revision, kind: "preview", resources });
@@ -1381,6 +1382,7 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 	const contributions: LegacyAgentContribution[] = [];
 	const diagnostics: PluginDiagnostic[] = [];
 	const userSkills: string[] = [];
+	const harnessSkills: string[] = [];
 	const userContextFiles: string[] = [];
 	const candidatesFor = (kind: string, name: string) => [...new Set((options.pluginCatalog?.installations ?? []).flatMap((installation) => installation.manifest.contributions
 		.filter((contribution) => contribution.scope === "agent" && contribution.kind === kind && contribution.name === name)
@@ -1405,7 +1407,15 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 	for (const name of agent.skills) {
 		const skill = options.catalog.skills.find((item) => item.name === name);
 		if (skill?.kind === "user") preserveIndependent("skill", name, userSkills);
-		else add("skill", name, skill?.pluginId);
+		else if (skill?.kind === "builtin" && candidatesFor("skill", name).length === 0) {
+			// Host/harness skills already have an independent runtime delivery path.
+			userSkills.push(name);
+			harnessSkills.push(name);
+		} else if (!skill && candidatesFor("skill", name).length === 0) {
+			// Retain the saved external reference without inventing a plugin owner or loading code.
+			userSkills.push(name);
+			diagnostics.push({ code: "legacy-resource-unavailable", severity: "warning", path: [agent.id, "skill", name], message: `Saved skill ${name} is currently unavailable; its reference is retained without enabling a replacement` });
+		} else add("skill", name, skill?.pluginId);
 	}
 	for (const name of agent.contextFiles) {
 		const context = options.catalog.contextFiles.find((item) => item.key === name);
@@ -1431,7 +1441,7 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 	] : [];
 	const start = contributions.find((item) => item.kind === "tool" && item.name === "pibo_run_start");
 	if (start) start.config = { allowedToolNames: runTargetNames };
-	return { contributions, userSkills, userContextFiles, inventoryDiagnostics: diagnostics,
+	return { contributions, userSkills, harnessSkills, userContextFiles, inventoryDiagnostics: diagnostics,
 		harnessTools: options.runtime.adapterId === "pi" && agent.builtinTools !== "disabled" ? [...agent.builtinToolNames] : [],
 		yieldedOnlyTools: manualSubagents ? ["pibo_agents_send_message"] : [],
 		/** Migrator/runtime must preserve this filter, not broaden manual infrastructure to all tools. */

@@ -171,3 +171,5 @@
 - **Review 5 remediation**: Applied CommonMark fence recognition, made index preflight recursive and globally ledger-complete, rejected invisible or direction-spoofing metadata, and required an exact commit-preserving worker Git mirror.
 - **Review 6 remediation**: Treated LF, CRLF, and lone CR uniformly during specification scanning and rejected U+2800 plus the explicit visually blank filler set in index metadata.
 - **Relocation**: Moved two guides and four operator runbooks from top-level `guides/` and `ops/` into `project/guides/` and `project/operations/`; their concept conversion remains pending.
+
+- 2026-09-13: Parent review of optional plugin modules found and corrected legacy host-skill migration classification; see `/plans/unified-plugin-system-execution.md`. Existing references remain preserved; unavailable references produce warnings instead of blocking unrelated plugin selection.
