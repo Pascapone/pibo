@@ -151,6 +151,26 @@ test('arbitrary oversized identity strings never enter bounded result/progress f
  }finally{rmSync(f.root,{recursive:true,force:true});}
 });
 
+test('bounded relationship scans preserve classification uncertainty across the cursor',()=>{
+ const f=fixture(1);
+ try{
+  const data=new PiboDataStore(f.dataStore.path);
+  data.db.prepare(`INSERT INTO sessions (id,pi_session_id,channel,kind,profile,title,status,created_at,updated_at,last_activity_at)
+   VALUES ('ps_target','pi_ps_target','web','conversation','default','target','idle','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')`).run();
+  for(let sequence=1;sequence<=4;sequence++) data.eventLog.appendEvent({
+   sessionId:'ps_target',sessionSequence:sequence,topic:'pibo.output',type:'message_started',source:'test',eventId:`other-${sequence}`,
+   retentionClass:'trace_event',attributes:{},createdAt:`2026-09-01T00:00:0${sequence}.000Z`,indexedAt:`2026-09-01T00:00:0${sequence}.000Z`,
+  });
+  data.close();
+  const first=inspectOutputDeadLetters({...f,limit:1,maxScan:4});
+  assert.equal(first.deadLetters.length,1);assert.equal(first.deadLetters[0].relatedIdentityCollision,undefined);
+  assert.equal(first.budget.classificationComplete,false);assert.ok(first.budget.nextCursor);
+  const final=inspectOutputDeadLetters({...f,limit:1,maxScan:4,cursor:first.budget.nextCursor});
+  assert.equal(final.budget.traversalComplete,true);assert.equal(final.budget.classificationComplete,false);
+  assert.equal(final.budget.complete,false);assert.equal(final.budget.reason,'scope_unclassified');
+ }finally{rmSync(f.root,{recursive:true,force:true});}
+});
+
 test('real audit work guard and later queries share a stable snapshot across concurrent WAL inserts',async()=>{
  const f=fixture(2),writer=new DatabaseSync(f.reliabilityStore.path);writer.exec('PRAGMA journal_mode=WAL');
  try{

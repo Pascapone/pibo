@@ -138,6 +138,7 @@ export function inspectOutputDeadLetters(input: DeadLetterInput, onProgress?: (r
 				result.budget.scannedRows += collisions.length;
 				if (collisions.some((item) => item.eventId === eventId && item.type === "pibo.output.identity_collision")) finding.relatedIdentityCollision = true;
 				else if (collisions.length < cap) finding.relatedIdentityCollision = false;
+				else result.budget.classificationComplete = false;
 			}
 			const bytes = Buffer.byteLength(JSON.stringify(finding));
 			if (result.budget.returnedBytes! + bytes > result.budget.maxResultBytes! - 16384) { after = previousCursor; result.budget.reason = "byte_limit"; break; }
