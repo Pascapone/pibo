@@ -2,6 +2,8 @@
 
 ## 2026-09-13
 
+- **Pibo 4.0 corrected Pibo2 test candidate**: Recorded exact candidate/checksum, automatic profile migration parity, byte-identical user resources, valid Pi/Codex session plans and headful mobile Designer evidence in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-upgrade-finding-and-local-correction). New remote model turns and release acceptance remain unverified.
+
 - **Managed-package startup upgrade**: Recorded the real Pibo2 manifest/backend mismatch, restoration of the previous candidate, and corrected startup ordering with 12 passing targeted regressions in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-upgrade-finding-and-local-correction).
 
 - **Pibo 4.0 integration review**: Recorded verified historical v1 migration-journal recovery and retryable authenticated browser import in the [execution ledger](/plans/unified-plugin-system-execution.md#orchestrator-integration-review-2026-09-13), with 33 passing targeted tests and the current clean staged Docker build. Pibo2 upgrade acceptance remains pending.
