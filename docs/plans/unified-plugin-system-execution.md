@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-13T12:30:00Z"
+  at: "2026-09-13T16:35:00Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
@@ -19,9 +19,17 @@ sources:
 
 # Active direction: Pibo 4.0 clean migration (2026-09-13)
 
-[PLG-V4-001](/plans/unified-plugin-system-rebuild.md#plg-v4-001-pibo-40-mit-automatischer-datenmigration) supersedes manual per-agent migration and dual legacy execution. Automatic backed-up, resumable migration must preserve existing effective agent/context setup; only the new plugin delivery ships. Small isolated upgrade/restore data readers may remain. Runtime-native capabilities are not old Pibo delivery. Open: inventory remaining legacy registration/delivery and Goal-service ownership, implement the automatic upgrade boundary, remove superseded paths, prove retained configuration with existing tests and realistic state. This is intended 4.0 work, not release readiness.
+Parent review after the first local cutover phase: **not accepted as complete and not deployed**. The worker report `/tmp/plugin-v4-cutover-implementation.md` records 94 focused passing tests and a reproduced desktop root-scroll defect fixed with `overflow-clip`. Remaining productive User-Resource registrations, debug default registries, executable compatibility exports and historical configuration/tabset coverage must still be resolved. In addition, `migrateLegacyAgentsAtStartup` currently skips every existing `pluginSelection`, including prior conflict selections and already partially migrated profiles whose resource ownership may have changed. Verify recovery from a crash after the owner write but before the journal receipt, and preserve existing selections under new Core-skill ownership. A stored unavailable runtime currently throws during the batch: diagnose the affected profile without losing access to repair unrelated profiles. These are review follow-ups, not established parity evidence. No further deployment is authorized by a green local phase alone.
 
-Also open: headful reproduction/fix of Agent Designer clipping after toggling a plugin tool; switching tabs currently restores the layout. Owner screenshots `/root/.pibo/uploads/screenshot-20260913-161651.png` and `/root/.pibo/uploads/screenshot-20260913-161656.png`. Preserve the accepted mobile/desktop tab design and generic system/agent scope model.
+The next worker continuation request failed with session-tool transport `Auth required`; the completed worker is not running. Continue the same `plugin-rebuild-implementation` thread when session-tool authentication is refreshed. The user has already authorized this remaining work; no new scope approval is needed.
+
+[PLG-V4-001](/plans/unified-plugin-system-rebuild.md#plg-v4-001-pibo-40-mit-automatischer-datenmigration) supersedes manual per-agent migration and dual legacy execution. The current local candidate now migrates legacy agents automatically with a private content backup, journal, CAS and resumable idempotence; it preserves MCP selection and independent Skill/Context content, order and provenance. Gateway startup also persists a versioned runtime-binding marker before router creation without changing session IDs, native history IDs or binding history. Missing bindings no longer enter a normal legacy Pi fallback.
+
+Core, both transcription providers, Web Product and Goal/Loop are ordinary immutable host packages in the production gateway composition. Goal/Loop service state is host-owned rather than process-global, and its system lifecycle remains independent from per-agent Goal tool selection. Normal Web, plugin-management, profile-resolution and skill-catalog entrypoints no longer create the legacy default Core registry. Compatibility constructors, read-only debug resolution and narrow persistence upgrade readers still exist; direct user Skill, Context and custom-agent resource registration has not yet moved to an ordinary package. Therefore this checkpoint does **not** claim one completely plugin-only delivery graph.
+
+The Agent Designer clipping report is resolved locally with a reproduced root cause rather than a scroll-only workaround. At 1021×858, clicking the Tool checkbox and waiting for autosave programmatically scrolled the `overflow-hidden` Designer grid root to `scrollTop=991`, moving its main pane to `y=-951` while the tab panel remained 818 px tall. The fix removes the card `scrollIntoView`, makes both containing pane and Designer grid non-scrollable with `overflow-clip`, and leaves the main element as the single scroll owner. Four repeated checkbox/autosave cycles then kept root `scrollTop=0`, root/main `y=40`, root/main/panel height `818`, and main `scrollTop=1180`. Screenshot: `/tmp/plugin-v4-designer-root-clip-fixed-1021x858.png`.
+
+Current local verification: all root and UI typechecks pass; the complete `npm run build` passes in `pibo-dev-plugin-system-rebuild`; the focused migration, product-runtime, gateway-binding, Designer/autosave and Goal set passes **94/94**; focused plugin/skills CLI tests also pass. AP19 remains blocked by real-provider Pibo2 Pi/Codex/OMP evidence and commit-backed specifications. This is a coherent local cutover checkpoint, not release acceptance.
 
 # Owner feedback: optional modules and activation ownership (2026-09-13)
 
@@ -151,13 +159,15 @@ Preserved evidence snapshots:
 
 These are snapshots of an uncommitted working tree. Their references to temporary raw logs and screenshots describe where those artifacts were created; they are not a claim that every raw artifact has been published in this bundle. The exact tested runtime package must be rebuilt and identified after the integration commit before Pibo2 acceptance.
 
-## Open independent review finding: Goal system ownership
+## Resolved independent review finding: Goal system ownership
 
 The orchestrator's first source review does **not** confirm AP13/AP18 completion. `src/plugins/default-packages.ts` builds `pibo.goal-control` as agent tools plus an app-scoped settings view. `src/plugins/packaged-control-tools.ts` registers only those generated-tool declarations and settings. The actual Goal/Loop channel and slash action still enter the product through a separate `createPiboLoopPlugin()` call in `src/gateway/web.ts`; `src/loops/channel.ts` retains a process-global `currentLoopService`, and `src/apps/chat/loop-api.ts` consumes that global getter.
 
 Consequently the ordinary installed Goal package does not yet own the real system service lifecycle required by PLG-ACT-001, AP13 and A42. Generic mixed-plugin fixtures and preserved Goal tool tests do not prove that disabling/updating/uninstalling the installed Goal package safely accounts for and controls its running system work. This is an implementation/review blocker, not only missing remote evidence. The worker's earlier local-completeness assessment must be read subject to this finding.
 
 Required resolution: establish explicit ordinary-plugin ownership of the real Goal system service and its API/action integration, retain independent per-agent tool selection, and prove startup/restart at zero selected agent tools plus dependency/impact/drain behavior with running Goals. Preserve existing behavioral tests and add the missing real-product integration case. Review the related Run service boundary at the same time. Do not treat an app-scoped settings view as evidence of system-service migration.
+
+Resolved locally on 2026-09-13: `pibo.goal-control` now publishes the Goal/Loop service, channel, gateway action and stop conditions from its ordinary package setup. `PiboLoopServiceController` owns the active instance; process-global `currentLoopService` and `getPiboLoopService()` are removed. Chat reads the service through the host, Web composition no longer installs `createPiboLoopPlugin()` as a second production path, and per-agent Goal tool selection remains independent. Focused product-runtime and Goal lifecycle tests are green. Full AP13/AP18 acceptance still inherits the broader remaining plugin-only and AP19 gates.
 
 # Owner-requested Pibo2 test deployment, 2026-09-13
 

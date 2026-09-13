@@ -341,6 +341,7 @@ async function createSessionManager(
 export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promise<AgentSessionRuntime> {
 	const cwd = options.cwd ?? getDefaultPiboWorkspace();
 	const profile = options.profile ?? createDefaultPiboProfile();
+	if (profile.effectivePluginPlan && !options.resources) throw new Error("Plugin generations require a host-owned RuntimeResourceSession; legacy Pi resource discovery is not a fallback");
 	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController && !options.portableTools) {
 		throw new Error("PiboRuntimeOptions.subagentRunner is retired. Provide agentsController so the runtime can expose the four pibo_agents_* management tools. The deprecated createSubagentToolDefinitions export remains available only for external legacy tool assembly.");
 	}

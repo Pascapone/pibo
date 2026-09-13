@@ -17,6 +17,18 @@
       "types": "./dist/plugins/host.d.ts",
       "import": "./dist/plugins/host.js"
     },
+    "./plugin-builtin/core": {
+      "types": "./dist/plugins/packaged-core.d.ts",
+      "import": "./dist/plugins/packaged-core.js"
+    },
+    "./plugin-builtin/web-product": {
+      "types": "./dist/plugins/packaged-web-product.d.ts",
+      "import": "./dist/plugins/packaged-web-product.js"
+    },
+    "./plugin-builtin/transcription": {
+      "types": "./dist/plugins/packaged-transcription.d.ts",
+      "import": "./dist/plugins/packaged-transcription.js"
+    },
     "./plugin-builtin/web-annotations": {
       "types": "./dist/plugins/packaged-web-annotations.d.ts",
       "import": "./dist/plugins/packaged-web-annotations.js"

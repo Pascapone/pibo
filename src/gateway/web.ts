@@ -1,5 +1,4 @@
 import { CHAT_WEB_APP_NAME } from "../apps/chat/web-app.js";
-import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
 import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
@@ -7,7 +6,6 @@ import type { ContextFilesPluginOptions } from "../plugins/context-files.js";
 import { createPiboUserProfileResourcePlugins } from "../plugins/user-profile-resources.js";
 import { createPiboPreviewPlugin } from "../previews/plugin.js";
 import { createPiboCronPlugin } from "../cron/plugin.js";
-import { createPiboLoopPlugin } from "../loops/plugin.js";
 import { createPiboDevAuthPlugin } from "../plugins/dev-auth.js";
 import { PiboPluginRegistry } from "../plugins/registry.js";
 import { createPiboWebHostPlugin } from "../plugins/web.js";
@@ -171,34 +169,24 @@ function webGatewayMode(options: WebGatewayServerOptions, useDevAuth: boolean): 
 	return "prod";
 }
 
+/** Compatibility-only registry constructor. Production startup installs the same infrastructure through pibo.web-product. */
 export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {}): PiboPluginRegistry {
 	const resolvedOptions = resolveWebGatewayServerOptions(options);
 	const useDevAuth = resolveWebGatewayAuthMode(resolvedOptions) === "dev-auth";
 	return PiboPluginRegistry.create({
 		plugins: [
-			...createDefaultPiboPlugins(),
 			useDevAuth ? createPiboDevAuthPlugin() : createPiboBetterAuthPlugin(resolvedOptions.auth),
-			createPiboWebHostPlugin({
-				announce: false,
-				canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions),
-				gatewayMode: webGatewayMode(resolvedOptions, useDevAuth),
-				...resolvedOptions.web,
-				landingAppName: CHAT_WEB_APP_NAME,
-			}),
+			createPiboWebHostPlugin({ announce: false, canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions), gatewayMode: webGatewayMode(resolvedOptions, useDevAuth), ...resolvedOptions.web, landingAppName: CHAT_WEB_APP_NAME }),
 			createPiboCronPlugin({ cronStorePath: resolvedOptions.chat?.cronStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
-			...createPiboUserProfileResourcePlugins({
-				userSkills: {
-					globalRoot: resolvedOptions.chat?.userSkillGlobalRoot,
-					workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot,
-				},
-				contextFiles: resolvedOptions.contextFiles,
-				customAgents: { agentStorePath: resolvedOptions.chat?.agentStorePath },
-			}),
-			createPiboLoopPlugin({ loopStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
+			...createPiboUserProfileResourcePlugins({ userSkills: { globalRoot: resolvedOptions.chat?.userSkillGlobalRoot, workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot }, contextFiles: resolvedOptions.contextFiles, customAgents: { agentStorePath: resolvedOptions.chat?.agentStorePath } }),
 			createPiboPreviewPlugin(),
 			createPiboChatWebPlugin(resolvedOptions.chat),
 		],
 	});
+}
+
+function createWebProfileResourceRegistry(options: WebGatewayServerOptions): PiboPluginRegistry {
+	return PiboPluginRegistry.create({ plugins: createPiboUserProfileResourcePlugins({ userSkills: { globalRoot: options.chat?.userSkillGlobalRoot, workspaceRoot: options.chat?.userSkillWorkspaceRoot }, contextFiles: options.contextFiles, customAgents: { agentStorePath: options.chat?.agentStorePath } }) });
 }
 
 function createChatAppURL(options: WebGatewayServerOptions, host: string, port: number): string {
@@ -233,7 +221,8 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 	let server: PiboGatewayServer;
 	try {
 		resolvedOptions = resolveWebGatewayServerOptions(options);
-		const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebPiboPluginRegistry(resolvedOptions);
+		const pluginRegistry = resolvedOptions.pluginRegistry ?? createWebProfileResourceRegistry(resolvedOptions);
+		const useDevAuth = resolveWebGatewayAuthMode(resolvedOptions) === "dev-auth";
 		server = new PiboGatewayServer({
 			...resolvedOptions,
 			authoritativeRuntime: resolvedOptions.authoritativeRuntime ?? true,
@@ -241,7 +230,23 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 			resourceReaper: resolveGatewayResourceReaperOptions(resolvedOptions),
 			loopStorePath: resolvedOptions.chat?.ralphStorePath,
 			dataStorePath: resolvedOptions.chat?.dataStorePath,
+			dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir,
 			agentStorePath: resolvedOptions.chat?.agentStorePath,
+			includeWebProduct: true,
+			pluginProductOptions: {
+				web: {
+					authMode: useDevAuth ? "dev-auth" : "better-auth",
+					auth: resolvedOptions.auth as Record<string, unknown>,
+					channel: {
+						announce: false,
+						canonicalBaseURL: useDevAuth ? undefined : authBaseURL(resolvedOptions),
+						gatewayMode: webGatewayMode(resolvedOptions, useDevAuth),
+						...resolvedOptions.web,
+						landingAppName: CHAT_WEB_APP_NAME,
+					},
+					chat: resolvedOptions.chat as Record<string, unknown>,
+				},
+			},
 		});
 		await server.start();
 	} catch (error) {

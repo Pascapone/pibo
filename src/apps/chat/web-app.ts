@@ -4784,7 +4784,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const installations = manager.store.listInstallations();
 				const host = context.channelContext.getService?.<import("../../plugins/host.js").PluginHost>(PLUGIN_HOST_SERVICE);
 				const capabilityCatalog = context.channelContext.getCapabilityCatalog?.() ?? { nativeTools: [], skills: [], contextFiles: [] };
-				const userSkills = state.userSkillManager.list().map((skill) => ({ name: skill.name, kind: "user" as const }));
+				const userSkills = state.userSkillManager.list().map((skill) => ({ name: skill.name, kind: "user" as const, path: skill.path }));
 				const userSkillNames = new Set(userSkills.map((skill) => skill.name));
 				return handleAgentPluginRoute({ route: designerPluginRoute, request, agents: state.agentStore,
 					...catalogPluginServices(host, installations),

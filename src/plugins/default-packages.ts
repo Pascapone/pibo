@@ -1,11 +1,17 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
+import { FACT_COUNT_STOP_CONDITION, GOAL_STATUS_STOP_CONDITION, MAX_ITERATIONS_STOP_CONDITION, PROMISE_COMPLETE_STOP_CONDITION } from "../loops/stopping.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 import type { PluginContribution, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
+import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
 
+export const CORE_PLUGIN_ID = "pibo.core";
+export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
+export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
+export const WEB_PRODUCT_PLUGIN_ID = "pibo.web-product";
 export const WEB_ANNOTATIONS_PLUGIN_ID = "pibo.web-annotations";
 export const CODE_RUNTIME_PLUGIN_ID = "pibo.code-runtime";
 export const FILE_EDITING_PLUGIN_ID = "pibo.file-editing";
@@ -32,6 +38,8 @@ const WEB_ANNOTATION_TOOL_NAMES = [
 	"web_annotations_resolve",
 	"web_annotations_dismiss",
 ] as const;
+const CORE_SKILL_NAMES = ["pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json"] as const;
+const CORE_ACTION_NAMES = ["status", "compact", "runtime.approval.respond", "runtime.user_input.respond", "session_id", "clear_queue", "abort", "kill", "kill_all", "dispose", "thinking", "fast_mode", "session.current", "session.list", "session.fork_candidates", "session.fork", "session.clone", "session.tree", "session.tree_navigate", "session.switch", "login", "model", "login.start", "login.complete", "login.apikey", "login.cancel", "login.status", "logout"] as const;
 const BROWSER_TOOL_NAMES = [
 	"browser_use_open_tabs",
 	"browser_use_take_screenshot",
@@ -39,6 +47,55 @@ const BROWSER_TOOL_NAMES = [
 	"node_repl_js",
 	"node_repl_js_reset",
 ] as const;
+
+function transcriptionPackageManifest(id: string, name: string): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id,
+		name,
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs" },
+		contributions: [{ id: "provider", kind: "transcription-provider", name: id, title: name, scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "System transcription provider; no model context." } }],
+	};
+}
+
+export const openAiChatGptTranscriptionPackageManifest = () => transcriptionPackageManifest(CHATGPT_TRANSCRIPTION_PLUGIN_ID, "ChatGPT Subscription Transcription");
+export const openAiTranscriptionPackageManifest = () => transcriptionPackageManifest(OPENAI_TRANSCRIPTION_PLUGIN_ID, "OpenAI Transcription");
+
+export function webProductPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: WEB_PRODUCT_PLUGIN_ID,
+		name: "Pibo Web Product",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs" },
+		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
+		contributions: [
+			{ id: "auth", kind: "auth-service", name: "web-auth", title: "Web authentication", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+			{ id: "web-channel", kind: "channel", name: "web", title: "Web channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+			{ id: "cron-channel", kind: "channel", name: "cron", title: "Cron channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+			{ id: "preview-app", kind: "web-app", name: "session-live-previews", title: "Session live previews", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+			{ id: "chat-app", kind: "web-app", name: "chat", title: "Chat", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+		],
+	};
+}
+
+export function corePackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: CORE_PLUGIN_ID,
+		name: "Pibo Core",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs" },
+		contributions: [
+			...CORE_SKILL_NAMES.map((name): PluginContribution => ({ id: `skill-${name}`, kind: "skill", name, title: name, scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "skill", description: `Built-in ${name} guidance.`, loading: "progressive" } })),
+			...CORE_ACTION_NAMES.map((name): PluginContribution => ({ id: `action-${name}`, kind: "gateway-action", name, title: name, scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Product gateway action; no model context." } })),
+		],
+	};
+}
 
 function toolContribution(name: string, options: { title?: string; defaultEnabled?: boolean; runtime?: PluginRuntimeRequirement; context?: PluginContribution["context"]; metadata?: PluginContribution["metadata"] } = {}): PluginContribution {
 	return {
@@ -226,7 +283,27 @@ export function runControlPackageManifest(): PluginManifest {
 }
 
 export function goalControlPackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: GOAL_CONTROL_PLUGIN_ID, name: "Pibo Goal Control", tools: PIBO_GOAL_TOOL_NAMES.map((name) => toolContribution(name, { defaultEnabled: true, context: { kind: "context", stage: "tools", description: "Persisted session-goal lifecycle tool.", loading: "runtime" } })) });
+	return {
+		schemaVersion: 1,
+		id: GOAL_CONTROL_PLUGIN_ID,
+		name: "Pibo Goal Control",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		config: { schemaVersion: 1, scopes: ["app", "agent", "session"], schema: { type: "object", additionalProperties: true } },
+		services: {
+			provides: [{ id: PIBO_LOOP_SERVICE, version: "1.0.0" }],
+			requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }],
+		},
+		contributions: [
+			...PIBO_GOAL_TOOL_NAMES.map((name) => toolContribution(name, { defaultEnabled: true, context: { kind: "context", stage: "tools", description: "Persisted session-goal lifecycle tool.", loading: "runtime" } })),
+			settingsView("Pibo Goal Control settings"),
+			systemContribution("service", "system-service", PIBO_LOOP_SERVICE),
+			systemContribution("channel", "channel", "pibo.loop"),
+			systemContribution("goal-action", "gateway-action", "goal"),
+			...[MAX_ITERATIONS_STOP_CONDITION, PROMISE_COMPLETE_STOP_CONDITION, GOAL_STATUS_STOP_CONDITION, FACT_COUNT_STOP_CONDITION].map((name) => systemContribution(`stop-${name}`, "loop-stop-condition", name)),
+		],
+	};
 }
 
 export function agentDelegationPackageManifest(): PluginManifest {
@@ -305,7 +382,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		config: { schemaVersion: 1, scopes: ["app", "agent", "session"], schema: { type: "object", properties: { toolFilter: { type: "array", items: { type: "string" } }, descriptionMode: { type: "string" } }, additionalProperties: true } },
 		contributions: [
-			{ id: "adapter", kind: "mcp-adapter", name: "mcp-cli", title: "MCP CLI", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "mcp", description: "Selected external MCP server inventory, descriptions and tool delivery.", loading: "runtime" } },
+			{ id: "adapter", kind: "mcp-adapter", name: "mcp-cli", title: "MCP CLI", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, configSchema: { type: "object", properties: { selectedServers: { type: "array", items: { type: "string" } } }, required: ["selectedServers"], additionalProperties: false }, context: { kind: "context", stage: "mcp", description: "Selected external MCP server inventory, descriptions and tool delivery.", loading: "runtime" } },
 			settingsView("MCP CLI settings"),
 		],
 	};
@@ -314,11 +391,16 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
+	backendModule: "core" | "web-product" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
+	webOnly?: boolean;
 	browserExports?: string;
 };
 
 const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
+	{ manifest: corePackageManifest, backendExport: "setupCore", backendModule: "core" },
+	{ manifest: webProductPackageManifest, backendExport: "setupWebProduct", backendModule: "web-product", webOnly: true },
+	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription" },
+	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription" },
 	{ manifest: webAnnotationsPackageManifest, backendExport: "setup", backendModule: "web-annotations", browserExports: "WebAnnotationsView, BuildContextView" },
 	{ manifest: codeRuntimePackageManifest, backendExport: "setupCodeRuntime", backendModule: "tool-families", browserExports: "ToolFamilyView" },
 	{ manifest: fileEditingPackageManifest, backendExport: "setupFileEditing", backendModule: "tool-families", browserExports: "ToolFamilyView" },
@@ -351,8 +433,9 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 }
 
 /** Seed missing defaults and upgrade only active Pibo-managed defaults. Explicit disable/uninstall remains authoritative. */
-export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string): Promise<void> {
+export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean } = {}): Promise<void> {
 	for (const descriptor of DEFAULT_PACKAGES) {
+		if (descriptor.webOnly && !options.includeWebProduct) continue;
 		const expected = descriptor.manifest();
 		const existing = manager.store.getInstallation(expected.id);
 		const defaultSourceRoot = resolve(artifactRoot, "default-sources", expected.id);

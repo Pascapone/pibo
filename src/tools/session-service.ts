@@ -30,6 +30,7 @@ export type CreatePiboPortableToolSessionInput = PiboPortableToolSessionControll
 	/** Shared live runtime generation used by tool credentials and resource isolation. */
 	sessionGeneration?: string;
 	profile: InitialSessionContext;
+	goalStorePath?: string;
 	pluginHooks?: readonly RuntimePluginHook[];
 	recordPluginHook?: (evidence: PluginHookEvidence) => void;
 	cwd: string;
@@ -169,6 +170,7 @@ export class PiboPortableToolService {
 			profile: record.input.profile,
 			pluginHooks: record.input.pluginHooks,
 			pluginHookScope: record.input.recordPluginHook ? { piboSessionId: record.input.piboSessionId, generation: record.sessionGeneration, record: record.input.recordPluginHook } : undefined,
+			goalStorePath: record.input.goalStorePath,
 			toolContext: {
 				piboSessionId: record.input.piboSessionId,
 				piboRoomId: record.input.piboRoomId,

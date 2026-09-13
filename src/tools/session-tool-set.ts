@@ -22,6 +22,7 @@ export type CreatePiboSessionToolDefinitionsOptions = {
 	pluginHooks?: readonly RuntimePluginHook[];
 	pluginHookScope?: Omit<PluginHookScope, "toolName" | "toolCallId" | "signal">;
 	toolContext?: ToolDefinitionContext;
+	goalStorePath?: string;
 	agentsController?: PiboAgentsController;
 	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
 	subagentRunner?: PiboSubagentRunner;
@@ -113,7 +114,7 @@ export function createPiboSessionToolDefinitions(
 		? createCodexCompatToolDefinitions()
 		: [];
 	const goalTools = profile.toolPackages.goalControl !== false
-		? createPiboGoalToolDefinitions(options.toolContext ?? {})
+		? createPiboGoalToolDefinitions(options.toolContext ?? {}, { storePath: options.goalStorePath })
 		: [];
 	const agentTools = options.agentsController
 		? createAgentToolDefinitions(profile.subagents, options.agentsController)

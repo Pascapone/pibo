@@ -1,6 +1,7 @@
 import { PiboWebHttpError, readJsonBody, responseJson } from '../../web/http.js';
 import type { PiboWebAppContext, PiboWebSession } from '../../web/types.js';
-import { getPiboLoopService } from '../../loops/channel.js';
+import type { PiboLoopServiceController } from '../../loops/channel.js';
+import { PIBO_LOOP_SERVICE } from '../../plugins/product-services.js';
 import { PiboLoopCapacityError } from '../../loops/service.js';
 import { listLoopJobTemplates } from '../../loops/templates.js';
 import type { ModelProfile } from '../../core/profiles.js';
@@ -35,13 +36,14 @@ type LoopApiRun = PiboLoopRun;
 function serializeTarget(target: PiboLoopTarget): LoopApiTarget { return target.kind === 'room' ? target : { kind: 'default-chat' }; }
 function serializeJob(job: PiboLoopJob): LoopApiJob { const { target, ...rest } = job; return { ...rest, target: serializeTarget(target) }; }
 function serializeRun(run: PiboLoopRun): LoopApiRun { return run; }
+function loopService(options: ChatLoopApiOptions) { return options.context.channelContext.getService?.<PiboLoopServiceController>(PIBO_LOOP_SERVICE)?.get(); }
 export async function handleChatLoopApiRequest(options: ChatLoopApiOptions): Promise<Response | undefined> {
 	const { request, loopStore } = options;
 	const url = new URL(request.url);
 	const legacyRalphRequest = url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/ralph`);
 	if (!legacyRalphRequest && !url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/loops`) && !url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/loop`)) return undefined;
 	const apiPath = url.pathname.replace(/^\/api\/chat\/(?:ralph|loop)(?=\/|$)/, `${CHAT_WEB_API_PREFIX}/loops`);
-	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/status` && request.method === 'GET') return responseJson({ status: getPiboLoopService()?.status() ?? { enabled: false, ...loopStore.status() } });
+	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/status` && request.method === 'GET') return responseJson({ status: loopService(options)?.status() ?? { enabled: false, ...loopStore.status() } });
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/conditions` && request.method === 'GET') return responseJson({ conditions: options.context.channelContext.getLoopStopConditionInfos?.() ?? options.context.channelContext.getCapabilityCatalog?.().loopStopConditions ?? [] });
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/templates` && request.method === 'GET') return responseJson({ templates: listLoopJobTemplates() });
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/session-goal` && request.method === 'GET') {
@@ -62,7 +64,7 @@ export async function handleChatLoopApiRequest(options: ChatLoopApiOptions): Pro
 	}
 	if (apiPath === `${CHAT_WEB_API_PREFIX}/loops/runs` && request.method === 'GET') { const jobId = url.searchParams.get('jobId') || undefined; const limit = Number(url.searchParams.get('limit') ?? '100'); if (jobId && !loopStore.getJob(jobId)) throw new PiboWebHttpError('Loop job not found', 404); return responseJson({ runs: loopStore.listRuns({ jobId, limit: Number.isFinite(limit) ? limit : 100 }).map(serializeRun) }); }
 	const resource = jobResource(apiPath); if (!resource) return undefined;
-	if (resource.child && request.method === 'POST') { requireSameOriginJsonRequest(request); const service = getPiboLoopService(); if (!service) throw new PiboWebHttpError('Loop service is not running', 503); if (resource.child === 'start') { let run; try { run = await service.startJob(resource.id); } catch (error) { if (error instanceof PiboLoopCapacityError) throw new PiboWebHttpError(error.message, 409); throw error; } if (!run) throw new PiboWebHttpError('Loop job not found, already running, or stopped by a before-run condition', 404); return responseJson({ run: serializeRun(run) }, { status: 202 }); } if (resource.child === 'stop') { const job = service.stopJob(resource.id); if (!job) throw new PiboWebHttpError('Loop job not found', 404); return responseJson({ job: serializeJob(job) }); } if (resource.child === 'cancel') { const job = await service.cancelJob(resource.id); if (!job) throw new PiboWebHttpError('Loop job not found', 404); return responseJson({ job: serializeJob(job) }); } const body = await readJsonBody<{ confirmTerminalReopen?: unknown }>(request); if (body.confirmTerminalReopen !== true) throw new PiboWebHttpError('confirmTerminalReopen must be true', 400); try { return responseJson({ job: serializeJob(service.reopenGoal(resource.id, { confirmed: true, actorId: options.webSession.authSession.identity.userId })) }); } catch (error) { throw new PiboWebHttpError(error instanceof Error ? error.message : 'Goal reopen failed', 409); } }
+	if (resource.child && request.method === 'POST') { requireSameOriginJsonRequest(request); const service = loopService(options); if (!service) throw new PiboWebHttpError('Loop service is not running', 503); if (resource.child === 'start') { let run; try { run = await service.startJob(resource.id); } catch (error) { if (error instanceof PiboLoopCapacityError) throw new PiboWebHttpError(error.message, 409); throw error; } if (!run) throw new PiboWebHttpError('Loop job not found, already running, or stopped by a before-run condition', 404); return responseJson({ run: serializeRun(run) }, { status: 202 }); } if (resource.child === 'stop') { const job = service.stopJob(resource.id); if (!job) throw new PiboWebHttpError('Loop job not found', 404); return responseJson({ job: serializeJob(job) }); } if (resource.child === 'cancel') { const job = await service.cancelJob(resource.id); if (!job) throw new PiboWebHttpError('Loop job not found', 404); return responseJson({ job: serializeJob(job) }); } const body = await readJsonBody<{ confirmTerminalReopen?: unknown }>(request); if (body.confirmTerminalReopen !== true) throw new PiboWebHttpError('confirmTerminalReopen must be true', 400); try { return responseJson({ job: serializeJob(service.reopenGoal(resource.id, { confirmed: true, actorId: options.webSession.authSession.identity.userId })) }); } catch (error) { throw new PiboWebHttpError(error instanceof Error ? error.message : 'Goal reopen failed', 409); } }
 	if (resource.child) return undefined;
 	if (request.method === 'GET') { const job = loopStore.getJob(resource.id); if (!job) throw new PiboWebHttpError('Loop job not found', 404); return responseJson({ job: serializeJob(job) }); }
 	if (request.method === 'PATCH') {
@@ -81,6 +83,6 @@ export async function handleChatLoopApiRequest(options: ChatLoopApiOptions): Pro
 		if (!job) throw new PiboWebHttpError('Loop job not found', 404);
 		return responseJson({ job: serializeJob(job) });
 	}
-	if (request.method === 'DELETE') { requireSameOriginJsonRequest(request); try { return responseJson({ removed: getPiboLoopService()?.removeJob(resource.id) ?? loopStore.removeJob(resource.id) }); } catch (error) { throw new PiboWebHttpError(error instanceof Error ? error.message : 'Loop removal failed', 409); } }
+	if (request.method === 'DELETE') { requireSameOriginJsonRequest(request); try { return responseJson({ removed: loopService(options)?.removeJob(resource.id) ?? loopStore.removeJob(resource.id) }); } catch (error) { throw new PiboWebHttpError(error instanceof Error ? error.message : 'Loop removal failed', 409); } }
 	return undefined;
 }

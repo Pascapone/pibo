@@ -7,7 +7,7 @@ import { preparePluginSdkResolution } from "./backend-loader.js";
 import { createStagedPluginDefinition } from "./staged-definition.js";
 import { verifyPluginArtifact } from "./sources.js";
 import type { PluginConsumerCollector } from "./operations.js";
-import { PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PluginSessionPlanReader } from "./product-services.js";
+import { PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation, PluginManifest } from "./manifest.js";
 import { PluginValidationError } from "./store.js";
 import { ensureDefaultPluginInstallations } from "./default-packages.js";
@@ -15,7 +15,7 @@ import { ensureDefaultPluginInstallations } from "./default-packages.js";
 const MANAGEMENT_PLUGIN_ID = "pibo.plugin-management";
 
 function managementManifest(readSessionPlan: PluginSessionPlanReader | undefined): PluginManifest {
-	const serviceIds = [PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, ...(readSessionPlan ? [PLUGIN_SESSION_PLAN_SERVICE] : [])];
+	const serviceIds = [PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, ...(readSessionPlan ? [PLUGIN_SESSION_PLAN_SERVICE] : [])];
 	return {
 		schemaVersion: 1,
 		id: MANAGEMENT_PLUGIN_ID,
@@ -50,7 +50,9 @@ export async function startPluginProductRuntime(options: {
 	artifactRoot?: string;
 	collectConsumers?: PluginConsumerCollector;
 	readSessionPlan?: PluginSessionPlanReader;
+	productOptions?: PiboPluginProductOptions;
 	installDefaultPlugins?: boolean;
+	includeWebProduct?: boolean;
 }) {
 	const ownsData = options.data === undefined;
 	const data = options.data ?? new PiboDataStore();
@@ -84,14 +86,16 @@ export async function startPluginProductRuntime(options: {
 			return state.plugins.some((plugin) => plugin.pluginId === pluginId) ? "active" : "inactive";
 		},
 	};
-	const manager = new PluginManager({ store: data.plugins, artifactRoot, lifecycle, collectConsumers: options.collectConsumers });
-	const runtime = new PluginRuntimeCoordinator({ host, manager, store: data.plugins });
 	const manifest = managementManifest(options.readSessionPlan);
+	const managementInstallation = builtinInstallation(manifest);
+	const manager = new PluginManager({ store: data.plugins, artifactRoot, lifecycle, collectConsumers: options.collectConsumers, externalInstallations: [managementInstallation] });
+	const runtime = new PluginRuntimeCoordinator({ host, manager, store: data.plugins });
 	const management: PluginDefinition = {
-		installation: builtinInstallation(manifest),
+		installation: managementInstallation,
 		setup(context) {
 			context.services.provide(PLUGIN_HOST_SERVICE, host);
 			context.services.provide(PLUGIN_MANAGEMENT_SERVICE, manager);
+			context.services.provide(PIBO_PRODUCT_OPTIONS_SERVICE, Object.freeze({ ...options.productOptions }));
 			if (options.readSessionPlan) context.services.provide(PLUGIN_SESSION_PLAN_SERVICE, options.readSessionPlan);
 		},
 	};
@@ -105,7 +109,7 @@ export async function startPluginProductRuntime(options: {
 		if (initialState.state === "idle") await host.start({ plugins: definitions });
 		else await host.add({ plugins: definitions });
 		for (const definition of definitions) ownedPluginIds.add(definition.installation.pluginId);
-		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot);
+		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot, { includeWebProduct: options.includeWebProduct });
 	} catch (error) {
 		const cleanupErrors: unknown[] = [];
 		if (initialState.state === "idle") {

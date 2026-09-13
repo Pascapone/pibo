@@ -1,11 +1,11 @@
 import { tsImport } from "tsx/esm/api";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { CustomAgentStore, previewCustomAgentCreate, previewCustomAgentUpdate, inventoryLegacyAgentSelection, planLegacyAgentPluginMigration, migrateLegacyAgentPlugins, profileConsumerCollector } from "../dist/apps/chat/agent-store.js";
+import { CustomAgentStore, previewCustomAgentCreate, previewCustomAgentUpdate, inventoryLegacyAgentSelection, planLegacyAgentPluginMigration, migrateLegacyAgentPlugins, migrateLegacyAgentsAtStartup, profileConsumerCollector } from "../dist/apps/chat/agent-store.js";
 import { PluginStore } from "../dist/plugins/store.js";
 import { PLUGIN_STORE_SCHEMA } from "../dist/plugins/store-schema.js";
 import { resolvePluginContributions } from "../dist/plugins/resolution.js";
@@ -74,8 +74,46 @@ for (const fixture of fixtures.cases) test(`legacy ${fixture.id}: exact contribu
 		assert.deepEqual(repeated, JSON.parse(JSON.stringify(result)));
 		assert.equal(agents.get(agent.id).revision, migrated.revision);
 		const effective = resolvePluginContributions({ catalog, runtime: runtime(agent.runtimeInstanceId), selection: migrated.pluginSelection, selectionRevision: migrated.revision });
-		assert.deepEqual(effective.contributions.filter((item) => item.contribution.kind === "tool").map((item) => item.contribution.name).sort(), report.afterTools);
+		if (fixture.conflict) assert.equal(migrated.pluginSelection.plugins.every((item) => !item.enabled), true);
+		else assert.deepEqual(effective.contributions.filter((item) => item.contribution.kind === "tool").map((item) => item.contribution.name).sort(), report.afterTools);
 	} finally { agents.close(); db.close(); rmSync(backupRoot, { recursive: true, force: true }); }
+});
+
+test("automatic startup migration preserves MCP selection and backs up independent resource contents and provenance", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-v4-auto-migration-"));
+	const agents = new CustomAgentStore(join(root, "agents.sqlite"));
+	const db = new DatabaseSync(join(root, "product.sqlite")); db.exec(PLUGIN_STORE_SCHEMA);
+	const plugins = new PluginStore(db);
+	try {
+		const skillPath = join(root, "personal-skill.md");
+		const contextPath = join(root, "personal-context.md");
+		writeFileSync(skillPath, "# Personal skill\nKeep this exact content.\n");
+		writeFileSync(contextPath, "Private context body.\n");
+		const agent = agents.create({ displayName: "automatic-agent", nativeTools: ["legacy_search"], skills: ["personal-skill"], contextFiles: ["personal-context"], mcpServers: ["filesystem", "project-db"], goalControl: false, runControl: false });
+		const catalog = { schemaVersion: 1, revision: 2, installations: [
+			installation("fixture.search", [contribution("legacy_search")]),
+			installation("pibo.mcp-cli", [{ ...contribution("adapter", { kind: "mcp-adapter", name: "mcp-cli", defaultEnabled: false }), configSchema: { type: "object", properties: { selectedServers: { type: "array", items: { type: "string" } } }, required: ["selectedServers"], additionalProperties: false } }]),
+		] };
+		const legacy = { nativeTools: [{ name: "legacy_search", yieldable: false }], skills: [{ name: "personal-skill", kind: "user", path: skillPath }], contextFiles: [{ key: "personal-context", path: contextPath, scope: "agent", source: "managed" }] };
+		const first = await migrateLegacyAgentsAtStartup({ agents, plugins, catalog, legacyCatalog: legacy, backupRoot: join(root, "backups"), resolveRuntime: () => runtime() });
+		assert.equal(first[0].status, "migrated");
+		const migrated = agents.get(agent.id);
+		assert.deepEqual(migrated.mcpServers, []);
+		assert.deepEqual(migrated.pluginMigration.mcpServers, ["filesystem", "project-db"]);
+		assert.deepEqual(migrated.pluginSelection.plugins.find((item) => item.pluginId === "pibo.mcp-cli").contributionConfig.adapter.selectedServers, ["filesystem", "project-db"]);
+		assert.deepEqual(migrated.skills, ["personal-skill"]);
+		assert.deepEqual(migrated.contextFiles, ["personal-context"]);
+		assert.equal(migrated.pluginMigration.resourceSnapshots.every((item) => item.available && item.contentHash && item.byteSize > 0), true);
+		const journalRow = db.prepare("SELECT record_json FROM plugin_migration_journal WHERE id LIKE ?").get(`agent-plugins-v2:${agent.id}:%`);
+		const journal = JSON.parse(journalRow.record_json);
+		const backup = JSON.parse(readFileSync(journal.backupPath, "utf8"));
+		assert.deepEqual(backup.resources.map((item) => item.content), ["# Personal skill\nKeep this exact content.\n", "Private context body.\n"]);
+		assert.deepEqual(backup.resources.map((item) => [item.kind, item.origin, item.order]), [["skill", "user", 0], ["context-file", "user", 0]]);
+		const revision = migrated.revision;
+		const second = await migrateLegacyAgentsAtStartup({ agents, plugins, catalog, legacyCatalog: legacy, backupRoot: join(root, "backups"), resolveRuntime: () => runtime() });
+		assert.equal(second[0].status, "unchanged");
+		assert.equal(agents.get(agent.id).revision, revision);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
 test("fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run)", () => {

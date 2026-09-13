@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { SessionManager, type AgentSessionRuntime, shouldCompact } from "@earendil-works/pi-coding-agent";
-import type { PiboPluginRegistry } from "../../plugins/registry.js";
+import type { PiboGatewayAction } from "../../plugins/types.js";
 import { PiboSteeringUnavailableError } from "../../core/events.js";
 import type {
 	PiboForkCandidate,
@@ -804,6 +804,8 @@ function estimateContextTokens(messages: unknown[]): number {
 	return Math.ceil(chars / 4);
 }
 
+export type PiboGatewayActionResolver = { getGatewayAction(name: string): PiboGatewayAction | undefined };
+
 export class RoutedSession {
 	private readonly queue: RoutedQueueItem[] = [];
 	private processing = false;
@@ -845,7 +847,7 @@ export class RoutedSession {
 		private readonly piboSessionId: string,
 		private readonly runtime: AgentSessionRuntime,
 		private readonly emit: PiboEventListener,
-		private readonly pluginRegistry: PiboPluginRegistry,
+		private readonly gatewayActions: PiboGatewayActionResolver,
 		private readonly forwardPiEvents: boolean,
 		private readonly onPiEventTelemetry: ((piboSessionId: string, event: unknown, context: { status?: PiboSessionStatus; activeEventId?: string }) => void) | undefined,
 		initialFastMode: boolean,
@@ -1982,7 +1984,7 @@ export class RoutedSession {
 
 	private async runAction(event: PiboExecutionEvent): Promise<unknown> {
 		const action = event.action;
-		const gatewayAction = this.pluginRegistry.getGatewayAction(action);
+		const gatewayAction = this.gatewayActions.getGatewayAction(action);
 		if (!gatewayAction) {
 			throw new Error(`Unknown execution action "${action}"`);
 		}

@@ -86,7 +86,11 @@ export function createAgentPluginSelectionForProfile(installations: readonly Plu
 	}
 	if (profile.contextFiles.some((item) => item.enabled !== false && (item.key === "Pibo Native Tooling" || item.label === "Pibo Native Tooling"))) enableContribution("pibo.browser-tools", "native-tooling-context");
 	if (profile.contextFiles.some((item) => item.enabled !== false && (item.key === "Codex Base Prompt" || item.label === "Codex Base Prompt"))) enableContribution("pibo.codex-compat", "base-prompt");
-	if (profile.mcpServers.length > 0) enableContribution("pibo.mcp-cli", "adapter");
+	if (profile.mcpServers.length > 0) {
+		enableContribution("pibo.mcp-cli", "adapter");
+		const entry = entries.get("pibo.mcp-cli");
+		if (entry) (entry.contributionConfig ??= {}).adapter = { selectedServers: [...profile.mcpServers] };
+	}
 	setFamily("pibo.run-control", profile.toolPackages.runControl === true);
 	setFamily("pibo.goal-control", profile.toolPackages.goalControl !== false);
 	setFamily("pibo.agent-delegation", profile.subagents.some((subagent) => subagent.enabled !== false));

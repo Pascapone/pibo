@@ -10,7 +10,7 @@ import type {
 	PiboThinkingParams,
 	PiboUserInputResponseParams,
 } from "../core/events.js";
-import { InitialSessionContext, InitialSessionContextBuilder } from "../core/profiles.js";
+import { InitialSessionContext, InitialSessionContextBuilder, type SkillProfile } from "../core/profiles.js";
 import { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
@@ -20,7 +20,7 @@ import { piboOpenAiChatGptTranscriptionPlugin } from "./openai-chatgpt-transcrip
 import { piboOpenAiTranscriptionPlugin } from "./openai-transcription.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
 import { createAgentPluginSelectionForProfile } from "./selection.js";
-import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
+import type { PiboGatewayAction, PiboPlugin, PiboProfileBuildContext } from "./types.js";
 
 export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 export {
@@ -182,61 +182,63 @@ function createBaseProfileBuilder(
 		.addSkill(context.getSkill("pi-agent-harness"));
 }
 
-export const piboCorePlugin = definePiboPlugin({
-	id: "pibo.core",
-	name: "Pibo Core",
-	register(api) {
-		api.registerSkill({
+export type PiboCoreContributionSink = {
+	addSkill(skill: SkillProfile): void;
+	addGatewayAction(action: PiboGatewayAction): void;
+};
+
+export function definePiboCoreContributions(sink: PiboCoreContributionSink): void {
+		sink.addSkill({
 			name: "pi-agent-harness",
 			path: builtinSkillPath("pi-agent-harness"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "pibo-agent-runtime-adapter",
 			path: builtinSkillPath("pibo-agent-runtime-adapter"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "pibo-spec-writing",
 			path: builtinSkillPath("pibo-spec-writing"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "pibo-docker-system",
 			path: builtinSkillPath("pibo-docker-system"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "graphify",
 			path: builtinSkillPath("graphify"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "prd",
 			path: builtinSkillPath("prd"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "skill-creator",
 			path: builtinSkillPath("skill-creator"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "loop",
 			path: builtinSkillPath("loop"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "ralph-loop",
 			path: builtinSkillPath("ralph-loop"),
 			kind: "builtin",
 		});
-		api.registerSkill({
+		sink.addSkill({
 			name: "ralph-prd-json",
 			path: builtinSkillPath("ralph-prd-json"),
 			kind: "builtin",
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "status",
 			description: "Return current session status with context usage quota.",
 			slashCommands: ["status"],
@@ -244,7 +246,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return context.getStatusSnapshot();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "compact",
 			description: "Manually compact the session context.",
 			slashCommands: ["compact"],
@@ -254,7 +256,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return await context.compact(customInstructions);
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "runtime.approval.respond",
 			description: "Respond to a pending runtime approval request.",
 			hidden: true,
@@ -264,7 +266,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { requestId: params.requestId, responded: true };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "runtime.user_input.respond",
 			description: "Respond to a pending structured runtime user-input request.",
 			hidden: true,
@@ -274,7 +276,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { requestId: params.requestId, responded: true };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session_id",
 			description: "Return the routed Pibo session id.",
 			slashCommands: ["session"],
@@ -282,7 +284,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { piboSessionId: context.piboSessionId };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "clear_queue",
 			description: "Clear queued messages that have not started yet.",
 			slashCommands: ["clear"],
@@ -290,7 +292,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { cleared: context.clearQueue() };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "abort",
 			description: "Abort the active Pi agent run.",
 			slashCommands: ["abort"],
@@ -299,7 +301,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { aborted: true };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "kill",
 			description: "Kill the active agent run and all subagent sessions recursively.",
 			slashCommands: ["kill"],
@@ -307,7 +309,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return await context.kill();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "kill_all",
 			description: "Kill the active agent run, all subagent sessions recursively, and all yielded runs.",
 			slashCommands: ["kill-all"],
@@ -315,7 +317,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return await context.killAll();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "dispose",
 			description: "Dispose the routed session runtime.",
 			hidden: true,
@@ -324,7 +326,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { disposed: true };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "thinking",
 			description: "Show or set the active runtime reasoning level.",
 			slashCommands: ["thinking"],
@@ -341,7 +343,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "fast_mode",
 			description: "Toggle OpenAI priority service tier for fast-capable reasoning models.",
 			slashCommands: ["fast"],
@@ -351,7 +353,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return context.setFastMode(current.mode !== "fast");
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.current",
 			description: "Return the active Pi session metadata for this routed session.",
 			slashCommands: ["session-current"],
@@ -359,7 +361,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return context.getCurrentSession();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.list",
 			description: "List persisted Pi sessions for this workspace.",
 			slashCommands: ["sessions"],
@@ -367,7 +369,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return context.listSessions();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.fork_candidates",
 			description: "Return user messages that can be used as fork targets.",
 			slashCommands: ["fork-candidates"],
@@ -375,7 +377,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return { messages: await context.getForkCandidates() };
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.fork",
 			description: "Fork before a selected user message and create a visible Pibo session for the fork.",
 			async execute(context, event) {
@@ -383,7 +385,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return await context.forkSession(params.entryId);
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.clone",
 			description: "Clone the current leaf and create a visible Pibo session for the clone.",
 			slashCommands: ["clone"],
@@ -391,7 +393,7 @@ export const piboCorePlugin = definePiboPlugin({
 				return context.cloneSession();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.tree",
 			description: "Return the current Pi session tree and active leaf.",
 			slashCommands: ["tree"],
@@ -399,21 +401,21 @@ export const piboCorePlugin = definePiboPlugin({
 				return context.getSessionTree();
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.tree_navigate",
 			description: "Move the current Pi session leaf to a selected tree entry.",
 			async execute(context, event) {
 				return await context.navigateSessionTree(requireTreeNavigateParams(event));
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "session.switch",
 			description: "Switch the active Pi session to a persisted session file.",
 			async execute(context, event) {
 				return await context.switchSession(requireSwitchParams(event));
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "login",
 			description: "Open the interactive provider login menu for the active runtime.",
 			slashCommands: ["login"],
@@ -433,7 +435,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "model",
 			description: "Open the interactive model selector for the active runtime.",
 			slashCommands: ["model"],
@@ -490,7 +492,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "login.start",
 			description: "Start a provider login flow for the active runtime.",
 			slashCommands: [],
@@ -517,7 +519,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "login.complete",
 			description: "Read or complete a provider login flow for the active runtime.",
 			slashCommands: [],
@@ -529,7 +531,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "login.apikey",
 			description: "Set an API key for a provider on the active runtime.",
 			slashCommands: [],
@@ -541,7 +543,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "login.cancel",
 			description: "Cancel a pending provider login for the active runtime.",
 			slashCommands: [],
@@ -553,7 +555,7 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
+		sink.addGatewayAction({
 			name: "login.status",
 			description: "Check provider authentication status for the active runtime.",
 			slashCommands: [],
@@ -567,18 +569,25 @@ export const piboCorePlugin = definePiboPlugin({
 				};
 			},
 		});
-		api.registerGatewayAction({
-			name: "logout",
-			description: "Remove stored credentials for a provider on the active runtime.",
-			slashCommands: [],
-			async execute(context, event) {
-				const params = requireLogoutParams(event);
-				return {
-					...(await context.logoutRuntimeAuth({ providerId: params.provider })),
-					runtimeInstanceId: context.runtimeInstanceId,
-				};
-			},
-		});
+	sink.addGatewayAction({
+		name: "logout",
+		description: "Remove stored credentials for a provider on the active runtime.",
+		slashCommands: [],
+		async execute(context, event) {
+			const params = requireLogoutParams(event);
+			return {
+				...(await context.logoutRuntimeAuth({ providerId: params.provider })),
+				runtimeInstanceId: context.runtimeInstanceId,
+			};
+		},
+	});
+}
+
+export const piboCorePlugin = definePiboPlugin({
+	id: "pibo.core",
+	name: "Pibo Core",
+	register(api) {
+		definePiboCoreContributions({ addSkill: (skill) => api.registerSkill(skill), addGatewayAction: (action) => api.registerGatewayAction(action) });
 	},
 });
 

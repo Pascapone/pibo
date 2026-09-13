@@ -48,7 +48,11 @@ export function profileFromPluginPlan(profile: InitialSessionContext, plan: Effe
 		if (kind === "skill") skills.push({ ...(value as SkillProfile), kind: "plugin", pluginId: entry.pluginId, pluginContributionId: entry.id, required: entry.required, enabled: true });
 		if (kind === "context-file") contextFiles.push({ ...(value as ContextFileProfile), source: "plugin", pluginId: entry.pluginId, pluginContributionId: entry.id, required: entry.required, enabled: true });
 		if (kind === "subagent") subagents.push({ ...(value as SubagentProfile), enabled: true });
-		if (kind === "mcp-adapter") mcpServers.push(...profile.mcpServers);
+		if (kind === "mcp-adapter") {
+			const selectedServers = entry.config.selectedServers;
+			if (!Array.isArray(selectedServers) || selectedServers.some((name) => typeof name !== "string" || !name.trim())) throw new Error(`Selected MCP adapter ${entry.id} is missing its migrated selectedServers configuration`);
+			mcpServers.push(...selectedServers as string[]);
+		}
 		// External server configuration/secret resolution stays in the selected adapter and existing resource service.
 		if (kind === "mcp-server") mcpServers.push(typeof value === "string" ? value : (value as { name: string }).name);
 	}

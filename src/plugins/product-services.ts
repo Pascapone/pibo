@@ -7,6 +7,20 @@ import type { PluginInstallation } from "./manifest.js";
 export const PLUGIN_HOST_SERVICE = "pibo.plugins.host";
 export const PLUGIN_MANAGEMENT_SERVICE = "pibo.plugins.management";
 export const PLUGIN_SESSION_PLAN_SERVICE = "pibo.plugins.session-plan";
+export const PIBO_PRODUCT_OPTIONS_SERVICE = "pibo.product.options";
+export const PIBO_LOOP_SERVICE = "pibo.loops.service";
+
+export type PiboPluginProductOptions = {
+	loopStorePath?: string;
+	dataStorePath?: string;
+	dataPayloadRootDir?: string;
+	web?: {
+		authMode: "better-auth" | "dev-auth";
+		auth?: Record<string, unknown>;
+		channel?: Record<string, unknown>;
+		chat?: Record<string, unknown>;
+	};
+};
 /** Optional plugin-owned live/business consumer collectors used by uninstall impact analysis. */
 export const PLUGIN_CONSUMER_COLLECTOR_RESOURCE = "plugin-consumer-collector";
 export type PluginOwnedConsumerCollector = PluginConsumerCollector;

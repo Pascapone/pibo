@@ -1,6 +1,7 @@
 import { tsImport } from "tsx/esm/api";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 import React from "react";
 import TestRenderer from "react-test-renderer";
 const { AgentPluginsDesigner } = await tsImport("../src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx", import.meta.url);
@@ -15,36 +16,41 @@ const entry = { pluginId: "fixture.feature", revision: "pinned", enabled: true, 
 const plugin = { pluginId: entry.pluginId, name: "Feature", revision: "pinned", version: "1.0.0", state: "active", enabled: true, initialSelection: entry, contributions: tools };
 const json = (body) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
-test("legacy agents require an explicit review and apply the exact server migration", async () => {
+test("Agent Designer has one scroll owner and cannot programmatically scroll its containing pane", async () => {
+	const [agentsSource, pluginsSource, workspaceSource] = await Promise.all([
+		readFile(new URL("../src/apps/chat-ui/src/agents/AgentsView.tsx", import.meta.url), "utf8"),
+		readFile(new URL("../src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx", import.meta.url), "utf8"),
+		readFile(new URL("../src/apps/chat-ui/src/plugins/plugin-workspace.tsx", import.meta.url), "utf8"),
+	]);
+	assert.match(agentsSource, /data-pibo-debug="agent-designer-root"[^>]*overflow-clip/);
+	assert.match(agentsSource, /data-pibo-debug="agent-designer-main"/);
+	assert.doesNotMatch(pluginsSource, /scrollIntoView/);
+	assert.match(workspaceSource, /min-h-0 flex-1 overflow-clip/);
+});
+
+test("blocked automatic migration is explained without a regular review or apply flow", async () => {
 	const oldFetch = globalThis.fetch; const oldWindow = globalThis.window;
-	globalThis.window = { setTimeout, clearTimeout, confirm: () => true };
-	const legacyDraft = { ...createBlankAgentDraft(), id: "agent_legacy", revision: 7, profileName: "legacy-agent", pluginSelection: undefined };
-	const report = { schemaVersion: 1, status: "ready", sourceHash: "source-hash", selection: { schemaVersion: 1, plugins: [entry] }, before: ["fixture.feature/read"], after: ["fixture.feature/read"], beforeTools: ["read"], afterTools: ["read"], userSkills: ["personal-skill"], userContextFiles: ["personal-context"], inactivePiPackages: [], diagnostics: [] };
-	let applied; let renderer;
-	globalThis.fetch = async (url, init = {}) => {
+	globalThis.window = { setTimeout, clearTimeout, requestAnimationFrame: (callback) => callback(), confirm: () => true };
+	const report = { schemaVersion: 1, status: "conflict", sourceHash: "source-hash", selection: { schemaVersion: 1, plugins: [entry] }, before: ["fixture.feature/read"], after: [], beforeTools: ["read"], afterTools: [], mcpServers: ["filesystem"], userSkills: ["personal-skill"], userContextFiles: ["personal-context"], resourceSnapshots: [], inactivePiPackages: [], diagnostics: [{ code: "legacy-owner-unknown", severity: "error", message: "Owner is unresolved", path: ["agent_legacy"] }] };
+	const legacyDraft = { ...createBlankAgentDraft(), id: "agent_legacy", revision: 8, profileName: "legacy-agent", pluginSelection: report.selection, pluginMigration: report };
+	let renderer;
+	globalThis.fetch = async (url) => {
 		if (url === "/api/chat/agent-plugin-catalog") return json({ catalog: { schemaVersion: 1, revision: 1, plugins: [plugin] } });
-		if (url === "/api/chat/agents/agent_legacy/plugin-migration" && (init.method ?? "GET") === "GET") return json({ schemaVersion: 1, report });
-		if (url === "/api/chat/agents/agent_legacy/plugin-migration" && init.method === "POST") {
-			assert.deepEqual(JSON.parse(init.body), { expectedRevision: 7, sourceHash: "source-hash" });
-			return json({ schemaVersion: 1, report, agent: { ...legacyDraft, revision: 8, pluginSelection: report.selection, pluginMigration: report } });
-		}
-		throw new Error(`unexpected request ${init.method ?? "GET"} ${url}`);
+		throw new Error(`unexpected request ${url}`);
 	};
 	try {
-		await act(async () => { renderer = create(React.createElement(AgentPluginsDesigner, { draft: legacyDraft, setDraft: () => undefined, readOnly: false, onMigrationApplied: (agent) => { applied = agent; } })); await pause(0); });
-		const review = renderer.root.findAllByType("button").find((button) => button.children.join("") === "Review previous selection");
-		await act(async () => { review.props.onClick(); await pause(0); });
-		assert.ok(renderer.root.findAllByType("p").some((paragraph) => paragraph.children.join("").includes("1 previous tools → 1 matched tools")));
-		const migrate = renderer.root.findAllByType("button").find((button) => button.children.join("") === "Migrate this exact selection");
-		await act(async () => { migrate.props.onClick(); await pause(0); });
-		assert.equal(applied.revision, 8);
-		assert.deepEqual(applied.pluginSelection, report.selection);
+		await act(async () => { renderer = create(React.createElement(AgentPluginsDesigner, { draft: legacyDraft, setDraft: () => undefined, readOnly: false })); await pause(0); });
+		const rendered = JSON.stringify(renderer.toJSON());
+		assert.match(rendered, /Automatic Pibo 4\.0 migration is blocked/);
+		assert.match(rendered, /Owner is unresolved/);
+		assert.equal(rendered.includes("Review previous selection"), false);
+		assert.equal(rendered.includes("Migrate this exact selection"), false);
 	} finally { if (renderer) await act(async () => renderer.unmount()); globalThis.fetch = oldFetch; globalThis.window = oldWindow; }
 });
 
 test("plugin cards start collapsed, categorize only agent contributions, and preserve required/optional state", async () => {
 	const oldFetch = globalThis.fetch; const oldWindow = globalThis.window;
-	globalThis.window = { setTimeout, clearTimeout, confirm: () => true };
+	globalThis.window = { setTimeout, clearTimeout, requestAnimationFrame: (callback) => callback(), confirm: () => true };
 	let resolveFirst;
 	let previewCalls = 0;
 	let draft = { ...createBlankAgentDraft(), id: "agent_edited", revision: 3, profileName: "edited-agent", pluginSelection: { schemaVersion: 1, plugins: [entry] } };

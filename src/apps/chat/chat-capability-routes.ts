@@ -4,7 +4,7 @@ import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js"
 import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import { createAgentInput, createAgentUpdate, type ChatAgentBody } from "./chat-request-normalizers.js";
 import type { CreateCustomAgentInput, UpdateCustomAgentInput } from "./agent-store.js";
-import { LEGACY_AGENT_SELECTION_FIELDS, inventoryLegacyAgentSelection, isUnresolvedAgentPluginMigration, migrateLegacyAgentPlugins, planLegacyAgentPluginMigration, type CustomAgentDefinition, type CustomAgentStore, type LegacyAgentCatalogInventory } from "./agent-store.js";
+import { LEGACY_AGENT_SELECTION_FIELDS, captureLegacyAgentMigrationResources, inventoryLegacyAgentSelection, isUnresolvedAgentPluginMigration, migrateLegacyAgentPlugins, planLegacyAgentPluginMigration, type CustomAgentDefinition, type CustomAgentStore, type LegacyAgentCatalogInventory } from "./agent-store.js";
 import { createAgentPluginSelection, validateAgentPluginSelection } from "../../plugins/selection.js";
 import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { pluginJson, PluginConflictError } from "../../plugins/store.js";
@@ -118,9 +118,10 @@ export async function handleAgentPluginRoute(options: {
 		}
 		if (!options.legacyCatalog) throw new PiboWebHttpError("Legacy capability inventory is unavailable", 503);
 		const runtime = await options.resolveRuntime(agent.runtimeInstanceId);
-		const source = options.agents.exportLegacyAgent(agent.id);
 		const inventory = inventoryLegacyAgentSelection(agent, { catalog: options.legacyCatalog, pluginCatalog: options.catalog, runtime });
-		const report = planLegacyAgentPluginMigration({ agent, source, catalog: options.catalog, runtime, ...inventory });
+		const resourceSnapshots = await captureLegacyAgentMigrationResources(agent, { catalog: options.legacyCatalog, ...inventory });
+		const source = options.agents.exportLegacyAgent(agent.id, resourceSnapshots);
+		const report = planLegacyAgentPluginMigration({ agent, source, catalog: options.catalog, runtime, ...inventory, resourceSnapshots });
 		if (options.route.action === "preview") return responseJson({ schemaVersion: 1, report });
 		const body = await readJsonBody<Record<string, unknown>>(options.request);
 		if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision !== agent.revision) throw new PluginConflictError("Agent revision changed; reload before migrating");

@@ -12,7 +12,7 @@ import { InitialSessionContext } from '../dist/core/profiles.js';
 import { profileFromPluginPlan } from '../dist/agent-runtime/plugin-plan.js';
 import { startPluginProductRuntime } from '../dist/plugins/product-runtime.js';
 import { productUiPackageManifest } from '../dist/plugins/default-packages.js';
-import { PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
+import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
 import { WebAnnotationStore } from '../dist/web-annotations/index.js';
 
 async function stagedInstallation(t, data, root) {
@@ -56,6 +56,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.equal(host.inspect().state, 'active');
   assert.equal(host.services.get(PLUGIN_HOST_SERVICE), host);
   assert.equal(host.services.get(PLUGIN_MANAGEMENT_SERVICE), product.manager);
+  assert.deepEqual(host.services.get(PIBO_PRODUCT_OPTIONS_SERVICE), {});
   assert.deepEqual(await host.services.get(PLUGIN_SESSION_PLAN_SERVICE)('ps_a', 'preview'), expectedPlan);
   assert.equal(host.contributions.get('contribution', 'test.runtime/read').installation.revision, data.plugins.getInstallation('test.runtime').revision);
   const annotations = data.plugins.getInstallation('pibo.web-annotations');
@@ -64,7 +65,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.ok(annotations.artifactPath);
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/web_annotations_list').contribution.kind, 'tool');
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/annotations').contribution.view.exportName, 'WebAnnotationsView');
-  for (const pluginId of ['pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp', 'pibo.product-ui', 'pibo.standard-shell']) {
+  for (const pluginId of ['pibo.core', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp', 'pibo.product-ui', 'pibo.standard-shell']) {
     const installation = data.plugins.getInstallation(pluginId);
     assert.equal(installation.state, 'active', `${pluginId} should be an ordinary active installation`);
     assert.equal(installation.source.kind, 'local');
@@ -73,6 +74,11 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.deepEqual(projection.getAgentRuntimeInstanceIds().sort(), ['codex-native', 'omp-native', 'pi']);
   assert.deepEqual(projection.getProfileNames(), ['base', 'codex-native', 'orp']);
   assert.ok(projection.getWebApps().some((app) => app.name === 'web-annotations'));
+  assert.equal(host.services.owners()[PIBO_LOOP_SERVICE], 'pibo.goal-control');
+  assert.equal(host.services.get(PIBO_LOOP_SERVICE).get(), undefined);
+  assert.ok(projection.getChannels().some((channel) => channel.name === 'pibo.loop'));
+  assert.ok(projection.getGatewayAction('goal'));
+  assert.equal(projection.getLoopStopConditionInfos().length, 4);
   assert.equal(host.contributions.get('contribution', 'pibo.product-ui/agent-designer').contribution.view.exportName, 'AgentDesignerView');
   assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings').contribution.view.exportName, 'GlobalSettingsView');
   assert.equal(host.contributions.get('contribution', 'pibo.standard-shell/shell').contribution.kind, 'shell-provider');

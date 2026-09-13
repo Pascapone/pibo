@@ -1,15 +1,16 @@
 import { startPluginProductRuntime } from "../plugins/product-runtime.js";
 import { createPluginConsumerCollector, pluginImpact, type PluginConsumer, type PluginConsumerCollector } from "../plugins/operations.js";
-import { PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
-import { CustomAgentStore, createDefaultCustomAgentStore, profileConsumerCollector } from "../apps/chat/agent-store.js";
+import { PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PiboPluginProductOptions, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
+import { CustomAgentStore, createDefaultCustomAgentStore, migrateLegacyAgentsAtStartup, profileConsumerCollector } from "../apps/chat/agent-store.js";
+import { createCustomAgentProfileDefinition } from "../apps/chat/agent-profiles.js";
 import { PiboDataStore } from "../data/pibo-store.js";
 import { PiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import type { PiboOutputEvent } from "../core/events.js";
-import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
-import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
+import { PiboPluginRegistry } from "../plugins/registry.js";
 import { PiboSessionRouter } from "../core/session-router.js";
 import { createLoopMessagePreflight } from "../loops/store.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
@@ -27,6 +28,7 @@ import {
 	type GatewaySubscription,
 } from "./protocol.js";
 import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
+import { piboHomePath } from "../core/pibo-home.js";
 
 export type GatewayServerOptions = {
 	host?: string;
@@ -43,6 +45,7 @@ export type GatewayServerOptions = {
 	dataStorePath?: string;
 	/** Existing Custom Agent owner store used for complete plugin impact collection. */
 	agentStorePath?: string;
+	dataPayloadRootDir?: string;
 	/** Immutable installed-plugin artifact root and packaged built-in sources. */
 	pluginArtifactRoot?: string;
 	startChannels?: boolean;
@@ -50,6 +53,8 @@ export type GatewayServerOptions = {
 	maxBackpressureBytes?: number;
 	resourceReaper?: ResourceReaperServiceOptions | false;
 	loopStorePath?: string;
+	pluginProductOptions?: PiboPluginProductOptions;
+	includeWebProduct?: boolean;
 };
 
 type GatewayQueuedFrame = {
@@ -207,6 +212,25 @@ function createConnection(
 	return connection;
 }
 
+const PIBO_V4_RUNTIME_BINDING_MIGRATION_KEY = "pibo4RuntimeBindingMigrated";
+
+export function migrateSessionRuntimeBindingsAtStartup(store: PiboSessionStore): number {
+	if (!store.list || !store.updateRuntimeBinding) return 0;
+	let migrated = 0;
+	for (const session of store.list()) {
+		const binding = store.getRuntimeBinding?.(session.id) ?? session.runtimeBinding;
+		if (!binding || binding.metadata?.[PIBO_V4_RUNTIME_BINDING_MIGRATION_KEY] === true) continue;
+		const next = {
+			...binding,
+			metadata: { ...(binding.metadata ?? {}), [PIBO_V4_RUNTIME_BINDING_MIGRATION_KEY]: true },
+		};
+		const updated = store.updateRuntimeBinding(session.id, next, { expectedRevision: binding.revision ?? 1, mode: "repair" });
+		if (!updated) throw new Error(`Could not persist Pibo 4.0 runtime binding migration for session ${session.id}`);
+		migrated += 1;
+	}
+	return migrated;
+}
+
 async function createGatewaySessionStore(options: GatewayServerOptions): Promise<PiboSessionStore> {
 	if (options.sessionDbPath) {
 		const { SqlitePiboSessionStore } = await import("../sessions/sqlite-store.js");
@@ -255,7 +279,7 @@ export class PiboGatewayServer {
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
 		this.ownsPluginRegistry = options.pluginRegistry === undefined;
-		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		this.pluginRegistry = options.pluginRegistry ?? PiboPluginRegistry.create();
 		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
 	}
 
@@ -266,6 +290,7 @@ export class PiboGatewayServer {
 		this.validateChannels();
 		this.sessionStore = this.options.sessionStore ?? (await createGatewaySessionStore(this.options));
 		this.ownsSessionStore = !this.options.sessionStore;
+		migrateSessionRuntimeBindingsAtStartup(this.sessionStore);
 		const hasExplicitPersistentStore = this.options.sessionStore !== undefined || this.options.sessionDbPath !== undefined;
 		const recoverInterruptedRuntimeState = this.options.authoritativeRuntime === true
 			&& (this.options.persistSession !== false || hasExplicitPersistentStore);
@@ -298,18 +323,44 @@ export class PiboGatewayServer {
 			host,
 			data: this.pluginData,
 			artifactRoot: this.options.pluginArtifactRoot,
+			productOptions: { loopStorePath: this.options.loopStorePath, dataStorePath: this.options.dataStorePath, dataPayloadRootDir: this.options.dataPayloadRootDir, ...this.options.pluginProductOptions },
+			includeWebProduct: this.options.includeWebProduct,
 			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
 			readSessionPlan: (piboSessionId, kind) => {
 				if (!this.router) throw new Error("Plugin session plan service is not ready");
 				return this.router.readPluginSessionPlan(piboSessionId, kind);
 			},
 		});
+		const installations = this.pluginData.plugins.listInstallations();
+		const capabilityCatalog = this.pluginRegistry.getCapabilityCatalog();
+		const migrationResults = await migrateLegacyAgentsAtStartup({
+			agents: this.pluginAgentStore,
+			plugins: this.pluginData.plugins,
+			catalog: { schemaVersion: 1, revision: installations.reduce((sum, installation) => sum + installation.stateRevision, 0), installations },
+			legacyCatalog: {
+				nativeTools: capabilityCatalog.nativeTools,
+				skills: capabilityCatalog.skills,
+				contextFiles: capabilityCatalog.contextFiles,
+			},
+			backupRoot: piboHomePath("plugins", "migration-backups", "pibo-4", "agents"),
+			resolveRuntime: (instanceId) => {
+				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(instanceId);
+				if (!adapter?.enabled) throw new Error(`Stored agent runtime instance "${instanceId}" is unavailable during Pibo 4.0 migration`);
+				return { adapterId: adapter.descriptor.id, instanceId: adapter.instanceId, capabilities: adapter.descriptor.capabilities as unknown as import("../plugins/manifest.js").PluginJsonObject };
+			},
+		});
+		for (const result of migrationResults) {
+			const migrated = this.pluginAgentStore.get(result.agentId);
+			if (migrated) this.pluginRegistry.upsertProfile(createCustomAgentProfileDefinition(migrated));
+			if (result.status === "blocked") console.error(`[pibo] Pibo 4.0 migration blocked for ${result.profileName}; source is backed up and runtime admission remains disabled`);
+		}
 		this.router = new PiboSessionRouter({
 			pluginRuntime: this.pluginProduct.runtime,
 			persistSession: this.options.persistSession,
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
 			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
+			goalStorePath: this.options.loopStorePath,
 			recoverInterruptedRuntimeState,
 			runtimeInstanceId: recoverInterruptedRuntimeState ? this.runtimeInstanceId : undefined,
 		});

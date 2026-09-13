@@ -22,7 +22,6 @@ import type {
 import type { PiboAgentsController } from "../../subagents/tool.js";
 import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
-import { PiboPluginRegistry } from "../../plugins/registry.js";
 import {
 	unsupportedAgentRuntimeCapability,
 	type AgentRuntimeCapabilities,
@@ -54,7 +53,7 @@ import type {
 	StartAgentRuntimeAuthInput,
 	ValidateAgentRuntimeProfileInput,
 } from "../../agent-runtime/types.js";
-import { RoutedSession as PiRoutedSession } from "./routed-session.js";
+import { RoutedSession as PiRoutedSession, type PiboGatewayActionResolver } from "./routed-session.js";
 import {
 	loadModelCatalog as loadPiModelCatalog,
 	piAgentRuntimeModelCatalog,
@@ -386,6 +385,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 		private readonly piboSessionId: string,
 		private readonly runtime: AgentSessionRuntime,
 		private readonly binding: RuntimeSessionBinding,
+		gatewayActions: PiboGatewayActionResolver,
 		initialFastMode: boolean,
 		providerWebSearchEnabled: boolean,
 		providerFallbacksEnabled: boolean,
@@ -397,7 +397,7 @@ class PiAgentRuntimeSession implements AgentRuntimeSession {
 			piboSessionId,
 			runtime,
 			(event) => this.handlePiboEvent(event),
-			PiboPluginRegistry.create(),
+			gatewayActions,
 			true,
 			undefined,
 			initialFastMode,
@@ -839,11 +839,13 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					&& runtime.session.sessionManager.buildSessionContext().messages.length > 0,
 			},
 		};
+		const gatewayActions = input.services?.pluginRegistry ?? { getGatewayAction: () => undefined };
 		return new PiAgentRuntimeSession(
 			this.instanceId,
 			input.piboSession.id,
 			runtime,
 			binding,
+			gatewayActions,
 			compatibility?.initialFastMode ?? false,
 			profile.tools.some((tool) => tool.enabled !== false && isWebSearchProviderTool(tool)),
 			compatibility?.providerFallbacksEnabled ?? false,

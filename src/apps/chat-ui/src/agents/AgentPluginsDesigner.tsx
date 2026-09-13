@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import type { EffectivePluginPlan, PluginContribution } from "../../../../plugins/sdk.js";
-import { applyLegacyAgentPluginMigration, getAgentPluginCatalog, previewAgentPlugins, previewLegacyAgentPluginMigration, type AgentPluginCatalog, type AgentPluginMigrationReport, type DesignerPluginFields } from "../api-agent-designer";
-import type { CustomAgent } from "../types";
+import { getAgentPluginCatalog, previewAgentPlugins, type AgentPluginCatalog } from "../api-agent-designer";
 import { acceptAgentPluginRevision, buildPluginBuiltinToolReplacementMap, setAgentPluginContribution, setAgentPluginEnabled, type AgentDraft } from "./agent-designer-model";
 import { DesignerPanel } from "./designer-ui";
 
@@ -21,9 +20,8 @@ function contributionLabel(contribution: PluginContribution): string {
 	return contribution.title ?? contribution.name?.replaceAll("_", " ") ?? contribution.id.replaceAll("-", " ");
 }
 
-export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApplied, onBuiltinToolReplacementsChange }: {
+export function AgentPluginsDesigner({ draft, setDraft, readOnly, onBuiltinToolReplacementsChange }: {
 	draft: AgentDraft; setDraft: Dispatch<SetStateAction<AgentDraft>>; readOnly: boolean;
-	onMigrationApplied?: (agent: CustomAgent & DesignerPluginFields) => void;
 	onBuiltinToolReplacementsChange?: (replacements: Map<string, string[]>) => void;
 }) {
 	const [catalog, setCatalog] = useState<AgentPluginCatalog>();
@@ -31,8 +29,6 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApp
 	const [error, setError] = useState<string>();
 	const [pending, setPending] = useState(false);
 	const [openPlugins, setOpenPlugins] = useState<Set<string>>(() => new Set());
-	const [migration, setMigration] = useState<AgentPluginMigrationReport>();
-	const [migrationBusy, setMigrationBusy] = useState(false);
 	useEffect(() => {
 		let current = true;
 		void getAgentPluginCatalog().then((result) => { if (current) setCatalog(result.catalog); }).catch((caught) => { if (current) setError(String(caught)); });
@@ -58,39 +54,19 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApp
 		onBuiltinToolReplacementsChange?.(replacements);
 		return () => onBuiltinToolReplacementsChange?.(new Map());
 	}, [onBuiltinToolReplacementsChange, replacements]);
-	const reviewMigration = async () => {
-		if (!draft.id || migrationBusy) return;
-		setMigrationBusy(true); setError(undefined);
-		try { setMigration((await previewLegacyAgentPluginMigration(draft.id)).report); }
-		catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
-		finally { setMigrationBusy(false); }
-	};
-	const applyMigration = async () => {
-		if (!draft.id || draft.revision === undefined || !migration || migrationBusy) return;
-		setMigrationBusy(true); setError(undefined);
-		try {
-			const result = await applyLegacyAgentPluginMigration(draft.id, draft.revision, migration.sourceHash);
-			if (result.agent) onMigrationApplied?.(result.agent);
-			setMigration(result.report);
-		} catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
-		finally { setMigrationBusy(false); }
+	const togglePluginCard = (pluginId: string) => {
+		setOpenPlugins((current) => {
+			const next = new Set(current);
+			if (next.has(pluginId)) next.delete(pluginId); else next.add(pluginId);
+			return next;
+		});
 	};
 	const selection = draft.pluginSelection;
 	return <DesignerPanel title="Plugins">
 		<div className="text-xs text-slate-400">Choose only capabilities delivered to this agent. Installation, system services, workspace modules, and configuration are managed separately.</div>
-		{!selection ? <div role="alert" className="space-y-2 border border-amber-700/60 bg-amber-950/20 p-3 text-sm text-amber-100">
-			<p>This agent still uses its previous tool, skill, and context selection. Review an exact migration before editing.</p>
-			<button type="button" disabled={readOnly || !draft.id || migrationBusy} className="border border-amber-500/70 px-2 py-1 text-xs disabled:opacity-50" onClick={() => void reviewMigration()}>{migrationBusy ? "Checking…" : "Review previous selection"}</button>
+		{draft.pluginMigration?.status === "conflict" ? <div role="alert" className="space-y-2 border border-amber-700/60 bg-amber-950/20 p-3 text-sm text-amber-100">
+			<p>Automatic Pibo 4.0 migration is blocked for this agent. Its previous configuration and resource backup are retained, and runtime admission remains disabled until the listed ownership conflict is repaired.</p>
 		</div> : null}
-		{migration ? <section className="border border-slate-700 bg-[#101d22] p-3 text-xs" aria-label="Legacy plugin migration preview">
-			<h3 className="font-semibold text-slate-100">Migration preview</h3>
-			<p className="mt-1 text-slate-400">{migration.beforeTools.length} previous tools → {migration.afterTools.length} matched tools. Existing independent skill and context references are preserved.</p>
-			{migration.beforeTools.length ? <p className="mt-2 text-slate-300">Tools: {migration.beforeTools.join(", ")}</p> : null}
-			<p className="mt-1 text-slate-400">Retained skill references: {migration.userSkills.length}; independent context files: {migration.userContextFiles.length}.</p>
-			{migration.diagnostics.map((item, index) => <p key={`${item.code}:${index}`} className={item.severity === "error" ? "mt-1 text-amber-200" : "mt-1 text-slate-400"}>{item.message}</p>)}
-			{!selection && migration.status === "ready" ? <button type="button" disabled={readOnly || migrationBusy} className="mt-3 border border-[#11a4d4] bg-[#11a4d4]/10 px-2 py-1 text-[#7dd3fc] disabled:opacity-50" onClick={() => void applyMigration()}>{migrationBusy ? "Migrating…" : "Migrate this exact selection"}</button> : null}
-			{migration.status === "conflict" ? <p className="mt-2 text-amber-200">Migration is blocked until the listed ownership or collision is resolved. Nothing has been enabled.</p> : null}
-		</section> : null}
 		{draft.pluginMigration ? <details className="border border-slate-700 p-2 text-xs">
 			<summary>Previous selection migration · {draft.pluginMigration.status}</summary>
 			<p className="mt-2">{draft.pluginMigration.beforeTools.length} previous tools / {draft.pluginMigration.afterTools.length} migrated tools</p>
@@ -98,7 +74,7 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApp
 			{draft.pluginMigration.inactivePiPackages.length ? <p>Inactive legacy Pi packages: {draft.pluginMigration.inactivePiPackages.join(", ")}. Original data is backed up; no package code is loaded.</p> : null}
 		</details> : null}
 		{error ? <div role="alert" className="text-xs text-amber-200">{error}</div> : null}
-		<div role="status" className="text-xs text-slate-400">{pending ? "Checking runtime support…" : plan ? plan.valid ? "Selection is supported" : "Selection is blocked — review the reasons below" : selection ? "No server preview" : "Migration required"}</div>
+		<div role="status" className="text-xs text-slate-400">{pending ? "Checking runtime support…" : plan ? plan.valid ? "Selection is supported" : "Selection is blocked — review the reasons below" : draft.pluginMigration?.status === "conflict" ? "Automatic migration blocked" : selection ? "No server preview" : "Selection unavailable"}</div>
 		{plan?.diagnostics.map((item, index) => <p key={`${item.code}:${index}`} className="text-xs text-amber-200">{item.message}</p>)}
 		{catalog?.plugins.map((plugin) => {
 			const entry = selection?.plugins.find((item) => item.pluginId === plugin.pluginId);
@@ -110,9 +86,9 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, onMigrationApp
 				const category = contributionCategory(contribution);
 				categories.set(category, [...categories.get(category) ?? [], contribution]);
 			}
-			return <section key={plugin.pluginId} className="overflow-hidden rounded-sm border border-slate-700 bg-[#151f24]" aria-label={`Plugin ${plugin.name}`}>
+			return <section key={plugin.pluginId} data-agent-plugin-card className="overflow-hidden rounded-sm border border-slate-700 bg-[#151f24]" aria-label={`Plugin ${plugin.name}`}>
 				<div className="flex items-center gap-2 p-2">
-					<button type="button" aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpenPlugins((current) => { const next = new Set(current); if (next.has(plugin.pluginId)) next.delete(plugin.pluginId); else next.add(plugin.pluginId); return next; })}>
+					<button type="button" aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => togglePluginCard(plugin.pluginId)}>
 						<span className="inline-flex h-6 w-6 shrink-0 items-center justify-center border border-slate-700 text-slate-400">{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
 						<span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-slate-100">{plugin.name}</span><span className="block text-xs text-slate-500">{entry?.enabled ? `${selectedCount} of ${plugin.contributions.length} capabilities selected` : "Not selected for this agent"}{changedRevision ? " · update review required" : ""}</span></span>
 					</button>

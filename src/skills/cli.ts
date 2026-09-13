@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { definePiboCoreContributions } from "../plugins/builtin.js";
 import {
 	ScopedUserSkillManager,
 	normalizeUserSkillScope,
@@ -26,8 +26,8 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.description("List built-in and plugin skills available to profiles")
 		.option("--json", "Print JSON")
 		.action((options: { json?: boolean }) => {
-			const registry = createDefaultPiboPluginRegistry();
-			const skills = registry.getCapabilityCatalog().skills.filter((skill) => skill.kind !== "user");
+			const skills: Array<{ name: string; path: string; kind?: string }> = [];
+			definePiboCoreContributions({ addSkill: (skill) => skills.push(skill), addGatewayAction: () => undefined });
 			if (options.json) {
 				printJson(skills);
 				return;

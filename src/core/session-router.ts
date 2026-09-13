@@ -9,8 +9,8 @@ import {
 	type ModelProfile,
 	type SubagentProfile,
 } from "./profiles.js";
-import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
-import type { PiboPluginRegistry } from "../plugins/registry.js";
+import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
+import { PiboPluginRegistry } from "../plugins/registry.js";
 import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
 import { capturePluginContextBuild, persistPluginContextBuild, persistPluginHookEvidence } from "../agent-runtime/plugin-context-build.js";
 import type { PluginJsonObject } from "../plugins/manifest.js";
@@ -75,7 +75,6 @@ import {
 } from "../sessions/store.js";
 import { createAgentRuntimeBindingPersistence } from "../sessions/runtime-binding-persistence.js";
 import {
-	createLegacyPiRuntimeSessionBinding,
 	RuntimeSessionBindingConflictError,
 	type CreateRuntimeSessionBindingInput,
 	type RuntimeSessionBinding,
@@ -175,6 +174,8 @@ export type PiboSessionRouterOptions = Omit<
 	routedSessionDisposeTimeoutMs?: number;
 	/** Optional resource service override for isolated adapter generation state. */
 	runtimeResourceService?: PiboRuntimeResourceService;
+	/** Host-owned Goal/Loop persistence path supplied to generated Goal tools. */
+	goalStorePath?: string;
 	/** Portable product-history source used for cross-runtime rebind handoff. */
 	portableHistoryProvider?: AgentRuntimePortableHistoryProvider;
 	runtimeCapacity?: RuntimeCapacityOptions;
@@ -661,7 +662,7 @@ export class PiboSessionRouter {
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.capacity = new RuntimeCapacity(options.runtimeCapacity);
-		this.pluginRegistry = options.pluginRegistry ?? createDefaultPiboPluginRegistry();
+		this.pluginRegistry = options.pluginRegistry ?? PiboPluginRegistry.create(options.pluginRuntime ? { host: options.pluginRuntime.options.host } : {});
 		// Historical custom registries supplied only actions/profiles while runtime creation was implicit.
 		// Preserve that composition contract during the adapter migration without branching on adapter ids.
 		this.compatibilityRuntimeRegistry = undefined;
@@ -1794,6 +1795,7 @@ export class PiboSessionRouter {
 			adapterId: binding.adapterId,
 			sessionGeneration,
 			profile: sessionProfile,
+			goalStorePath: this.options.goalStorePath,
 			pluginHooks: pluginGeneration?.hooks,
 			recordPluginHook: pluginGeneration ? (evidence) => persistPluginHookEvidence(this.options.pluginRuntime!.options.store, evidence) : undefined,
 			cwd: workspace,
@@ -1860,6 +1862,7 @@ export class PiboSessionRouter {
 					codeRuntimeToolController,
 					portableTools,
 					resources,
+					pluginRegistry: this.pluginRegistry,
 					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
@@ -2021,9 +2024,9 @@ export class PiboSessionRouter {
 	}
 
 	private resolveSessionRuntimeBinding(session: PiboSession): RuntimeSessionBinding {
-		return this.sessionStore.getRuntimeBinding?.(session.id)
-			?? session.runtimeBinding
-			?? createLegacyPiRuntimeSessionBinding(session.id, session.piSessionId, session.createdAt);
+		const binding = this.sessionStore.getRuntimeBinding?.(session.id) ?? session.runtimeBinding;
+		if (!binding) throw new Error(`Session ${session.id} has no migrated runtime binding; Pibo 4.0 does not execute the legacy Pi fallback`);
+		return binding;
 	}
 
 	private withPersistedRuntimeBinding(status: PiboSessionStatus): PiboSessionStatus {

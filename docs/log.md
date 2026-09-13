@@ -2,6 +2,8 @@
 
 ## 2026-09-13
 
+- **Pibo 4.0 local cutover checkpoint**: Updated the [execution ledger](/plans/unified-plugin-system-execution.md#active-direction-pibo-40-clean-migration-2026-09-13) with automatic agent and session-binding migration, ordinary Core/Transcription/Web/Goal package ownership, remaining compatibility and direct user-resource paths, the reproduced Agent Designer root-scroll cause and fix, 94 focused passing tests, passing CLI checks, and a successful complete Docker build. Final plugin-only delivery, real-provider Pibo2 execution, and commit-backed specifications remain open.
+
 - **Pibo 4.0 migration decision**: Added [PLG-V4-001](/plans/unified-plugin-system-rebuild.md#plg-v4-001-pibo-40-mit-automatischer-datenmigration): automatic preserved-data migration and one plugin delivery path, with isolated upgrade readers instead of parallel legacy execution; aligned the execution ledger and retained existing-test parity requirements.
 
 - **Plugin philosophy and Designer feedback**: Revised the [rebuild plan](/plans/unified-plugin-system-rebuild.md#plg-ux-001-plugin-philosophie-optionale-module-und-getrennte-zuständigkeiten) and [execution ledger](/plans/unified-plugin-system-execution.md) to make workspace modules optional, route plugin configuration through Settings → Plugins, distinguish system ownership from selectable agent contributions through generic metadata, require collapsed categorized Designer controls and an actionable legacy migration. Planned behavior only; fast headful feedback iterations preserve existing tests without heavy gates.

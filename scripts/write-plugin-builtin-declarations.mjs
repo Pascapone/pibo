@@ -2,6 +2,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const declarations = {
+	"packaged-core.d.ts": ["setupCore(context: PluginSetupContext): void;"],
+	"packaged-web-product.d.ts": ["setupWebProduct(context: PluginSetupContext): () => Promise<void>;"],
+	"packaged-transcription.d.ts": [
+		"setupOpenAiChatGptTranscription(context: PluginSetupContext): void;",
+		"setupOpenAiTranscription(context: PluginSetupContext): void;",
+	],
 	"packaged-web-annotations.d.ts": ["setup(context: PluginSetupContext): () => void;"],
 	"packaged-tool-families.d.ts": [
 		"setupCodeRuntime(context: PluginSetupContext): void;",
@@ -13,7 +19,7 @@ const declarations = {
 	],
 	"packaged-control-tools.d.ts": [
 		"setupRunControl(context: PluginSetupContext): void;",
-		"setupGoalControl(context: PluginSetupContext): void;",
+		"setupGoalControl(context: PluginSetupContext): () => Promise<void>;",
 		"setupAgentDelegation(context: PluginSetupContext): void;",
 	],
 	"packaged-runtime-adapters.d.ts": [

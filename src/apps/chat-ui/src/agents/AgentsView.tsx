@@ -656,7 +656,7 @@ export function AgentsView({
 	};
 
 	return (
-		<div ref={sidebar.rootRef} className={`relative grid h-full min-h-0 overflow-hidden ${sidebar.isOverlay ? "grid-cols-1" : "grid-cols-[300px_minmax(0,1fr)]"}`}>
+		<div ref={sidebar.rootRef} data-pibo-debug="agent-designer-root" className={`relative grid h-full min-h-0 overflow-clip ${sidebar.isOverlay ? "grid-cols-1" : "grid-cols-[300px_minmax(0,1fr)]"}`}>
 			<div
 				data-pibo-mobile-sidebar-backdrop
 				aria-hidden="true"
@@ -720,7 +720,7 @@ export function AgentsView({
 					sidebar.closeSidebar();
 				})}
 			/>
-			<main className="@container min-h-0 min-w-0 overflow-y-auto bg-[#101d22]" data-pibo-debug="agent-designer-main">
+			<main className="@container min-h-0 min-w-0 overflow-y-auto overscroll-contain bg-[#101d22] [overflow-anchor:none]" data-pibo-debug="agent-designer-main">
 				<div className="sticky top-0 z-20 border-b border-slate-800 bg-[#101d22]/95 backdrop-blur-sm">
 					<div className="mx-auto flex min-h-16 max-w-[1180px] items-center justify-between gap-3 px-4 py-3 sm:px-6 @max-[520px]:items-start @max-[520px]:px-3">
 					{surface === "tab" && sidebar.isOverlay ? <button ref={sidebar.triggerRef} type="button" onClick={sidebar.openSidebar} className="inline-flex h-8 shrink-0 items-center gap-2 rounded-sm border border-slate-700 px-2 text-xs font-semibold text-slate-300 hover:border-[#11a4d4] hover:text-[#11a4d4]" aria-label="Open Agents"><PanelLeftOpen size={13} /> Agents</button> : null}
@@ -867,14 +867,7 @@ export function AgentsView({
 						) : null}
 						{selectedRuntime?.adapterId === "pi" ? <BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={pluginBuiltinToolReplacements} /> : null}
 					</DesignerPanel>
-					<AgentPluginsDesigner key={draft.id ?? "new-agent"} draft={draft} setDraft={setDraft} readOnly={readOnly} onMigrationApplied={(agent) => {
-						const nextAgents = [agent, ...customAgentsRef.current.filter((item) => item.id !== agent.id)];
-						customAgentsRef.current = nextAgents;
-						setCustomAgents(nextAgents);
-						const nextDraft = agentToDraft(agent);
-						activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
-						onAgentsChangedRef.current();
-					}} onBuiltinToolReplacementsChange={setPluginBuiltinToolReplacements} />
+					<AgentPluginsDesigner key={draft.id ?? "new-agent"} draft={draft} setDraft={setDraft} readOnly={readOnly} onBuiltinToolReplacementsChange={setPluginBuiltinToolReplacements} />
 					<DesignerPanel title="Skills">
 						{skillsUnavailableReason ? <RuntimeCapabilityNotice reason={skillsUnavailableReason} /> : null}
 						<CatalogGroupGrid

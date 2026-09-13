@@ -128,13 +128,13 @@ export async function runDefaultPluginCli(args: readonly string[]): Promise<numb
 	try {
 		return await runPluginCli(args, { manager: async () => {
 			if (product) return product.manager;
-			const [dataModule, agentStoreModule, builtinModule, operationsModule, productModule, productServicesModule] = await Promise.all([
-				import("../data/pibo-store.js"), import("../apps/chat/agent-store.js"), import("./builtin.js"),
+			const [dataModule, agentStoreModule, builtinModule, registryModule, operationsModule, productModule, productServicesModule] = await Promise.all([
+				import("../data/pibo-store.js"), import("../apps/chat/agent-store.js"), import("./builtin.js"), import("./registry.js"),
 				import("./operations.js"), import("./product-runtime.js"), import("./product-services.js"),
 			]);
 			data = new dataModule.PiboDataStore();
 			agentStore = agentStoreModule.createDefaultCustomAgentStore();
-			registry = builtinModule.createDefaultPiboPluginRegistry();
+			registry = registryModule.PiboPluginRegistry.create();
 			const host = registry.getPluginHost();
 			const catalog = () => {
 				const installations = data!.plugins.listInstallations();

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { PluginConfigurationSnapshot, PluginConfigurationTarget } from "./manifest.js";
+import type { PluginConfigurationSnapshot, PluginConfigurationTarget, PluginInstallation } from "./manifest.js";
 import { validatePluginConfig } from "./schema.js";
 import { planPluginActivation } from "./host.js";
 import { LocalPluginSourceResolver, stagePluginSource, verifyPluginArtifact, type PluginSourceInput, type PluginSourceResolver } from "./sources.js";
@@ -25,6 +25,8 @@ export interface PluginManagerOptions {
 	checkpoint?: (stage: string, operation: PluginOperation) => void | Promise<void>;
 	/** Optional explicit compatibility decision. Exact pinned hash otherwise required. */
 	isCompatibleRevision?: (pluginId: string, from: string, to: string) => boolean;
+	/** Host-owned composition roots included in graph validation but not persisted as managed installations. */
+	externalInstallations?: readonly PluginInstallation[];
 	/** Explicit core service-provider choices for import-free installation graph validation. */
 	providers?: Record<string, string>;
 }
@@ -75,7 +77,7 @@ export class PluginManager {
 		if (previous?.pendingArtifact) throw new PluginConflictError("An update is already pending activation");
 		// Use the core's import-free graph validator, not a second dependency/version resolver.
 		const candidate: StoredPluginInstallation = { pluginId: resolved.manifest.id, revision: resolved.contentHash, version: resolved.manifest.version, contentHash: resolved.contentHash, source: resolved.source, manifest: resolved.manifest, state: "installed", enabled: true, stateRevision: options.expectedRevision, createdAt: this.now(), updatedAt: this.now() };
-		const composition = [...this.store.listInstallations().filter((item) => item.pluginId !== candidate.pluginId && !["uninstalled", "failed", "staged"].includes(item.state)).map((item) => ({ ...item, enabled: true })), candidate];
+		const composition = [...(this.options.externalInstallations ?? []), ...this.store.listInstallations().filter((item) => item.pluginId !== candidate.pluginId && !["uninstalled", "failed", "staged"].includes(item.state)).map((item) => ({ ...item, enabled: true })), candidate];
 		const graph = planPluginActivation({ plugins: composition.map((installation) => ({ installation, setup() {} })), providers: this.options.providers });
 		if (!graph.valid) throw new PluginValidationError(`Plugin dependency/service graph invalid: ${graph.diagnostics.map((item) => item.message).join("; ")}`);
 		if (options.dryRun) return { dryRun: true as const, pluginId: resolved.manifest.id, contentHash: resolved.contentHash, manifest: resolved.manifest, state: previous?.state, expectedRevision: options.expectedRevision };

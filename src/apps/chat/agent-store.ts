@@ -1,7 +1,8 @@
-import type { AgentPluginMigrationReport } from "../chat-ui/src/api-agent-designer-plugin-types.js";
-export type { AgentPluginMigrationReport } from "../chat-ui/src/api-agent-designer-plugin-types.js";
+import type { AgentPluginMigrationReport, AgentPluginMigrationResourceSnapshot } from "../chat-ui/src/api-agent-designer-plugin-types.js";
+export type { AgentPluginMigrationReport, AgentPluginMigrationResourceSnapshot } from "../chat-ui/src/api-agent-designer-plugin-types.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { piboHomePath } from "../../core/pibo-home.js";
 import { DatabaseSync } from "node:sqlite";
@@ -865,33 +866,41 @@ export class CustomAgentStore {
 		if (!columns.has("plugin_migration_json")) this.db.exec("ALTER TABLE chat_agents ADD COLUMN plugin_migration_json TEXT");
 	}
 
-	/** Exact SQLite values, not sanitized public DTOs. Keep private in the management backup. */
-	exportLegacyAgent(id: string): Uint8Array {
-		const row = this.db.prepare("SELECT * FROM chat_agents WHERE id = ?").get(id);
-		if (!row) throw new Error(`Unknown agent "${id}"`);
+	/** Exact legacy SQLite values, not sanitized public DTOs. Migration metadata is excluded so a journaled retry sees the same source. */
+	exportLegacyAgent(id: string, resources: readonly LegacyAgentMigrationSourceResource[] = []): Uint8Array {
+		const stored = this.db.prepare("SELECT * FROM chat_agents WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+		if (!stored) throw new Error(`Unknown agent "${id}"`);
+		const row = { ...stored };
+		delete row.revision;
+		delete row.plugin_selection_json;
+		delete row.plugin_migration_json;
 		const aliases = this.db.prepare("SELECT * FROM chat_agent_profile_aliases WHERE agent_id = ? ORDER BY id").all(id);
-		return Buffer.from(JSON.stringify({ row, aliases }));
+		return Buffer.from(JSON.stringify({ schemaVersion: 2, row, aliases, resources }));
 	}
 
-	/** Owner-local transaction. The management journal checkpoints this separately. */
+	/** Owner-local transaction. The management journal checkpoints this separately. Legacy values remain immutable backup evidence, not a runtime selection source. */
 	applyPluginMigration(id: string, report: AgentPluginMigrationReport, source: Uint8Array): void {
 		this.db.exec("BEGIN IMMEDIATE");
 		try {
 			const existing = this.get(id);
 			if (!existing) throw new Error(`Unknown agent "${id}"`);
-			if (existing.pluginMigration?.sourceHash === report.sourceHash) {
+			const alreadyApplied = pluginJson(existing.pluginMigration ?? null) === pluginJson(report)
+				&& pluginJson(existing.pluginSelection ?? null) === pluginJson(report.selection);
+			if (alreadyApplied) {
 				this.db.exec("COMMIT");
 				return;
 			}
-			if (existing.pluginSelection || createHash("sha256").update(source).digest("hex") !== report.sourceHash
-				|| Buffer.compare(Buffer.from(this.exportLegacyAgent(id)), Buffer.from(source)) !== 0) {
+			if (createHash("sha256").update(source).digest("hex") !== report.sourceHash
+				|| pluginJson(legacyAgentDatabaseSnapshot(source)) !== pluginJson(legacyAgentDatabaseSnapshot(this.exportLegacyAgent(id)))) {
 				throw new PluginConflictError("Legacy agent changed since migration preview");
 			}
-			this.db.prepare(`UPDATE chat_agents SET plugin_selection_json = ?, plugin_migration_json = ?, revision = revision + 1,
+			if (existing.pluginSelection && !isUnresolvedAgentPluginMigration(existing)) throw new PluginConflictError("Agent already has an explicit plugin selection");
+			const result = this.db.prepare(`UPDATE chat_agents SET plugin_selection_json = ?, plugin_migration_json = ?, revision = revision + 1,
 				native_tools_json = '[]', mcp_servers_json = '[]', pi_packages_json = '[]', run_control = 0, goal_control = 0,
 				skills_json = ?, context_files_json = ? WHERE id = ? AND revision = ?`).run(
 				pluginJson(report.selection), pluginJson(report), JSON.stringify(report.userSkills), JSON.stringify(report.userContextFiles), id, existing.revision,
 			);
+			if (result.changes !== 1) throw new PluginConflictError("Agent revision changed during migration");
 			this.db.exec("COMMIT");
 		} catch (error) { this.db.exec("ROLLBACK"); throw error; }
 	}
@@ -1295,7 +1304,55 @@ export function isUnresolvedAgentPluginMigration(agent: Pick<CustomAgentDefiniti
 
 /** Baseline inventory is supplied by the resource owner, never guessed from new defaults. */
 export type LegacyAgentContribution = { kind: string; name: string; pluginId: string; config?: import("../../plugins/sdk.js").PluginJsonObject };
+export type LegacyAgentMigrationSourceResource = AgentPluginMigrationResourceSnapshot & { content?: string };
 
+type LegacyAgentMigrationSourceEnvelope = {
+	schemaVersion?: number;
+	row: unknown;
+	aliases: unknown;
+	resources?: LegacyAgentMigrationSourceResource[];
+};
+
+function legacyAgentDatabaseSnapshot(source: Uint8Array): Pick<LegacyAgentMigrationSourceEnvelope, "row" | "aliases"> {
+	const parsed = JSON.parse(Buffer.from(source).toString("utf8")) as LegacyAgentMigrationSourceEnvelope;
+	if (!parsed || typeof parsed !== "object" || !Object.hasOwn(parsed, "row") || !Object.hasOwn(parsed, "aliases")) throw new PluginConflictError("Legacy agent migration source is invalid");
+	return { row: parsed.row, aliases: parsed.aliases };
+}
+
+function migrationResourceSnapshot(resource: LegacyAgentMigrationSourceResource): AgentPluginMigrationResourceSnapshot {
+	const { content: _content, ...snapshot } = resource;
+	return snapshot;
+}
+
+export async function captureLegacyAgentMigrationResources(agent: CustomAgentDefinition, options: {
+	catalog: LegacyAgentCatalogInventory;
+	userSkills: readonly string[];
+	harnessSkills?: readonly string[];
+	userContextFiles: readonly string[];
+}): Promise<LegacyAgentMigrationSourceResource[]> {
+	const resources: LegacyAgentMigrationSourceResource[] = [];
+	const capture = async (resource: Omit<LegacyAgentMigrationSourceResource, "available" | "contentHash" | "byteSize" | "content" | "diagnostic"> & { path?: string }) => {
+		if (!resource.path) {
+			resources.push({ ...resource, available: false, diagnostic: "Saved resource path is unavailable" });
+			return;
+		}
+		try {
+			const content = await readFile(resource.path, "utf8");
+			resources.push({ ...resource, available: true, content, contentHash: createHash("sha256").update(content).digest("hex"), byteSize: Buffer.byteLength(content, "utf8") });
+		} catch (error) {
+			resources.push({ ...resource, available: false, diagnostic: error instanceof Error ? error.message : String(error) });
+		}
+	};
+	for (const [order, name] of options.userSkills.entries()) {
+		const skill = options.catalog.skills.find((item) => item.name === name);
+		await capture({ kind: "skill", name, origin: options.harnessSkills?.includes(name) ? "harness" : "user", reference: name, order, path: skill?.path, source: skill?.kind });
+	}
+	for (const [order, name] of options.userContextFiles.entries()) {
+		const context = options.catalog.contextFiles.find((item) => item.key === name);
+		await capture({ kind: "context-file", name, origin: "user", reference: name, order, path: context?.path, scope: context?.scope, source: context?.source });
+	}
+	return resources;
+}
 
 export function planLegacyAgentPluginMigration(options: {
 	agent: CustomAgentDefinition;
@@ -1307,6 +1364,7 @@ export function planLegacyAgentPluginMigration(options: {
 	userSkills: string[];
 	harnessSkills?: string[];
 	userContextFiles: string[];
+	resourceSnapshots?: readonly LegacyAgentMigrationSourceResource[];
 	inventoryDiagnostics?: PluginDiagnostic[];
 }): AgentPluginMigrationReport {
 	const { agent, catalog, runtime } = options;
@@ -1346,8 +1404,8 @@ export function planLegacyAgentPluginMigration(options: {
 	const conflict = diagnostics.some((item) => item.severity === "error");
 	if (conflict) for (const entry of selection.plugins) entry.enabled = false;
 	return { schemaVersion: 1, status: conflict ? "conflict" : "ready", sourceHash: createHash("sha256").update(options.source).digest("hex"),
-		selection, before, after: conflict ? [] : after, beforeTools, afterTools: conflict ? [] : afterTools,
-		userSkills: [...options.userSkills], userContextFiles: [...options.userContextFiles], inactivePiPackages: [...agent.piPackages], diagnostics };
+		selection, before, after: conflict ? [] : after, beforeTools, afterTools: conflict ? [] : afterTools, mcpServers: [...agent.mcpServers],
+		userSkills: [...options.userSkills], userContextFiles: [...options.userContextFiles], resourceSnapshots: (options.resourceSnapshots ?? []).map(migrationResourceSnapshot), inactivePiPackages: [...agent.piPackages], diagnostics };
 }
 
 /** Resume with the SAME source export and preview after a crash; journal verifies the backup bytes. */
@@ -1358,18 +1416,22 @@ export async function migrateLegacyAgentPlugins(options: {
 }) {
 	const { agents, agentId, report, source } = options;
 	if (createHash("sha256").update(source).digest("hex") !== report.sourceHash) throw new PluginConflictError("Migration report belongs to different source bytes");
+	const reportHash = createHash("sha256").update(pluginJson(report)).digest("hex");
 	return new PluginMigrationJournal(options.plugins).run({
-		id: `agent-plugins-v1:${agentId}:${report.sourceHash}`, backup: source, backupRoot: options.backupRoot, dryRun: options.dryRun,
+		id: `agent-plugins-v2:${agentId}:${report.sourceHash}:${reportHash}`, backup: source, backupRoot: options.backupRoot, dryRun: options.dryRun,
 		afterStageWrite: options.afterStageWrite,
-		stages: [{ id: `agent:${agentId}`, isApplied: () => agents.get(agentId)?.pluginMigration?.sourceHash === report.sourceHash,
-			apply: () => agents.applyPluginMigration(agentId, report, source) }],
+		stages: [{ id: `agent:${agentId}:${report.status}`, isApplied: () => {
+			const current = agents.get(agentId);
+			return pluginJson(current?.pluginMigration ?? null) === pluginJson(report)
+				&& pluginJson(current?.pluginSelection ?? null) === pluginJson(report.selection);
+		}, apply: () => agents.applyPluginMigration(agentId, report, source) }],
 	});
 }
 
 export type LegacyAgentCatalogInventory = {
 	nativeTools: { name: string; pluginId?: string; yieldable?: boolean; portable?: boolean }[];
-	skills: { name: string; kind: string; pluginId?: string }[];
-	contextFiles: { key: string; pluginId?: string }[];
+	skills: { name: string; kind: string; pluginId?: string; path?: string }[];
+	contextFiles: { key: string; pluginId?: string; path?: string; scope?: string; source?: string }[];
 };
 /** Read-only baseline projection, used only by the migration. No factories or plugin setup run. */
 export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, options: {
@@ -1422,7 +1484,11 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		if (context && !context.pluginId) preserveIndependent("context-file", name, userContextFiles);
 		else add("context-file", name, context?.pluginId);
 	}
-	if (agent.mcpServers.length > 0) add("mcp-adapter", "mcp-cli");
+	if (agent.mcpServers.length > 0) {
+		add("mcp-adapter", "mcp-cli");
+		const adapter = contributions.find((item) => item.kind === "mcp-adapter" && item.name === "mcp-cli");
+		if (adapter) adapter.config = { selectedServers: [...agent.mcpServers] };
+	}
 	if (agent.goalControl !== false) for (const name of PIBO_GOAL_TOOL_NAMES) add("tool", name);
 	// send_message is yielded-only; the other three tools remain direct. Do not enable general Run targets.
 	const manualSubagents = agent.subagents.length > 0;
@@ -1447,4 +1513,37 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		/** Migrator/runtime must preserve this filter, not broaden manual infrastructure to all tools. */
 		runTargetNames,
 	};
+}
+
+export type AutomaticAgentPluginMigrationResult = {
+	agentId: string;
+	profileName: string;
+	status: "migrated" | "blocked" | "unchanged";
+	report?: AgentPluginMigrationReport;
+};
+
+/** Pibo 4.0 admission boundary: migrate every stored legacy profile before the router may start a new generation. */
+export async function migrateLegacyAgentsAtStartup(options: {
+	agents: CustomAgentStore;
+	plugins: PluginStore;
+	catalog: PluginCatalog;
+	legacyCatalog: LegacyAgentCatalogInventory;
+	backupRoot: string;
+	resolveRuntime: (instanceId: string) => PluginRuntimeTarget | Promise<PluginRuntimeTarget>;
+}): Promise<AutomaticAgentPluginMigrationResult[]> {
+	const results: AutomaticAgentPluginMigrationResult[] = [];
+	for (const initial of options.agents.list({ includeArchived: true })) {
+		if (initial.pluginSelection) {
+			results.push({ agentId: initial.id, profileName: initial.profileName, status: "unchanged", report: initial.pluginMigration });
+			continue;
+		}
+		const runtime = await options.resolveRuntime(initial.runtimeInstanceId);
+		const inventory = inventoryLegacyAgentSelection(initial, { catalog: options.legacyCatalog, pluginCatalog: options.catalog, runtime });
+		const resourceSnapshots = await captureLegacyAgentMigrationResources(initial, { catalog: options.legacyCatalog, ...inventory });
+		const source = options.agents.exportLegacyAgent(initial.id, resourceSnapshots);
+		const report = planLegacyAgentPluginMigration({ agent: initial, source, catalog: options.catalog, runtime, ...inventory, resourceSnapshots });
+		await migrateLegacyAgentPlugins({ agents: options.agents, plugins: options.plugins, agentId: initial.id, source, report, backupRoot: options.backupRoot });
+		results.push({ agentId: initial.id, profileName: initial.profileName, status: report.status === "ready" ? "migrated" : "blocked", report });
+	}
+	return results;
 }

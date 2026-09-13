@@ -9,13 +9,8 @@ export const PIBO_GOAL_TOOL_NAMES = ['get_goal', 'create_goal', 'update_goal'] a
 
 export type PiboGoalToolOptions = {
 	store?: PiboLoopStore;
+	storePath?: string;
 };
-
-let configuredStorePath: string | undefined;
-
-export function configurePiboGoalToolStorePath(path: string | undefined): void {
-	configuredStorePath = path;
-}
 
 type CreateGoalParams = { objective?: string; token_budget?: number; token_reserve?: number };
 type UpdateGoalParams = { status?: string };
@@ -107,7 +102,7 @@ function effectiveGoalStatus(job: PiboLoopJob): PiboGoalStatus {
 
 async function withStore<T>(options: PiboGoalToolOptions, action: (store: PiboLoopStore) => T | Promise<T>): Promise<T> {
 	if (options.store) return await action(options.store);
-	const store = createDefaultPiboLoopStore({ path: configuredStorePath });
+	const store = createDefaultPiboLoopStore({ path: options.storePath });
 	try {
 		return await action(store);
 	} finally {
