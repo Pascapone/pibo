@@ -24,7 +24,7 @@ export function responseBuiltChatIndex(): Response | undefined {
 export function responseBuiltChatAsset(request: Request, pathname: string): Response | undefined {
 	if (!pathname.startsWith(`${CHAT_WEB_MOUNT_PATH}/assets/`)) return undefined;
 	const cacheControl = pathname === `${CHAT_WEB_MOUNT_PATH}/assets/pibo-builtin-plugin.js`
-		? "no-cache"
+		? "no-store"
 		: "public, max-age=31536000, immutable";
 	return responseBuiltChatStaticFile(request, pathname, cacheControl);
 }

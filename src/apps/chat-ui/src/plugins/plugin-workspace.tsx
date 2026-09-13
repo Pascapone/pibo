@@ -126,37 +126,43 @@ export function PluginWorkspaceView({
 }) {
 	const workspace = useContext(WorkspaceContext);
 	const stateKey = JSON.stringify(state ?? {});
+	const requestKey = `${workspace?.controller.piboSessionId ?? "none"}:${viewId}:${subviewId ?? ""}:${stateKey}`;
+	const appliedRequestKey = useRef<string | null>(null);
 	const effectiveEntry = workspace?.plan?.contributions.find((entry) => entry.id === viewId && entry.contribution.view);
 	const current = workspace?.controller.state.tabs.find((tab) => tab.viewId === viewId && tab.pluginRevision === effectiveEntry?.pluginRevision);
 	const stale = workspace?.controller.state.tabs.find((tab) => tab.viewId === viewId && tab.pluginRevision !== effectiveEntry?.pluginRevision);
 	useEffect(() => {
 		if (!active || !workspace?.controller.ready || !workspace.plan || !workspace.catalog || !effectiveEntry?.contribution.view) return;
 		void (async () => {
+			const applyRequest = appliedRequestKey.current !== requestKey;
 			if (!current && stale && stale.stateSchemaVersion === effectiveEntry.contribution.view!.stateSchemaVersion) {
-				const mergedState = state ? { ...stale.state, ...state } : stale.state;
+				const mergedState = applyRequest && state ? { ...stale.state, ...state } : stale.state;
 				workspace.controller.edit((tabset) => openPluginTab(
 					closePluginTab(tabset, stale.instanceId),
 					workspace.plan!,
 					workspace.catalog!,
 					viewId,
-					{ instanceId: stale.instanceId, subviewId: subviewId ?? stale.subviewId, state: mergedState },
+					{ instanceId: stale.instanceId, subviewId: applyRequest ? subviewId ?? stale.subviewId : stale.subviewId, state: mergedState },
 				));
+				appliedRequestKey.current = requestKey;
 				return;
 			}
 			if (!current) {
 				workspace.openView(viewId, subviewId, state);
+				appliedRequestKey.current = requestKey;
 				return;
 			}
 			if (workspace.controller.state.activeTabId !== current.instanceId && !await workspace.activateTab(current.instanceId)) return;
-			const mergedState = state ? { ...current.state, ...state } : current.state;
-			const subviewChanged = Boolean(subviewId && current.subviewId !== subviewId);
-			const stateChanged = state ? JSON.stringify(mergedState) !== JSON.stringify(current.state) : false;
+			const mergedState = applyRequest && state ? { ...current.state, ...state } : current.state;
+			const subviewChanged = Boolean(applyRequest && subviewId && current.subviewId !== subviewId);
+			const stateChanged = applyRequest && state ? JSON.stringify(mergedState) !== JSON.stringify(current.state) : false;
 			if (subviewChanged || stateChanged) workspace.controller.edit((tabset) => updatePluginTab(tabset, current.instanceId, {
-				...(subviewId ? { subviewId } : {}),
+				...(subviewChanged ? { subviewId } : {}),
 				...(stateChanged ? { state: mergedState } : {}),
 			}));
+			appliedRequestKey.current = requestKey;
 		})();
-	}, [active, workspace?.controller.ready, workspace?.plan, workspace?.catalog, workspace?.activateTab, workspace?.openView, effectiveEntry, current, stale, viewId, subviewId, stateKey]);
+	}, [active, workspace?.controller.ready, workspace?.plan, workspace?.catalog, workspace?.activateTab, workspace?.openView, effectiveEntry, current, stale, viewId, subviewId, state, requestKey]);
 	if (!workspace) return <div className="grid h-full place-items-center p-4 text-xs text-slate-400">Select or create a session to open this module.</div>;
 	if (workspace.error || workspace.controller.error) return <div role="alert" className="p-4 text-xs text-orange-300">{workspace.error ?? workspace.controller.error?.message}</div>;
 	if (!workspace.controller.ready || !current || !workspace.host) return <div className="grid h-full place-items-center p-4 text-xs text-slate-400">Loading {viewId}…</div>;

@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const ORIGIN = "https://pibo.test";
-const CACHE_NAME = "pibo-chat-v2";
+const CACHE_NAME = "pibo-chat-v3";
 const APP_SHELL_URL = "/apps/chat/";
 const serviceWorkerSource = fs.readFileSync("src/apps/chat-ui/public/sw.js", "utf8");
 
@@ -142,6 +142,24 @@ test("failed Chat navigation falls back to the canonical cached shell", async ()
 	const response = await worker.fetch(navigationRequest("/apps/chat/removed-area"));
 
 	assert.equal(await response.text(), "offline shell");
+});
+
+test("mutable built-in plugin entry always bypasses a retained asset cache", async () => {
+	const caches = createCacheStorage();
+	const cache = await caches.open(CACHE_NAME);
+	const assetUrl = `${ORIGIN}/apps/chat/assets/pibo-builtin-plugin.js?v=1.0.0`;
+	await cache.put(assetUrl, new Response("stale plugin bundle"));
+	let fetchOptions;
+	const worker = loadServiceWorker(async (_request, options) => {
+		fetchOptions = options;
+		return new Response("current plugin bundle");
+	}, caches);
+
+	const response = await worker.fetch({ method: "GET", mode: "cors", url: assetUrl });
+
+	assert.equal(await response.text(), "current plugin bundle");
+	assert.equal(fetchOptions?.cache, "no-store");
+	assert.equal(await (await caches.match(assetUrl)).text(), "stale plugin bundle");
 });
 
 test("static Chat assets remain cache-first and cache successful misses", async () => {

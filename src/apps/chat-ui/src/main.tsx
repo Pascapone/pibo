@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRootRoute, createRoute, createRouter, RouterProvider, useRouterState } from "@tanstack/react-router";
 import { App } from "./App";
 import { chatRouteFromLocation, stringifyChatSearch } from "./app-routes";
+import { evictCachedBuiltinPluginAssets } from "./plugin-asset-cache";
 import "./styles.css";
 import "../../shared/markdown-editor.css";
 
@@ -156,10 +157,19 @@ if ("serviceWorker" in navigator) {
 	});
 }
 
-createRoot(document.getElementById("root")!).render(
-	<StrictMode>
-		<QueryClientProvider client={queryClient}>
-			<RouterProvider router={router} />
-		</QueryClientProvider>
-	</StrictMode>,
-);
+async function mountChatApp() {
+	try {
+		if ("caches" in window) await evictCachedBuiltinPluginAssets(window.caches);
+	} catch {
+		// Cache cleanup is a compatibility guard; normal network loading remains available.
+	}
+	createRoot(document.getElementById("root")!).render(
+		<StrictMode>
+			<QueryClientProvider client={queryClient}>
+				<RouterProvider router={router} />
+			</QueryClientProvider>
+		</StrictMode>,
+	);
+}
+
+void mountChatApp();

@@ -81,3 +81,11 @@ test("built Chat assets use explicit deterministic compression with stable cachi
 		respond: responseBuiltChatAsset,
 	});
 });
+
+test("mutable built-in plugin entry is never reusable across product builds", () => {
+	const pathname = `${CHAT_WEB_MOUNT_PATH}/assets/pibo-builtin-plugin.js`;
+	const response = responseBuiltChatAsset(assetRequest(pathname, "identity"), pathname);
+
+	assert.ok(response);
+	assert.equal(response.headers.get("cache-control"), "no-store");
+});
