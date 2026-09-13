@@ -21,6 +21,7 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 		'onDragLeave=',
 		'onDrop=',
 		'aria-label="New Tab"',
+		'aria-label={`Refresh ${tab.title}`}',
 		'aria-label="New Tab module catalog"',
 		'data-pibo-debug="desktop-tab-drop-gap"',
 		'aria-label="Collapse workspace tabs"',
@@ -40,6 +41,14 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 	assert.match(styles, /prefers-reduced-motion: reduce[\s\S]*desktop-tab-drop-gap/);
 });
 
+test("plugin controller save errors keep the mounted desktop panel available", async () => {
+	const source = await readFile("src/apps/chat-ui/src/plugins/plugin-workspace.tsx", "utf8");
+	const view = source.slice(source.indexOf("export function PluginWorkspaceView"), source.indexOf("export function PluginWorkspaceTabs"));
+	assert.doesNotMatch(view, /workspace\.error \|\| workspace\.controller\.error/);
+	assert.match(view, /workspace\.controller\.error \? <div role="alert"/);
+	assert.match(view, /<PluginTabPanel workspace=\{workspace\} tab=\{current\}/);
+});
+
 test("App keeps the three-region desktop workspace and exposes narrow-screen header navigation", async () => {
 	const [app, chrome, pane, desktopSidebar] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
@@ -48,7 +57,7 @@ test("App keeps the three-region desktop workspace and exposes narrow-screen hea
 		readFile("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8"),
 	]);
 	assert.match(app, /const desktopTabsEnabled = !isMobileSidebarViewport/);
-	assert.match(app, /<PluginWorkspaceProvider piboSessionId=\{selectedPiboSessionId\}>/);
+	assert.match(app, /<PluginWorkspaceProvider piboSessionId=\{selectedBackendPiboSessionId \?\? null\} controller=\{pluginSessionController\}/);
 	assert.match(app, /<DesktopSessionSidebar/);
 	assert.match(desktopSidebar, /data-pibo-debug="desktop-session-sidebar"/);
 	assert.match(desktopSidebar, /aria-label="Resize Sessions sidebar"/);

@@ -71,6 +71,7 @@ export function SessionNode({
 	const [editing, setEditing] = useState(false);
 	const [draftTitle, setDraftTitle] = useState(safeTitle);
 	const titleInputRef = useRef<HTMLInputElement>(null);
+	const autoRenameStartedRef = useRef(false);
 	const hasChildren = node.children.length > 0;
 	const hasSelectedDescendant = selectedPiboSessionId !== null && node.piboSessionId !== selectedPiboSessionId && selectedSessionPathIds.has(node.piboSessionId);
 	const [expanded, setExpanded] = useState(hasSelectedDescendant);
@@ -82,11 +83,15 @@ export function SessionNode({
 	}, [editing, safeTitle]);
 
 	useEffect(() => {
-		if (!autoRename || mutationsDisabled) return;
+		if (!autoRename) {
+			autoRenameStartedRef.current = false;
+			return;
+		}
+		if (mutationsDisabled || autoRenameStartedRef.current) return;
+		autoRenameStartedRef.current = true;
 		setDraftTitle(safeTitle === "Untitled Session" ? "" : safeTitle);
 		setEditing(true);
-		onAutoRenameConsumed?.();
-	}, [autoRename, mutationsDisabled, safeTitle, onAutoRenameConsumed]);
+	}, [autoRename, mutationsDisabled, safeTitle]);
 
 	useEffect(() => {
 		if (mutationsDisabled) setEditing(false);
@@ -107,11 +112,15 @@ export function SessionNode({
 		if (hasSelectedDescendant) setExpanded(true);
 	}, [hasSelectedDescendant, selectedPiboSessionId]);
 
+	const finishEditing = () => {
+		setEditing(false);
+		if (autoRename) onAutoRenameConsumed?.();
+	};
 	const submitRename = () => {
 		if (mutationsDisabled) return;
 		const title = draftTitle.trim();
 		onRename(node.piboSessionId, title ? title : null);
-		setEditing(false);
+		finishEditing();
 	};
 	const signal = sessionNodeSignal(node, signalNow);
 	const loading = loadingPiboSessionId === node.piboSessionId;
@@ -160,7 +169,7 @@ export function SessionNode({
 							onKeyDown={(event) => {
 								if (event.key === "Escape") {
 									event.preventDefault();
-									setEditing(false);
+									finishEditing();
 									setDraftTitle(safeTitle);
 								}
 							}}
@@ -180,7 +189,7 @@ export function SessionNode({
 							type="button"
 							disabled={mutationsDisabled}
 							onClick={() => {
-								setEditing(false);
+								finishEditing();
 								setDraftTitle(safeTitle);
 							}}
 							title="Cancel Rename"

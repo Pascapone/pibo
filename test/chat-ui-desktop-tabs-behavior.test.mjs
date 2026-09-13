@@ -6,7 +6,7 @@ import test from "node:test";
 const execFileAsync = promisify(execFile);
 const reactDevelopmentEnv = { ...process.env, NODE_ENV: "development" };
 
-test("desktop tab React flows preserve Preview, pause inactive resources, and focus after close", async () => {
+test("desktop tab React flows preserve every mounted panel, refresh one tab, dispose on close, and focus deterministically", async () => {
 	const script = `
 		import assert from "node:assert/strict";
 		import React, { act, useEffect, useState } from "react";
@@ -15,6 +15,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		import { useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		import * as model from "./src/apps/chat-ui/src/desktop-tabs-model.ts";
+		import { SessionTabController } from "./src/apps/chat-ui/src/plugins/session-tab-controller.ts";
 		const { create } = TestRenderer;
 
 		globalThis.React = React;
@@ -39,14 +40,19 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 			width: 544,
 			collapsed: true,
 		};
-		const workspaceStorage = new Map([[model.DESKTOP_TABS_STORAGE_KEY, model.serializeDesktopTabState(storedWorkspace)]]);
-		globalThis.localStorage = {
-			getItem(key) { return workspaceStorage.get(key) ?? null; },
-			setItem(key, value) { workspaceStorage.set(key, value); },
-		};
+		let storedTabset = { schemaVersion: 1, piboSessionId: "ps_route", revision: 1, tabs: [], activeTabId: null, layout: model.desktopTabStateToSessionLayout({}, storedWorkspace) };
+		const routeController = new SessionTabController("ps_route", {
+			read: async () => structuredClone(storedTabset),
+			write: async (next, expectedRevision) => {
+				assert.equal(expectedRevision, storedTabset.revision);
+				storedTabset = structuredClone({ ...next, revision: expectedRevision + 1 });
+				return structuredClone(storedTabset);
+			},
+		});
+		await routeController.load();
 		let observedWorkspaceState;
 		function RouteReconcileHarness({ route }) {
-			const workspace = useDesktopTabWorkspace(route, true);
+			const workspace = useDesktopTabWorkspace(route, true, routeController);
 			observedWorkspaceState = workspace.state;
 			return React.createElement("div", { "data-collapsed": String(workspace.state.collapsed) });
 		}
@@ -56,14 +62,14 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		});
 		assert.equal(observedWorkspaceState.collapsed, true, "initial route reconciliation keeps persisted collapse state");
 		assert.equal(observedWorkspaceState.width, 544);
-		assert.equal(model.parseDesktopTabState(workspaceStorage.get(model.DESKTOP_TABS_STORAGE_KEY)).collapsed, true, "initial reconciliation must not rewrite storage as expanded");
+		assert.equal(model.desktopTabStateFromSessionTabset(routeController.state).collapsed, true, "initial reconciliation must not expand the Session-owned workspace");
 		const deepLinkedRoute = { area: "workflows", viewWorkflowId: "wf/reload", viewWorkflowVersion: "v 2" };
 		await act(async () => {
 			routeRenderer.update(React.createElement(RouteReconcileHarness, { route: deepLinkedRoute }));
 		});
 		assert.equal(observedWorkspaceState.collapsed, true, "history/deep-link reconciliation keeps collapse state");
 		assert.deepEqual(model.activeDesktopTab(observedWorkspaceState).target.route, deepLinkedRoute);
-		const persistedAfterDeepLink = model.parseDesktopTabState(workspaceStorage.get(model.DESKTOP_TABS_STORAGE_KEY));
+		const persistedAfterDeepLink = model.desktopTabStateFromSessionTabset(routeController.state);
 		assert.equal(persistedAfterDeepLink.collapsed, true);
 		assert.equal(persistedAfterDeepLink.width, 544);
 		await act(async () => routeRenderer.unmount());
@@ -72,6 +78,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		let focusedTitle = null;
 		let observedState;
 		let removeSelectedPreview;
+		let beforeRefresh = async () => true;
 		function ResourceProbe({ name }) {
 			useEffect(() => {
 				lifecycle.push("mount:" + name);
@@ -110,6 +117,7 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 				onStateChange: setState,
 				onActivate: (tab) => setState((current) => model.activateDesktopTab(current, tab.id)),
 				onClose: (tab) => { setState((current) => model.closeDesktopTab(current, tab.id)); return true; },
+				onBeforeRefresh: (tab) => beforeRefresh(tab),
 				onFocusSessions: (tab) => setState((current) => model.closeDesktopTab(current, tab.id)),
 				reservedLeftWidth: 300,
 				renderPanel: (tab) => tab.target.kind === "session-tool" && tab.target.tool === "preview"
@@ -139,16 +147,38 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 			mounted = create(React.createElement(Harness), { createNodeMock });
 		});
 		const previewFrameBefore = mounted.root.findByType("iframe");
+		const workflowPanelBefore = mounted.root.findByProps({ "data-resource": "Workflow · workflow-1" });
+		const settingsPanelBefore = mounted.root.findByProps({ "data-resource": "Settings" });
 		const workflowTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Workflow ·"))[0];
 		await act(async () => workflowTab.props.onClick());
 		const previewFrameAfter = mounted.root.findByType("iframe");
 		assert.equal(previewFrameAfter, previewFrameBefore, "Preview iframe remains the same React instance when another tab activates");
-		assert.ok(lifecycle.includes("mount:Workflow · workflow-1"));
+		assert.equal(mounted.root.findByProps({ "data-resource": "Workflow · workflow-1" }), workflowPanelBefore, "activating a mounted generic panel preserves its React instance");
 
 		const settingsTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Settings."))[0];
 		await act(async () => settingsTab.props.onClick());
-		assert.ok(lifecycle.includes("unmount:Workflow · workflow-1"), "inactive Workflow content unmounts and stops its resources");
+		assert.equal(mounted.root.findByProps({ "data-resource": "Workflow · workflow-1" }), workflowPanelBefore, "inactive Workflow content stays mounted");
+		assert.equal(mounted.root.findByProps({ "data-resource": "Settings" }), settingsPanelBefore, "the selected Settings panel also keeps its instance");
+		assert.equal(lifecycle.filter((event) => event === "unmount:Workflow · workflow-1").length, 0);
 		assert.equal(mounted.root.findByType("iframe"), previewFrameBefore);
+
+		const workflowMountsBeforeRefresh = lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length;
+		const settingsUnmountsBeforeRefresh = lifecycle.filter((event) => event === "unmount:Settings").length;
+		const refreshWorkflow = mounted.root.findByProps({ "aria-label": "Refresh Workflow · workflow-1" });
+		let releaseRefresh;
+		beforeRefresh = () => new Promise((resolve) => { releaseRefresh = resolve; });
+		await act(async () => refreshWorkflow.props.onClick());
+		assert.equal(lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length, workflowMountsBeforeRefresh, "Refresh does not remount while a leave/save guard is pending");
+		await act(async () => { releaseRefresh(true); await Promise.resolve(); });
+		assert.equal(lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length, workflowMountsBeforeRefresh + 1, "Refresh remounts its target panel after guards succeed");
+		assert.equal(lifecycle.filter((event) => event === "unmount:Workflow · workflow-1").length, 1);
+		assert.equal(lifecycle.filter((event) => event === "unmount:Settings").length, settingsUnmountsBeforeRefresh, "Refresh leaves neighboring panels untouched");
+		assert.equal(mounted.root.findByProps({ "data-resource": "Settings" }), settingsPanelBefore);
+		beforeRefresh = async () => false;
+		const workflowMountsBeforeBlockedRefresh = lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length;
+		await act(async () => { refreshWorkflow.props.onClick(); await Promise.resolve(); });
+		assert.equal(lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length, workflowMountsBeforeBlockedRefresh, "failed Refresh guards preserve the existing mount");
+		beforeRefresh = async () => true;
 
 		assert.equal(desktopTabInsertionIndex(observedState.tabs, "preview", "settings", "after"), 2);
 		const previewDragTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Preview."))[0].parent;
@@ -174,8 +204,10 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 
 		const workflowAgain = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Workflow ·"))[0];
 		await act(async () => workflowAgain.props.onClick());
+		const workflowUnmountsBeforeClose = lifecycle.filter((event) => event === "unmount:Workflow · workflow-1").length;
 		await act(async () => workflowAgain.props.onKeyDown({ key: "Delete", preventDefault() {} }));
 		assert.equal(observedState.activeTabId, "settings");
+		assert.equal(lifecycle.filter((event) => event === "unmount:Workflow · workflow-1").length, workflowUnmountsBeforeClose + 1, "Close disposes the mounted panel");
 		assert.match(focusedTitle, /^Settings\./, "Delete moves DOM focus to the deterministic right neighbor");
 
 		const previewTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Preview."))[0];

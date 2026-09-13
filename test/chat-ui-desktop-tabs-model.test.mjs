@@ -72,6 +72,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 			collapsed: true,
 		};
 		const reconciledExistingRoute = model.reconcileDesktopRoute(persistedCollapsedRoute, { area: "agents" }, { now: 9 });
+		assert.equal(reconciledExistingRoute, persistedCollapsedRoute, "reconciling the already-active route is idempotent and cannot start a save loop");
 		assert.equal(reconciledExistingRoute.activeTabId, "agents-existing");
 		assert.equal(reconciledExistingRoute.collapsed, true, "passive reconciliation of an existing route keeps the workspace collapsed");
 		const reloadedExistingRoute = model.parseDesktopTabState(model.serializeDesktopTabState(reconciledExistingRoute));
@@ -156,9 +157,36 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(recovered.activeTabId, "workflow-one", "duplicate target active id aliases to the retained tab");
 
 		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "preview", target: { kind: "session-tool", tool: "preview" } }), true);
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "raw", target: { kind: "session-tool", tool: "raw-events" } }), false);
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "workflow" }), false);
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "agent", target: { kind: "route", route: { area: "agents" } } }), false);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "raw", target: { kind: "session-tool", tool: "raw-events" } }), true);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "workflow" }), true);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "agent", target: { kind: "route", route: { area: "agents" } } }), true);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "new", target: { kind: "new-tab", instanceId: "new" } }), false);
+
+		const sessionAState = model.openDesktopTab(model.emptyDesktopTabState(), { kind: "route", route: { area: "settings", panel: "plugins" } }, { id: "settings-a", now: 1 });
+		const sessionALayout = model.desktopTabStateToSessionLayout({ retained: true }, sessionAState);
+		const sessionATabset = { schemaVersion: 1, piboSessionId: "ps_A", revision: 3, tabs: [], activeTabId: null, layout: sessionALayout };
+		assert.deepEqual(model.desktopTabStateFromSessionTabset(sessionATabset), sessionAState);
+		assert.equal(sessionATabset.layout.retained, true);
+		assert.equal(model.sessionTabsetHasDesktopState(sessionATabset), true);
+		const sessionBTabset = { ...sessionATabset, piboSessionId: "ps_B", layout: {} };
+		assert.deepEqual(model.desktopTabStateFromSessionTabset(sessionBTabset), model.emptyDesktopTabState(), "a new Session has no inherited desktop tabs");
+		const projected = model.desktopTabStateFromSessionTabset({
+			...sessionATabset,
+			layout: {},
+			tabs: [{ instanceId: "plugin-a", piboSessionId: "ps_A", pluginId: "example.notes", viewId: "example.notes/notes", pluginRevision: "sha256:r1", stateSchemaVersion: 1, state: { draft: "A" }, fallback: "Notes" }],
+			activeTabId: "plugin-a",
+		});
+		assert.deepEqual(projected.tabs.map((tab) => [tab.id, tab.target.kind, tab.target.piboSessionId]), [["plugin-a", "plugin-view", "ps_A"]], "existing PluginStore tabs bootstrap the desktop layout once");
+		const projectedAgent = model.desktopTabStateFromSessionTabset({
+			...sessionATabset,
+			layout: {},
+			tabs: [{ instanceId: "agent-plugin", piboSessionId: "ps_A", pluginId: "pibo.product-ui", viewId: "pibo.product-ui/agent-designer", pluginRevision: "sha256:r1", stateSchemaVersion: 1, state: {}, fallback: "Agent Designer" }],
+			activeTabId: "agent-plugin",
+		});
+		assert.equal(projectedAgent.tabs[0].target.kind, "route");
+		assert.equal(model.reconcileDesktopRoute(projectedAgent, { area: "agents" }).tabs.length, 1, "a built-in plugin tab and its route are one desktop tab");
+		const wrongOwner = model.desktopTabStateToSessionLayout({}, model.openDesktopTab(model.emptyDesktopTabState(), { kind: "plugin-view", piboSessionId: "ps_A", viewId: "example.notes/notes", title: "Notes" }, { id: "wrong", now: 1 }));
+		assert.deepEqual(model.desktopTabStateFromSessionTabset({ ...sessionBTabset, layout: wrongOwner }).tabs, [], "cross-Session plugin targets are never rendered");
 
 		const saveOrder = [];
 		assert.deepEqual(await model.guardDesktopAgentTransition(true, async () => { saveOrder.push("saved"); }), { allowed: true });

@@ -205,3 +205,18 @@ test("App scopes pending insertion, replacement, and rollback to the origin room
 	assert.match(source, /if \(outcome\?\.autoRenameCreatedSession\) setAutoRenameSessionId/);
 	assert.match(source, /if \(outcome\?\.navigateToCreatedSession\)/);
 });
+
+test("every Room Session create entrypoint uses the App router and inline-rename handoff", async () => {
+	const [app, browserEntry, sessionNode] = await Promise.all([
+		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/session-node.tsx", "utf8"),
+	]);
+	assert.doesNotMatch(browserEntry, /location\.(?:assign|replace|reload)|location\.href\s*=/, "Agent Designer must not trigger document navigation");
+	assert.match(browserEntry, /props\.createSession\(profile\)/, "Agent Designer delegates to the App-owned creation flow");
+	assert.match(app, /onCreateSession=\{\(profile\) => createSession\(profile\)\}/);
+	assert.match(app, /navigateToSelectedSession\(originRoomId \|\| undefined, created\.session\.id, false/);
+	assert.match(app, /if \(outcome\?\.autoRenameCreatedSession\) setAutoRenameSessionId\(created\.session\.id\)/);
+	assert.match(app, /piboSessionId=\{selectedBackendPiboSessionId \?\? null\}/, "the optimistic placeholder cannot mount a fake Session workspace");
+	assert.match(sessionNode, /titleInputRef\.current\?\.focus\(\);\s*titleInputRef\.current\?\.select\(\);/);
+});

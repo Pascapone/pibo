@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const { emptyPluginTabset, openPluginTab, closePluginTab, updatePluginTab, availablePluginViews, SessionTabController, PluginHttpError, pluginTabDeepLink, parsePluginTabDeepLink } = await tsImport("../src/apps/chat-ui/src/plugins/session-tab-controller.ts", import.meta.url);
+const { emptyPluginTabset, openPluginTab, closePluginTab, updatePluginTab, availablePluginViews, guardPluginTabRefresh, pruneSessionTabControllerCache, retainSessionTabController, SessionTabController, PluginHttpError, pluginTabDeepLink, parsePluginTabDeepLink } = await tsImport("../src/apps/chat-ui/src/plugins/session-tab-controller.ts", import.meta.url);
 const { BrowserPluginHost, PluginArtifact, runPluginInputHooks, sessionPluginRequest } = await tsImport("../src/apps/chat-ui/src/plugins/browser-host.tsx", import.meta.url);
 const { pluginConfigurationPath } = await tsImport("../src/apps/chat-ui/src/plugins/plugin-settings.tsx", import.meta.url);
 const { recordedBuildNodes } = await tsImport("../src/apps/chat-ui/src/plugins/build-context-view.tsx", import.meta.url);
@@ -55,13 +55,36 @@ test('A→B→A / reload persists active tab, settings subview, independent stat
 test('late A autosave stays A while B is selected; serialized edits are not lost',async()=>{
  const transport=memoryTransport();let release;const first=new Promise(resolve=>release=resolve);const realWrite=transport.write;let count=0;transport.write=async(...args)=>{if(!count++)await first;return realWrite(...args)};
  const a=new SessionTabController('ps_A',transport);const b=new SessionTabController('ps_B',transport);await a.load();await b.load();
- const f=fixture();a.edit(state=>openPluginTab(state,f.plan,f.catalog,f.entry.id,{instanceId:'a'}));a.edit(state=>updatePluginTab(state,'a',{state:{late:true}}));const bf=fixture('ps_B');b.edit(state=>openPluginTab(state,bf.plan,bf.catalog,bf.entry.id,{instanceId:'b'}));await b.flush();release();await a.flush();
- assert.equal(transport.records.get('ps_A').tabs[0].state.late,true);assert.deepEqual(transport.records.get('ps_B').tabs[0].state,{});assert.equal(a.state.revision,2);
+ const f=fixture();a.edit(state=>openPluginTab(state,f.plan,f.catalog,f.entry.id,{instanceId:'a'}));a.edit(state=>({...updatePluginTab(state,'a',{state:{late:true}}),layout:{desktopWorkspace:{version:1,tabs:[{id:'a-desktop',target:{kind:'plugin-view',piboSessionId:'ps_A',viewId:f.entry.id,title:'Notes A'},title:'Notes A',createdAt:1,lastActivatedAt:1}],activeTabId:'a-desktop',width:620,collapsed:false}}}));const bf=fixture('ps_B');b.edit(state=>openPluginTab(state,bf.plan,bf.catalog,bf.entry.id,{instanceId:'b'}));await b.flush();release();await a.flush();
+ assert.equal(transport.records.get('ps_A').tabs[0].state.late,true);assert.equal(transport.records.get('ps_A').layout.desktopWorkspace.activeTabId,'a-desktop');assert.deepEqual(transport.records.get('ps_B').tabs[0].state,{});assert.deepEqual(transport.records.get('ps_B').layout,{});assert.equal(a.state.revision,2);
+});
+test('out-of-order reloads and a late reload crossing local edits cannot replace newer Session state',async()=>{
+ const pending=[];const transport={read:async()=>new Promise(resolve=>pending.push(resolve)),write:async()=>{throw Error('unexpected write')}};
+ const controller=new SessionTabController('ps_A',transport);
+ const first=controller.load();const second=controller.load();
+ pending[1]({...emptyPluginTabset('ps_A'),revision:2,layout:{owner:'newer'}});await second;
+ pending[0]({...emptyPluginTabset('ps_A'),revision:1,layout:{owner:'stale'}});await first;
+ assert.equal(controller.state.layout.owner,'newer');assert.equal(controller.state.revision,2);
+ let release;transport.read=async()=>new Promise(resolve=>{release=resolve});
+ const reload=controller.load();controller.edit(state=>({...state,layout:{owner:'local'}}));
+ release({...emptyPluginTabset('ps_A'),revision:3,layout:{owner:'late-read'}});await reload;
+ assert.equal(controller.state.layout.owner,'local','a read started before a local edit is discarded');
 });
 test('two-browser CAS conflict preserves losing local state and never overwrites server',async()=>{
  const transport=memoryTransport();const a=new SessionTabController('ps_A',transport);const b=new SessionTabController('ps_A',transport);await a.load();await b.load();
  a.edit(state=>({...state,layout:{owner:'first'}}));await a.flush();b.edit(state=>({...state,layout:{owner:'second'}}));await b.flush();
  assert.equal(b.conflict,true);assert.equal(b.state.layout.owner,'second');assert.equal(transport.records.get('ps_A').layout.owner,'first');assert.throws(()=>b.edit(state=>state));await b.load();assert.equal(b.state.layout.owner,'first');
+});
+test('failed-save and in-flight Session controllers survive bounded cache pruning',async()=>{
+ const transport=memoryTransport();const winner=new SessionTabController('ps_A',transport);const conflicted=new SessionTabController('ps_A',transport);await winner.load();await conflicted.load();winner.edit(state=>({...state,layout:{owner:'server'}}));await winner.flush();conflicted.edit(state=>({...state,layout:{owner:'retained-draft'}}));await conflicted.flush();assert.equal(conflicted.conflict,true);
+ const cache=new Map();retainSessionTabController(cache,'ps_A',()=>conflicted);
+ for(let index=0;index<9;index++){const id=`ps_clean_${index}`;const clean=new SessionTabController(id,memoryTransport());await clean.load();retainSessionTabController(cache,id,()=>clean);}
+ assert.equal(cache.get('ps_A'),conflicted);assert.equal(cache.get('ps_A').state.layout.owner,'retained-draft');assert.equal(cache.size,8,'safe clean controllers are pruned before conflicted local state');
+ let releaseRead;const loading=new SessionTabController('ps_loading',{read:async()=>new Promise(resolve=>{releaseRead=resolve}),write:async()=>{throw Error('unexpected')}});const loadingPromise=loading.ensureLoaded();retainSessionTabController(cache,'ps_loading',()=>loading);const extra=new SessionTabController('ps_extra',memoryTransport());await extra.load();retainSessionTabController(cache,'ps_extra',()=>extra);assert.equal(cache.get('ps_loading'),loading,'in-flight reads are not evicted');releaseRead(null);await loadingPromise;pruneSessionTabControllerCache(cache,'ps_extra');assert.ok(cache.size<=8);
+});
+test('plugin Refresh waits for leave guards and tabset saves, and blocks on failure',async()=>{
+ let releaseWrite;let writes=0;const controller=new SessionTabController('ps_A',{read:async()=>null,write:async(state,expected)=>{writes++;await new Promise(resolve=>{releaseWrite=resolve});return {...state,revision:expected+1}}});await controller.load();controller.edit(state=>({...state,layout:{draft:true}}));let settled=false;const guarded=guardPluginTabRefresh(controller,'tab-a',async(ids)=>{assert.deepEqual(ids,['tab-a']);return true}).then(value=>{settled=true;return value});await new Promise(resolve=>setTimeout(resolve,0));assert.equal(settled,false,'Refresh remains pending while the tabset save is pending');releaseWrite();assert.equal(await guarded,true);assert.equal(writes,1);assert.equal(controller.dirty,false);
+ let guardCalls=0;const blocked=await guardPluginTabRefresh(controller,'tab-a',async()=>{guardCalls++;return false});assert.equal(blocked,false);assert.equal(guardCalls,1);assert.equal(writes,1,'a failed leave guard does not start another save or remount');
 });
 test('cross-session server responses and attempted tab movement are rejected',async()=>{
  const c=new SessionTabController('ps_A',{read:async()=>emptyPluginTabset('ps_B'),write:async()=>{throw Error('unexpected')}});await c.load();assert.equal(c.ready,false);assert.match(c.error.message,/cross-session/);

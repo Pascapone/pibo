@@ -31,3 +31,14 @@ test("sidebar inline rename inputs have stable contextual accessible names", () 
 		/aria-label=\{`Room workspace for \$\{room\.name\}`\}/,
 	);
 });
+
+test("automatic Session rename survives list remounts until the editor finishes", () => {
+	const source = readFileSync(resolve("src/apps/chat-ui/src/session-node.tsx"), "utf8");
+	const initialization = source.slice(source.indexOf("if (!autoRename)"), source.indexOf("useEffect(() => {\n\t\tif (mutationsDisabled)"));
+	const finish = source.slice(source.indexOf("const finishEditing"), source.indexOf("const signal ="));
+
+	assert.match(initialization, /autoRenameStartedRef\.current = true/);
+	assert.doesNotMatch(initialization, /onAutoRenameConsumed/);
+	assert.match(finish, /if \(autoRename\) onAutoRenameConsumed\?\.\(\)/);
+	assert.match(source, /event\.key === "Escape"[\s\S]*?finishEditing\(\)/);
+});

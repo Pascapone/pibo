@@ -124,7 +124,8 @@ import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstra
 import { errorMessage } from "./error-message";
 import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";
 import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";
-import { PluginWorkspaceProvider, PluginWorkspaceView } from "./plugins/plugin-workspace";
+import { PluginWorkspaceProvider, PluginWorkspaceView, usePluginSessionTabController } from "./plugins/plugin-workspace";
+import { closePluginTab } from "./plugins/session-tab-controller";
 import type { PluginJsonObject, PluginQualifiedId } from "../../../plugins/sdk";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
@@ -158,6 +159,7 @@ import {
 	activeDesktopTab,
 	applyGuardedDesktopTabTransition,
 	closeDesktopTab,
+	desktopTabPluginViewId,
 	type DesktopSessionTool,
 	type DesktopTab,
 	type DesktopTabTarget,
@@ -290,11 +292,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const queryClient = useQueryClient();
 	const isMobileSidebarViewport = useMobileSidebarViewport();
 	const desktopTabsEnabled = !isMobileSidebarViewport;
-	const desktopWorkspace = useDesktopTabWorkspace(route, desktopTabsEnabled);
 	const desktopSessionSidebar = useDesktopSessionSidebar();
-	const desktopActiveTab = activeDesktopTab(desktopWorkspace.state);
-	const desktopActiveTool = desktopTabTool(desktopActiveTab);
-	const desktopPanelRoute = desktopActiveTab?.target.kind === "route" ? desktopActiveTab.target.route : undefined;
 	const area: Area = desktopTabsEnabled ? "sessions" : route.area;
 	const routeRoomId = route.area === "sessions" ? route.roomId : undefined;
 	const routePiboSessionId = route.area === "sessions" || route.area === "context" ? route.piboSessionId : undefined;
@@ -317,6 +315,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 		setSelectedPiboSessionIdState(next);
 	}, []);
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+	const pluginSessionController = usePluginSessionTabController(selectedBackendPiboSessionId ?? null);
+	const desktopWorkspace = useDesktopTabWorkspace(route, desktopTabsEnabled, pluginSessionController);
+	const desktopActiveTab = activeDesktopTab(desktopWorkspace.state);
+	const desktopActiveTool = desktopTabTool(desktopActiveTab);
+	const desktopPanelRoute = desktopActiveTab?.target.kind === "route" ? desktopActiveTab.target.route : undefined;
 	const [error, setError] = useState<string | null>(null);
 	const [bootstrapError, setBootstrapError] = useState<BootstrapErrorState | null>(null);
 	const [downloadStatus, setDownloadStatus] = useState<ChatDownloadStatus | null>(null);
@@ -413,7 +417,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	);
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
 	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
-	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
 	const [roomMutations] = useState(() => new RoomMutationTracker());
 	const overlayCurrentSignals = useCallback((data: BootstrapData): BootstrapData => {
 		const statusSnapshot = sessionStatusSignalsRef.current;
@@ -1778,7 +1781,19 @@ export function App({ route }: { route: ChatAppRoute }) {
 		await applyDesktopWorkspaceTransition(activateTabInDesktopTabs(desktopWorkspace.state, tab.id));
 	};
 	const closeDesktopWorkspaceTab = async (tab: DesktopTab): Promise<boolean> => {
-		return applyDesktopWorkspaceTransition(closeDesktopTab(desktopWorkspace.state, tab.id), { saveClosingTab: tab });
+		const next = closeDesktopTab(desktopWorkspace.state, tab.id);
+		const closed = await applyDesktopWorkspaceTransition(next, { saveClosingTab: tab });
+		const viewId = desktopTabPluginViewId(tab.target);
+		if (closed && viewId && pluginSessionController && !next.tabs.some((candidate) => desktopTabPluginViewId(candidate.target) === viewId)) {
+			try {
+				pluginSessionController.edit((tabset) => tabset.tabs.some((pluginTab) => pluginTab.viewId === viewId)
+					? tabset.tabs.filter((pluginTab) => pluginTab.viewId === viewId).reduce((current, pluginTab) => closePluginTab(current, pluginTab.instanceId), tabset)
+					: tabset);
+			} catch {
+				// The shared workspace renders loading and CAS conflicts without retargeting another Session.
+			}
+		}
+		return closed;
 	};
 	const closeDesktopSessionTool = (tool: DesktopSessionTool) => {
 		const tab = desktopWorkspace.state.tabs.find((candidate) => candidate.target.kind === "session-tool" && candidate.target.tool === tool);
@@ -1799,13 +1814,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className={`h-full min-h-0 overflow-hidden ${tab.target.tool === "preview" ? "flex flex-col" : ""}`} data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
 		}
 		if (tab.target.kind === "plugin-view") {
-			return <PluginWorkspaceProvider piboSessionId={tab.target.piboSessionId}><PluginWorkspaceView viewId={tab.target.viewId} active={active} /></PluginWorkspaceProvider>;
+			return <PluginWorkspaceView viewId={tab.target.viewId} active={active} />;
 		}
 		return renderPluginRoute(tab.target.route, active);
 	};
 
 	return (
-		<PluginWorkspaceProvider piboSessionId={selectedPiboSessionId}>
+		<PluginWorkspaceProvider piboSessionId={selectedBackendPiboSessionId ?? null} controller={pluginSessionController} onCreateSession={(profile) => createSession(profile)}>
 		<>
 			<CreateWorkflowSessionDialog open={Boolean(workflowSessionDialog)} bootstrap={bootstrap} initialSelection={workflowSessionDialog?.selection} onClose={() => setWorkflowSessionDialog(null)} onCreated={acceptCreatedWorkflowSession} />
 			{gatewayMode === "fallback" && !isAppFullscreen ? <FallbackGatewayBanner /> : null}

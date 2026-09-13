@@ -1,7 +1,8 @@
-import type { PluginQualifiedId } from "../../../plugins/sdk";
+import type { PluginJsonObject, PluginQualifiedId, PluginSessionTabset } from "../../../plugins/sdk";
 import type { ChatAppRoute } from "./app-routes";
 
 export const DESKTOP_TABS_STORAGE_KEY = "pibo.chat.desktopTabs.v1";
+export const DESKTOP_SESSION_LAYOUT_KEY = "desktopWorkspace";
 export const DESKTOP_TAB_STATE_VERSION = 1 as const;
 export const DESKTOP_TAB_MIN_WIDTH = 360;
 export const DESKTOP_TAB_MAX_WIDTH = 3840;
@@ -88,8 +89,8 @@ export function openDesktopTab(
 	options: { id?: string; now?: number } = {},
 ): DesktopTabState {
 	const now = options.now ?? Date.now();
-	const key = desktopTabTargetKey(target);
-	const existingIndex = state.tabs.findIndex((tab) => desktopTabTargetKey(tab.target) === key);
+	const key = desktopTabDedupeKey(target);
+	const existingIndex = state.tabs.findIndex((tab) => desktopTabDedupeKey(tab.target) === key);
 	if (existingIndex >= 0) {
 		const existing = state.tabs[existingIndex]!;
 		const tabs = state.tabs.slice();
@@ -129,8 +130,8 @@ export function replaceDesktopNewTab(
 ): DesktopTabState {
 	const index = state.tabs.findIndex((tab) => tab.id === tabId && tab.target.kind === "new-tab");
 	if (index < 0) return openDesktopTab(state, target, { now });
-	const targetKey = desktopTabTargetKey(target);
-	const existing = state.tabs.find((tab) => tab.id !== tabId && desktopTabTargetKey(tab.target) === targetKey);
+	const targetKey = desktopTabDedupeKey(target);
+	const existing = state.tabs.find((tab) => tab.id !== tabId && desktopTabDedupeKey(tab.target) === targetKey);
 	if (existing) return openDesktopTab(closeDesktopTab(state, tabId), target, { now });
 	const tabs = state.tabs.slice();
 	tabs[index] = {
@@ -192,9 +193,48 @@ export function activeDesktopTab(state: DesktopTabState): DesktopTab | null {
 }
 
 export function desktopTabKeepsMounted(tab: DesktopTab): boolean {
-	if (tab.target.kind === "new-tab") return false;
-	if (tab.target.kind === "session-tool") return tab.target.tool === "preview";
-	return false;
+	return tab.target.kind !== "new-tab";
+}
+
+export function desktopTabPluginViewId(target: DesktopTabTarget): PluginQualifiedId | null {
+	if (target.kind === "plugin-view") return target.viewId;
+	if (target.kind !== "route") return null;
+	if (target.route.area === "workflows") return "pibo.product-ui/workflows";
+	if (target.route.area === "agents") return "pibo.product-ui/agent-designer";
+	if (target.route.area === "cron") return "pibo.product-ui/cron";
+	if (target.route.area === "loops") return "pibo.product-ui/loops";
+	if (target.route.area === "context") return "pibo.product-ui/user-resources";
+	return "pibo.product-ui/settings";
+}
+
+export function desktopTabStateFromSessionTabset(tabset: PluginSessionTabset): DesktopTabState {
+	const stored = tabset.layout[DESKTOP_SESSION_LAYOUT_KEY];
+	const parsed = stored === undefined
+		? desktopTabStateFromPluginTabs(tabset)
+		: parseDesktopTabState(typeof stored === "string" ? stored : JSON.stringify(stored));
+	const tabs = parsed.tabs.filter((tab) => tab.target.kind !== "plugin-view" || tab.target.piboSessionId === tabset.piboSessionId);
+	const activeTabId = tabs.some((tab) => tab.id === parsed.activeTabId) ? parsed.activeTabId : tabs[0]?.id ?? null;
+	return { ...parsed, tabs, activeTabId, collapsed: tabs.length ? parsed.collapsed : false };
+}
+
+export function desktopTabStateToSessionLayout(layout: PluginJsonObject, state: DesktopTabState): PluginJsonObject {
+	return { ...layout, [DESKTOP_SESSION_LAYOUT_KEY]: JSON.parse(serializeDesktopTabState(state)) as PluginJsonObject };
+}
+
+export function sessionTabsetHasDesktopState(tabset: PluginSessionTabset): boolean {
+	return tabset.layout[DESKTOP_SESSION_LAYOUT_KEY] !== undefined;
+}
+
+function desktopTabStateFromPluginTabs(tabset: PluginSessionTabset): DesktopTabState {
+	const state = emptyDesktopTabState();
+	const tabs = tabset.tabs.map((tab, index): DesktopTab => ({
+		id: tab.instanceId,
+		target: desktopTargetFromPluginTab(tabset.piboSessionId, tab),
+		title: tab.fallback,
+		createdAt: index,
+		lastActivatedAt: index,
+	}));
+	return { ...state, tabs, activeTabId: tabs.some((tab) => tab.id === tabset.activeTabId) ? tabset.activeTabId : tabs[0]?.id ?? null };
 }
 
 export function desktopRouteForState(
@@ -257,7 +297,10 @@ export async function applyGuardedDesktopTabTransition({
 
 export function reconcileDesktopRoute(state: DesktopTabState, route: ChatAppRoute, options: { id?: string; now?: number } = {}): DesktopTabState {
 	const target = routeDesktopTabTarget(route);
-	return target ? { ...openDesktopTab(state, target, options), collapsed: state.collapsed } : state;
+	if (!target) return state;
+	const active = activeDesktopTab(state);
+	if (active && desktopTabTargetKey(active.target) === desktopTabTargetKey(target) && JSON.stringify(active.target) === JSON.stringify(target)) return state;
+	return { ...openDesktopTab(state, target, options), collapsed: state.collapsed };
 }
 
 export function serializeDesktopTabState(state: DesktopTabState): string {
@@ -283,7 +326,7 @@ export function parseDesktopTabState(value: string | null | undefined): DesktopT
 		const retainedTargets = new Map<string, string>();
 		const idAliases = new Map<string, string>();
 		for (const tab of parsedTabs) {
-			const targetKey = desktopTabTargetKey(tab.target);
+			const targetKey = desktopTabDedupeKey(tab.target);
 			const retainedTargetId = retainedTargets.get(targetKey);
 			if (retainedIds.has(tab.id) || retainedTargetId) {
 				idAliases.set(tab.id, retainedTargetId ?? tab.id);
@@ -326,6 +369,32 @@ export function writeDesktopTabState(state: DesktopTabState, storage: Pick<Stora
 	} catch {
 		// Storage is an optional enhancement. The live in-memory state remains authoritative.
 	}
+}
+
+function desktopTabDedupeKey(target: DesktopTabTarget): string {
+	if (target.kind !== "plugin-view") return desktopTabTargetKey(target);
+	if (target.viewId === "pibo.product-ui/agent-designer") return "route:agents";
+	if (target.viewId === "pibo.product-ui/settings") return "route:settings";
+	if (target.viewId === "pibo.product-ui/workflows") return "workflows";
+	if (target.viewId === "pibo.product-ui/cron") return "route:cron";
+	if (target.viewId === "pibo.product-ui/loops") return "route:loops";
+	if (target.viewId === "pibo.product-ui/user-resources") return "route:context";
+	return desktopTabTargetKey(target);
+}
+
+function desktopTargetFromPluginTab(piboSessionId: string, tab: PluginSessionTabset["tabs"][number]): DesktopTabTarget {
+	if (tab.viewId === "pibo.product-ui/agent-designer") return { kind: "route", route: { area: "agents" } };
+	if (tab.viewId === "pibo.product-ui/settings") return { kind: "route", route: { area: "settings", ...(tab.subviewId ? { panel: tab.subviewId as Extract<ChatAppRoute, { area: "settings" }>["panel"] } : {}) } };
+	if (tab.viewId === "pibo.product-ui/workflows") return { kind: "route", route: {
+		area: "workflows",
+		...(typeof tab.state.draftId === "string" ? { draftId: tab.state.draftId } : {}),
+		...(typeof tab.state.viewWorkflowId === "string" ? { viewWorkflowId: tab.state.viewWorkflowId } : {}),
+		...(typeof tab.state.viewWorkflowVersion === "string" ? { viewWorkflowVersion: tab.state.viewWorkflowVersion } : {}),
+	} };
+	if (tab.viewId === "pibo.product-ui/cron") return { kind: "route", route: { area: "cron" } };
+	if (tab.viewId === "pibo.product-ui/loops") return { kind: "route", route: { area: "loops" } };
+	if (tab.viewId === "pibo.product-ui/user-resources" && (!tab.subviewId || tab.subviewId === "context-files")) return { kind: "route", route: { area: "context", piboSessionId } };
+	return { kind: "plugin-view", piboSessionId, viewId: tab.viewId, title: tab.fallback };
 }
 
 function parseDesktopTab(value: unknown): DesktopTab | null {

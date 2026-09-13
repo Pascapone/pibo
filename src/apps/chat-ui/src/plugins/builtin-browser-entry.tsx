@@ -11,7 +11,7 @@ import { MinimalWorkflowsArea } from "../MinimalWorkflowsArea";
 import { WorkflowVersionPanel } from "../desktop-workflow-version-panel";
 import { CronArea } from "../CronArea";
 import { LoopArea } from "../LoopArea";
-import { getBootstrap, postSession } from "../api-chat-sessions";
+import { getBootstrap } from "../api-chat-sessions";
 import type { BootstrapData } from "../types";
 import type { PluginBrowserSetup, PluginViewProps } from "./browser-host";
 import { useSessionWebAnnotations } from "../use-session-web-annotations";
@@ -95,7 +95,7 @@ export function AgentDesignerView(props: PluginViewProps) {
 	useEffect(() => autosave ? props.registerBeforeLeave(autosave) : undefined, [autosave, props.registerBeforeLeave]);
 	if (error) return <p role="alert">{error}</p>;
 	if (!bootstrap) return <p role="status">Loading agent definitions…</p>;
-	return <AgentsView agents={bootstrap.agents} initialCustomAgents={bootstrap.customAgents} initialAgentFolders={bootstrap.agentFolders} initialCatalog={bootstrap.agentCatalog} modelCatalog={bootstrap.modelCatalog} onCreateSession={(profile) => { setCreating(true); void postSession(profile, props.roomId).then((result) => { location.assign(`/sessions/${encodeURIComponent(result.session.id)}`); }).finally(() => setCreating(false)); }} onEditContextFile={(fileKey) => props.openView("pibo.product-ui/user-resources", "context-files", { selectedFileKey: fileKey })} onAgentsChanged={refresh} onAutosaveHandlerChange={handleAutosaveChange} creatingSession={creating} mobileSidebarOpen={false} isMobileSidebarViewport={false} onCloseMobileSidebar={() => undefined} surface="tab" />;
+	return <AgentsView agents={bootstrap.agents} initialCustomAgents={bootstrap.customAgents} initialAgentFolders={bootstrap.agentFolders} initialCatalog={bootstrap.agentCatalog} modelCatalog={bootstrap.modelCatalog} onCreateSession={(profile) => { if (!props.createSession) return; setCreating(true); void props.createSession(profile).finally(() => setCreating(false)); }} onEditContextFile={(fileKey) => props.openView("pibo.product-ui/user-resources", "context-files", { selectedFileKey: fileKey })} onAgentsChanged={refresh} onAutosaveHandlerChange={handleAutosaveChange} creatingSession={creating} mobileSidebarOpen={false} isMobileSidebarViewport={false} onCloseMobileSidebar={() => undefined} surface="tab" />;
 }
 export function WorkflowsView(props: PluginViewProps) {
 	const { bootstrap, error } = useBoundBootstrap(props);

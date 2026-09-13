@@ -42,6 +42,8 @@ export const tabsetTransport: TabsetTransport = {
 	write: async (tabset, expectedRevision) => (await pluginRequest<{ tabset: PluginSessionTabset }>(`/api/chat/sessions/${encodeURIComponent(tabset.piboSessionId)}/plugin-tabs`, { method: "PUT", body: JSON.stringify({ tabset, expectedRevision }) })).tabset,
 };
 /** One controller per fixed session. In-flight writes never consult a global selection. */
+export const SESSION_CONTROLLER_CACHE_LIMIT = 8;
+
 export class SessionTabController {
 	state: PluginSessionTabset;
 	ready = false;
@@ -51,15 +53,29 @@ export class SessionTabController {
 	private change = 0;
 	private saved = 0;
 	private pending?: Promise<void>;
+	private loading?: Promise<void>;
+	private loadGeneration = 0;
 	constructor(readonly piboSessionId: string, private transport = tabsetTransport) { this.state = emptyPluginTabset(piboSessionId); }
 	subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
 	private emit() { for (const listener of this.listeners) listener(); }
+	ensureLoaded(): Promise<void> {
+		if (this.ready) return Promise.resolve();
+		if (this.loading) return this.loading;
+		this.loading = this.load().finally(() => { this.loading = undefined; });
+		return this.loading;
+	}
 	async load() {
+		const generation = ++this.loadGeneration;
+		const changeAtStart = this.change;
 		try {
 			const remote = await this.transport.read(this.piboSessionId);
+			if (generation !== this.loadGeneration || changeAtStart !== this.change) return;
 			if (remote && (remote.piboSessionId !== this.piboSessionId || remote.tabs.some((tab) => tab.piboSessionId !== this.piboSessionId))) throw new Error("Server returned a cross-session tabset");
 			this.state = remote ?? emptyPluginTabset(this.piboSessionId); this.ready = true; this.error = null; this.conflict = false; this.change = this.saved = 0;
-		} catch (error) { this.error = error instanceof Error ? error : new Error(String(error)); }
+		} catch (error) {
+			if (generation !== this.loadGeneration || changeAtStart !== this.change) return;
+			this.error = error instanceof Error ? error : new Error(String(error));
+		}
 		this.emit();
 	}
 	edit(update: (state: PluginSessionTabset) => PluginSessionTabset) {
@@ -79,7 +95,7 @@ export class SessionTabController {
 			const version = this.change; const sent = this.state;
 			try {
 				const result = await this.transport.write(sent, sent.revision);
-				if (result.piboSessionId !== this.piboSessionId) throw new Error("Save response belongs to another session");
+				if (result.piboSessionId !== this.piboSessionId || result.tabs.some((tab) => tab.piboSessionId !== this.piboSessionId)) throw new Error("Save response belongs to another session");
 				this.state = { ...this.state, revision: result.revision }; this.saved = version; this.error = null;
 			} catch (error) {
 				this.error = error instanceof Error ? error : new Error(String(error));
@@ -90,7 +106,47 @@ export class SessionTabController {
 		}
 	}
 	get dirty() { return this.change !== this.saved; }
+	get evictionSafe() { return !this.dirty && !this.conflict && !this.pending && !this.loading; }
 }
+
+export function pruneSessionTabControllerCache(
+	controllers: Map<string, SessionTabController>,
+	retainedPiboSessionId: string,
+	limit = SESSION_CONTROLLER_CACHE_LIMIT,
+): void {
+	while (controllers.size > limit) {
+		const candidate = [...controllers].find(([piboSessionId, controller]) =>
+			piboSessionId !== retainedPiboSessionId && controller.evictionSafe,
+		);
+		if (!candidate) return;
+		controllers.delete(candidate[0]);
+	}
+}
+
+export function retainSessionTabController(
+	controllers: Map<string, SessionTabController>,
+	piboSessionId: string,
+	create: (piboSessionId: string) => SessionTabController = (id) => new SessionTabController(id),
+	limit = SESSION_CONTROLLER_CACHE_LIMIT,
+): SessionTabController {
+	const existing = controllers.get(piboSessionId);
+	const controller = existing ?? create(piboSessionId);
+	controllers.delete(piboSessionId);
+	controllers.set(piboSessionId, controller);
+	pruneSessionTabControllerCache(controllers, piboSessionId, limit);
+	return controller;
+}
+
+export async function guardPluginTabRefresh(
+	controller: SessionTabController,
+	instanceId: string,
+	runBeforeLeave: (instanceIds: readonly string[]) => Promise<boolean>,
+): Promise<boolean> {
+	if (!await runBeforeLeave([instanceId])) return false;
+	await controller.flush();
+	return !controller.dirty && !controller.conflict && !controller.error;
+}
+
 export function pluginTabDeepLink(tab: PluginTabInstance): string {
 	const params = new URLSearchParams({ piboSessionId: tab.piboSessionId, pluginView: tab.viewId, pluginTab: tab.instanceId });
 	if (tab.subviewId) params.set("pluginSubview", tab.subviewId);

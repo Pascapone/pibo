@@ -11,6 +11,7 @@ import {
 	PanelRightClose,
 	PanelRightOpen,
 	Plus,
+	RefreshCw,
 	Settings,
 	Sparkles,
 	TerminalSquare,
@@ -19,6 +20,7 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 import {
+	Fragment,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
@@ -32,7 +34,7 @@ import {
 } from "react";
 import type { ChatAppRoute } from "./app-routes";
 import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH, DESKTOP_TERMINAL_MIN_WIDTH } from "./desktop-session-sidebar-model";
-import { usePluginWorkspaceCatalogViews } from "./plugins/plugin-workspace";
+import { usePluginWorkspaceCatalogViews, usePluginWorkspaceRefreshGuard } from "./plugins/plugin-workspace";
 import {
 	activateDesktopTab,
 	activeDesktopTab,
@@ -40,11 +42,13 @@ import {
 	DESKTOP_TAB_MAX_WIDTH,
 	DESKTOP_TAB_MIN_WIDTH,
 	desktopTabKeepsMounted,
+	desktopTabPluginViewId,
+	desktopTabStateFromSessionTabset,
+	desktopTabStateToSessionLayout,
 	emptyDesktopTabState,
 	moveDesktopTab,
 	openDesktopNewTab,
 	openDesktopTab,
-	readDesktopTabState,
 	reconcileDesktopRoute,
 	replaceDesktopNewTab,
 	reorderDesktopTab,
@@ -54,8 +58,10 @@ import {
 	type DesktopTab,
 	type DesktopTabState,
 	type DesktopTabTarget,
-	writeDesktopTabState,
+	sessionTabsetHasDesktopState,
+	serializeDesktopTabState,
 } from "./desktop-tabs-model";
+import type { SessionTabController } from "./plugins/session-tab-controller";
 
 type CatalogEntry = {
 	id: string;
@@ -106,19 +112,38 @@ export function desktopTabCatalog(): readonly CatalogEntry[] {
 	return [...routes, ...SESSION_TOOL_CATALOG];
 }
 
-export function useDesktopTabWorkspace(route: ChatAppRoute, enabled: boolean): {
+export function useDesktopTabWorkspace(route: ChatAppRoute, enabled: boolean, controller: SessionTabController | null): {
 	state: DesktopTabState;
 	setState: Dispatch<SetStateAction<DesktopTabState>>;
 } {
-	const [state, setState] = useState<DesktopTabState>(() => readDesktopTabState());
+	const [, setControllerRevision] = useState(0);
+	useEffect(() => controller?.subscribe(() => setControllerRevision((value) => value + 1)), [controller]);
+	const state = enabled && controller?.ready ? desktopTabStateFromSessionTabset(controller.state) : emptyDesktopTabState();
+	const stateKey = serializeDesktopTabState(state);
 	const routeKey = useMemo(() => JSON.stringify(route), [route]);
 	useEffect(() => {
-		if (!enabled) return;
-		setState((current) => reconcileDesktopRoute(current, route));
-	}, [enabled, routeKey]);
-	useEffect(() => {
-		if (enabled) writeDesktopTabState(state);
-	}, [enabled, state]);
+		if (!enabled || !controller?.ready || controller.conflict) return;
+		const next = reconcileDesktopRoute(state, route);
+		const shouldInitialize = !sessionTabsetHasDesktopState(controller.state) && (next.tabs.length > 0 || route.area !== "sessions");
+		if (!shouldInitialize && serializeDesktopTabState(next) === stateKey) return;
+		try {
+			controller.edit((tabset) => ({ ...tabset, layout: desktopTabStateToSessionLayout(tabset.layout, next) }));
+		} catch {
+			// Loading and CAS conflicts are rendered by the shared Session workspace.
+		}
+	}, [controller, enabled, routeKey, stateKey]);
+	const setState = useCallback<Dispatch<SetStateAction<DesktopTabState>>>((update) => {
+		if (!enabled || !controller?.ready || controller.conflict) return;
+		try {
+			controller.edit((tabset) => {
+				const current = desktopTabStateFromSessionTabset(tabset);
+				const next = typeof update === "function" ? update(current) : update;
+				return { ...tabset, layout: desktopTabStateToSessionLayout(tabset.layout, next) };
+			});
+		} catch {
+			// Loading and CAS conflicts are rendered by the shared Session workspace.
+		}
+	}, [controller, enabled]);
 	return { state, setState };
 }
 
@@ -127,6 +152,7 @@ export function DesktopTabSidebar({
 	onStateChange,
 	onActivate,
 	onClose,
+	onBeforeRefresh,
 	onFocusSessions,
 	renderPanel,
 	reservedLeftWidth,
@@ -137,6 +163,7 @@ export function DesktopTabSidebar({
 	onStateChange: (state: DesktopTabState) => void;
 	onActivate: (tab: DesktopTab) => void;
 	onClose: (tab: DesktopTab) => boolean | Promise<boolean>;
+	onBeforeRefresh?: (tab: DesktopTab) => boolean | Promise<boolean>;
 	onFocusSessions: (newTab: DesktopTab) => void | Promise<void>;
 	renderPanel: (tab: DesktopTab, active: boolean) => ReactNode;
 	reservedLeftWidth: number;
@@ -149,6 +176,8 @@ export function DesktopTabSidebar({
 	const tabRefs = useRef(new Map<string, HTMLButtonElement>());
 	const dragTabIdRef = useRef<string | null>(null);
 	const [dragInsertion, setDragInsertion] = useState<DesktopTabDragInsertion | null>(null);
+	const [refreshVersions, setRefreshVersions] = useState<Record<string, number>>({});
+	const preparePluginRefresh = usePluginWorkspaceRefreshGuard();
 	const focusAfterCloseRef = useRef(false);
 	const activeTab = activeDesktopTab(state);
 	const pluginViews = usePluginWorkspaceCatalogViews();
@@ -195,6 +224,13 @@ export function DesktopTabSidebar({
 		const closed = await onClose(tab);
 		if (!closed) focusAfterCloseRef.current = false;
 	}, [onClose]);
+	const refreshTab = useCallback(async (tab: DesktopTab) => {
+		const allowed = onBeforeRefresh
+			? await onBeforeRefresh(tab)
+			: !(desktopTabPluginViewId(tab.target)) || await preparePluginRefresh(desktopTabPluginViewId(tab.target)!);
+		if (!allowed) return;
+		setRefreshVersions((current) => ({ ...current, [tab.id]: (current[tab.id] ?? 0) + 1 }));
+	}, [onBeforeRefresh, preparePluginRefresh]);
 
 	const onCatalogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
 		const buttons = [...catalogRef.current?.querySelectorAll<HTMLButtonElement>("button[data-catalog-entry]") ?? []];
@@ -387,6 +423,7 @@ export function DesktopTabSidebar({
 										>
 											{tab.title}
 										</button>
+										<button type="button" onClick={() => { void refreshTab(tab); }} title={`Refresh ${tab.title}`} aria-label={`Refresh ${tab.title}`} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><RefreshCw size={11} /></button>
 										<button type="button" onClick={() => void requestClose(tab)} title={`Close ${tab.title}`} aria-label={`Close ${tab.title}`} className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><X size={12} /></button>
 										</div>
 										{gapAfter ? <DesktopTabDropGap index={dragInsertion.toIndex} /> : null}
@@ -403,9 +440,11 @@ export function DesktopTabSidebar({
 							const selected = tab.id === state.activeTabId;
 							return (
 								<section key={tab.id} id={`desktop-tabpanel-${tab.id}`} role="tabpanel" aria-labelledby={`desktop-tab-${tab.id}`} hidden={!selected} className="h-full min-h-0 overflow-hidden">
-									{tab.target.kind === "new-tab" ? (
-										<DesktopNewTabCatalog ref={selected ? catalogRef : undefined} entries={entries} onKeyDown={onCatalogKeyDown} onChoose={chooseCatalogEntry} />
-									) : selected || desktopTabKeepsMounted(tab) ? renderPanel(tab, selected) : null}
+									<Fragment key={`${tab.id}:${refreshVersions[tab.id] ?? 0}`}>
+										{tab.target.kind === "new-tab" ? (
+											<DesktopNewTabCatalog ref={selected ? catalogRef : undefined} entries={entries} onKeyDown={onCatalogKeyDown} onChoose={chooseCatalogEntry} />
+										) : selected || desktopTabKeepsMounted(tab) ? renderPanel(tab, selected) : null}
+									</Fragment>
 								</section>
 							);
 						}) : (

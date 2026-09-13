@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-13T18:42:36Z"
+  at: "2026-09-13T20:37:47Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
@@ -43,9 +43,19 @@ Use existing worker thread `plugin-rebuild-implementation`, isolated Docker/work
 
 Parent review deployed `030ed92e` to Pibo2 and found a real-state gap that the single-tool fixture missed: legacy host-provided skills were incorrectly required to have an installed plugin owner, and unavailable saved skill references blocked all migration. The correction preserves host/harness skill delivery and unavailable references without claiming replacement ownership or enabling defaults. Genuine installed-owner ambiguity and name collisions remain blocking. The focused migration test now includes both a host skill and an unavailable saved reference; 24 tests pass in Docker. Remote confirmation at 2026-09-13T14:00Z: corrected candidate `112ca5446f052d0d89d1468fcfe59a24d63aaf2e`, package SHA-256 `d3407c2e0557c7ddf71d87345d52e0a149c396a06ded085d8d839711fd8da631`, is active on Pibo2. All three real profile previews are ready (14/14/17 tools preserved). `pibo-agent` migrated through the headful Designer UI to revision 2 with all 14 saved skill references retained; mobile plugin toggles are enabled, runtime sections and plugin cards start closed, expanded cards show categories. Desktop Plus catalog contains no tool-family settings modules. Mobile Settings → Plugins → Pibo File Editing configuration loads with an enabled editor and no alert. Other profiles retain an explicit review/apply path. The unavailable `maintain-okf-docs` reference remains visible as a warning. Screenshots: `/tmp/plugin-scopes-pibo2-desktop-modules.png`, `/tmp/plugin-scopes-pibo2-mobile-migrated-plugins.png`, `/tmp/plugin-scopes-pibo2-mobile-settings.png`. No fullsuite or new model runs were performed in this UI feedback round.
 
+# Active correction: Session-owned workspace UX (2026-09-13)
+
+The current focused task is the planned [PLG-UX-002 contract](/plans/unified-plugin-system-rebuild.md#plg-ux-002-session-erstellung-und-session-eigener-workspace-lifecycle), limited to three connected defects:
+
+1. replace Agent Designer’s document navigation with the existing optimistic App create/selection flow so both creation entrypoints activate the real Session and focus inline rename without a PWA reload;
+2. keep every real workspace panel mounted while inactive, add an accessible per-tab Refresh that first completes generic Leave-/Autosave-Guards and pending tabset saves, remounts only that panel on success, and preserves explicit Close as the cleanup boundary;
+3. move the live desktop tab list/order/active/layout from the global browser-v1 runtime store into the selected Session’s existing PluginStore tabset controller, including empty-new-Session behavior, stale/out-of-order response rejection, and lossless retention of dirty, conflicted or in-flight controllers when more than eight Sessions are visited. Controller retention does not retain departed Sessions’ browser hosts or React panels.
+
+Planned focused evidence is A43–A45: source/model/controller regressions, a failed-save-plus-nine-Session cache case, guarded mounted React Refresh/Close checks, targeted typechecks, and headful desktop/mobile Browser Use plus CDP navigation/console/network evidence. Headful A43 must exercise the actual Room Sessions-sidebar create action as well as Agent Designer. The completed Session database upgrade and browser-v1 import remain unchanged and are not reimplemented. No fullsuite, deployment, release, push or PR belongs to this correction.
+
 # Goal and completion
 
-Implement the [complete rebuild plan](/plans/unified-plugin-system-rebuild.md). All AP00–AP19 packages and A01–A42 scenarios remain subject to explicit evidence. Neither an implementation report nor passing unit tests alone closes the product-level acceptance gate.
+Implement the [complete rebuild plan](/plans/unified-plugin-system-rebuild.md). All AP00–AP19 packages and A01–A45 scenarios remain subject to explicit evidence. Neither an implementation report nor passing unit tests alone closes the product-level acceptance gate.
 
 The orchestrator owns integration, package order and final acceptance. The source baseline is `cac4dcd03945b9754db7be9ab2ab4324f10c335c`, equal to freshly fetched `upstream/dev` on 2026-09-12. The controller checkout has unrelated work and is not the implementation source.
 
@@ -94,7 +104,7 @@ Status values are `open`, `in progress`, `blocked` with a concrete cause, and `a
 | AP05 | in progress | Local/package install, hashing, SDK/integrity rejection, progressive CLI and operation recovery are green; installed-package test passed. |
 | AP06 | in progress | Pi/Codex/OMP adapter projections, portable delivery contracts, immutable generations and context evidence are green with fake/controlled providers; real-provider A06 remains AP19.3. |
 | AP07 | in progress | Authenticated revisioned browser catalog, same-origin immutable assets, ordinary module loader and rollback are green. |
-| AP08 | in progress | Session-owned tabset CAS, A→B→A/reload/restart, deep links, late-save isolation and recoverable before-leave guards are green; standard-flow headful evidence exists. |
+| AP08 | in progress | The persisted plugin-tab CAS foundation is green, but the visible desktop shell still has a global browser-v1 runtime state and removes most inactive panels. PLG-UX-002/A43–A45 now tracks the focused client-navigation, mounted-panel Refresh/Close lifecycle and shared Session-tabset correction before this package can be accepted. |
 | AP09 | in progress | Tool/input hooks, terminal envelope/fallback/replay and renderer-neutral parity are green; headful top/bottom scrolling and historical replay after reload are recorded. |
 | AP10 | in progress | Plugin Designer/API roundtrip, missing references, autosave, runtime switch, replacements and independent resources are green; headful failed-save/close preservation was exercised. |
 | AP11 | in progress | Ordinary installed Web Annotations tools/API/view/settings/context/terminal, activation failure, missing renderer, reinstall/data retention and two-session headful walkthrough are green; Pibo2 half of AP11.4 remains external. |
@@ -123,7 +133,7 @@ The owner explicitly requires existing tests to remain unchanged wherever possib
 
 # Acceptance register
 
-The [owning matrix](/plans/unified-plugin-system-rebuild.md#abnahmematrix) defines the exact scenarios. Local automated/headful evidence covers A01–A05, A07–A27 and A29–A42; controlled adapter fixtures are not mislabeled as real-provider evidence. A06 and the all-runtime real-model portion of A28 remain blocked on Pibo2; A28 also inherits that external same-candidate requirement. Evidence records name the uncommitted candidate, command, fixture/session identity and artifact path where available.
+The [owning matrix](/plans/unified-plugin-system-rebuild.md#abnahmematrix) defines the exact scenarios. Existing local automated/headful evidence covers A01–A05, A07–A27 and A29–A42 for the earlier candidate; controlled adapter fixtures are not mislabeled as real-provider evidence. A43–A45 are newly planned and have no implementation evidence yet. A06 and the all-runtime real-model portion of A28 remain blocked on Pibo2; A28 also inherits that external same-candidate requirement. Evidence records name the candidate, command, fixture/session identity and artifact path where available.
 
 Headful local evidence covers ordinary installed views, Web Annotations, plugin settings, Build Context, two differing session plans, A→B→A, reload/gateway restart, Agent Designer autosave through tab close, narrow-screen modal/focus behavior, Terminal scroll/replay, typed uninstall/placeholder/reinstall, an ordinary replacement shell and restoration of the standard shell.
 

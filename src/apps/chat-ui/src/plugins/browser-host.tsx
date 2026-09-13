@@ -14,6 +14,7 @@ export type PluginViewProps = {
 	updateState: (state: PluginJsonObject) => void;
 	request: <T>(path: string, init?: RequestInit) => Promise<T>;
 	openView: (viewId: PluginQualifiedId, subviewId?: string, state?: PluginJsonObject) => void;
+	createSession?: (profile: string) => Promise<void>;
 	registerBeforeLeave: (handler: () => Promise<void>) => () => void;
 };
 export type PluginRendererProps = { envelope: PluginArtifactEnvelope; piboSessionId: string; openView: PluginViewProps["openView"] };
