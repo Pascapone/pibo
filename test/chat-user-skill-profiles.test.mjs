@@ -5,10 +5,9 @@ import { join } from "node:path";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { handleChatUserSkillRoute, syncChatUserSkills } from "../dist/apps/chat/chat-user-skill-routes.js";
-import { PiboGatewayServer } from "../dist/gateway/server.js";
-import { createWebPiboPluginRegistry } from "../dist/gateway/web.js";
 import { createPiboProfileFromRegistryOrDefault } from "../dist/plugins/builtin.js";
 import { UserSkillManager } from "../dist/user-skills/manager.js";
+import { startTestWebPluginProduct } from "./helpers/web-plugin-product.mjs";
 
 function createSkill(manager, name, description = `${name} instructions`) {
 	return manager.create({
@@ -48,16 +47,15 @@ test("web gateway registers user skills before custom agent profiles are used", 
 
 	const warnings = [];
 	const originalWarn = console.warn;
+	let product;
 	let registry;
-	let server;
 	try {
 		console.warn = (...args) => warnings.push(args.join(" "));
-		registry = createWebPiboPluginRegistry({
+		product = await startTestWebPluginProduct({
 			authMode: "local",
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
-		server = new PiboGatewayServer({ pluginRegistry: registry, persistSession: false, port: 0, startChannels: false, agentStorePath });
-		await server.start();
+		registry = product.registry;
 		const profile = createPiboProfileFromRegistryOrDefault(registry, "unity-agent");
 		const profileSkillNames = profile.skills.map((skill) => skill.name);
 		const catalogSkillByName = new Map(registry.getCapabilityCatalog().skills.map((skill) => [skill.name, skill]));
@@ -70,9 +68,7 @@ test("web gateway registers user skills before custom agent profiles are used", 
 		assert.deepEqual(warnings, []);
 	} finally {
 		console.warn = originalWarn;
-		await server?.stop();
-		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
-		await registry?.disposePlugins();
+		await product?.dispose();
 		if (previousHome === undefined) delete process.env.PIBO_HOME;
 		else process.env.PIBO_HOME = previousHome;
 		await rm(dir, { recursive: true, force: true }).catch((error) => {
@@ -93,16 +89,15 @@ test("web gateway startup survives a malformed user skill store", async () => {
 	createSkill(new UserSkillManager(workspaceRoot, "workspace"), "workspace-helper");
 	const warnings = [];
 	const originalWarn = console.warn;
+	let product;
 	let registry;
-	let server;
 	try {
 		console.warn = (...args) => warnings.push(args.join(" "));
-		registry = createWebPiboPluginRegistry({
+		product = await startTestWebPluginProduct({
 			authMode: "local",
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
-		server = new PiboGatewayServer({ pluginRegistry: registry, persistSession: false, port: 0, startChannels: false, agentStorePath });
-		await server.start();
+		registry = product.registry;
 		assert.ok(registry.getProfileNames().includes("base"));
 		assert.ok(registry.getCapabilityCatalog().skills.some((skill) => skill.name === "workspace-helper"));
 		assert.equal(warnings.length, 1);
@@ -110,9 +105,7 @@ test("web gateway startup survives a malformed user skill store", async () => {
 		assert.match(warnings[0], /Unsupported user skills store/);
 	} finally {
 		console.warn = originalWarn;
-		await server?.stop();
-		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
-		await registry?.disposePlugins();
+		await product?.dispose();
 		if (previousHome === undefined) delete process.env.PIBO_HOME;
 		else process.env.PIBO_HOME = previousHome;
 		await rm(dir, { recursive: true, force: true }).catch((error) => {

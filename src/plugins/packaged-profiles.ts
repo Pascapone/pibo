@@ -14,4 +14,17 @@ export function setupBuiltinProfiles(context: PluginSetupContext): void {
 				.createSession();
 		},
 	});
+	context.register("gateway-producer", {
+		name: "pibo-gateway-producer",
+		aliases: ["gateway-producer"],
+		description: "Pibo profile that can send messages through the local gateway.",
+		create(profileContext: PiboProfileBuildContext) {
+			return new InitialSessionContextBuilder("pibo-gateway-producer")
+				.withBuiltinToolNames(["read", "bash", "edit", "write"])
+				.addSkill(profileContext.getSkill("pi-agent-harness"))
+				.addTools(profileContext.getTools(["pibo_gateway_send"]))
+				.withToolPackages({ goalControl: true })
+				.createSession();
+		},
+	});
 }

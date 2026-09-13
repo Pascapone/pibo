@@ -1,25 +1,11 @@
 export {
 	createDefaultPiboProfile,
-	createDefaultPiboPluginRegistry,
-	createDefaultPiboPlugins,
-	createGatewayProducerPiboPluginRegistry,
-	createGatewayProducerPiboProfile,
 	CODEX_NATIVE_PROFILE_NAME,
 	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
-	piboCodexNativePlugin,
 	OMP_PROFILE_NAME,
 	OMP_RUNTIME_INSTANCE_ID,
-	piboOmpPlugin,
-	piboCorePlugin,
-	piboGatewayProducerPlugin,
 } from "./plugins/builtin.js";
-export { createPiboBetterAuthPlugin } from "./plugins/better-auth.js";
-export { createPiboChatWebPlugin } from "./plugins/chat-web.js";
-export { createPiboOpenAiChatGptTranscriptionPlugin, piboOpenAiChatGptTranscriptionPlugin } from "./plugins/openai-chatgpt-transcription.js";
-export { createPiboOpenAiTranscriptionPlugin, piboOpenAiTranscriptionPlugin } from "./plugins/openai-transcription.js";
-export { createPiboContextFilesPlugin } from "./plugins/context-files.js";
 export type { ContextFilesPluginOptions } from "./plugins/context-files.js";
-export { createPiboWebHostPlugin } from "./plugins/web.js";
 export { createChatWebApp } from "./apps/chat/web-app.js";
 export type { ChatWebAppOptions } from "./apps/chat/web-app.js";
 export { createBetterAuthService } from "./auth/better-auth.js";
@@ -248,8 +234,6 @@ export type {
 	PiboPortableToolSessionControllers,
 	PiboToolMcpAccess,
 } from "./tools/session-service.js";
-export { definePiboPlugin, PiboPluginRegistry } from "./plugins/registry.js";
-export type { PiboPluginRegistryOptions } from "./plugins/registry.js";
 export type {
 	PiboChannel,
 	PiboChannelAuth,
@@ -315,7 +299,7 @@ export type {
 	StoredPiboJob,
 } from "./reliability/store.js";
 export { PiboGatewayServer, runGatewayServer } from "./gateway/server.js";
-export { createWebPiboPluginRegistry, resolveWebGatewayServerOptions, runWebGatewayServer } from "./gateway/web.js";
+export { resolveWebGatewayServerOptions, runWebGatewayServer } from "./gateway/web.js";
 export type { WebGatewayServerOptions } from "./gateway/web.js";
 export { runGatewayClient } from "./gateway/client.js";
 export { createWebHostChannel, DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, WEB_CHANNEL_NAME } from "./web/channel.js";
@@ -398,7 +382,6 @@ export {
 	RuntimeSessionBindingTransitionError,
 	assertRuntimeSessionBindingTransition,
 	createInitialRuntimeSessionBinding,
-	createLegacyPiRuntimeSessionBinding,
 	nextRuntimeSessionBinding,
 } from "./sessions/runtime-binding.js";
 export type {

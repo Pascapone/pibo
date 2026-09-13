@@ -6,7 +6,7 @@ import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 

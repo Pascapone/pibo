@@ -53,6 +53,7 @@ export async function startPluginProductRuntime(options: {
 	productOptions?: PiboPluginProductOptions;
 	installDefaultPlugins?: boolean;
 	includeWebProduct?: boolean;
+	includeUserResources?: boolean;
 }) {
 	const ownsData = options.data === undefined;
 	const data = options.data ?? new PiboDataStore();
@@ -109,7 +110,7 @@ export async function startPluginProductRuntime(options: {
 		if (initialState.state === "idle") await host.start({ plugins: definitions });
 		else await host.add({ plugins: definitions });
 		for (const definition of definitions) ownedPluginIds.add(definition.installation.pluginId);
-		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot, { includeWebProduct: options.includeWebProduct });
+		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot, { includeWebProduct: options.includeWebProduct, includeUserResources: options.includeUserResources });
 	} catch (error) {
 		const cleanupErrors: unknown[] = [];
 		if (initialState.state === "idle") {

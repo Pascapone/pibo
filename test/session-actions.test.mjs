@@ -11,7 +11,7 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 
 function userMessage(text) {

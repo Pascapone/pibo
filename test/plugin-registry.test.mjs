@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { createDefaultPiboPluginRegistry, createGatewayProducerPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { createDefaultPiboPluginRegistry, createGatewayProducerPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import { findCliToolEntry, listInstalledCliToolAgentContexts } from "../dist/tools/registry.js";

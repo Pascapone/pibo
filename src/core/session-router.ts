@@ -651,7 +651,6 @@ export class PiboSessionRouter {
 	private readonly baseProfile: InitialSessionContext;
 	private readonly pluginRegistry: PiboPluginRegistry;
 	private readonly pluginGenerations = new Map<string, PluginRuntimeGeneration>();
-	private readonly compatibilityRuntimeRegistry?: PiboPluginRegistry;
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
 	private readonly telemetryStore?: TelemetryStore;
@@ -663,9 +662,6 @@ export class PiboSessionRouter {
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.capacity = new RuntimeCapacity(options.runtimeCapacity);
 		this.pluginRegistry = options.pluginRegistry ?? PiboPluginRegistry.create(options.pluginRuntime ? { host: options.pluginRuntime.options.host } : {});
-		// Historical custom registries supplied only actions/profiles while runtime creation was implicit.
-		// Preserve that composition contract during the adapter migration without branching on adapter ids.
-		this.compatibilityRuntimeRegistry = undefined;
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.outputRenderSequencer = new OutputRenderSequencer({
 			highWaterStore: outputRenderHighWaterStore(this.sessionStore),
@@ -1538,13 +1534,8 @@ export class PiboSessionRouter {
 			];
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
 		} finally {
-			const authDisposals = await Promise.allSettled([
-				this.pluginRegistry.disposeAgentRuntimeAuth(),
-				...(this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry.disposeAgentRuntimeAuth()] : []),
-			]);
-			const ownedPluginRegistries = this.options.pluginRegistry === undefined
-				? [this.pluginRegistry]
-				: this.compatibilityRuntimeRegistry ? [this.compatibilityRuntimeRegistry] : [];
+			const authDisposals = await Promise.allSettled([this.pluginRegistry.disposeAgentRuntimeAuth()]);
+			const ownedPluginRegistries = this.options.pluginRegistry === undefined ? [this.pluginRegistry] : [];
 			const webAppDisposals = await Promise.allSettled(
 				ownedPluginRegistries.flatMap((registry) => registry.getWebApps().map((app) => app.dispose?.())),
 			);
@@ -2019,7 +2010,6 @@ export class PiboSessionRouter {
 
 	private resolveAgentRuntimeRegistry(instanceId: string): PiboPluginRegistry {
 		if (this.pluginRegistry.getAgentRuntimeAdapter(instanceId)) return this.pluginRegistry;
-		if (this.compatibilityRuntimeRegistry?.getAgentRuntimeAdapter(instanceId)) return this.compatibilityRuntimeRegistry;
 		throw new Error(`Unknown agent runtime instance "${instanceId}".`);
 	}
 

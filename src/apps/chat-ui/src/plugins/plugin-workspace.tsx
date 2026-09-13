@@ -4,6 +4,7 @@ import { pluginViewPresentation, type EffectivePluginPlan, type PluginBrowserCat
 import { BrowserPluginContext, BrowserPluginHost, PluginErrorBoundary, sessionPluginRequest, type PluginViewProps } from "./browser-host";
 import { availablePluginViews, closePluginTab, openPluginTab, parsePluginTabDeepLink, pluginRequest, pluginTabDeepLink, SessionTabController, updatePluginTab } from "./session-tab-controller";
 import { PluginManagement } from "./plugin-management";
+import { migrateBrowserV1TabsOnce, readBrowserV1UpgradeReport } from "./browser-v1-upgrade";
 
 type Workspace = { controller: SessionTabController; host: BrowserPluginHost | null; plan: EffectivePluginPlan | null; catalog: PluginBrowserCatalog | null; agentId?: string; roomId?: string; error: string | null; openView: PluginViewProps["openView"]; refresh: () => void; activateTab: (instanceId: string) => Promise<boolean>; closeTab: (instanceId: string) => Promise<boolean>; registerBeforeLeave: (instanceId: string, handler: () => Promise<void>) => () => void };
 const WorkspaceContext = createContext<Workspace | null>(null);
@@ -22,7 +23,11 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 	const [, guardsChanged] = useReducer((value) => value + 1, 0);
 	const leaveGuards = useRef(new Map<string, () => Promise<void>>());
 	const linkHandled = useRef(false);
-	useEffect(() => { const unsubscribe = controller.subscribe(rerender); void controller.load(); return () => { unsubscribe(); void controller.flush(); }; }, [controller]);
+	useEffect(() => {
+		const unsubscribe = controller.subscribe(rerender);
+		void migrateBrowserV1TabsOnce().catch((error) => setError(`Automatic browser v1 migration failed before tab loading: ${String(error)}`)).finally(() => controller.load());
+		return () => { unsubscribe(); void controller.flush(); };
+	}, [controller]);
 	useEffect(() => {
 		const abort = new AbortController(); let next: BrowserPluginHost | undefined; setError(null);
 		void Promise.all([
@@ -173,6 +178,7 @@ export function PluginWorkspaceTabs({ hidden = false, narrow = false }: { hidden
 	const [catalogOpen, setCatalogOpen] = useState(false); const [recovery, setRecovery] = useState(false); const [management, setManagement] = useState(false);
 	const [localCopy, setLocalCopy] = useState<string | null>(null);
 	const tabButtons = useRef(new Map<string, HTMLButtonElement>());
+	const migration = readBrowserV1UpgradeReport();
 	if (hidden) return null;
 	if (!workspace) return <aside className="p-3 text-xs text-slate-400">Select or create a session to open plugin tabs.</aside>;
 	const { controller, host, plan, catalog } = workspace;
@@ -186,7 +192,7 @@ export function PluginWorkspaceTabs({ hidden = false, narrow = false }: { hidden
 			<button className="px-2 py-1 text-slate-400" onClick={() => setRecovery(!recovery)}>Recovery</button><button className="px-2 py-1 text-slate-400" onClick={() => setManagement(!management)}>Manage plugins</button>
 			<span className="text-[10px] text-slate-500 font-mono truncate" title={controller.piboSessionId}>{controller.piboSessionId}</span>
 		</header>
-		{recovery ? <section className="p-3 border-b border-slate-700 text-xs space-y-2" data-plugin-recovery><p>Recovery is independent of plugin renderers. No runtime is started.</p><button className="text-cyan-300" onClick={workspace.refresh}>Reload catalog and modules</button><a className="block text-cyan-300" target="_blank" rel="noreferrer" href={`/api/chat/sessions/${encodeURIComponent(controller.piboSessionId)}/plugin-recovery`}>Read session recovery report</a><button onClick={() => setLocalCopy(JSON.stringify(state, null, 2))}>Export retained tab state</button><p>Unbound v1 tabs are not attached automatically. Import requires selecting a session and resolving each old view.</p><LegacyTabImport workspace={workspace} /></section> : null}
+		{recovery ? <section className="p-3 border-b border-slate-700 text-xs space-y-2" data-plugin-recovery><p>Recovery is independent of plugin renderers. No runtime is started.</p><button className="text-cyan-300" onClick={workspace.refresh}>Reload catalog and modules</button><a className="block text-cyan-300" target="_blank" rel="noreferrer" href={`/api/chat/sessions/${encodeURIComponent(controller.piboSessionId)}/plugin-recovery`}>Read session recovery report</a><button onClick={() => setLocalCopy(JSON.stringify(state, null, 2))}>Export retained tab state</button>{migration ? <p>Automatic v1 upgrade: {migration.migratedSessions.length} session(s) imported, {migration.unresolved.length} tab(s) need explicit ownership or mapping, {migration.blocked.length} session conflict(s). The original browser source remains retained.</p> : null}<p>Unbound v1 tabs are not attached automatically. Import requires selecting a session and resolving each old view.</p><LegacyTabImport workspace={workspace} /></section> : null}
 		{management ? <PluginManagement onChanged={workspace.refresh} /> : null}
 		{localCopy ? <textarea aria-label="Retained tabset export" readOnly value={localCopy} className="m-2 min-h-32 bg-[#0e1116] font-mono text-xs" /> : null}
 		{workspace.error || controller.error ? <div role="alert" className="p-3 text-xs text-orange-300">{workspace.error ?? controller.error?.message}{controller.conflict ? <><p>Another browser saved this session. Your local state has been retained, not overwritten.</p><button className="underline mr-2" onClick={() => setLocalCopy(JSON.stringify(state, null, 2))}>Export local edits</button><button className="underline" onClick={() => { setLocalCopy(JSON.stringify(state, null, 2)); void controller.load(); }}>Keep local copy and load server version</button></> : <button className="underline ml-2" onClick={() => { void controller.flush(); workspace.refresh(); }}>Retry</button>}</div> : null}

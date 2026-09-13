@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 

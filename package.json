@@ -25,6 +25,10 @@
       "types": "./dist/plugins/packaged-web-product.d.ts",
       "import": "./dist/plugins/packaged-web-product.js"
     },
+    "./plugin-builtin/user-resources": {
+      "types": "./dist/plugins/packaged-user-resources.d.ts",
+      "import": "./dist/plugins/packaged-user-resources.js"
+    },
     "./plugin-builtin/transcription": {
       "types": "./dist/plugins/packaged-transcription.d.ts",
       "import": "./dist/plugins/packaged-transcription.js"

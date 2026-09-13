@@ -1,11 +1,13 @@
 import { startPluginProductRuntime } from "../plugins/product-runtime.js";
 import { createPluginConsumerCollector, pluginImpact, type PluginConsumer, type PluginConsumerCollector } from "../plugins/operations.js";
-import { PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PiboPluginProductOptions, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
+import { catalogPluginServices, PIBO_USER_RESOURCES_SERVICE, PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PiboPluginProductOptions, type PiboUserResourcesService, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
 import { CustomAgentStore, createDefaultCustomAgentStore, migrateLegacyAgentsAtStartup, profileConsumerCollector } from "../apps/chat/agent-store.js";
 import { createCustomAgentProfileDefinition } from "../apps/chat/agent-profiles.js";
 import { PiboDataStore } from "../data/pibo-store.js";
+import { migrateLegacySessionDatabaseAtStartup } from "../data/legacy-session-upgrade.js";
 import { PiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import { randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import type { PiboOutputEvent } from "../core/events.js";
@@ -55,6 +57,7 @@ export type GatewayServerOptions = {
 	loopStorePath?: string;
 	pluginProductOptions?: PiboPluginProductOptions;
 	includeWebProduct?: boolean;
+	includeUserResources?: boolean;
 };
 
 type GatewayQueuedFrame = {
@@ -237,9 +240,13 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 		return new SqlitePiboSessionStore(options.sessionDbPath);
 	}
 	if (options.persistSession === false) return new InMemoryPiboSessionStore();
-	if (options.dataStorePath) return new PiboDataSessionStore(options.dataStorePath);
-	const { createDefaultPiboDataSessionStore } = await import("../sessions/pibo-data-store.js");
-	return createDefaultPiboDataSessionStore();
+	const targetPath = options.dataStorePath ?? piboHomePath("pibo.sqlite");
+	const sourcePath = join(dirname(targetPath), "pibo-sessions.sqlite");
+	const migration = await migrateLegacySessionDatabaseAtStartup({ sourcePath, targetPath });
+	for (const blocked of migration.blocked) {
+		console.error(`[pibo] Automatic Pibo 4.0 session migration blocked for ${blocked.piboSessionId}: ${blocked.diagnostic}. ${blocked.repair}`);
+	}
+	return new PiboDataSessionStore(targetPath);
 }
 
 function registeredProfileConsumers(registry: PiboPluginRegistry, pluginId: string): PluginConsumer[] {
@@ -323,8 +330,15 @@ export class PiboGatewayServer {
 			host,
 			data: this.pluginData,
 			artifactRoot: this.options.pluginArtifactRoot,
-			productOptions: { loopStorePath: this.options.loopStorePath, dataStorePath: this.options.dataStorePath, dataPayloadRootDir: this.options.dataPayloadRootDir, ...this.options.pluginProductOptions },
+			productOptions: {
+				...this.options.pluginProductOptions,
+				loopStorePath: this.options.loopStorePath,
+				dataStorePath: this.options.dataStorePath,
+				dataPayloadRootDir: this.options.dataPayloadRootDir,
+				userResources: { contextFilesMode: "catalog", customAgents: { agentStorePath: this.options.agentStorePath }, ...this.options.pluginProductOptions?.userResources },
+			},
 			includeWebProduct: this.options.includeWebProduct,
+			includeUserResources: this.options.includeUserResources ?? true,
 			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
 			readSessionPlan: (piboSessionId, kind) => {
 				if (!this.router) throw new Error("Plugin session plan service is not ready");
@@ -333,6 +347,7 @@ export class PiboGatewayServer {
 		});
 		const installations = this.pluginData.plugins.listInstallations();
 		const capabilityCatalog = this.pluginRegistry.getCapabilityCatalog();
+		const serviceState = catalogPluginServices(host, installations);
 		const migrationResults = await migrateLegacyAgentsAtStartup({
 			agents: this.pluginAgentStore,
 			plugins: this.pluginData.plugins,
@@ -343,16 +358,18 @@ export class PiboGatewayServer {
 				contextFiles: capabilityCatalog.contextFiles,
 			},
 			backupRoot: piboHomePath("plugins", "migration-backups", "pibo-4", "agents"),
+			...serviceState,
 			resolveRuntime: (instanceId) => {
 				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(instanceId);
 				if (!adapter?.enabled) throw new Error(`Stored agent runtime instance "${instanceId}" is unavailable during Pibo 4.0 migration`);
 				return { adapterId: adapter.descriptor.id, instanceId: adapter.instanceId, capabilities: adapter.descriptor.capabilities as unknown as import("../plugins/manifest.js").PluginJsonObject };
 			},
 		});
+		const userResources = host.services.require<PiboUserResourcesService>(PIBO_USER_RESOURCES_SERVICE);
 		for (const result of migrationResults) {
 			const migrated = this.pluginAgentStore.get(result.agentId);
-			if (migrated) this.pluginRegistry.upsertProfile(createCustomAgentProfileDefinition(migrated));
-			if (result.status === "blocked") console.error(`[pibo] Pibo 4.0 migration blocked for ${result.profileName}; source is backed up and runtime admission remains disabled`);
+			if (migrated && !migrated.archivedAt) userResources.upsertProfile(createCustomAgentProfileDefinition(migrated));
+			if (result.status === "blocked") console.error(`[pibo] Pibo 4.0 migration blocked for ${result.profileName}; source is backed up and runtime admission remains disabled${result.diagnostic ? ` (${result.diagnostic})` : ""}`);
 		}
 		this.router = new PiboSessionRouter({
 			pluginRuntime: this.pluginProduct.runtime,
@@ -680,17 +697,21 @@ export class PiboGatewayServer {
 			getLoopStopConditionInfos: () => this.pluginRegistry.getLoopStopConditionInfos(),
 			getRalphStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),
 			getRalphStopConditionInfos: () => this.pluginRegistry.getLoopStopConditionInfos(),
-			upsertProfile: (profile) => this.pluginRegistry.upsertProfile(profile),
-			removeProfile: (name) => this.pluginRegistry.removeProfile(name),
-			upsertContextFile: (contextFile) => this.pluginRegistry.upsertContextFile(contextFile),
-			removeContextFile: (key) => this.pluginRegistry.removeContextFile(key),
-			registerSkill: (skill) => this.pluginRegistry.registerSkill(skill),
-			unregisterSkill: (name) => this.pluginRegistry.unregisterSkill(name),
+			upsertProfile: (profile) => this.requireUserResources().upsertProfile(profile),
+			removeProfile: (name) => this.requireUserResources().removeProfile(name),
+			upsertContextFile: (contextFile) => this.requireUserResources().upsertContextFile(contextFile),
+			removeContextFile: (key) => this.requireUserResources().removeContextFile(key),
+			registerSkill: (skill) => this.requireUserResources().upsertSkill(skill),
+			unregisterSkill: (name) => this.requireUserResources().removeSkill(name),
 			emitProductEvent: (event) => this.pluginRegistry.emitProductEvent(event),
 			subscribeProductEvents: (listener) => this.pluginRegistry.onProductEvent(listener),
 			auth: this.pluginRegistry.getAuthService(),
 			getWebApps: () => this.pluginRegistry.getWebApps(),
 		};
+	}
+
+	private requireUserResources(): PiboUserResourcesService {
+		return this.pluginRegistry.getPluginHost().services.require<PiboUserResourcesService>(PIBO_USER_RESOURCES_SERVICE);
 	}
 
 	private requireRouter(): PiboSessionRouter {

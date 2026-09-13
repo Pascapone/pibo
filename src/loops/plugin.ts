@@ -1,7 +1,4 @@
 import type { PiboExecutionEvent, PiboJsonObject } from '../core/events.js';
-import { definePiboPlugin } from '../plugins/registry.js';
-import { createPiboLoopChannel, PiboLoopServiceController, type PiboLoopChannelOptions } from './channel.js';
-import { createBuiltInLoopStopConditions } from './stopping.js';
 
 export type PiboSessionGoalCommand =
 	| { operation: 'set'; objective: string }
@@ -21,28 +18,4 @@ export function parsePiboSessionGoalCommand(event: PiboExecutionEvent): PiboSess
 	if (normalized.toLowerCase() === 'resume') return { operation: 'resume' };
 	if (normalized.length > 20_000) throw new Error('Goal objective is too long');
 	return { operation: 'set', objective: normalized };
-}
-
-export function createPiboLoopPlugin(options: PiboLoopChannelOptions = {}) {
-	const controller = new PiboLoopServiceController(options);
-	return definePiboPlugin({
-		id: 'pibo.loop',
-		name: 'Pibo Loop',
-		register(api) {
-			for (const condition of createBuiltInLoopStopConditions()) api.registerLoopStopCondition(condition);
-			api.registerGatewayAction({
-				name: 'goal',
-				description: 'Create or update the session Goal Loop. Use /goal pause or /goal resume to control it.',
-				slashCommands: ['goal'],
-				execute(context, event) {
-					const service = controller.require();
-					const command = parsePiboSessionGoalCommand(event);
-					if (command.operation === 'pause') return service.pauseSessionGoal(context.piboSessionId);
-					if (command.operation === 'resume') return service.resumeSessionGoal(context.piboSessionId);
-					return service.setSessionGoal(context.piboSessionId, command.objective);
-				},
-			});
-			api.registerChannel(createPiboLoopChannel(options, controller));
-		},
-	});
 }

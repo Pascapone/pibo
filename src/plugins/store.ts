@@ -274,6 +274,12 @@ export class PluginStore {
 	getJournal<T extends PluginJournalRecord>(id: string): T | undefined {
 		return decode(this.db.prepare("SELECT record_json FROM plugin_migration_journal WHERE id=?").get(id));
 	}
+	listJournals<T extends PluginJournalRecord = PluginJournalRecord>(prefix?: string): T[] {
+		const rows = prefix
+			? this.db.prepare("SELECT record_json FROM plugin_migration_journal WHERE id LIKE ? ORDER BY rowid").all(`${prefix}%`)
+			: this.db.prepare("SELECT record_json FROM plugin_migration_journal ORDER BY rowid").all();
+		return rows.map((row) => decode<T>(row)!);
+	}
 	putJournal<T extends PluginJournalRecord>(input: T, expectedRevision: number): T {
 		revision(expectedRevision);
 		return this.transaction(() => {

@@ -4,7 +4,7 @@ import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
 import type { PiboEventSource, PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { createBuiltinRuntimeAdapter } from "../plugins/packaged-runtime-adapters.js";
 import type { RuntimeSessionBinding } from "../sessions/runtime-binding.js";
 import { PiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
@@ -291,7 +291,7 @@ export async function readOutputRepairAdapterEvidence(input: {
 		if (!session) return { available: false, entries: [] };
 		const binding = readRuntimeBinding(db, input.piboSessionId, session);
 		if (!binding) return { available: false, entries: [] };
-		const adapter = createDefaultPiboPluginRegistry().getAgentRuntimeAdapter(binding.runtimeInstanceId);
+		const adapter = createBuiltinRuntimeAdapter(binding.runtimeInstanceId);
 		if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
 			return { available: false, entries: [] };
 		}

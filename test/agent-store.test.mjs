@@ -7,7 +7,7 @@ import test from "node:test";
 import { createCustomAgentProfileDefinition } from "../dist/apps/chat/agent-profiles.js";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { normalizeAgentSubagents } from "../dist/apps/chat/chat-request-normalizers.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { createDefaultPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;

@@ -14,7 +14,7 @@ import { PiboGatewayServer } from "../dist/gateway/server.js";
 import { PiboLoopService } from "../dist/loops/service.js";
 import { createLoopMessagePreflight, PiboLoopStore } from "../dist/loops/store.js";
 import { createPiboGoalToolDefinitions } from "../dist/loops/tools.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 
 function toolsByName(store, getActiveMessage) {

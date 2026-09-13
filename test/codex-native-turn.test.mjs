@@ -9,7 +9,7 @@ import { exerciseAgentRuntimeAdapterContract } from "../dist/agent-runtime/testi
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import {

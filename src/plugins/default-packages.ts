@@ -6,12 +6,13 @@ import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 import type { PluginContribution, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
-import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
+import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PIBO_USER_RESOURCES_SERVICE } from "./product-services.js";
 
 export const CORE_PLUGIN_ID = "pibo.core";
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
 export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
 export const WEB_PRODUCT_PLUGIN_ID = "pibo.web-product";
+export const USER_RESOURCES_PLUGIN_ID = "pibo.user-resources";
 export const WEB_ANNOTATIONS_PLUGIN_ID = "pibo.web-annotations";
 export const CODE_RUNTIME_PLUGIN_ID = "pibo.code-runtime";
 export const FILE_EDITING_PLUGIN_ID = "pibo.file-editing";
@@ -78,6 +79,24 @@ export function webProductPackageManifest(): PluginManifest {
 			{ id: "cron-channel", kind: "channel", name: "cron", title: "Cron channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
 			{ id: "preview-app", kind: "web-app", name: "session-live-previews", title: "Session live previews", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
 			{ id: "chat-app", kind: "web-app", name: "chat", title: "Chat", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+		],
+	};
+}
+
+export function userResourcesPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: USER_RESOURCES_PLUGIN_ID,
+		name: "Pibo User Resources",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs" },
+		services: { provides: [{ id: PIBO_USER_RESOURCES_SERVICE, version: "1.0.0" }], requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
+		contributions: [
+			systemContribution("skill-provider", "resource-provider", "user-skills"),
+			systemContribution("context-file-provider", "resource-provider", "user-context-files"),
+			systemContribution("profile-provider", "resource-provider", "custom-agent-profiles"),
+			{ ...systemContribution("context-files-web-app", "web-app", "context-files"), required: false },
 		],
 	};
 }
@@ -319,7 +338,10 @@ function runtimeAdapterManifest(id: string, name: string, contributions: PluginC
 export const piRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(PI_RUNTIME_PLUGIN_ID, "Pibo Pi Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "pi"), systemContribution("instance", "agent-runtime-instance", "pi")]);
 export const codexNativeRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(CODEX_NATIVE_RUNTIME_PLUGIN_ID, "Pibo Native Codex Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "codex-native"), systemContribution("instance", "agent-runtime-instance", "codex-native"), systemContribution("speech", "speech-provider", "openai-codex"), systemContribution("profile", "profile", "codex-native")]);
 export const ompRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(OMP_RUNTIME_PLUGIN_ID, "Pibo OMP Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "omp"), systemContribution("instance", "agent-runtime-instance", "omp-native"), systemContribution("profile", "profile", "orp")]);
-export const builtinProfilesPackageManifest = (): PluginManifest => runtimeAdapterManifest(BUILTIN_PROFILES_PLUGIN_ID, "Pibo Built-in Profiles", [systemContribution("base", "profile", "base")]);
+export const builtinProfilesPackageManifest = (): PluginManifest => runtimeAdapterManifest(BUILTIN_PROFILES_PLUGIN_ID, "Pibo Built-in Profiles", [
+	systemContribution("base", "profile", "base"),
+	systemContribution("gateway-producer", "profile", "pibo-gateway-producer"),
+]);
 function productView(id: string, title: string, exportName: string, subviews?: NonNullable<NonNullable<PluginContribution["view"]>["subviews"]>): PluginContribution {
 	return {
 		id,
@@ -391,13 +413,15 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "core" | "web-product" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
+	backendModule: "core" | "user-resources" | "web-product" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
 	webOnly?: boolean;
+	userResourcesOnly?: boolean;
 	browserExports?: string;
 };
 
 const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: corePackageManifest, backendExport: "setupCore", backendModule: "core" },
+	{ manifest: userResourcesPackageManifest, backendExport: "setupUserResources", backendModule: "user-resources", userResourcesOnly: true },
 	{ manifest: webProductPackageManifest, backendExport: "setupWebProduct", backendModule: "web-product", webOnly: true },
 	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription" },
 	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription" },
@@ -433,9 +457,9 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 }
 
 /** Seed missing defaults and upgrade only active Pibo-managed defaults. Explicit disable/uninstall remains authoritative. */
-export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean } = {}): Promise<void> {
+export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean; includeUserResources?: boolean } = {}): Promise<void> {
 	for (const descriptor of DEFAULT_PACKAGES) {
-		if (descriptor.webOnly && !options.includeWebProduct) continue;
+		if (descriptor.webOnly && !options.includeWebProduct || descriptor.userResourcesOnly && !options.includeUserResources) continue;
 		const expected = descriptor.manifest();
 		const existing = manager.store.getInstallation(expected.id);
 		const defaultSourceRoot = resolve(artifactRoot, "default-sources", expected.id);

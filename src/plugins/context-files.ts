@@ -7,12 +7,9 @@ import type { ContextFileProfile, ContextFileScope, ContextFileSource } from "..
 import type { PiboJsonObject } from "../core/events.js";
 import { readFallbackPidFile, readPidFile } from "../gateway/pidfile.js";
 import { PiboWebHttpError, readJsonBody, responseHtml, responseJson } from "../web/http.js";
-import type { PiboWebAppContext, PiboWebSession } from "../web/types.js";
-import { definePiboPlugin } from "./registry.js";
+import type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import type {
 	PiboCapabilityCatalog,
-	PiboPlugin,
-	PiboPluginApi,
 	PiboProductEvent,
 } from "./types.js";
 import {
@@ -458,7 +455,7 @@ class ContextFileService {
 
 	constructor(
 		private readonly paths: ResolvedContextFilesPaths,
-		private readonly api: Pick<PiboPluginApi, "upsertContextFile" | "removeContextFile">,
+		private readonly api: PiboContextFileContributionSink,
 	) {
 		this.store = new ContextFileMetadataStore(paths.metadataPath, paths.legacyStorePath);
 		for (const file of this.store.listFiles()) {
@@ -1198,63 +1195,53 @@ function createContextFilesWebApp(service: ContextFileService) {
 	};
 }
 
-export function createPiboContextFilesCatalogPlugin(options: ContextFilesPluginOptions = {}): PiboPlugin {
-	const paths = resolveContextFilesPaths(options);
-	return definePiboPlugin({
-		id: "pibo.context-files-catalog",
-		name: "Pibo Context Files Catalog",
-		register(api) {
-			const registeredPaths = new Set<string>();
-			const registeredKeys = new Set<string>();
-			try {
-				for (const file of readContextFileCatalog(paths.metadataPath)) {
-					api.upsertContextFile(profileForManaged(file));
-					registeredPaths.add(resolve(file.managedPath));
-					registeredKeys.add(file.key);
-				}
-			} catch (error) {
-				console.warn(`[pibo] Skipping managed context-file catalog registration: ${error instanceof Error ? error.message : String(error)}`);
-			}
+export type PiboContextFileContributionSink = {
+	upsertContextFile(file: ContextFileProfile): void;
+	removeContextFile(key: string): void;
+};
 
-			let entries: Array<{ name: string; isFile(): boolean }> = [];
-			try {
-				entries = readdirSync(paths.globalDir, { withFileTypes: true });
-			} catch (error) {
-				const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
-				if (code !== "ENOENT") {
-					console.warn(`[pibo] Skipping global context-file discovery: ${error instanceof Error ? error.message : String(error)}`);
-				}
-			}
-			const usedKeys = new Set(registeredKeys);
-			for (const entry of entries) {
-				if (!entry.isFile()) continue;
-				const extension = extname(entry.name).toLowerCase();
-				if (extension !== ".md" && extension !== ".markdown") continue;
-				const path = resolve(paths.globalDir, entry.name);
-				if (registeredPaths.has(path)) continue;
-				const key = uniqueKey(`ctx:${slugSegment(entry.name.slice(0, -extension.length) || entry.name)}`, usedKeys);
-				usedKeys.add(key);
-				api.upsertContextFile({
-					key,
-					label: labelFromManagedPath(entry.name),
-					path,
-					source: "managed",
-					scope: "global",
-				});
-			}
-		},
-	});
+export function definePiboContextFileCatalogContributions(
+	sink: PiboContextFileContributionSink,
+	options: ContextFilesPluginOptions = {},
+): void {
+	const paths = resolveContextFilesPaths(options);
+	const registeredPaths = new Set<string>();
+	const registeredKeys = new Set<string>();
+	try {
+		for (const file of readContextFileCatalog(paths.metadataPath)) {
+			sink.upsertContextFile(profileForManaged(file));
+			registeredPaths.add(resolve(file.managedPath));
+			registeredKeys.add(file.key);
+		}
+	} catch (error) {
+		console.warn(`[pibo] Skipping managed context-file catalog registration: ${error instanceof Error ? error.message : String(error)}`);
+	}
+
+	let entries: Array<{ name: string; isFile(): boolean }> = [];
+	try {
+		entries = readdirSync(paths.globalDir, { withFileTypes: true });
+	} catch (error) {
+		const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
+		if (code !== "ENOENT") console.warn(`[pibo] Skipping global context-file discovery: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	const usedKeys = new Set(registeredKeys);
+	for (const entry of entries) {
+		if (!entry.isFile()) continue;
+		const extension = extname(entry.name).toLowerCase();
+		if (extension !== ".md" && extension !== ".markdown") continue;
+		const path = resolve(paths.globalDir, entry.name);
+		if (registeredPaths.has(path)) continue;
+		const key = uniqueKey(`ctx:${slugSegment(entry.name.slice(0, -extension.length) || entry.name)}`, usedKeys);
+		usedKeys.add(key);
+		sink.upsertContextFile({ key, label: labelFromManagedPath(entry.name), path, source: "managed", scope: "global" });
+	}
 }
 
-export function createPiboContextFilesPlugin(options: ContextFilesPluginOptions = {}): PiboPlugin {
+export function createPiboContextFilesWebAppContribution(
+	sink: PiboContextFileContributionSink,
+	options: ContextFilesPluginOptions = {},
+): PiboWebApp {
 	const paths = resolveContextFilesPaths(options);
-	return definePiboPlugin({
-		id: "pibo.context-files",
-		name: "Pibo Context Files",
-		register(api) {
-			assertContextFilesStorageOwnership(paths);
-			const service = new ContextFileService(paths, api);
-			api.registerWebApp(createContextFilesWebApp(service));
-		},
-	});
+	assertContextFilesStorageOwnership(paths);
+	return createContextFilesWebApp(new ContextFileService(paths, sink));
 }

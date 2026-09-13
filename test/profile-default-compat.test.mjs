@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import {
-	createDefaultPiboPluginRegistry,
 	createPiboProfileFromRegistryOrDefault,
 	resolvePiboProfileNameFromRegistryOrDefault,
 } from "../dist/plugins/builtin.js";
+import { createDefaultPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
 
 test("legacy default profile requests resolve to the current default profile", () => {
 	const registry = createDefaultPiboPluginRegistry();

@@ -14,8 +14,8 @@ import {
 	PiboPluginRegistry,
 	PiboSessionRouter,
 	InMemoryPiboSessionStore,
-	piboCorePlugin,
 } from "../dist/index.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PI_AGENT_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/pi/adapter.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";

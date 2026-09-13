@@ -30,6 +30,7 @@ test('management routes require same-origin mutation and fixed session access/CA
     return handlePluginManagementRoute({ route, request: new Request('http://localhost' + path, { method, ...(body ? { body: JSON.stringify(body), headers: { 'content-type': 'application/json' } } : {}) }), manager: f.manager, store: f.store, assertSessionAccess: (id) => { seen.push(id); if (id === 'ps_forbidden') throw new Error('forbidden session'); } });
   };
   const path = '/api/chat/sessions/ps_a/plugin-tabs'; assert.equal(pluginManagementRouteRequiresSameOrigin(pluginManagementRoute(path, 'PUT')), true); assert.equal(pluginManagementRouteRequiresSameOrigin(pluginManagementRoute(path, 'GET')), false);
+  const browserUpgrade = pluginManagementRoute('/api/chat/plugins/migrate-browser-v1', 'POST'); assert.equal(browserUpgrade.action, 'browser-v1-migrate'); assert.equal(pluginManagementRouteRequiresSameOrigin(browserUpgrade), true);
   const saved = await (await request(path, 'PUT', { tabset: tabset('ps_a'), expectedRevision: 0 })).json(); assert.equal(saved.tabset.revision, 1);
   await assert.rejects(request(path, 'PUT', { tabset: tabset('ps_a'), expectedRevision: 0 }), /changed/);
   await assert.rejects(request('/api/chat/sessions/ps_b/plugin-tabs', 'PUT', { tabset: tabset('ps_a'), expectedRevision: 0 }), /route session differ/);

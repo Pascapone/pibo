@@ -5,11 +5,11 @@ import { join } from "node:path";
 import test from "node:test";
 import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { createPiboLoopPlugin, parsePiboSessionGoalCommand } from "../dist/loops/plugin.js";
+import { parsePiboSessionGoalCommand } from "../dist/loops/plugin.js";
 import { PiboLoopService } from "../dist/loops/service.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { createPiboSession } from "../dist/sessions/store.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 function goalEvent(command) {
 	return {
@@ -67,13 +67,18 @@ test("Goal slash command parser distinguishes objectives, pause, resume, and mis
 	assert.throws(() => parsePiboSessionGoalCommand(goalEvent("   ")), /Usage: \/goal/);
 });
 
-test("Loop plugin advertises the session Goal slash command", () => {
-	const registry = PiboPluginRegistry.create({ plugins: [createPiboLoopPlugin({ loopStorePath: ":memory:" })] });
-	assert.deepEqual(registry.getGatewayActionInfos(), [{
-		name: "goal",
-		description: "Create or update the session Goal Loop. Use /goal pause or /goal resume to control it.",
-		slashCommands: ["goal"],
-	}]);
+test("Goal host package advertises the session Goal slash command", async () => {
+	const product = await startTestPluginProduct("pibo-goal-package-");
+	try {
+		const registry = product.createDefaultRegistry();
+		assert.deepEqual(registry.getGatewayActionInfos().filter((action) => action.name === "goal"), [{
+			name: "goal",
+			description: "Create or update the session Goal Loop. Use /goal pause or /goal resume to control it.",
+			slashCommands: ["goal"],
+		}]);
+	} finally {
+		await product.dispose();
+	}
 });
 
 test("session Goal command creates one Loop and updates that Loop in place", () => {

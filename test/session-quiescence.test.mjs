@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 

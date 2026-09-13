@@ -4,6 +4,7 @@ import { join } from "node:path";
 const declarations = {
 	"packaged-core.d.ts": ["setupCore(context: PluginSetupContext): void;"],
 	"packaged-web-product.d.ts": ["setupWebProduct(context: PluginSetupContext): () => Promise<void>;"],
+	"packaged-user-resources.d.ts": ["setupUserResources(context: PluginSetupContext): void;"],
 	"packaged-transcription.d.ts": [
 		"setupOpenAiChatGptTranscription(context: PluginSetupContext): void;",
 		"setupOpenAiTranscription(context: PluginSetupContext): void;",
@@ -26,6 +27,7 @@ const declarations = {
 		"setupPiRuntime(context: PluginSetupContext): void;",
 		"setupCodexNativeRuntime(context: PluginSetupContext): void;",
 		"setupOmpRuntime(context: PluginSetupContext): void;",
+		"createBuiltinRuntimeAdapter(instanceId: string): unknown;",
 	],
 	"packaged-profiles.d.ts": ["setupBuiltinProfiles(context: PluginSetupContext): void;"],
 	"packaged-mcp-cli.d.ts": ["setupMcpCli(context: PluginSetupContext): void;"],

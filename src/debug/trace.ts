@@ -9,7 +9,7 @@ import type {
 import type { PiboJsonObject } from "../core/events.js";
 import { storedPiboEventFromV2Row, type EventLogRow } from "../apps/chat/data/chat-data-mappers.js";
 import { PayloadStore } from "../data/payload-store.js";
-import { createDefaultPiboPluginRegistry } from "../plugins/builtin.js";
+import { createBuiltinRuntimeAdapter } from "../plugins/packaged-runtime-adapters.js";
 import type { RuntimeSessionBinding } from "../sessions/runtime-binding.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredPiboEvent } from "../apps/chat/read-model.js";
@@ -545,8 +545,7 @@ async function readDebugNativeHistory(
 	issues: DebugTraceIssue[],
 ) {
 	if (!binding) return undefined;
-	const registry = createDefaultPiboPluginRegistry();
-	const adapter = registry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+	const adapter = createBuiltinRuntimeAdapter(binding.runtimeInstanceId);
 	if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
 		issues.push({
 			severity: "warning",

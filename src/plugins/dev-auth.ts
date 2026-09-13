@@ -1,5 +1,4 @@
 import { randomBytes } from "node:crypto";
-import { definePiboPlugin } from "./registry.js";
 import { SOCKET_PEER_HEADER } from "../web/channel.js";
 import type { PiboAuthService, PiboAuthSession } from "../auth/types.js";
 
@@ -208,14 +207,4 @@ export function createDevAuthService(): PiboAuthService {
 			return new Response("Not found", { status: 404 });
 		},
 	};
-}
-
-export function createPiboDevAuthPlugin() {
-	return definePiboPlugin({
-		id: "pibo.dev-auth",
-		name: "Dev Auth",
-		register(api) {
-			api.registerAuthService(createDevAuthService());
-		},
-	});
 }

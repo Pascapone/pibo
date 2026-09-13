@@ -10,31 +10,18 @@ import type {
 	PiboThinkingParams,
 	PiboUserInputResponseParams,
 } from "../core/events.js";
-import { InitialSessionContext, InitialSessionContextBuilder, type SkillProfile } from "../core/profiles.js";
+import { InitialSessionContext, type SkillProfile } from "../core/profiles.js";
 import { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 import { parsePiboThinkingLevel } from "../core/thinking.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
-import { piboCodexNativePlugin } from "./codex-native.js";
-import { piboOmpPlugin } from "./omp.js";
-import { piboOpenAiChatGptTranscriptionPlugin } from "./openai-chatgpt-transcription.js";
-import { piboOpenAiTranscriptionPlugin } from "./openai-transcription.js";
-import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
+import type { PiboPluginRegistry } from "./registry.js";
 import { createAgentPluginSelectionForProfile } from "./selection.js";
-import type { PiboGatewayAction, PiboPlugin, PiboProfileBuildContext } from "./types.js";
+import type { PiboGatewayAction } from "./types.js";
 
 export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
-export {
-	CODEX_NATIVE_PROFILE_NAME,
-	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
-	piboCodexNativePlugin,
-} from "./codex-native.js";
-export {
-	OMP_PROFILE_NAME,
-	OMP_RUNTIME_INSTANCE_ID,
-	piboOmpPlugin,
-} from "./omp.js";
+export { CODEX_NATIVE_PROFILE_NAME, CODEX_NATIVE_RUNTIME_INSTANCE_ID } from "./codex-native.js";
+export { OMP_PROFILE_NAME, OMP_RUNTIME_INSTANCE_ID } from "./omp.js";
 
-const GATEWAY_PROFILE_TOOLS = ["pibo_gateway_send"] as const;
 const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function builtinSkillPath(name: string): string {
@@ -171,15 +158,6 @@ function requireLogoutParams(event: PiboExecutionEvent): { provider: string } {
 		throw new Error("logout requires params.provider");
 	}
 	return { provider: params.provider };
-}
-
-function createBaseProfileBuilder(
-	profileName: string,
-	context: PiboProfileBuildContext,
-): InitialSessionContextBuilder {
-	return new InitialSessionContextBuilder(profileName)
-		.withToolPackages({ goalControl: true })
-		.addSkill(context.getSkill("pi-agent-harness"));
 }
 
 export type PiboCoreContributionSink = {
@@ -583,45 +561,6 @@ export function definePiboCoreContributions(sink: PiboCoreContributionSink): voi
 	});
 }
 
-export const piboCorePlugin = definePiboPlugin({
-	id: "pibo.core",
-	name: "Pibo Core",
-	register(api) {
-		definePiboCoreContributions({ addSkill: (skill) => api.registerSkill(skill), addGatewayAction: (action) => api.registerGatewayAction(action) });
-	},
-});
-
-export const piboGatewayProducerPlugin = definePiboPlugin({
-	id: "pibo.gateway-producer",
-	name: "Pibo Gateway Producer",
-	register(api) {
-		api.registerProfile({
-			name: "pibo-gateway-producer",
-			aliases: ["gateway-producer"],
-			description: "Pibo profile that can send messages through the local gateway.",
-			create(context) {
-				return createBaseProfileBuilder("pibo-gateway-producer", context)
-					.addTools(context.getTools(GATEWAY_PROFILE_TOOLS))
-					.createSession();
-			},
-		});
-	},
-});
-
-export function createDefaultPiboPlugins(): PiboPlugin[] {
-	return [piboCorePlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin];
-}
-
-export function createGatewayProducerPiboPluginRegistry(): PiboPluginRegistry {
-	return PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, piboGatewayProducerPlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin],
-	});
-}
-
-export function createDefaultPiboPluginRegistry(): PiboPluginRegistry {
-	return PiboPluginRegistry.create({ plugins: createDefaultPiboPlugins() });
-}
-
 export function selectDefaultPiboProfileName(registry: PiboPluginRegistry): string {
 	const names = registry.getProfileNames();
 	return names.includes(DEFAULT_PIBO_PROFILE_NAME) ? DEFAULT_PIBO_PROFILE_NAME : names[0] ?? DEFAULT_PIBO_PROFILE_NAME;
@@ -655,8 +594,4 @@ export function createPiboProfileFromRegistryOrDefault(registry: PiboPluginRegis
 		pluginSelection: createAgentPluginSelectionForProfile(installations, profile),
 		pluginSelectionRevision: installations.reduce((sum, installation) => sum + installation.stateRevision, 0),
 	});
-}
-
-export function createGatewayProducerPiboProfile(): InitialSessionContext {
-	return createGatewayProducerPiboPluginRegistry().createProfile("pibo-gateway-producer");
 }

@@ -9,9 +9,9 @@ import {
 	PiboSessionRouter,
 	createMinimalAgentRuntimeCapabilities,
 	definePiboPlugin,
-	piboCorePlugin,
 	profileWithRuntimeInstance,
 } from "../dist/index.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import {
 	PORTABLE_HISTORY_HANDOFF_METADATA_KEY,
 	PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY,

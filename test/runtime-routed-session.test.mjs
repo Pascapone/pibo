@@ -6,7 +6,7 @@ import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PIBO_PROVIDER_RECOVERY_PROMPT } from "../dist/core/provider-recovery.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 

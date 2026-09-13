@@ -8,7 +8,7 @@ import {
 } from "../dist/core/provider-recovery.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { classifySessionErrorMessage } from "../dist/core/session-errors.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 
 function retrySettings({ enabled = true, baseDelayMs = 0, maxRetryDelayMs = 60_000 } = {}) {

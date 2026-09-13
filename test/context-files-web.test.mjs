@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { createPiboContextFilesPlugin } from "../dist/plugins/context-files.js";
+import { createPiboContextFilesPlugin } from "./helpers/context-files-legacy-fixture.mjs";
 import { ContextFileMetadataStore, hashContextFileContent } from "../dist/plugins/context-files-store.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
@@ -134,7 +134,7 @@ test("context files web app serves its packaged UI independently of the process 
 	let dispose;
 	try {
 		process.chdir(dir);
-		const moduleUrl = new URL(`../dist/plugins/context-files.js?cwd-test=${Date.now()}`, import.meta.url);
+		const moduleUrl = new URL(`./helpers/context-files-legacy-fixture.mjs?cwd-test=${Date.now()}`, import.meta.url);
 		const module = await import(moduleUrl.href);
 		const started = await startContextFilesHost({
 			pluginFilePath: join(dir, "plugin-doc.md"),

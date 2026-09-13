@@ -7,7 +7,7 @@ import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/cap
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";

@@ -7,7 +7,7 @@ import test from "node:test";
 import {
 	buildCodexCompatSystemPrompt,
 } from "../dist/core/codex-compat.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { createDefaultPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import {

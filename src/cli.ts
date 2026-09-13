@@ -16,22 +16,16 @@ import { parsePiboThinkingLevel } from "./core/thinking.js";
 import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
 async function resolveCliProfile(profileName?: string) {
-	const {
-		piboGatewayProducerPlugin,
-		createPiboProfileFromRegistryOrDefault,
-	} = await import("./plugins/builtin.js");
+	const { createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
 	const { profileFromPluginPlan } = await import("./agent-runtime/plugin-plan.js");
 	const { startPluginProductRuntime } = await import("./plugins/product-runtime.js");
-	const { createPiboUserProfileResourcePlugins } = await import("./plugins/user-profile-resources.js");
 	const { PiboPluginRegistry } = await import("./plugins/registry.js");
-	const gatewayProducer = profileName === "gateway-producer" || profileName === "pibo-gateway-producer";
-	const registry = PiboPluginRegistry.create({ plugins: [
-		...(gatewayProducer ? [piboGatewayProducerPlugin] : []),
-		...createPiboUserProfileResourcePlugins({ contextFilesMode: "catalog" }),
-	] });
+	const registry = PiboPluginRegistry.create();
 	const product = await startPluginProductRuntime({
 		host: registry.getPluginHost(),
 		collectConsumers: async () => [],
+		includeUserResources: true,
+		productOptions: { userResources: { contextFilesMode: "catalog" } },
 	});
 	try {
 		const materializePreview = (targetProfile?: string) => {

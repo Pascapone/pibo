@@ -1,6 +1,5 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { piboHomePath } from "../core/pibo-home.js";
 import { DatabaseSync } from "node:sqlite";
 import {
 	createPiboSession,
@@ -506,10 +505,6 @@ export function resolveSqliteRuntimeBindingCas(
 		},
 	});
 	return auditedSqliteRuntimeBindingCas.bind(auditedStore);
-}
-
-export function createDefaultPiboSessionStore(_cwd?: string): SqlitePiboSessionStore {
-	return new SqlitePiboSessionStore(piboHomePath("pibo-sessions.sqlite"));
 }
 
 function sessionFromRow(row: SessionRow): PiboSession {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 
 function waitFor(predicate, timeoutMs = 2_000) {
 	const started = Date.now();

@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { CHAT_WEB_APP_NAME } from "../dist/apps/chat/web-app.js";
-import { PiboGatewayServer } from "../dist/gateway/server.js";
-import { createWebPiboPluginRegistry } from "../dist/gateway/web.js";
+import { startTestWebPluginProduct } from "./helpers/web-plugin-product.mjs";
 
 function channelContext(registry, apps) {
 	return {
@@ -24,13 +23,12 @@ test("web gateway lands on Chat by explicit app name without changing registry o
 	const home = await mkdtemp(join(tmpdir(), "pibo-root-landing-"));
 	const previousHome = process.env.PIBO_HOME;
 	process.env.PIBO_HOME = home;
+	let product;
 	let registry;
-	let server;
 	let channel;
 	try {
-		registry = createWebPiboPluginRegistry({ authMode: "local", web: { host: "127.0.0.1", port: 0 } });
-		server = new PiboGatewayServer({ pluginRegistry: registry, persistSession: false, host: "127.0.0.1", port: 0, startChannels: false });
-		await server.start();
+		product = await startTestWebPluginProduct({ authMode: "local", web: { host: "127.0.0.1", port: 0 } });
+		registry = product.registry;
 		const apps = registry.getWebApps();
 		const annotations = apps.find((app) => app.name === "web-annotations");
 		const chat = apps.find((app) => app.name === CHAT_WEB_APP_NAME);
@@ -49,9 +47,7 @@ test("web gateway lands on Chat by explicit app name without changing registry o
 		assert.equal(response.headers.get("location"), "/apps/chat?view=terminal&profileRef=profile-test");
 	} finally {
 		await channel?.stop?.();
-		await server?.stop();
-		for (const app of registry?.getWebApps() ?? []) await app.dispose?.();
-		await registry?.disposePlugins();
+		await product?.dispose();
 		if (previousHome === undefined) delete process.env.PIBO_HOME;
 		else process.env.PIBO_HOME = previousHome;
 		await rm(home, { recursive: true, force: true });

@@ -12,10 +12,12 @@ test("chat web runtime does not import legacy chat store implementations", () =>
 	assert.equal(webApp.includes("./rooms.js"), false);
 });
 
-test("gateway default session store uses pibo.sqlite, not pibo-sessions.sqlite", () => {
+test("gateway defaults to pibo.sqlite and treats pibo-sessions.sqlite only as an automatic preserved upgrade source", () => {
 	const gateway = readFileSync(join(repoRoot, "src/gateway/server.ts"), "utf8");
 	assert.equal(gateway.includes("createDefaultPiboSessionStore()"), false);
-	assert.equal(gateway.includes("createDefaultPiboDataSessionStore"), true);
+	assert.equal(gateway.includes('piboHomePath("pibo.sqlite")'), true);
+	assert.equal(gateway.includes("migrateLegacySessionDatabaseAtStartup"), true);
+	assert.equal(gateway.includes("new SqlitePiboSessionStore(options.sessionDbPath)"), true, "legacy store runtime access remains explicit-only");
 });
 
 test("runtime source does not reintroduce legacy chat data mode flags", () => {

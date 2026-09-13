@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
-import { SqlitePiboSessionStore, createDefaultPiboSessionStore } from "../dist/sessions/sqlite-store.js";
+import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
@@ -109,32 +109,18 @@ test("in-memory pibo session store rejects duplicate Pi session mapping", () => 
 	);
 });
 
-test("default sqlite pibo session store uses PIBO_HOME, not cwd", async () => {
-	const dir = await mkdtemp(join(tmpdir(), "pibo-session-home-"));
-	const previousPiboHome = process.env.PIBO_HOME;
-	process.env.PIBO_HOME = dir;
-	const store = createDefaultPiboSessionStore();
-
+test("legacy sqlite session files remain readable upgrade sources and have no default runtime factory", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-session-legacy-reader-"));
+	const module = await import("../dist/sessions/sqlite-store.js");
+	assert.equal(Object.hasOwn(module, "createDefaultPiboSessionStore"), false);
+	const dbPath = join(dir, "pibo-sessions.sqlite");
+	const store = new SqlitePiboSessionStore(dbPath);
 	try {
-		store.create({
-			id: "ps_home",
-			piSessionId: "44444444-4444-4444-8444-444444444444",
-			channel: "pibo.test",
-			kind: "chat",
-			profile: "base",
-		});
-		const dbPath = join(dir, "pibo-sessions.sqlite");
-		const reopened = new SqlitePiboSessionStore(dbPath);
-		try {
-			assert.equal(reopened.get("ps_home")?.id, "ps_home");
-		} finally {
-			reopened.close();
-		}
+		store.create({ id: "ps_home", piSessionId: "44444444-4444-4444-8444-444444444444", channel: "pibo.test", kind: "chat", profile: "base" });
+		assert.equal(store.get("ps_home")?.id, "ps_home");
 		assertAppContextPiboSessionsSchema(dbPath);
 	} finally {
 		store.close();
-		if (previousPiboHome === undefined) delete process.env.PIBO_HOME;
-		else process.env.PIBO_HOME = previousPiboHome;
 		await rm(dir, { recursive: true, force: true });
 	}
 });

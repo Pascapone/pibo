@@ -12,7 +12,7 @@ import { InitialSessionContext } from '../dist/core/profiles.js';
 import { profileFromPluginPlan } from '../dist/agent-runtime/plugin-plan.js';
 import { startPluginProductRuntime } from '../dist/plugins/product-runtime.js';
 import { productUiPackageManifest } from '../dist/plugins/default-packages.js';
-import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
+import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PIBO_USER_RESOURCES_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
 import { WebAnnotationStore } from '../dist/web-annotations/index.js';
 
 async function stagedInstallation(t, data, root) {
@@ -72,7 +72,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   }
   const projection = PiboPluginRegistry.create({ host });
   assert.deepEqual(projection.getAgentRuntimeInstanceIds().sort(), ['codex-native', 'omp-native', 'pi']);
-  assert.deepEqual(projection.getProfileNames(), ['base', 'codex-native', 'orp']);
+  assert.deepEqual(projection.getProfileNames(), ['base', 'pibo-gateway-producer', 'codex-native', 'orp']);
   assert.ok(projection.getWebApps().some((app) => app.name === 'web-annotations'));
   assert.equal(host.services.owners()[PIBO_LOOP_SERVICE], 'pibo.goal-control');
   assert.equal(host.services.get(PIBO_LOOP_SERVICE).get(), undefined);
@@ -97,6 +97,29 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.equal(data.plugins.getInstallation('pibo.web-annotations').stateRevision, annotations.stateRevision);
   assert.equal(host.inspect().plugins.filter((plugin) => plugin.pluginId === 'pibo.web-annotations').length, 1);
   await restarted.dispose();
+});
+
+test('user resources are owned by one ordinary host package and support dynamic updates without shadowing core', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'plugin-user-resources-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
+  const host = new PluginHost();
+  const product = await startPluginProductRuntime({ host, data, artifactRoot: join(root, 'artifacts'), collectConsumers: async () => [], includeUserResources: true, productOptions: { userResources: { contextFilesMode: 'catalog', userSkills: { globalRoot: join(root, 'global'), workspaceRoot: join(root, 'workspace') } } } });
+  const resources = host.services.get(PIBO_USER_RESOURCES_SERVICE);
+  assert.equal(host.services.owners()[PIBO_USER_RESOURCES_SERVICE], 'pibo.user-resources');
+  resources.upsertSkill({ name: 'fixture-skill', path: join(root, 'fixture-skill.md'), enabled: true, kind: 'user' });
+  resources.upsertSkill({ name: 'skill-creator', path: join(root, 'shadow.md'), enabled: true, kind: 'user' });
+  resources.upsertContextFile({ key: 'fixture-context', label: 'Fixture context', path: join(root, 'context.md') });
+  resources.upsertProfile({ name: 'fixture-profile', aliases: ['fixture-alias'], create: () => new InitialSessionContext({ profileName: 'fixture-profile' }) });
+  const projection = PiboPluginRegistry.create({ host });
+  assert.equal(projection.getCapabilityCatalog().skills.find((skill) => skill.name === 'fixture-skill')?.kind, 'user');
+  assert.equal(projection.getCapabilityCatalog().skills.find((skill) => skill.name === 'skill-creator')?.kind, 'builtin');
+  assert.equal(projection.getCapabilityCatalog().contextFiles.some((file) => file.key === 'fixture-context'), true);
+  assert.equal(projection.resolveProfileName('fixture-alias'), 'fixture-profile');
+  resources.removeSkill('fixture-skill'); resources.removeContextFile('fixture-context'); resources.removeProfile('fixture-profile');
+  assert.equal(projection.getCapabilityCatalog().skills.some((skill) => skill.name === 'fixture-skill'), false);
+  assert.equal(projection.getCapabilityCatalog().contextFiles.some((file) => file.key === 'fixture-context'), false);
+  await product.dispose();
+  assert.equal(host.inspect().state, 'idle');
 });
 
 test('active managed default packages upgrade coherently when their packaged manifest changes', async t => {

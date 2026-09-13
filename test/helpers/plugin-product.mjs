@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { InitialSessionContext } from "../../dist/core/profiles.js";
 import { PiboDataStore } from "../../dist/data/pibo-store.js";
 import { profileFromPluginPlan } from "../../dist/agent-runtime/plugin-plan.js";
-import { createDefaultPiboPlugins } from "../../dist/plugins/builtin.js";
 import { PluginHost } from "../../dist/plugins/host.js";
 import { startPluginProductRuntime } from "../../dist/plugins/product-runtime.js";
 import { PiboPluginRegistry } from "../../dist/plugins/registry.js";
@@ -24,7 +23,7 @@ export async function startTestPluginProduct(prefix = "pibo-test-plugin-product-
 		host,
 		runtime: product.runtime,
 		createDefaultRegistry() {
-			return PiboPluginRegistry.create({ host, plugins: createDefaultPiboPlugins() });
+			return PiboPluginRegistry.create({ host });
 		},
 		createRegistry(plugins = []) {
 			return PiboPluginRegistry.create({ host, plugins });

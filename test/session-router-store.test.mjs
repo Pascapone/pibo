@@ -9,7 +9,7 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";

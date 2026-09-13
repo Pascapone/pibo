@@ -14,8 +14,11 @@ export type PluginSetupContext = {
 		provide<T>(id: string, value: T): boolean;
 	};
 	isServiceProvider(id: string): boolean;
+	hasContribution(kind: string, name: string): boolean;
 	register<T>(localId: string, value: T): PluginDisposer;
 	registerResource<T>(kind: string, key: string, value: T): PluginDisposer;
+	upsertResource<T>(kind: string, key: string, value: T): PluginDisposer;
+	removeResource(kind: string, key: string): boolean;
 };
 export type PluginDefinition = {
 	installation: PluginInstallation;
@@ -155,6 +158,8 @@ export class PluginHost {
 				const cleanup = await definition.setup({
 					manifest, scope,
 					isServiceProvider: (serviceId) => plan.providers[serviceId] === id,
+					hasContribution: (kind, name) => this.contributions.list<{ contribution: { kind: string; name?: string; id: string } }>("contribution")
+						.some((entry) => entry.value.contribution.kind === kind && (entry.value.contribution.name ?? entry.value.contribution.id) === name),
 					services: {
 						get: <T>(serviceId: string) => { requireDeclared(serviceId); return this.services.get<T>(serviceId); },
 						require: <T>(serviceId: string) => { requireDeclared(serviceId); return this.services.require<T>(serviceId); },
@@ -175,6 +180,15 @@ export class PluginHost {
 					registerResource: (kind, key, value) => {
 						if (["service", "contribution"].includes(kind)) throw new Error(`Use the declared ${kind} registration API`);
 						return this.contributions.register(scope, kind, key, value);
+					},
+					upsertResource: (kind, key, value) => {
+						if (["service", "contribution"].includes(kind)) throw new Error(`Use the declared ${kind} registration API`);
+						this.contributions.remove(kind, key, scope.instanceId);
+						return this.contributions.register(scope, kind, key, value);
+					},
+					removeResource: (kind, key) => {
+						if (["service", "contribution"].includes(kind)) throw new Error(`Use the declared ${kind} registration API`);
+						return this.contributions.remove(kind, key, scope.instanceId);
 					},
 				});
 				if (cleanup !== undefined) scope.defer(cleanup);

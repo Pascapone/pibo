@@ -1,5 +1,6 @@
 import { tsImport } from "tsx/esm/api";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,10 +66,10 @@ for (const fixture of fixtures.cases) test(`legacy ${fixture.id}: exact contribu
 		assert.deepEqual(migrated.runtimeOptions, agent.runtimeOptions);
 		assert.deepEqual(migrated.mainModelFallbacks, agent.mainModelFallbacks);
 		assert.deepEqual(migrated.pluginMigration.inactivePiPackages, agent.piPackages);
-		assert.deepEqual(migrated.piPackages, []);
-		assert.deepEqual(migrated.nativeTools, []);
-		assert.deepEqual(migrated.skills, inventory.userSkills);
-		assert.deepEqual(migrated.contextFiles, inventory.userContextFiles);
+		assert.deepEqual(migrated.piPackages, fixture.conflict ? agent.piPackages : []);
+		assert.deepEqual(migrated.nativeTools, fixture.conflict ? agent.nativeTools : []);
+		assert.deepEqual(migrated.skills, fixture.conflict ? agent.skills : inventory.userSkills);
+		assert.deepEqual(migrated.contextFiles, fixture.conflict ? agent.contextFiles : inventory.userContextFiles);
 		assert.equal(readFileSync(result.backupPath).equals(Buffer.from(source)), true);
 		const repeated = await migrateLegacyAgentPlugins({ agents, plugins, agentId: agent.id, source, report, backupRoot });
 		assert.deepEqual(repeated, JSON.parse(JSON.stringify(result)));
@@ -116,6 +117,122 @@ test("automatic startup migration preserves MCP selection and backs up independe
 	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+test("startup retry resolves a prior conflict from the immutable backup without losing legacy fields", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-v4-retry-conflict-"));
+	const agents = new CustomAgentStore(join(root, "agents.sqlite"));
+	const db = new DatabaseSync(join(root, "product.sqlite")); db.exec(PLUGIN_STORE_SCHEMA);
+	const plugins = new PluginStore(db);
+	try {
+		const agent = agents.create({ displayName: "retry-agent", nativeTools: ["missing-write-tool"], goalControl: false, runControl: false });
+		const emptyCatalog = { schemaVersion: 1, revision: 1, installations: [] };
+		const legacy = { nativeTools: [{ name: "missing-write-tool", yieldable: false }], skills: [], contextFiles: [] };
+		const first = await migrateLegacyAgentsAtStartup({ agents, plugins, catalog: emptyCatalog, legacyCatalog: legacy, backupRoot: join(root, "backups"), resolveRuntime: () => runtime() });
+		assert.equal(first[0].status, "blocked");
+		assert.deepEqual(agents.get(agent.id).nativeTools, ["missing-write-tool"]);
+		assert.equal(agents.get(agent.id).pluginMigration.status, "conflict");
+		const sourceHash = agents.get(agent.id).pluginMigration.sourceHash;
+
+		const fixedCatalog = { schemaVersion: 1, revision: 2, installations: [installation("fixture.writer", [contribution("missing-write-tool")])] };
+		const second = await migrateLegacyAgentsAtStartup({ agents, plugins, catalog: fixedCatalog, legacyCatalog: legacy, backupRoot: join(root, "backups"), resolveRuntime: () => runtime() });
+		assert.equal(second[0].status, "migrated");
+		const migrated = agents.get(agent.id);
+		assert.equal(migrated.pluginMigration.status, "ready");
+		assert.equal(migrated.pluginMigration.sourceHash, sourceHash);
+		assert.deepEqual(migrated.nativeTools, []);
+		assert.equal(migrated.pluginSelection.plugins.some((entry) => entry.pluginId === "fixture.writer" && entry.contributions["missing-write-tool"]), true);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const journalVersion of ["v2", "v1"]) test(`startup reconciliation moves a formerly independent core skill from the original ${journalVersion} backup`, async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-v4-core-ownership-"));
+	const agents = new CustomAgentStore(join(root, "agents.sqlite"));
+	const db = new DatabaseSync(join(root, "product.sqlite")); db.exec(PLUGIN_STORE_SCHEMA);
+	const plugins = new PluginStore(db);
+	try {
+		const skillPath = join(root, "pi-agent-harness.md");
+		writeFileSync(skillPath, "# Original core skill snapshot\n");
+		const agent = agents.create({ displayName: "core-owner-agent", skills: ["pi-agent-harness"], goalControl: false, runControl: false });
+		const first = await migrateLegacyAgentsAtStartup({
+			agents, plugins, catalog: { schemaVersion: 1, revision: 1, installations: [] },
+			legacyCatalog: { nativeTools: [], skills: [{ name: "pi-agent-harness", kind: "user", path: skillPath }], contextFiles: [] },
+			backupRoot: join(root, "backups"), resolveRuntime: () => runtime(),
+		});
+		assert.equal(first[0].status, "migrated");
+		if (journalVersion === "v1") {
+			const record = plugins.listJournals(`agent-plugins-v2:${agent.id}:`)[0];
+			const oldId = `agent-plugins-v1:${agent.id}:${record.backupHash}`;
+			db.prepare("UPDATE plugin_migration_journal SET id = ?, record_json = ? WHERE id = ?").run(oldId, JSON.stringify({ ...record, id: oldId }), record.id);
+		}
+		const originalHash = agents.get(agent.id).pluginMigration.resourceSnapshots[0].contentHash;
+		assert.deepEqual(agents.get(agent.id).skills, ["pi-agent-harness"]);
+		writeFileSync(skillPath, "# Later independent edit\n");
+
+		const coreCatalog = { schemaVersion: 1, revision: 2, installations: [installation("pibo.core", [contribution("pi-agent-harness", { kind: "skill" })])] };
+		const second = await migrateLegacyAgentsAtStartup({
+			agents, plugins, catalog: coreCatalog,
+			legacyCatalog: { nativeTools: [], skills: [{ name: "pi-agent-harness", kind: "builtin", path: skillPath }], contextFiles: [] },
+			backupRoot: join(root, "backups"), resolveRuntime: () => runtime(),
+		});
+		assert.equal(second[0].status, "migrated");
+		const migrated = agents.get(agent.id);
+		assert.deepEqual(migrated.skills, []);
+		assert.equal(migrated.pluginSelection.plugins.some((entry) => entry.pluginId === "pibo.core" && entry.contributions["pi-agent-harness"]), true);
+		assert.equal(migrated.pluginMigration.resourceSnapshots[0].contentHash, originalHash);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("partially migrated explicit selections retain their entries and absorb legacy MCP filters exactly", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-v4-partial-agent-"));
+	const agentPath = join(root, "agents.sqlite");
+	let agents = new CustomAgentStore(agentPath);
+	const db = new DatabaseSync(join(root, "product.sqlite")); db.exec(PLUGIN_STORE_SCHEMA);
+	const plugins = new PluginStore(db);
+	try {
+		const agent = agents.create({ displayName: "partial-agent", mcpServers: ["filesystem", "project-db"], goalControl: false, runControl: false });
+		agents.close();
+		const raw = new DatabaseSync(agentPath);
+		raw.prepare("UPDATE chat_agents SET plugin_selection_json = ? WHERE id = ?").run(JSON.stringify({ schemaVersion: 1, plugins: [{ pluginId: "fixture.search", revision: "hash:fixture.search", enabled: true, contributions: { legacy_search: true }, config: {} }] }), agent.id);
+		raw.close();
+		agents = new CustomAgentStore(agentPath);
+		const catalog = { schemaVersion: 1, revision: 2, installations: [
+			installation("fixture.search", [contribution("legacy_search")]),
+			installation("pibo.mcp-cli", [{ ...contribution("adapter", { kind: "mcp-adapter", name: "mcp-cli", defaultEnabled: false }), configSchema: { type: "object", properties: { selectedServers: { type: "array", items: { type: "string" } } }, required: ["selectedServers"], additionalProperties: false } }]),
+		] };
+		const result = await migrateLegacyAgentsAtStartup({ agents, plugins, catalog, legacyCatalog: { nativeTools: [], skills: [], contextFiles: [] }, backupRoot: join(root, "backups"), resolveRuntime: () => runtime() });
+		assert.equal(result[0].status, "migrated");
+		const migrated = agents.get(agent.id);
+		assert.equal(migrated.pluginSelection.plugins.some((entry) => entry.pluginId === "fixture.search" && entry.contributions.legacy_search), true);
+		assert.deepEqual(migrated.pluginSelection.plugins.find((entry) => entry.pluginId === "pibo.mcp-cli").contributionConfig.adapter.selectedServers, ["filesystem", "project-db"]);
+		assert.deepEqual(migrated.mcpServers, []);
+		assert.deepEqual(migrated.pluginMigration.before, migrated.pluginMigration.after);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("one archived agent with an unavailable runtime is isolated and remains diagnostically repairable", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-v4-unavailable-runtime-"));
+	const agents = new CustomAgentStore(join(root, "agents.sqlite"));
+	const db = new DatabaseSync(join(root, "product.sqlite")); db.exec(PLUGIN_STORE_SCHEMA);
+	const plugins = new PluginStore(db);
+	try {
+		const archived = agents.create({ displayName: "retired-runtime-agent", runtimeInstanceId: "removed-runtime", nativeTools: ["legacy_search"], goalControl: false, runControl: false });
+		agents.setArchived(archived.id, true);
+		const healthy = agents.create({ displayName: "healthy-agent", nativeTools: ["legacy_search"], goalControl: false, runControl: false });
+		const catalog = { schemaVersion: 1, revision: 1, installations: [installation("fixture.search", [contribution("legacy_search")])] };
+		const results = await migrateLegacyAgentsAtStartup({
+			agents, plugins, catalog, legacyCatalog: { nativeTools: [{ name: "legacy_search", yieldable: false }], skills: [], contextFiles: [] }, backupRoot: join(root, "backups"),
+			resolveRuntime: (id) => { if (id === "removed-runtime") throw new Error("runtime instance was uninstalled"); return runtime(); },
+		});
+		assert.equal(results.find((item) => item.agentId === archived.id).status, "blocked");
+		assert.match(results.find((item) => item.agentId === archived.id).diagnostic, /removed-runtime|uninstalled/);
+		assert.equal(results.find((item) => item.agentId === healthy.id).status, "migrated");
+		const blocked = agents.get(archived.id);
+		assert.equal(blocked.pluginMigration.diagnostics[0].code, "stored-runtime-unavailable");
+		assert.deepEqual(blocked.nativeTools, ["legacy_search"]);
+		assert.ok(blocked.archivedAt);
+		assert.deepEqual(agents.get(healthy.id).nativeTools, []);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 test("fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run)", () => {
 	for (const id of ["standard", "subset", "manual", "run", "resources"]) {
 		const fixture = fixtures.cases.find((item) => item.id === id);
@@ -155,6 +272,36 @@ test("migration crash after AgentStore commit before journal checkpoint resumes 
 		agents = new CustomAgentStore(join(root, "agents.sqlite")); db = new DatabaseSync(join(root, "product.sqlite")); plugins = new PluginStore(db);
 		const result = await migrateLegacyAgentPlugins({ agents, plugins, agentId: agent.id, source, report, backupRoot: root });
 		assert.equal(result.state, "complete");
+		assert.equal(agents.get(agent.id).revision, revision);
+	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("migration resumes after a real SIGKILL immediately after the owner write", async () => {
+	const root = mkdtempSync(join(tmpdir(), "designer-sigkill-"));
+	const agentPath = join(root, "agents.sqlite");
+	const pluginPath = join(root, "product.sqlite");
+	let agents = new CustomAgentStore(agentPath);
+	let db = new DatabaseSync(pluginPath); db.exec(PLUGIN_STORE_SCHEMA);
+	try {
+		const { agent, source, report } = prepare(agents, fixtures.cases.find((item) => item.id === "manual"));
+		writeFileSync(join(root, "source.bin"), source);
+		writeFileSync(join(root, "report.json"), JSON.stringify(report));
+		agents.close(); db.close();
+		const child = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+			import { readFileSync } from "node:fs";
+			import { DatabaseSync } from "node:sqlite";
+			import { CustomAgentStore, migrateLegacyAgentPlugins } from "./dist/apps/chat/agent-store.js";
+			import { PluginStore } from "./dist/plugins/store.js";
+			const agents = new CustomAgentStore(${JSON.stringify(agentPath)});
+			const db = new DatabaseSync(${JSON.stringify(pluginPath)});
+			await migrateLegacyAgentPlugins({ agents, plugins: new PluginStore(db), agentId: ${JSON.stringify(agent.id)}, source: readFileSync(${JSON.stringify(join(root, "source.bin"))}), report: JSON.parse(readFileSync(${JSON.stringify(join(root, "report.json"))}, "utf8")), backupRoot: ${JSON.stringify(root)}, afterStageWrite: () => process.kill(process.pid, "SIGKILL") });
+		`], { cwd: process.cwd(), encoding: "utf8" });
+		agents = new CustomAgentStore(agentPath); db = new DatabaseSync(pluginPath);
+		assert.equal(child.signal, "SIGKILL", child.stderr);
+
+		const revision = agents.get(agent.id).revision;
+		const resumed = await migrateLegacyAgentPlugins({ agents, plugins: new PluginStore(db), agentId: agent.id, source, report, backupRoot: root });
+		assert.equal(resumed.state, "complete");
 		assert.equal(agents.get(agent.id).revision, revision);
 	} finally { agents.close(); db.close(); rmSync(root, { recursive: true, force: true }); }
 });

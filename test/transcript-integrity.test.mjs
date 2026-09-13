@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { RoutedSession } from "../dist/core/routed-session.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
+import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_ENTRY_TYPE,

@@ -3,9 +3,11 @@ import type { PluginConfigurationSnapshot, PluginConfigurationTarget, PluginSess
 import type { PluginManager } from "../../plugins/manager.js";
 import { PluginConflictError, PluginValidationError, pluginJson, pluginErrorMessage, type PluginStore } from "../../plugins/store.js";
 import type { PluginSourceInput } from "../../plugins/sources.js";
+import type { EffectivePluginPlan } from "../../plugins/contributions.js";
+import { migrateBrowserV1Tabs } from "../../plugins/browser-v1-upgrade.js";
 
 export type PluginManagementRoute = {
-	action: "list" | "inspect" | "install" | "show" | "activate" | "uninstall-plan" | "uninstall-confirm" | "recover" | "resume" | "cancel" | "config-read" | "config-write" | "tabs-read" | "tabs-write" | "builds" | "build" | "session-recovery";
+	action: "list" | "inspect" | "install" | "show" | "activate" | "uninstall-plan" | "uninstall-confirm" | "recover" | "resume" | "cancel" | "config-read" | "config-write" | "tabs-read" | "tabs-write" | "browser-v1-migrate" | "builds" | "build" | "session-recovery";
 	pluginId?: string;
 	operationId?: string;
 	piboSessionId?: string;
@@ -14,6 +16,7 @@ export type PluginManagementRoute = {
 export function pluginManagementRoute(pathname: string, method: string): PluginManagementRoute | undefined {
 	const base = "/api/chat/plugins";
 	if (pathname === base && method === "GET") return { action: "list" };
+	if (pathname === `${base}/migrate-browser-v1` && method === "POST") return { action: "browser-v1-migrate" };
 	for (const action of ["inspect", "install", "uninstall-confirm", "recover"] as const) if (pathname === `${base}/${action}` && method === "POST") return { action };
 	const operation = pathname.match(/^\/api\/chat\/plugins\/operations\/([^/]+)\/(resume|cancel)$/);
 	if (operation && method === "POST") return { action: operation[2] as "resume" | "cancel", operationId: decodeURIComponent(operation[1]!) };
@@ -55,6 +58,8 @@ export async function handlePluginManagementRoute(options: {
 	manager: PluginManager;
 	store: PluginStore;
 	assertSessionAccess: (piboSessionId: string) => void | Promise<void>;
+	getSessionPlan?: (piboSessionId: string) => Promise<{ plan: EffectivePluginPlan }>;
+	migrationBackupRoot?: string;
 }): Promise<Response> {
 	const { route, request, manager, store, assertSessionAccess } = options;
 	try {
@@ -89,6 +94,12 @@ export async function handlePluginManagementRoute(options: {
 				if (!body.tabset || typeof body.tabset !== "object") throw new PluginValidationError("Tabset object required");
 				if (body.tabset.piboSessionId !== route.piboSessionId) throw new PluginValidationError("Tabset body and route session differ");
 				return responseJson({ tabset: store.putTabset(body.tabset, body.expectedRevision) });
+			}
+			case "browser-v1-migrate": {
+				if (!options.getSessionPlan || !options.migrationBackupRoot) throw new PiboWebHttpError("Browser migration service is unavailable", 503);
+				const body = await pluginRequestBody<{ source: string }>(request);
+				if (typeof body.source !== "string") throw new PluginValidationError("Legacy browser source string required");
+				return responseJson(await migrateBrowserV1Tabs({ store, source: body.source, backupRoot: options.migrationBackupRoot, assertSessionAccess, getSessionPlan: options.getSessionPlan }));
 			}
 			case "builds": return responseJson({ snapshots: store.listBuildSnapshots(route.piboSessionId!) });
 			case "build": {

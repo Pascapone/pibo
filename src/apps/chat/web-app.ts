@@ -4811,6 +4811,12 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return handlePluginManagementRoute({
 					route: pluginRoute, request, manager, store: manager.store,
 					assertSessionAccess: (piboSessionId) => { requireStoredSession(context, piboSessionId); },
+					migrationBackupRoot: piboHomePath("plugins", "migration-backups", "pibo-4", "browser-v1"),
+					getSessionPlan: async (piboSessionId) => {
+						const readPlan = options.pluginSessionPlan ?? context.channelContext.getService?.<PluginSessionPlanReader>(PLUGIN_SESSION_PLAN_SERVICE);
+						if (!readPlan) throw new PiboWebHttpError("Plugin preview service is unavailable", 503);
+						return readPlan(piboSessionId, "current");
+					},
 				});
 			}
 			const browserPluginRoute = pluginBrowserRoute(url.pathname, request.method);

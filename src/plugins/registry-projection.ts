@@ -17,7 +17,11 @@ export class PluginRegistryProjection {
 	map<T>(kind: string, project?: (value: unknown, contribution: PluginContribution, pluginId: string) => T): Map<string, T> {
 		const projection = this;
 		const read = (): Map<string, T> => {
-			const values = new Map(projection.host.contributions.list<T>(`legacy:${kind}`).map((entry) => [entry.key, entry.value]));
+			const values = new Map(projection.host.contributions.list<T>(`resource:${kind}`).map((entry) => [entry.key, entry.value]));
+			for (const entry of projection.host.contributions.list<T>(`legacy:${kind}`)) {
+				if (values.has(entry.key)) throw new Error(`Legacy/${kind} projection conflicts with host-owned resource ${entry.key}`);
+				values.set(entry.key, entry.value);
+			}
 			if (project) for (const entry of projection.host.contributions.list<{ contribution: PluginContribution; value: unknown }>("contribution")) {
 				const c = entry.value.contribution;
 				if (c.kind !== kind) continue;
