@@ -7,8 +7,9 @@ async function sources(paths) {
 }
 
 test("desktop module tabs use pane-width sidebars and container-responsive content flows", async () => {
-	const [app, responsivePane, loops, cron, agents, settings, designerUi, workflowGraph] = await sources([
-		"src/apps/chat-ui/src/App.tsx",
+	const [browserEntry, pluginWorkspace, responsivePane, loops, cron, agents, settings, designerUi, workflowGraph] = await sources([
+		"src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx",
+		"src/apps/chat-ui/src/plugins/plugin-workspace.tsx",
 		"src/apps/chat-ui/src/responsive-pane-sidebar.tsx",
 		"src/apps/chat-ui/src/LoopArea.tsx",
 		"src/apps/chat-ui/src/CronArea.tsx",
@@ -18,11 +19,13 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
 	]);
 
-	assert.match(app, /<CronArea[\s\S]*?surface="tab"/);
-	assert.match(app, /<LoopArea[\s\S]*?surface="tab"/);
-	assert.match(app, /<AgentsView[\s\S]*surface="tab"/);
-	assert.match(app, /ResponsiveTabSidebarPanel[\s\S]*label="Context"/);
-	assert.match(app, /ResponsiveTabSidebarPanel[\s\S]*label="Settings"/);
+	assert.match(browserEntry, /<CronArea[\s\S]*?surface="tab"/);
+	assert.match(browserEntry, /<LoopArea[\s\S]*?surface="tab"/);
+	assert.match(browserEntry, /<AgentsView[\s\S]*surface="tab"/);
+	assert.match(browserEntry, /UserResourcesView[\s\S]*<ContextFilesView/);
+	assert.match(browserEntry, /GlobalSettingsView[\s\S]*<SettingsSidebar/);
+	assert.match(browserEntry, /grid-cols-\[220px_minmax\(0,1fr\)\][\s\S]*max-\[700px\]:grid-cols-1/);
+	assert.match(pluginWorkspace, /view\.subviews\?\.length[\s\S]*aria-label=\{`\$\{view\.title\} subviews`\}/);
 
 	assert.match(responsivePane, /ResizeObserver/);
 	assert.match(responsivePane, /const \[rootElement, setRootElement\]/);

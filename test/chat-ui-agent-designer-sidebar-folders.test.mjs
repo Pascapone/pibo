@@ -7,16 +7,15 @@ import test from "node:test";
 const execFileAsync = promisify(execFile);
 const appSource = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
 const agentsViewSource = readFileSync("src/apps/chat-ui/src/agents/AgentsView.tsx", "utf8");
+const builtinPluginSource = readFileSync("src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx", "utf8");
 const sidebarSource = readFileSync("src/apps/chat-ui/src/agents/AgentsSidebar.tsx", "utf8");
 const apiSource = readFileSync("src/apps/chat-ui/src/api-agent-designer.ts", "utf8");
 
 test("Agent Designer uses the standard responsive sidebar contract", () => {
 	assert.doesNotMatch(appSource, /area === "agents" \|\| area === "workflows"/);
-	assert.match(appSource, /initialAgentFolders=\{bootstrap\.agentFolders\}/);
-	assert.match(appSource, /mobileSidebarOpen=\{mobileSidebarOpen\}/);
-	assert.match(appSource, /isMobileSidebarViewport=\{isMobileSidebarViewport\}/);
-	assert.match(appSource, /onCloseMobileSidebar=\{closeMobileSidebar\}/);
-	assert.match(appSource, /surface="tab"/);
+	assert.doesNotMatch(appSource, /<AgentsView/);
+	assert.match(builtinPluginSource, /initialAgentFolders=\{bootstrap\.agentFolders\}/);
+	assert.match(builtinPluginSource, /surface="tab"/);
 	assert.match(agentsViewSource, /usePaneSidebar/);
 	assert.match(agentsViewSource, /data-pibo-mobile-sidebar-backdrop/);
 	assert.match(agentsViewSource, /grid-cols-\[300px_minmax\(0,1fr\)\]/);

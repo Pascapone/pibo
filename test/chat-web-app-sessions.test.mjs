@@ -68,7 +68,7 @@ function createHarness(options = {}) {
 			findSessions(input) { return sessions.find(input); },
 			listSessions() { return sessions.list(); },
 			getGatewayActions() { return [{ name: "session.clone", description: "Clone", slashCommands: ["clone"] }]; },
-			getProfiles() { return [{ name: "base", aliases: [] }]; },
+			getProfiles() { return [{ name: "base", aliases: [], nativeTools: ["legacy_tool"], mcpServers: ["legacy_mcp"], runControl: true, goalControl: true }]; },
 			getWebApps() { return [app]; },
 		},
 	};
@@ -192,6 +192,10 @@ test("Chat Web lists, opens, and sends to mixed historical sessions without part
 		const bootstrap = await json(bootstrapResponse);
 		assertNoRetiredPartitionPayloadFields(bootstrap, "mixed historical bootstrap payload");
 		assert.equal(bootstrap.selectedPiboSessionId, userSession.id);
+		for (const field of ["nativeTools", "mcpServers", "runControl", "goalControl", "packages", "piboTools", "piPackages"]) {
+			assert.equal(Object.hasOwn(bootstrap.agents[0], field), false, `bootstrap profiles must not expose ${field}`);
+			assert.equal(Object.hasOwn(bootstrap.agentCatalog, field), false, `agent catalog must not expose ${field}`);
+		}
 		const listedIds = new Set(bootstrap.sessions.map((session) => session.piboSessionId));
 		assert.ok(listedIds.has(sharedSession.id), "historical app-wide session is listed");
 		assert.ok(listedIds.has(userSession.id), "user:* historical session is listed");

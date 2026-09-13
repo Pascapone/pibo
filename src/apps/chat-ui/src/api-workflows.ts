@@ -56,7 +56,6 @@ export type WorkflowProfilePickerOption = {
 	source: "custom" | "global";
 	visibility: "private" | "global";
 	archived: false;
-	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
 };

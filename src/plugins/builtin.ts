@@ -1,6 +1,5 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPiboGatewayToolProfiles } from "../gateway/tool.js";
 import type {
 	PiboApprovalResponseParams,
 	PiboExecutionEvent,
@@ -11,24 +10,17 @@ import type {
 	PiboThinkingParams,
 	PiboUserInputResponseParams,
 } from "../core/events.js";
-import { InitialSessionContextBuilder, type InitialSessionContext } from "../core/profiles.js";
+import { InitialSessionContext, InitialSessionContextBuilder } from "../core/profiles.js";
 import { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 import { parsePiboThinkingLevel } from "../core/thinking.js";
-import { createWebSearchToolProfile } from "../tools/web-search.js";
-import { CODEX_BROWSER_TOOL_NAMES, createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
-import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
-import { createHashlineToolProfile } from "../tools/hashline.js";
 import { loadModelCatalog } from "../apps/chat/model-catalog.js";
-import { piboCodexCompatPlugin } from "./codex-compat.js";
 import { piboCodexNativePlugin } from "./codex-native.js";
-import { addPiboNativeToolingContext, registerPiboNativeTooling } from "./native-tooling.js";
-import { piboWebAnnotationsPlugin } from "./web-annotations.js";
 import { piboOmpPlugin } from "./omp.js";
 import { piboOpenAiChatGptTranscriptionPlugin } from "./openai-chatgpt-transcription.js";
 import { piboOpenAiTranscriptionPlugin } from "./openai-transcription.js";
 import { definePiboPlugin, PiboPluginRegistry } from "./registry.js";
+import { createAgentPluginSelectionForProfile } from "./selection.js";
 import type { PiboPlugin, PiboProfileBuildContext } from "./types.js";
-import { PI_AGENT_RUNTIME_DRIVER } from "../agent-runtimes/pi/adapter.js";
 
 export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
 export {
@@ -185,20 +177,15 @@ function createBaseProfileBuilder(
 	profileName: string,
 	context: PiboProfileBuildContext,
 ): InitialSessionContextBuilder {
-	return addPiboNativeToolingContext(
-		new InitialSessionContextBuilder(profileName)
-			.withToolPackages({ goalControl: true })
-			.addSkill(context.getSkill("pi-agent-harness")),
-		context,
-	);
+	return new InitialSessionContextBuilder(profileName)
+		.withToolPackages({ goalControl: true })
+		.addSkill(context.getSkill("pi-agent-harness"));
 }
 
 export const piboCorePlugin = definePiboPlugin({
 	id: "pibo.core",
 	name: "Pibo Core",
 	register(api) {
-		api.registerAgentRuntimeDriver(PI_AGENT_RUNTIME_DRIVER);
-		api.registerAgentRuntimeInstance({ id: "pi", adapterId: "pi", displayName: "Pi Coding Agent" });
 		api.registerSkill({
 			name: "pi-agent-harness",
 			path: builtinSkillPath("pi-agent-harness"),
@@ -248,26 +235,6 @@ export const piboCorePlugin = definePiboPlugin({
 			name: "ralph-prd-json",
 			path: builtinSkillPath("ralph-prd-json"),
 			kind: "builtin",
-		});
-		api.registerTool(createWebSearchToolProfile());
-		api.registerTool(createRuntimeToolProfile());
-		api.registerTool(createHashlineToolProfile());
-		api.registerTools(createCodexBrowserToolProfiles());
-		api.registerCapabilityPackage({
-			name: "codex-browser-interface",
-			description: "Expose Browser Use and its persistent browser-bound Node REPL through a Codex-familiar structured tool surface.",
-			toolNames: [...CODEX_BROWSER_TOOL_NAMES],
-		});
-		registerPiboNativeTooling(api);
-		api.registerProfile({
-			name: DEFAULT_PIBO_PROFILE_NAME,
-			description: "Base agent with only the four Pi built-in tools.",
-			create() {
-				return new InitialSessionContextBuilder(DEFAULT_PIBO_PROFILE_NAME)
-					.withBuiltinToolNames(["read", "bash", "edit", "write"])
-					.withToolPackages({ goalControl: true })
-					.createSession();
-			},
 		});
 		api.registerGatewayAction({
 			name: "status",
@@ -619,7 +586,6 @@ export const piboGatewayProducerPlugin = definePiboPlugin({
 	id: "pibo.gateway-producer",
 	name: "Pibo Gateway Producer",
 	register(api) {
-		api.registerTools(createPiboGatewayToolProfiles());
 		api.registerProfile({
 			name: "pibo-gateway-producer",
 			aliases: ["gateway-producer"],
@@ -634,12 +600,12 @@ export const piboGatewayProducerPlugin = definePiboPlugin({
 });
 
 export function createDefaultPiboPlugins(): PiboPlugin[] {
-	return [piboCorePlugin, piboCodexNativePlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin, piboOmpPlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin];
+	return [piboCorePlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin];
 }
 
 export function createGatewayProducerPiboPluginRegistry(): PiboPluginRegistry {
 	return PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, piboCodexNativePlugin, piboGatewayProducerPlugin, piboCodexCompatPlugin, piboWebAnnotationsPlugin, piboOmpPlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin],
+		plugins: [piboCorePlugin, piboGatewayProducerPlugin, piboOpenAiChatGptTranscriptionPlugin, piboOpenAiTranscriptionPlugin],
 	});
 }
 
@@ -665,10 +631,21 @@ export function resolvePiboProfileNameFromRegistryOrDefault(registry: PiboPlugin
 
 export function createPiboProfileFromRegistryOrDefault(registry: PiboPluginRegistry, profileName?: string): InitialSessionContext {
 	const resolvedProfileName = resolvePiboProfileNameFromRegistryOrDefault(registry, profileName);
-	if (resolvedProfileName === DEFAULT_PIBO_PROFILE_NAME && !registry.getProfileNames().includes(DEFAULT_PIBO_PROFILE_NAME)) {
-		return createDefaultPiboProfile();
-	}
-	return registry.createProfile(resolvedProfileName);
+	const profile = resolvedProfileName === DEFAULT_PIBO_PROFILE_NAME && !registry.getProfileNames().includes(DEFAULT_PIBO_PROFILE_NAME)
+		? createDefaultPiboProfile()
+		: registry.createProfile(resolvedProfileName);
+	if (profile.pluginSelection) return profile;
+	const installations = registry.getPluginHost().inspect().plugins.filter((installation) =>
+		installation.enabled
+		&& ["active", "pending-activation"].includes(installation.state)
+		&& installation.manifest.contributions.some((contribution) => contribution.scope === "agent"),
+	);
+	if (installations.length === 0) return profile;
+	return new InitialSessionContext({
+		...profile,
+		pluginSelection: createAgentPluginSelectionForProfile(installations, profile),
+		pluginSelectionRevision: installations.reduce((sum, installation) => sum + installation.stateRevision, 0),
+	});
 }
 
 export function createGatewayProducerPiboProfile(): InitialSessionContext {

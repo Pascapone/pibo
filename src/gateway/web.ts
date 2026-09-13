@@ -3,7 +3,6 @@ import { createDefaultPiboPlugins } from "../plugins/builtin.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import { createPiboBetterAuthPlugin } from "../plugins/better-auth.js";
 import { createPiboChatWebPlugin, type ChatWebAppOptions } from "../plugins/chat-web.js";
-import { createPiboChatVscodeWebPlugin } from "../plugins/chat-vscode-web.js";
 import type { ContextFilesPluginOptions } from "../plugins/context-files.js";
 import { createPiboUserProfileResourcePlugins } from "../plugins/user-profile-resources.js";
 import { createPiboPreviewPlugin } from "../previews/plugin.js";
@@ -198,7 +197,6 @@ export function createWebPiboPluginRegistry(options: WebGatewayServerOptions = {
 			createPiboLoopPlugin({ loopStorePath: resolvedOptions.chat?.ralphStorePath, dataStorePath: resolvedOptions.chat?.dataStorePath, dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir }),
 			createPiboPreviewPlugin(),
 			createPiboChatWebPlugin(resolvedOptions.chat),
-			createPiboChatVscodeWebPlugin(),
 		],
 	});
 }
@@ -242,6 +240,8 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 			pluginRegistry,
 			resourceReaper: resolveGatewayResourceReaperOptions(resolvedOptions),
 			loopStorePath: resolvedOptions.chat?.ralphStorePath,
+			dataStorePath: resolvedOptions.chat?.dataStorePath,
+			agentStorePath: resolvedOptions.chat?.agentStorePath,
 		});
 		await server.start();
 	} catch (error) {

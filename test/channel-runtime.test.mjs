@@ -3,12 +3,11 @@ import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
-import { piboCodexCompatPlugin } from "../dist/plugins/codex-compat.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 test("gateway starts plugin channels with router and session session context", async () => {
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin, piboCodexCompatPlugin] });
+	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
 	const store = new InMemoryPiboSessionStore();
 	let startedSession;
 	let stopped = false;

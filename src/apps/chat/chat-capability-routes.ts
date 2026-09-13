@@ -1,7 +1,7 @@
 import type { AgentPluginCatalog } from "../chat-ui/src/api-agent-designer-plugin-types.js";
 export type { AgentPluginCatalog } from "../chat-ui/src/api-agent-designer-plugin-types.js";
 import { PiboWebHttpError, readJsonBody, responseJson } from "../../web/http.js";
-import { CHAT_WEB_API_PREFIX, mcpServerResourceName, piPackageResourceId } from "./chat-api-routes.js";
+import { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import { createAgentInput, createAgentUpdate, type ChatAgentBody } from "./chat-request-normalizers.js";
 import type { CreateCustomAgentInput, UpdateCustomAgentInput } from "./agent-store.js";
 import { LEGACY_AGENT_SELECTION_FIELDS, isUnresolvedAgentPluginMigration, type CustomAgentDefinition, type CustomAgentStore } from "./agent-store.js";
@@ -9,20 +9,6 @@ import { createAgentPluginSelection, validateAgentPluginSelection } from "../../
 import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { pluginJson, PluginConflictError } from "../../plugins/store.js";
 import type { AgentPluginSelection, EffectivePluginPlan, IndependentPluginResource, PluginCatalog, PluginConfigurationSnapshot, PluginContribution, PluginResolutionInput, PluginRuntimeTarget } from "../../plugins/sdk.js";
-
-/** Removed routes are explicit tombstones, never an executable legacy package manager. */
-export type ChatCapabilityRoute = { kind: "retired-capability-route" };
-export function chatCapabilityRoute(pathname: string, _method: string): ChatCapabilityRoute | undefined {
-	if (pathname === `${CHAT_WEB_API_PREFIX}/pi-packages` || piPackageResourceId(pathname) || mcpServerResourceName(pathname)) return { kind: "retired-capability-route" };
-	return undefined;
-}
-export function chatCapabilityRouteRequiresSameOrigin(_route: ChatCapabilityRoute): boolean { return true; }
-export async function handleChatCapabilityRoute(_options: {
-	route: ChatCapabilityRoute; request: Request; cwd: string; invalidateBootstrapCatalogCache: () => void;
-	agentsSelectingPiPackage: (packageId: string) => readonly { profileName: string }[];
-}): Promise<Response> {
-	return responseJson({ code: "legacy-capability-api-retired", schemaVersion: 2, error: "Use the unified plugin API. Legacy Pi packages are retained only as inactive migration diagnostics; MCP configuration belongs to its plugin tab." }, { status: 410 });
-}
 
 export function buildAgentPluginCatalog(catalog: PluginCatalog): AgentPluginCatalog {
 	return { schemaVersion: 1, revision: catalog.revision, plugins: catalog.installations.map((item) => ({

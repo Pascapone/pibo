@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, sta
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 
 export type InstallationProfileName = "batteries-included" | "vanilla";
-export type InstallationComponentName = "core" | "vscode-web" | "browser-tools" | "managed-browser" | "web-annotations" | "mcp-defaults";
+export type InstallationComponentName = "core" | "browser-tools" | "managed-browser" | "web-annotations" | "mcp-defaults";
 
 export type InstallationComponent = {
 	name: InstallationComponentName;
@@ -84,19 +84,12 @@ export type InstallationStatus = {
 	repairCommand: string;
 };
 
-const CODE_SERVER_VERSION = "4.135.0";
 const BROWSER_USE_VERSION = "0.12.6";
 const AGENT_BROWSER_VERSION = "0.27.0";
 const CHROME_DEVTOOLS_MCP_VERSION = "1.8.0";
 const FILESYSTEM_MCP_VERSION = "2026.7.10";
-const CODE_SERVER_SHA256 = {
-	x64: "300ef4e37e469e6368a4673c6a623e1c9ba8a34f42b394fb49c431a8900bc7d1",
-	arm64: "fe6561798415e709109cb902dca2a57a687240af7d8220f6fa1d01cd2ae0541e",
-} as const;
-
 const COMPONENTS: Record<InstallationComponentName, InstallationComponent> = {
 	core: { name: "core", version: "package", description: "Pibo gateway and Chat Web", optional: false },
-	"vscode-web": { name: "vscode-web", version: CODE_SERVER_VERSION, description: "Embedded code-server workspace", optional: true, sha256: { "linux-amd64": CODE_SERVER_SHA256.x64, "linux-arm64": CODE_SERVER_SHA256.arm64 } },
 	"browser-tools": { name: "browser-tools", version: `browser-use ${BROWSER_USE_VERSION}; agent-browser ${AGENT_BROWSER_VERSION}`, description: "Curated browser automation CLIs", optional: true, integrity: { "browser-use-wheel-sha256": "f969aa1f895cbf44525e13b5743d78282bee589e68cc5d0ee238666b8b0d0b13", "agent-browser-npm-sri": "sha512-mmHzVsYFVA6nshNNGJzg83aVMgKpf4h98ytY3pvtJB1Cot0ZyA2bfnkbSngGD56Azkj+GlhVH6qx9DfKOVE0yg==" } },
 	"managed-browser": { name: "managed-browser", version: "system chromium", description: "Managed Chromium/CDP runtime prerequisites", optional: true },
 	"web-annotations": { name: "web-annotations", version: "package", description: "Pibo Web Annotations integration", optional: true },
@@ -105,7 +98,7 @@ const COMPONENTS: Record<InstallationComponentName, InstallationComponent> = {
 
 const PROFILE_COMPONENTS: Record<InstallationProfileName, InstallationComponentName[]> = {
 	vanilla: ["core"],
-	"batteries-included": ["core", "vscode-web", "browser-tools", "managed-browser", "web-annotations", "mcp-defaults"],
+	"batteries-included": ["core", "browser-tools", "managed-browser", "web-annotations", "mcp-defaults"],
 };
 
 function sha256(content: string): string {
@@ -128,9 +121,8 @@ export function installationManifestPath(piboHome: string): string {
 	return join(piboHome, "setup", "installation.json");
 }
 
-function gatewayService(options: { piboHome: string; workspaceRoot: string; hasVscode: boolean; hasMcpDefaults: boolean; piboCommand: string }): string {
+function gatewayService(options: { piboHome: string; hasMcpDefaults: boolean; piboCommand: string }): string {
 	const integrationEnvironment = [
-		...(options.hasVscode ? ["Environment=PIBO_VSCODE_WEB_URL=/apps/vscode/", `Environment=${systemdQuote(`PIBO_VSCODE_WORKSPACE_ROOT=${options.workspaceRoot}`)}`] : []),
 		...(options.hasMcpDefaults ? [`Environment=${systemdQuote(`MCP_CONFIG_PATH=${options.piboHome}/setup/mcp-defaults.json`)}`] : []),
 	];
 	return `[Unit]
@@ -157,54 +149,11 @@ WantedBy=multi-user.target
 `;
 }
 
-function codeServerService(workspaceRoot: string): string {
-	return `[Unit]
-Description=Pibo VS Code Web
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=pibo-code
-Group=pibo-code
-WorkingDirectory=${workspaceRoot}
-Environment=HOME=/var/lib/pibo-code
-Environment=XDG_DATA_HOME=/var/lib/pibo-code/.local/share
-Environment=XDG_CONFIG_HOME=/var/lib/pibo-code/.config
-ExecStart=/opt/pibo/code-server/${CODE_SERVER_VERSION}/bin/code-server --bind-addr 127.0.0.1:4790 --auth none --disable-telemetry --disable-update-check --disable-workspace-trust ${systemdQuote(workspaceRoot)}
-Restart=always
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=${systemdQuote(workspaceRoot)} /var/lib/pibo-code
-
-[Install]
-WantedBy=multi-user.target
-`;
-}
-
-function proxyConfig(domain: string | undefined, batteriesIncluded: boolean): string {
+function proxyConfig(domain: string | undefined): string {
 	const site = domain ?? "http://127.0.0.1:8080";
-	const vscode = batteriesIncluded
-		? `\tredir /apps/vscode /apps/vscode/ 308
-\thandle_path /apps/vscode/* {
-\t\tforward_auth 127.0.0.1:4788 {
-\t\t\turi /api/chat/bootstrap
-\t\t\theader_up -Connection
-\t\t\theader_up -Upgrade
-\t\t}
-\t\treverse_proxy 127.0.0.1:4790 {
-\t\t\theader_down -X-Frame-Options
-\t\t\theader_down +Content-Security-Policy "frame-ancestors 'self'"
-\t\t}
-\t}
-`
-		: "";
 	return `${site} {
 \tencode zstd gzip
-${vscode}\thandle {
+\thandle {
 \t\treverse_proxy 127.0.0.1:4788
 \t}
 }
@@ -246,15 +195,6 @@ function installPackagesCommand(packages: string[]): string {
 	return `if command -v apt-get >/dev/null 2>&1; then apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y ${names}; elif command -v dnf >/dev/null 2>&1; then dnf install -y ${names}; elif command -v pacman >/dev/null 2>&1; then pacman -Sy --needed --noconfirm ${names}; else echo "Supported package manager not found (apt-get, dnf, or pacman)" >&2; exit 2; fi`;
 }
 
-function codeServerInstallCommand(): string {
-	return `set -eu; arch=$(uname -m); case "$arch" in x86_64|amd64) asset=amd64; sha=${CODE_SERVER_SHA256.x64};; aarch64|arm64) asset=arm64; sha=${CODE_SERVER_SHA256.arm64};; *) echo "Unsupported architecture: $arch" >&2; exit 2;; esac; tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT; curl -fsSL "https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-$asset.tar.gz" -o "$tmp/code-server.tgz"; echo "$sha  $tmp/code-server.tgz" | sha256sum -c -; mkdir -p /opt/pibo/code-server/${CODE_SERVER_VERSION}; tar -xzf "$tmp/code-server.tgz" --strip-components=1 -C /opt/pibo/code-server/${CODE_SERVER_VERSION}`;
-}
-
-function protectedRouteProbe(url: string, websocket = false): string {
-	const headers = websocket ? " --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: cGliby1zZXR1cC1wcm9iZQ=='" : "";
-	return `status=$(curl -sS -o /dev/null -w '%{http_code}'${headers} ${shellQuote(url)}); case "$status" in 302|303|307|308|401|403) ;; *) echo "Expected authenticated route to reject anonymous request, got HTTP $status" >&2; exit 1;; esac`;
-}
-
 function availableRouteProbe(url: string): string {
 	return `status=$(curl -sS -o /dev/null -w '%{http_code}' ${shellQuote(url)}); case "$status" in 200|204|302|303|307|308|401|403) ;; *) echo "Expected maintained integration route to be available, got HTTP $status" >&2; exit 1;; esac`;
 }
@@ -276,22 +216,14 @@ export function createInstallationPlan(options: {
 	if (requestedComponents.includes("browser-tools")) requestedComponents.push("managed-browser");
 	const componentNames = [...new Set(requestedComponents)];
 	const components = componentNames.map((name) => name === "core" && options.piboVersion ? { ...COMPONENTS.core, version: options.piboVersion } : COMPONENTS[name]);
-	const hasVscode = componentNames.includes("vscode-web");
 	const hasBrowserTools = componentNames.includes("browser-tools");
 	const hasManagedBrowser = componentNames.includes("managed-browser");
 	const hasMcpDefaults = componentNames.includes("mcp-defaults");
 	const hasWebAnnotations = componentNames.includes("web-annotations");
 	const files: InstallationFile[] = [
-		{ path: "/etc/systemd/system/pibo-web.service", purpose: "Pibo gateway service", content: gatewayService({ piboHome, workspaceRoot, hasVscode, hasMcpDefaults, piboCommand }) },
-		{ path: "/etc/caddy/Caddyfile", purpose: hasVscode ? "Authenticated same-origin Pibo and VS Code Web proxy" : "Pibo HTTPS proxy", content: proxyConfig(options.domain, hasVscode) },
+		{ path: "/etc/systemd/system/pibo-web.service", purpose: "Pibo gateway service", content: gatewayService({ piboHome, hasMcpDefaults, piboCommand }) },
+		{ path: "/etc/caddy/Caddyfile", purpose: "Pibo HTTPS proxy", content: proxyConfig(options.domain) },
 	];
-	if (componentNames.includes("vscode-web")) {
-		files.push(
-			{ path: "/etc/systemd/system/pibo-code-server.service", purpose: "Loopback VS Code Web service", content: codeServerService(workspaceRoot) },
-			{ path: "/etc/pibo/code-server-default-settings.json", purpose: "Initial Pibo-compatible VS Code Web defaults", content: `${JSON.stringify({ "workbench.colorTheme": "Default Dark Modern", "window.autoDetectColorScheme": false, "telemetry.telemetryLevel": "off" }, null, 2)}\n`, mode: 0o600 },
-			{ path: `/opt/pibo/code-server/${CODE_SERVER_VERSION}/.pibo-owned`, purpose: "Ownership marker for the pinned VS Code Web binary", content: `code-server ${CODE_SERVER_VERSION}\n`, mode: 0o600 },
-		);
-	}
 	if (componentNames.includes("mcp-defaults")) {
 		files.push(
 			{ path: join(piboHome, "setup", "mcp-defaults.json"), purpose: "Allowlisted MCP defaults", content: mcpDefaults(piboHome, workspaceRoot), mode: 0o600 },
@@ -308,11 +240,6 @@ export function createInstallationPlan(options: {
 	const actions: InstallationAction[] = [
 		{ id: "host-packages", description: "Install core reverse-proxy prerequisites", command: installPackagesCommand(["ca-certificates", "caddy"]), checkCommand: "command -v caddy >/dev/null 2>&1", privileged: true },
 	];
-	if (hasVscode) actions.push(
-		{ id: "vscode-packages", description: "Install VS Code Web download prerequisites", command: installPackagesCommand(["curl"]), checkCommand: "command -v curl >/dev/null 2>&1", privileged: true },
-		{ id: "service-account", description: "Create the dedicated VS Code Web account and workspace", command: `id -u pibo-code >/dev/null 2>&1 || { nologin=$(command -v nologin || printf /usr/sbin/nologin); useradd --system --home /var/lib/pibo-code --create-home --shell "$nologin" pibo-code; }; settings=/var/lib/pibo-code/.local/share/code-server/User/settings.json; mkdir -p ${shellQuote(workspaceRoot)} "$(dirname "$settings")"; test -e "$settings" || install -m 600 -o pibo-code -g pibo-code /etc/pibo/code-server-default-settings.json "$settings"; chown -R pibo-code:pibo-code ${shellQuote(workspaceRoot)} /var/lib/pibo-code`, checkCommand: `id -u pibo-code >/dev/null 2>&1 && test -d ${shellQuote(workspaceRoot)} && test -f /var/lib/pibo-code/.local/share/code-server/User/settings.json`, privileged: true },
-		{ id: "code-server", description: `Install pinned code-server ${CODE_SERVER_VERSION}`, command: codeServerInstallCommand(), checkCommand: `test -x /opt/pibo/code-server/${CODE_SERVER_VERSION}/bin/code-server`, privileged: true },
-	);
 	if (hasManagedBrowser) actions.push({ id: "chromium", description: "Install managed Chromium prerequisites", command: installPackagesCommand(["chromium"]), checkCommand: "command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1", privileged: true });
 	if (hasBrowserTools) actions.push(
 		{ id: "browser-profiles", description: "Create private managed browser-profile infrastructure", command: `install -d -m 700 ${shellQuote(browserUseProfiles)} ${shellQuote(browserUseAuthPool)} ${shellQuote(browserUseProcessPool)} ${shellQuote(agentBrowserProfiles)} ${shellQuote(join(agentBrowserProfiles, "auth-template"))} ${shellQuote(join(agentBrowserProfiles, "leases"))}`, checkCommand: `test "$(stat -c %a ${shellQuote(browserUseProfiles)})" = 700 && test "$(stat -c %a ${shellQuote(browserUseAuthPool)})" = 700 && test "$(stat -c %a ${shellQuote(browserUseProcessPool)})" = 700 && test "$(stat -c %a ${shellQuote(agentBrowserProfiles)})" = 700`, privileged: true },
@@ -326,44 +253,32 @@ export function createInstallationPlan(options: {
 	);
 	const healthCommand = [
 		`PIBO_HOME=${shellQuote(piboHome)} ${piboCommand} gateway web doctor`,
-		...(hasVscode ? ["curl -fsS http://127.0.0.1:4790/healthz >/dev/null"] : []),
 		...(hasWebAnnotations ? [availableRouteProbe("http://127.0.0.1:4788/apps/web-annotations/overlay.js?pibo-setup-probe=1")] : []),
-		...(hasVscode && options.domain ? [protectedRouteProbe(`https://${options.domain}/apps/vscode/?pibo-setup-probe=1`), protectedRouteProbe(`https://${options.domain}/apps/vscode/ws?pibo-setup-probe=1`, true)] : []),
 	].join(" && ");
 	actions.push(
-		{ id: "systemd", description: "Reload and enable setup-managed services", command: `systemctl daemon-reload && systemctl enable pibo-web${hasVscode ? " && systemctl enable --now pibo-code-server" : ""}`, checkCommand: `systemctl is-enabled --quiet pibo-web${hasVscode ? " && systemctl is-enabled --quiet pibo-code-server && systemctl is-active --quiet pibo-code-server" : ""}`, privileged: true, restartEffect: hasVscode ? "Starts or restarts the loopback VS Code Web service" : "Registers the Pibo gateway service" },
+		{ id: "systemd", description: "Reload and enable setup-managed services", command: "systemctl daemon-reload && systemctl enable pibo-web", checkCommand: "systemctl is-enabled --quiet pibo-web", privileged: true, restartEffect: "Registers the Pibo gateway service" },
 		{ id: "gateway", description: "Use the Pibo-owned safe gateway lifecycle", command: `PIBO_HOME=${shellQuote(piboHome)} ${piboCommand} gateway web restart`, checkCommand: "systemctl is-active --quiet pibo-web", privileged: true, restartEffect: "May be blocked while production sessions are active" },
 		{ id: "caddy", description: "Validate and reload the public proxy", command: "caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy", checkCommand: "caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 && systemctl is-active --quiet caddy", privileged: true, restartEffect: "Reloads Caddy without dropping established connections" },
-		{ id: "health", description: "Verify gateway, optional VS Code Web, public auth, and WebSocket gates", command: healthCommand, checkCommand: healthCommand, privileged: false },
+		{ id: "health", description: "Verify the gateway and maintained integration routes", command: healthCommand, checkCommand: healthCommand, privileged: false },
 	);
 	const warnings = options.domain ? [] : ["No domain was provided. Caddy remains loopback-only on http://127.0.0.1:8080 and cannot provision trusted TLS."];
 	return {
 		schemaVersion: 1,
 		profileVersion: 1,
 		profile: options.profile,
-		summary: options.profile === "batteries-included" ? "Complete supported Pibo workstation with embedded IDE, browser tooling, annotations, and curated MCP defaults." : "Minimal Pibo gateway and Chat Web installation without optional integrations.",
+		summary: options.profile === "batteries-included" ? "Complete supported Pibo workstation with browser tooling, annotations, and curated MCP defaults." : "Minimal Pibo gateway and Chat Web installation without optional integrations.",
 		piboHome,
 		workspaceRoot,
 		piboCommand,
 		domain: options.domain,
 		components,
-		hostPackages: ["node >=24", "npm", "caddy", "ca-certificates", ...(hasVscode ? ["curl"] : []), ...(hasManagedBrowser ? ["chromium"] : [])],
-		downloads: hasVscode ? [{
-			name: "code-server",
-			version: CODE_SERVER_VERSION,
-			urls: {
-				"linux-amd64": `https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-amd64.tar.gz`,
-				"linux-arm64": `https://github.com/coder/code-server/releases/download/v${CODE_SERVER_VERSION}/code-server-${CODE_SERVER_VERSION}-linux-arm64.tar.gz`,
-			},
-			sha256: { "linux-amd64": CODE_SERVER_SHA256.x64, "linux-arm64": CODE_SERVER_SHA256.arm64 },
-		}] : [],
+		hostPackages: ["node >=24", "npm", "caddy", "ca-certificates", ...(hasManagedBrowser ? ["chromium"] : [])],
+		downloads: [],
 		services: [
 			{ name: "pibo-web", bind: "127.0.0.1:4788", public: false, user: "root" },
-			...(hasVscode ? [{ name: "pibo-code-server", bind: "127.0.0.1:4790", public: false, user: "pibo-code" }] : []),
 		],
 		ports: [
 			{ name: "chat-web", host: "127.0.0.1", port: 4788, exposure: options.domain ? "public-via-proxy" : "loopback" },
-			...(hasVscode ? [{ name: "vscode-web", host: "127.0.0.1", port: 4790, exposure: options.domain ? "public-via-proxy" as const : "loopback" as const }] : []),
 			options.domain ? { name: "https-proxy", host: options.domain, port: 443, exposure: "public" } : { name: "local-proxy", host: "127.0.0.1", port: 8080, exposure: "loopback" },
 		],
 		files,
@@ -371,7 +286,6 @@ export function createInstallationPlan(options: {
 		securityBoundaries: [
 			"The Pibo gateway binds only to 127.0.0.1:4788.",
 			"Caddy is the only public listener and terminates TLS when a domain is configured.",
-			...(hasVscode ? ["VS Code Web binds only to 127.0.0.1:4790.", "Caddy authenticates /apps/vscode/* through the Pibo Chat bootstrap endpoint.", "The IDE runs as pibo-code and can write only its data directory and the configured workspace root."] : []),
 			...(hasMcpDefaults ? ["MCP defaults use explicit tool allowlists and the Pibo-managed loopback CDP endpoint."] : []),
 		],
 		warnings,
@@ -380,7 +294,7 @@ export function createInstallationPlan(options: {
 }
 
 function ownedDirectoryMarkerParent(path: string): string | undefined {
-	return /(?:\/opt\/pibo\/code-server\/[^/]+|\/setup\/mcp-runtime)\/\.pibo-owned$/.test(path) ? dirname(path) : undefined;
+	return /\/setup\/mcp-runtime\/\.pibo-owned$/.test(path) ? dirname(path) : undefined;
 }
 
 function outputPath(path: string, root?: string): string {

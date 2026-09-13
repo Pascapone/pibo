@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
 import { createRuntimeToolDefinition } from "../dist/tools/runtime/tool.js";
 
@@ -290,8 +290,13 @@ test("node runtime captures stdout, stderr, inspect, vars, and closeOnSuccess", 
 	});
 });
 
-test("runtime can be selected by a registered profile and inspection", async () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("runtime can be selected by a registered profile and inspection", async (t) => {
+	const product = await startTestPluginProduct("pibo-runtime-tool-product-");
+	const registry = product.createDefaultRegistry();
+	t.after(async () => {
+		await registry.disposePlugins();
+		await product.dispose();
+	});
 	registry.upsertProfile({
 		name: "runtime-agent",
 		create(context) {
@@ -302,7 +307,7 @@ test("runtime can be selected by a registered profile and inspection", async () 
 	});
 	const profile = registry.createProfile("runtime-agent");
 	assert.ok(profile.tools.some((tool) => tool.name === "runtime" && tool.builtInPiboTool === "runtime"));
-	assert.ok(registry.getCapabilityCatalog().nativeTools.some((tool) => tool.name === "runtime" && tool.pluginId === "pibo.core"));
+	assert.ok(registry.getCapabilityCatalog().nativeTools.some((tool) => tool.name === "runtime" && tool.pluginId === "pibo.code-runtime"));
 
 	const inspection = await inspectPiboProfile({ profile, persistSession: false });
 	const runtimeTool = inspection.tools.find((tool) => tool.name === "runtime");

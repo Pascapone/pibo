@@ -1,14 +1,20 @@
 import { tsImport } from "tsx/esm/api";
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import React from 'react';
+import TestRenderer, { act } from 'react-test-renderer';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { mkdtemp, mkdir, writeFile, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const { emptyPluginTabset, openPluginTab, closePluginTab, updatePluginTab, availablePluginViews, SessionTabController, PluginHttpError, pluginTabDeepLink, parsePluginTabDeepLink } = await tsImport("../src/apps/chat-ui/src/plugins/session-tab-controller.ts", import.meta.url);
-const { BrowserPluginHost, runPluginInputHooks, sessionPluginRequest } = await tsImport("../src/apps/chat-ui/src/plugins/browser-host.tsx", import.meta.url);
+const { BrowserPluginHost, PluginArtifact, runPluginInputHooks, sessionPluginRequest } = await tsImport("../src/apps/chat-ui/src/plugins/browser-host.tsx", import.meta.url);
 const { pluginConfigurationPath } = await tsImport("../src/apps/chat-ui/src/plugins/plugin-settings.tsx", import.meta.url);
 const { recordedBuildNodes } = await tsImport("../src/apps/chat-ui/src/plugins/build-context-view.tsx", import.meta.url);
+const { PluginManagement } = await tsImport("../src/apps/chat-ui/src/plugins/plugin-management.tsx", import.meta.url);
 import { pluginBrowserRoute, pluginBrowserCatalog, handlePluginBrowserRoute } from '../dist/apps/chat/plugin-browser-routes.js';
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function fixture(session = 'ps_A') {
  const contribution = { id:'notes', kind:'view', scope:'agent', required:false, defaultEnabled:true, schemaVersion:1, context:{kind:'none',reason:'UI'}, view:{title:'Notes',exportName:'Notes',visibility:'session',instance:'singleton',mount:'unmount',stateSchemaVersion:1,subviews:[{id:'settings',title:'Settings',purpose:'settings',settingsScopes:['session']}]}};
@@ -70,6 +76,25 @@ test('configuration URL fixes app/agent/session target independently from tab ow
 test('host imports only effective pinned browser modules and injects shared React/SDK',async()=>{
  const f=fixture();let calls=0;let shared;const host=new BrowserPluginHost(f.plan,f.catalog,async()=>{calls++;return {setup:(ctx)=>{shared=ctx;},Notes:()=>null}});await host.start();assert.equal(calls,1);assert.equal(typeof shared.React.useState,'function');assert.equal(shared.sdk.PLUGIN_SDK_VERSION,'1.0.0');assert.equal(host.views.size,1);await host.dispose();assert.equal(host.views.size,0);
  const disabled=new BrowserPluginHost({...f.plan,contributions:[]},f.catalog,async()=>{throw Error('must not import')});await disabled.start();assert.equal(disabled.errors.size,0);
+});
+test('AP11 Web Annotations history stays readable when its terminal renderer is missing',()=>{
+ const envelope={schemaVersion:1,pluginId:'pibo.web-annotations',contributionId:'pibo.web-annotations/terminal',dataSchemaVersion:1,objectId:'ann_ap11',eventId:'evt_ap11',fallback:'Annotation ann_ap11: Retained review note'};
+ const html=renderToStaticMarkup(React.createElement(PluginArtifact,{envelope,piboSessionId:'ps_A'}));
+ assert.match(html,/data-plugin-fallback/);assert.match(html,/Annotation ann_ap11: Retained review note/);
+});
+test('uninstall planning keeps its confirmation UI mounted until a catalog-changing action',async()=>{
+ const originalFetch=globalThis.fetch;let changed=0;let renderer;
+ const installation={pluginId:'pibo.web-annotations',revision:'sha256:r1',version:'1.0.0',contentHash:'sha256:r1',state:'active',enabled:true,stateRevision:3,source:{kind:'builtin',name:'pibo.web-annotations'},createdAt:'2026-09-12T00:00:00Z',manifest:{schemaVersion:1,id:'pibo.web-annotations',name:'Annotations',version:'1.0.0',sdk:'^1.0.0',contributions:[]}};
+ const operation={id:'op-1',pluginId:installation.pluginId,installationRevision:3,state:'prepared',expiresAt:'2026-09-12T00:05:00Z',impact:{sessions:1}};
+ globalThis.fetch=async(input,init={})=>{const path=typeof input==='string'?input:new URL(input.url).pathname;if((init.method??'GET')==='GET'&&path==='/api/chat/plugins')return new Response(JSON.stringify({installations:[installation]}),{status:200,headers:{'content-type':'application/json'}});if(init.method==='POST'&&path.endsWith('/uninstall-plan'))return new Response(JSON.stringify(operation),{status:200,headers:{'content-type':'application/json'}});throw new Error(`unexpected request ${init.method??'GET'} ${path}`);};
+ try {
+  await act(async()=>{renderer=TestRenderer.create(React.createElement(PluginManagement,{onChanged:()=>{changed++;}}));await new Promise(resolve=>setTimeout(resolve,0));});
+  const plan=renderer.root.findAllByType('button').find(button=>button.children.join('')==='Plan uninstall');assert.ok(plan);
+  await act(async()=>{plan.props.onClick();await new Promise(resolve=>setTimeout(resolve,10));});
+  assert.equal(changed,0);assert.equal(renderer.root.findByType('h3').children.join(''),'Operation prepared');
+  const confirm=renderer.root.findAllByType('button').find(button=>button.children.join('')==='Confirm retained-data uninstall');assert.equal(confirm.props.disabled,true);
+  assert.equal(renderer.root.findByType('input').props.value,'');
+ } finally {await act(async()=>renderer?.unmount());globalThis.fetch=originalFetch;}
 });
 test('setup failure rolls back renderers, hooks and views',async()=>{
  const f=fixture();const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({setup:(ctx)=>{ctx.registerRenderer(f.entry.id,1,()=>null);ctx.registerHook({descriptor:{id:f.entry.id,phase:'send',order:0,required:true,timeoutMs:100},run:()=>({action:'continue'})});throw Error('fixture failure');},Notes:()=>null}));await host.start();assert.equal(host.renderers.size,0);assert.equal(host.hooks.length,0);assert.match(host.errors.get('example.notes'),/fixture failure/);

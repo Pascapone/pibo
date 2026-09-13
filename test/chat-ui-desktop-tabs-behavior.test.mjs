@@ -105,7 +105,6 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 			observedState = state;
 			return React.createElement(DesktopTabSidebar, {
 				state,
-				vscodeEnabled: false,
 				hidden,
 				fullscreen: previewFullscreen,
 				onStateChange: setState,
@@ -210,9 +209,9 @@ test("desktop tab React flows preserve Preview, pause inactive resources, and fo
 		const remainingNewTab = observedState.tabs.find((tab) => tab.target.kind === "new-tab");
 		const remainingNewTabButton = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("New Tab."))[0];
 		await act(async () => remainingNewTabButton.props.onClick());
-		await act(async () => catalogButton("VS Code").props.onClick());
+		await act(async () => catalogButton("Workflows").props.onClick());
 		assert.equal(observedState.activeTabId, remainingNewTab.id, "new module replaces the active New Tab in place");
-		assert.equal(model.activeDesktopTab(observedState).target.route.area, "vscode");
+		assert.equal(model.activeDesktopTab(observedState).target.route.area, "workflows");
 		assert.equal(observedState.tabs.some((tab) => tab.target.kind === "new-tab"), false);
 
 		await act(async () => mounted.update(React.createElement(Harness, { hidden: true })));

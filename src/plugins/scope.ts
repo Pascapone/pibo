@@ -6,6 +6,7 @@ export class PluginScope {
 	private readonly controller = new AbortController();
 	private readonly disposers: PluginDisposer[] = [];
 	private disposal?: Promise<void>;
+	private readonly children = new Set<PluginScope>();
 	private state: "open" | "disposing" | "disposed" | "failed" = "open";
 
 	constructor(readonly pluginId: string, readonly instanceId: string = pluginId) {
@@ -13,6 +14,7 @@ export class PluginScope {
 	}
 
 	get status() { return this.state; }
+	get activeChildren(): number { return [...this.children].filter((child) => child.status !== "disposed").length; }
 
 	assertOpen(): void {
 		if (this.state !== "open") throw new Error(`Plugin scope ${this.instanceId} is ${this.state}`);
@@ -30,6 +32,7 @@ export class PluginScope {
 	child(instanceId: string): PluginScope {
 		this.assertOpen();
 		const child = new PluginScope(this.pluginId, `${this.instanceId}/${instanceId}`);
+		this.children.add(child);
 		this.defer(() => child.dispose());
 		return child;
 	}

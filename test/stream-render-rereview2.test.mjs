@@ -6,7 +6,6 @@ import { performance } from "node:perf_hooks";
 import test from "node:test";
 import { OutputCompactor } from "../dist/apps/chat/output-compactor.js";
 import { ChatTimelineQueryService } from "../dist/apps/chat/data/timeline-query-service.js";
-import { LocalCliSessionSource } from "../dist/cli-session/localSessionSource.js";
 import { OutputRenderSequencer } from "../dist/core/output-render-sequence.js";
 import { OutputPersistenceRetryQueue } from "../dist/core/output-persistence-retry.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
@@ -215,88 +214,6 @@ test("durable render high-water survives stale metadata writes across SQLite con
 		firstDataStore?.close();
 		secondDataStore?.close();
 		fs.rmSync(directory, { recursive: true, force: true });
-	}
-});
-
-test("local CLI automatically retries one failed final without producer replay", async () => {
-	const dataStore = new PiboDataStore(":memory:");
-	const sessionStore = new PiboDataSessionStore(dataStore);
-	const originalAppend = dataStore.eventLog.appendEvent.bind(dataStore.eventLog);
-	let failFirstFinal = true;
-	dataStore.eventLog.appendEvent = (input) => {
-		if (failFirstFinal && input.type === "assistant_message") {
-			failFirstFinal = false;
-			throw new Error("injected once-only final failure");
-		}
-		return originalAppend(input);
-	};
-	const listeners = new Set();
-	const router = {
-		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-		async emit() { throw new Error("not used"); },
-	};
-	const source = new LocalCliSessionSource({ dataStore, sessionStore, router, now: () => fixedNow });
-	try {
-		const created = await source.createSession({ title: "Automatic retry", profile: "base" });
-		const emit = (event) => {
-			for (const listener of listeners) listener({ piboSessionId: created.id, eventId: "turn-auto-retry", ...event });
-		};
-		emit({ type: "assistant_delta", assistantIndex: 0, text: "persist me once" });
-		emit({ type: "assistant_message", assistantIndex: 0, text: "" });
-		await waitFor(() => dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.type === "assistant_message").length === 1);
-		const finals = dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.type === "assistant_message");
-		assert.equal(finals.length, 1);
-		assert.equal(finals[0].previewText, "persist me once");
-	} finally {
-		await source.close();
-		dataStore.close();
-	}
-});
-
-test("local CLI dead-letters output identity collisions after one attempt", async () => {
-	const dataStore = new PiboDataStore(":memory:");
-	const reliabilityStore = new PiboReliabilityStore(":memory:");
-	const sessionStore = new PiboDataSessionStore(dataStore);
-	const listeners = new Set();
-	const router = {
-		subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-		async emit() { throw new Error("not used"); },
-	};
-	const source = new LocalCliSessionSource({ dataStore, reliabilityStore, sessionStore, router, now: () => fixedNow });
-	try {
-		const created = await source.createSession({ title: "Permanent collision", profile: "base" });
-		new ChatDataIngestService(dataStore).ingestOutputEvent({
-			session: sessionStore.get(created.id),
-			event: {
-				type: "assistant_message",
-				piboSessionId: created.id,
-				eventId: "cli-permanent-collision",
-				assistantIndex: 0,
-				renderSequence: 1,
-				text: "stored answer",
-			},
-			createdAt: fixedNow,
-		});
-		for (const listener of listeners) {
-			listener({
-				type: "assistant_message",
-				piboSessionId: created.id,
-				eventId: "cli-permanent-collision",
-				assistantIndex: 0,
-				renderSequence: 2,
-				text: "conflicting answer",
-			});
-		}
-		await waitFor(() => reliabilityStore.listDead({ queue: "output-persistence-cli" }).length === 1);
-		const dead = reliabilityStore.listDead({ queue: "output-persistence-cli" });
-		assert.equal(dead[0].attempts, 1);
-		assert.equal(dead[0].deadReason, "permanent");
-		assert.match(dead[0].lastError, /Pibo output identity collision/);
-		assert.equal(dataStore.eventLog.listEvents({ sessionId: created.id }).filter((event) => event.type === "pibo.output.identity_collision").length, 1);
-	} finally {
-		await source.close();
-		reliabilityStore.close();
-		dataStore.close();
 	}
 });
 

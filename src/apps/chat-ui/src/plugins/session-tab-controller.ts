@@ -7,16 +7,16 @@ export function emptyPluginTabset(piboSessionId: string): PluginSessionTabset {
 export function availablePluginViews(plan: EffectivePluginPlan, catalog: PluginBrowserCatalog) {
 	return plan.contributions.filter((entry) => entry.contribution.view && catalog.plugins.some((plugin) => plugin.pluginId === entry.pluginId && plugin.revision === entry.pluginRevision && plugin.browserEntry));
 }
-export function openPluginTab(tabset: PluginSessionTabset, plan: EffectivePluginPlan, catalog: PluginBrowserCatalog, viewId: PluginQualifiedId, options: { instanceId?: string; instanceKey?: string; subviewId?: string } = {}): PluginSessionTabset {
+export function openPluginTab(tabset: PluginSessionTabset, plan: EffectivePluginPlan, catalog: PluginBrowserCatalog, viewId: PluginQualifiedId, options: { instanceId?: string; instanceKey?: string; subviewId?: string; state?: PluginJsonObject } = {}): PluginSessionTabset {
 	if (plan.piboSessionId !== tabset.piboSessionId) throw new Error("Plan/session mismatch");
 	const entry = availablePluginViews(plan, catalog).find((item) => item.id === viewId);
 	if (!entry?.contribution.view) throw new Error("View is not effective for this session");
 	const view = entry.contribution.view;
 	if (options.subviewId && !view.subviews?.some((item) => item.id === options.subviewId)) throw new Error("Unknown plugin subview");
 	const existing = tabset.tabs.find((tab) => tab.viewId === viewId && (view.instance === "singleton" || (options.instanceKey !== undefined && tab.instanceKey === options.instanceKey)));
-	if (existing) return { ...tabset, activeTabId: existing.instanceId, tabs: tabset.tabs.map((tab) => tab === existing && options.subviewId ? { ...tab, subviewId: options.subviewId } : tab) };
+	if (existing) return { ...tabset, activeTabId: existing.instanceId, tabs: tabset.tabs.map((tab) => tab === existing ? { ...tab, ...(options.subviewId ? { subviewId: options.subviewId } : {}), ...(options.state ? { state: { ...tab.state, ...options.state } } : {}) } : tab) };
 	if (tabset.tabs.length >= 100) throw new Error("Close a tab before opening another (100 tab limit)");
-	const tab: PluginTabInstance = { instanceId: options.instanceId ?? crypto.randomUUID(), piboSessionId: tabset.piboSessionId, pluginId: entry.pluginId, viewId, pluginRevision: entry.pluginRevision, stateSchemaVersion: view.stateSchemaVersion, state: {}, fallback: view.title, ...(options.subviewId ? { subviewId: options.subviewId } : {}), ...(options.instanceKey ? { instanceKey: options.instanceKey } : {}) };
+	const tab: PluginTabInstance = { instanceId: options.instanceId ?? crypto.randomUUID(), piboSessionId: tabset.piboSessionId, pluginId: entry.pluginId, viewId, pluginRevision: entry.pluginRevision, stateSchemaVersion: view.stateSchemaVersion, state: options.state ? structuredClone(options.state) : {}, fallback: view.title, ...(options.subviewId ? { subviewId: options.subviewId } : {}), ...(options.instanceKey ? { instanceKey: options.instanceKey } : {}) };
 	return { ...tabset, tabs: [...tabset.tabs, tab], activeTabId: tab.instanceId };
 }
 export function updatePluginTab(tabset: PluginSessionTabset, instanceId: string, patch: { state?: PluginJsonObject; subviewId?: string }): PluginSessionTabset {

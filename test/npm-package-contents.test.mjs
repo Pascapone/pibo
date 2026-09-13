@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, posix } from "node:path";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
@@ -62,84 +61,61 @@ test("package documentation link closure detects an excluded transitive target",
 	]);
 });
 
-test("npm package excludes generated VSIX artifacts while keeping runtime assets", async () => {
-	const artifactsDir = join(process.cwd(), "dist", "apps", "vscode-artifacts");
-	const artifactsDirExisted = existsSync(artifactsDir);
-	const markerName = `package-exclusion-${process.pid}.vsix`;
-	const markerPath = join(artifactsDir, markerName);
-	await mkdir(artifactsDir, { recursive: true });
-	await writeFile(markerPath, "generated VSIX marker");
-
+test("npm package includes runtime assets and closes installed documentation links", async () => {
+	const { stdout } = await execFileAsync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+		cwd: process.cwd(),
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	const [report] = JSON.parse(stdout);
+	const files = report.files.map((file) => file.path);
+	const packagedFiles = new Set(files);
+	assert.equal(files.includes("dist/bin/pibo.js"), true);
+	assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
+	for (const module of ["web-annotations", "tool-families", "control-tools", "runtime-adapters", "profiles", "mcp-cli", "product-ui"]) {
+		assert.equal(files.includes(`dist/plugins/packaged-${module}.js`), true, `npm package must include packaged-${module}.js`);
+		assert.equal(files.includes(`dist/plugins/packaged-${module}.d.ts`), true, `npm package must include packaged-${module}.d.ts`);
+	}
+	assert.equal(files.includes("dist/apps/chat-ui/assets/pibo-builtin-plugin.js"), true);
+	assert.equal(files.some((path) => /(?:^|\/)(?:chat-vscode(?:-web)?|cli-ui|cli-session|local|pi-packages|vscode)(?:\/|\.|-)/.test(path) || path.includes("vscode-artifacts")), false);
+	assert.equal(files.includes(".dockerignore"), false, "packaged image context must retain built dist files");
+	for (const path of [
+		"compute-image/Dockerfile",
+		"compute-image/Dockerfile.dockerignore",
+		"scripts/docker-entrypoint.sh",
+		"scripts/prepare-agent-browser-wrapper.sh",
+		"scripts/prepare-browser-use-wrapper.sh",
+	]) assert.equal(files.includes(path), true, `npm package must include ${path}`);
+	assert.equal(files.includes("docs/README.md"), false, "an incomplete legacy documentation README must not be installed");
+	assert.equal(files.includes("docs/project/README.md"), false, "an incomplete project documentation README must not be installed");
+	for (const path of [
+		"docs/project/installation-profiles.md",
+		"docs/project/guides/pibo-on-windows-via-wsl.md",
+		"docs/project/operations/install-user-host.md",
+		"docs/project/operations/install-developer-host.md",
+		"docs/project/operations/upgrade-user-to-developer-host.md",
+	]) assert.equal(files.includes(path), true, `README-linked installed operation is missing: ${path}`);
+	const operationsIndexPath = "docs/project/operations/index.md";
+	if (packagedFiles.has(operationsIndexPath)) {
+		const operationsIndex = await readFile(join(process.cwd(), operationsIndexPath), "utf8");
+		assert.deepEqual(unresolvedPackagedLinks({ files: packagedFiles, indexPath: operationsIndexPath, markdown: operationsIndex }), []);
+	}
+	const packDirectory = await mkdtemp(join(tmpdir(), "pibo-package-links-"));
 	try {
-		const { stdout } = await execFileAsync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-			cwd: process.cwd(),
-			maxBuffer: 16 * 1024 * 1024,
+		const { stdout: archiveJson } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packDirectory], {
+			cwd: process.cwd(), maxBuffer: 16 * 1024 * 1024,
 		});
-		const [report] = JSON.parse(stdout);
-		const files = report.files.map((file) => file.path);
-		const packagedFiles = new Set(files);
-		assert.equal(files.some((path) => path.startsWith("dist/apps/vscode-artifacts/")), false);
-		assert.equal(files.includes("dist/bin/pibo.js"), true);
-		assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
-		assert.equal(files.includes(".dockerignore"), false, "packaged image context must retain built dist files");
-		for (const path of [
-			"compute-image/Dockerfile",
-			"compute-image/Dockerfile.dockerignore",
-			"scripts/docker-entrypoint.sh",
-			"scripts/prepare-agent-browser-wrapper.sh",
-			"scripts/prepare-browser-use-wrapper.sh",
-		]) {
-			assert.equal(files.includes(path), true, `npm package must include ${path}`);
+		const [archiveReport] = JSON.parse(archiveJson);
+		const archivePath = join(packDirectory, archiveReport.filename);
+		const archiveFiles = new Set(archiveReport.files.map((file) => file.path));
+		const markdownByPath = new Map();
+		for (const path of archiveFiles) {
+			if (path !== "README.md" && !path.endsWith(".md")) continue;
+			const extracted = await execFileAsync("tar", ["-xOf", archivePath, `package/${path}`], { maxBuffer: 16 * 1024 * 1024 });
+			markdownByPath.set(path, extracted.stdout);
 		}
-		assert.equal(files.includes("docs/project/operations/vscode-extension-release.md"), true, "the conformant release runbook must be installed");
-		assert.equal(files.includes("docs/README.md"), false, "an incomplete legacy documentation README must not be installed");
-		assert.equal(files.includes("docs/project/README.md"), false, "an incomplete project documentation README must not be installed");
-		for (const path of [
-			"docs/project/installation-profiles.md",
-			"docs/project/guides/pibo-on-windows-via-wsl.md",
-			"docs/project/guides/pibo-vscode-ext-quickstart.md",
-			"docs/project/operations/install-user-host.md",
-			"docs/project/operations/install-developer-host.md",
-			"docs/project/operations/upgrade-user-to-developer-host.md",
-		]) assert.equal(files.includes(path), true, `README-linked installed operation is missing: ${path}`);
-		const operationsIndexPath = "docs/project/operations/index.md";
-		if (packagedFiles.has(operationsIndexPath)) {
-			const operationsIndex = await readFile(join(process.cwd(), operationsIndexPath), "utf8");
-			assert.deepEqual(
-				unresolvedPackagedLinks({ files: packagedFiles, indexPath: operationsIndexPath, markdown: operationsIndex }),
-				[],
-				"every relative link in the packaged operations index must resolve inside the package",
-			);
-		}
-		const packDirectory = await mkdtemp(join(tmpdir(), "pibo-package-links-"));
-		try {
-			const packed = await execFileAsync("npm", ["pack", "--ignore-scripts", "--pack-destination", packDirectory], {
-				cwd: process.cwd(),
-				maxBuffer: 16 * 1024 * 1024,
-			});
-			const archivePath = join(packDirectory, packed.stdout.trim().split(/\r?\n/).at(-1));
-			const listed = await execFileAsync("tar", ["-tzf", archivePath], { maxBuffer: 16 * 1024 * 1024 });
-			const archiveFiles = new Set(listed.stdout.split(/\r?\n/).filter(Boolean).map((path) => path.replace(/^package\//, "")));
-			const markdownByPath = new Map();
-			for (const path of [...archiveFiles].filter((path) => path === "README.md" || (path.startsWith("docs/") && path.endsWith(".md")))) {
-				const extracted = await execFileAsync("tar", ["-xOf", archivePath, `package/${path}`], { maxBuffer: 16 * 1024 * 1024 });
-				markdownByPath.set(path, extracted.stdout);
-			}
-			assert.deepEqual(
-				unresolvedDocumentationLinks({ files: archiveFiles, markdownByPath }),
-				[],
-				"every local link in the actual package README/documentation subset must resolve inside the archive",
-			);
-			assert.equal(archiveFiles.has("docs/project/operations/vscode-extension-release.md"), true);
-		} finally {
-			await rm(packDirectory, { recursive: true, force: true });
-		}
-		assert.equal(existsSync(markerPath), true, "npm pack must not remove release artifacts from the workspace");
+		assert.deepEqual(unresolvedDocumentationLinks({ files: archiveFiles, markdownByPath }), []);
 	} finally {
-		await unlink(markerPath).catch(() => undefined);
-		if (!artifactsDirExisted && (await readdir(artifactsDir).catch(() => [])).length === 0) {
-			await rm(artifactsDir, { recursive: true, force: true });
-		}
+		await rm(packDirectory, { recursive: true, force: true });
 	}
 });
 

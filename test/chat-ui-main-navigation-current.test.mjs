@@ -5,7 +5,7 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-async function renderHeader(area, vscodeEnabled = true) {
+async function renderHeader(area) {
 	const script = String.raw`
 		import React from "react";
 		import { renderToStaticMarkup } from "react-dom/server";
@@ -18,7 +18,6 @@ async function renderHeader(area, vscodeEnabled = true) {
 			mobileAreaMenuOpen: true,
 			mobileSidebarTriggerRef: { current: null },
 			totalRoomUnreadCount: 0,
-			vscodeEnabled: ${JSON.stringify(vscodeEnabled)},
 			onOpenMobileSidebar() {},
 			onSelectMainNavArea() {},
 			onToggleMobileAreaMenu() {},
@@ -31,18 +30,18 @@ async function renderHeader(area, vscodeEnabled = true) {
 }
 
 test("desktop and mobile main navigation identify the active area", async () => {
-	const markup = await renderHeader("vscode");
+	const markup = await renderHeader("workflows");
 	const currentButtons = [...markup.matchAll(/<button(?=[^>]*aria-current="page")[^>]*>([\s\S]*?)<\/button>/g)];
 
 	assert.match(markup, /<nav aria-label="Main navigation"/);
 	assert.equal(currentButtons.length, 2, "expected one current desktop item and one current mobile item");
-	for (const [, contents] of currentButtons) assert.match(contents, />VS Code</);
+	for (const [, contents] of currentButtons) assert.match(contents, />workflows</);
 	assert.match(markup, /title="test@example\.com"/);
 	assert.doesNotMatch(markup, />test@example\.com</);
 });
 
-test("main navigation hides VS Code and keeps the account label tooltip-only", async () => {
-	const markup = await renderHeader("sessions", false);
+test("main navigation omits VS Code and keeps the account label tooltip-only", async () => {
+	const markup = await renderHeader("sessions");
 	assert.doesNotMatch(markup, />VS Code</);
 	assert.match(markup, /title="test@example\.com"/);
 	assert.doesNotMatch(markup, />test@example\.com</);

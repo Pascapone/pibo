@@ -14,14 +14,15 @@ async function runCatalogSelectionScenario() {
 		globalThis.React = React;
 		globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 		const { act, create } = TestRenderer;
-		const { CatalogToggle, PiPackageCard } = await import("./src/apps/chat-ui/src/agents/designer-ui.tsx");
+		const { CatalogToggle } = await import("./src/apps/chat-ui/src/agents/designer-ui.tsx");
 
 		function CatalogHarness() {
 			const [checked, setChecked] = useState(false);
 			return React.createElement(CatalogToggle, {
 				checked,
-				title: "web_search",
-				description: "Searches the web",
+				title: "Pibo Web Search",
+				description: "pibo.web-search · installed plugin contribution",
+				meta: checked ? "Pinned revision r1" : "Not selected",
 				onToggle: () => setChecked((current) => !current),
 			});
 		}
@@ -30,40 +31,12 @@ async function runCatalogSelectionScenario() {
 		await act(async () => { catalog = create(React.createElement(CatalogHarness)); });
 		const catalogButton = () => catalog.root.findByType("button");
 		assert.equal(catalogButton().props["aria-pressed"], false);
+		assert.match(JSON.stringify(catalog.toJSON()), /Not selected/);
 		await act(async () => catalogButton().props.onClick());
 		assert.equal(catalogButton().props["aria-pressed"], true);
+		assert.match(JSON.stringify(catalog.toJSON()), /Pinned revision r1/);
 		await act(async () => catalogButton().props.onClick());
 		assert.equal(catalogButton().props["aria-pressed"], false);
-
-		const pkg = {
-			name: "example-package",
-			description: "Example package",
-			source: "/tmp/example-package",
-			installSpec: "/tmp/example-package",
-			installStatus: "installed",
-			enabled: true,
-			resourceTypes: [],
-			diagnostics: [],
-		};
-		function PackageHarness() {
-			const [selected, setSelected] = useState(false);
-			return React.createElement(PiPackageCard, {
-				pkg,
-				selected,
-				readOnly: false,
-				expanded: false,
-				busy: false,
-				onToggleSelected: () => setSelected((current) => !current),
-				onToggleExpanded: () => {},
-			});
-		}
-
-		let packageCard;
-		await act(async () => { packageCard = create(React.createElement(PackageHarness)); });
-		const packageSelection = () => packageCard.root.findAllByType("button").find((button) => Object.hasOwn(button.props, "aria-pressed"));
-		assert.equal(packageSelection().props["aria-pressed"], false);
-		await act(async () => packageSelection().props.onClick());
-		assert.equal(packageSelection().props["aria-pressed"], true);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
 		cwd: process.cwd(),
@@ -71,6 +44,6 @@ async function runCatalogSelectionScenario() {
 	});
 }
 
-test("Agent Designer catalog cards expose selected and unselected states", async () => {
+test("Agent Designer plugin catalog controls expose selected and unselected states", async () => {
 	await assert.doesNotReject(runCatalogSelectionScenario());
 });

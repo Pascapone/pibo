@@ -116,8 +116,6 @@ export function applyPiboRuntimeRetryDefaults(
 
 export type PiboRuntimeOptions = {
 	cwd?: string;
-	/** Workspace containing the Pi package catalog selected by product configuration. */
-	piPackageStoreCwd?: string;
 	persistSession?: boolean;
 	profile?: InitialSessionContext;
 	thinkingLevel?: PiboThinkingLevel;
@@ -187,7 +185,6 @@ export type PiboProfileInspection = {
 	mcpServers: string[];
 	mcpStatus: AgentRuntimeExternalMcpServerInspection[];
 	resourceDelivery: AgentRuntimeDeliveryReport[];
-	piPackages: Array<{ id: string; active: boolean }>;
 	contextFiles: Array<{ path: string; bytes: number }>;
 	diagnostics: AgentSessionRuntimeDiagnostic[];
 };
@@ -495,7 +492,6 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				type: diagnostic.severity,
 				message: `[${diagnostic.code}] ${diagnostic.message}`,
 			})),
-			...(profile.piPackages.length ? [{ type: "warning" as const, message: "Legacy Pi packages are inactive; migrate to an explicit Pibo plugin selection." }] : []),
 			...services.diagnostics,
 			...collectResourceDiagnostics(resourceLoader.getSkills().diagnostics),
 			...resourceLoader.getExtensions().errors.map(({ path, error }) => ({
@@ -596,7 +592,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 	const inspectionModelDefaults = options.modelDefaults ?? loadPiboModelDefaults(cwd);
 
 	const activeToolNames = new Set(options.portableTools?.getDefinitions().map((tool) => tool.name) ?? []);
-	const registeredToolNames = activeToolNames;
+	const selectedToolNames = new Set(profile.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name));
+	const registeredToolNames = new Set([...activeToolNames, ...selectedToolNames]);
 	const generatedTools: PiboProfileInspection["tools"] = [];
 
 		return {
@@ -623,7 +620,8 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				name: tool.name,
 				hasDefinition: Boolean(tool.definition) || Boolean(tool.createDefinition) || isRuntimeTool(tool) || isCodexBrowserTool(tool),
 				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool) || isCodexBrowserTool(tool),
-				active: activeToolNames.has(tool.name) || tool.providerTool !== undefined,
+				active: tool.name !== "pibo_agents_send_message"
+					&& (activeToolNames.has(tool.name) || selectedToolNames.has(tool.name) || tool.providerTool !== undefined),
 			})).concat(generatedTools),
 			subagents: resolvePiboSubagentRuntimeSelections(
 				profile.subagents,
@@ -631,17 +629,25 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				inspectionModelDefaults,
 			).map(({ enabled, ...subagent }) => ({
 				...subagent,
-				active: enabled && activeToolNames.has("pibo_run_start"),
+				active: enabled && (
+					activeToolNames.has("pibo_run_start")
+					|| selectedToolNames.has("pibo_run_start")
+					|| selectedToolNames.has("pibo_agents_list_agents")
+				),
 			})),
 			mcpServers: [...profile.mcpServers],
 			mcpStatus: options.resources?.getInspection().mcpServers.map((server) => structuredClone(server)) ?? [],
 			resourceDelivery: options.resources?.getInspection().delivery.map((report) => ({ ...report })) ?? [],
-			piPackages: profile.piPackages.map((pkg) => ({
-				id: pkg.id,
-				active: false,
-			})),
-			contextFiles: (options.resources?.getContextContributions() ?? []).map((file) => ({ path: file.path ?? file.sourcePath ?? file.id, bytes: file.byteSize ?? 0 })),
-			diagnostics: [{ type: "warning", message: "Read-only declared profile preview; dynamic tool factories, MCP and runtime creation were not executed. Pi packages are inactive." }],
+			contextFiles: options.resources
+				? options.resources.getContextContributions().map((file) => ({ path: file.path ?? file.sourcePath ?? file.id, bytes: file.byteSize ?? 0 }))
+				: profile.contextFiles.filter((file) => file.enabled !== false).map((file) => ({ path: file.path, bytes: 0 })),
+			diagnostics: [
+				...profile.diagnostics.map((diagnostic) => ({
+					type: diagnostic.severity,
+					message: `[${diagnostic.code}] ${diagnostic.message}`,
+				})),
+				{ type: "warning", message: "Read-only declared profile preview; dynamic tool factories, MCP and runtime creation were not executed." },
+			],
 		};
 }
 
@@ -691,7 +697,7 @@ export async function runPiboTui(options: PiboRuntimeOptions = {}): Promise<void
 	if (hasEnabledSubagents && (!options.agentsController || !options.runToolController)) {
 		console.error(
 			`Error: Profile "${profile.profileName}" uses subagents and requires the routed pibo runtime. ` +
-				`Use "npm run tui:routed -- ${profile.profileName}" for local TUI QA.`,
+				`Use the Chat Web session flow with profile "${profile.profileName}" for local runtime QA.`,
 		);
 		process.exitCode = 1;
 		return;

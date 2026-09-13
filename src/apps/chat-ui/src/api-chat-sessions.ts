@@ -258,15 +258,12 @@ function normalizeBootstrap(payload: Partial<BootstrapData>): BootstrapData {
 		agentCatalog: payload.agentCatalog
 			? {
 				...payload.agentCatalog,
-				piboTools: payload.agentCatalog.piboTools ?? [],
-				piPackages: (payload.agentCatalog.piPackages ?? []).map((pkg) => ({ ...pkg, enabled: pkg.enabled !== false })),
 				userSkills: payload.agentCatalog.userSkills ?? [],
 			}
 			: payload.agentCatalog,
 		capabilities: {
 			actions: payload.capabilities?.actions ?? [],
 		},
-		integrations: payload.integrations,
 	};
 }
 

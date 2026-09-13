@@ -1,15 +1,16 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import type { EffectivePluginPlan, PluginConfigurationTarget, PluginQualifiedId } from "../../../../plugins/sdk.js";
 import { getAgentPluginCatalog, previewAgentPlugins, type AgentPluginCatalog } from "../api-agent-designer";
-import { acceptAgentPluginRevision, setAgentPluginContribution, setAgentPluginEnabled, type AgentDraft } from "./agent-designer-model";
+import { acceptAgentPluginRevision, buildPluginBuiltinToolReplacementMap, setAgentPluginContribution, setAgentPluginEnabled, type AgentDraft } from "./agent-designer-model";
 import { CatalogToggle, DesignerPanel } from "./designer-ui";
 
 export type AgentPluginSettingsTarget = {
 	piboSessionId: string; pluginId: string; viewId: PluginQualifiedId; subviewId: string; configurationTarget: PluginConfigurationTarget;
 };
-export function AgentPluginsDesigner({ draft, setDraft, readOnly, piboSessionId, sessionProfileName, onOpenPluginSettings }: {
+export function AgentPluginsDesigner({ draft, setDraft, readOnly, piboSessionId, sessionProfileName, onOpenPluginSettings, onBuiltinToolReplacementsChange }: {
 	draft: AgentDraft; setDraft: Dispatch<SetStateAction<AgentDraft>>; readOnly: boolean;
 	piboSessionId?: string; sessionProfileName?: string; onOpenPluginSettings?: (target: AgentPluginSettingsTarget) => void;
+	onBuiltinToolReplacementsChange?: (replacements: Map<string, string[]>) => void;
 }) {
 	const [catalog, setCatalog] = useState<AgentPluginCatalog>();
 	const [plan, setPlan] = useState<EffectivePluginPlan>();
@@ -35,6 +36,11 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, piboSessionId,
 		}, 150);
 		return () => { current = false; window.clearTimeout(timer); };
 	}, [previewKey, catalog?.revision]);
+	const replacements = useMemo(() => buildPluginBuiltinToolReplacementMap(plan), [plan]);
+	useEffect(() => {
+		onBuiltinToolReplacementsChange?.(replacements);
+		return () => onBuiltinToolReplacementsChange?.(new Map());
+	}, [onBuiltinToolReplacementsChange, replacements]);
 	const selection = draft.pluginSelection;
 	return <DesignerPanel title="Plugins">
 		<div className="text-xs text-slate-400">Selection applies to future runtime generations. Running sessions keep their pinned plugin revisions.</div>
@@ -91,6 +97,7 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, piboSessionId,
 		{selection?.plugins.filter((entry) => !catalog?.plugins.some((plugin) => plugin.pluginId === entry.pluginId)).map((entry) => <div key={entry.pluginId} className="border border-amber-700 p-3 text-xs text-amber-200">
 			{entry.pluginId} · pinned {entry.revision} · {entry.enabled ? "selected" : "disabled"} · missing from catalog. Reference and configuration retained.
 			{Object.entries(entry.contributions).map(([id, enabled]) => <p key={id}>{id}: {enabled ? "selected" : "disabled"}</p>)}
+			<button type="button" disabled={readOnly} className="mt-2 underline disabled:opacity-50" onClick={() => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: { ...current.pluginSelection, plugins: current.pluginSelection.plugins.filter((item) => item.pluginId !== entry.pluginId) } } : current)}>Remove retained reference</button>
 		</div>)}
 		{!piboSessionId ? <p className="text-xs text-slate-400">Select a session to open plugin settings in its fixed session tab.</p> : <p className="text-xs text-slate-400">Settings open in session {piboSessionId}{sessionProfileName && sessionProfileName !== draft.profileName ? ` (${sessionProfileName}); agent-scoped edits still target ${draft.profileName ?? draft.displayName}` : ""}.</p>}
 	</DesignerPanel>;

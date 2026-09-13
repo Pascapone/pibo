@@ -1,3 +1,9 @@
+import { startPluginProductRuntime } from "../plugins/product-runtime.js";
+import { createPluginConsumerCollector, pluginImpact, type PluginConsumer, type PluginConsumerCollector } from "../plugins/operations.js";
+import { PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
+import { CustomAgentStore, createDefaultCustomAgentStore, profileConsumerCollector } from "../apps/chat/agent-store.js";
+import { PiboDataStore } from "../data/pibo-store.js";
+import { PiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
@@ -33,12 +39,17 @@ export type GatewayServerOptions = {
 	pluginRegistry?: PiboPluginRegistry;
 	sessionStore?: PiboSessionStore;
 	sessionDbPath?: string;
+	/** Shared pibo.sqlite path for sessions, plugin state and product projections. */
+	dataStorePath?: string;
+	/** Existing Custom Agent owner store used for complete plugin impact collection. */
+	agentStorePath?: string;
+	/** Immutable installed-plugin artifact root and packaged built-in sources. */
+	pluginArtifactRoot?: string;
 	startChannels?: boolean;
 	maxBackpressureFrames?: number;
 	maxBackpressureBytes?: number;
 	resourceReaper?: ResourceReaperServiceOptions | false;
 	loopStorePath?: string;
-	piPackageStoreCwd?: string;
 };
 
 type GatewayQueuedFrame = {
@@ -202,8 +213,25 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 		return new SqlitePiboSessionStore(options.sessionDbPath);
 	}
 	if (options.persistSession === false) return new InMemoryPiboSessionStore();
+	if (options.dataStorePath) return new PiboDataSessionStore(options.dataStorePath);
 	const { createDefaultPiboDataSessionStore } = await import("../sessions/pibo-data-store.js");
 	return createDefaultPiboDataSessionStore();
+}
+
+function registeredProfileConsumers(registry: PiboPluginRegistry, pluginId: string): PluginConsumer[] {
+	const consumers: PluginConsumer[] = [];
+	for (const info of registry.getProfileInfos()) {
+		const profile = createPiboProfileFromRegistryOrDefault(registry, info.name);
+		const entry = profile.pluginSelection?.plugins.find((candidate) => candidate.pluginId === pluginId);
+		if (!entry) continue;
+		consumers.push({
+			kind: "profile",
+			id: info.name,
+			usage: entry.enabled ? "optional" : "historical",
+			revision: entry.revision,
+		});
+	}
+	return consumers;
 }
 
 export class PiboGatewayServer {
@@ -212,7 +240,11 @@ export class PiboGatewayServer {
 	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
 	private ownsSessionStore = false;
+	private pluginData?: PiboDataStore;
+	private ownsPluginData = false;
+	private pluginAgentStore?: CustomAgentStore;
 	private router?: PiboSessionRouter;
+	private pluginProduct?: Awaited<ReturnType<typeof startPluginProductRuntime>>;
 	private readonly startedChannels: PiboChannel[] = [];
 	private readonly connections = new Set<GatewayConnection>();
 	private droppedRouterEvents = 0;
@@ -230,21 +262,58 @@ export class PiboGatewayServer {
 	async start(): Promise<void> {
 		if (this.server) return;
 
+		try {
 		this.validateChannels();
 		this.sessionStore = this.options.sessionStore ?? (await createGatewaySessionStore(this.options));
 		this.ownsSessionStore = !this.options.sessionStore;
 		const hasExplicitPersistentStore = this.options.sessionStore !== undefined || this.options.sessionDbPath !== undefined;
 		const recoverInterruptedRuntimeState = this.options.authoritativeRuntime === true
 			&& (this.options.persistSession !== false || hasExplicitPersistentStore);
+		if (this.sessionStore instanceof PiboDataSessionStore) {
+			this.pluginData = this.sessionStore.getDataStore();
+			this.ownsPluginData = false;
+		} else {
+			this.pluginData = new PiboDataStore(this.options.persistSession === false ? ":memory:" : this.options.dataStorePath);
+			this.ownsPluginData = true;
+		}
+		this.pluginAgentStore = this.options.persistSession === false && !this.options.agentStorePath
+			? new CustomAgentStore(":memory:")
+			: this.options.agentStorePath
+				? new CustomAgentStore(this.options.agentStorePath)
+				: createDefaultCustomAgentStore();
+		const host = this.pluginRegistry.getPluginHost();
+		const catalog = () => {
+			const installations = this.pluginData!.plugins.listInstallations();
+			return { schemaVersion: 1 as const, revision: installations.reduce((sum, installation) => sum + installation.stateRevision, 0), installations };
+		};
+		const collectProfiles = profileConsumerCollector(this.pluginAgentStore, catalog);
+		const collectLive: PluginConsumerCollector = async (pluginId) => {
+			const consumers = [...(this.router?.collectPluginConsumers(pluginId) ?? []), ...registeredProfileConsumers(this.pluginRegistry, pluginId)];
+			for (const entry of host.contributions.list<PluginOwnedConsumerCollector>(PLUGIN_CONSUMER_COLLECTOR_RESOURCE)) {
+				consumers.push(...await entry.value(pluginId));
+			}
+			return pluginImpact(consumers).consumers;
+		};
+		this.pluginProduct = await startPluginProductRuntime({
+			host,
+			data: this.pluginData,
+			artifactRoot: this.options.pluginArtifactRoot,
+			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
+			readSessionPlan: (piboSessionId, kind) => {
+				if (!this.router) throw new Error("Plugin session plan service is not ready");
+				return this.router.readPluginSessionPlan(piboSessionId, kind);
+			},
+		});
 		this.router = new PiboSessionRouter({
+			pluginRuntime: this.pluginProduct.runtime,
 			persistSession: this.options.persistSession,
-			piPackageStoreCwd: this.options.piPackageStoreCwd ?? process.cwd(),
 			pluginRegistry: this.pluginRegistry,
 			sessionStore: this.sessionStore,
 			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
 			recoverInterruptedRuntimeState,
 			runtimeInstanceId: recoverInterruptedRuntimeState ? this.runtimeInstanceId : undefined,
 		});
+		await this.pluginProduct.recover();
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));
 		await this.pluginRegistry.getAuthService()?.start?.();
@@ -264,6 +333,11 @@ export class PiboGatewayServer {
 			this.resourceReaper = new ResourceReaperService(this.options.resourceReaper);
 			await this.resourceReaper.start();
 		}
+		} catch (error) {
+			try { await this.stop(); }
+			catch (cleanupError) { throw new AggregateError([error, cleanupError], "Gateway startup and cleanup failed"); }
+			throw error;
+		}
 	}
 
 	async stop(): Promise<void> {
@@ -282,13 +356,17 @@ export class PiboGatewayServer {
 
 		if (this.server) {
 			await new Promise<void>((resolve, reject) => {
-				this.server!.close((error) => (error ? reject(error) : resolve()));
+				this.server!.close((error) => error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve());
 			});
 			this.server = undefined;
 		}
 
 		await this.router?.disposeAll();
 		this.router = undefined;
+		await this.pluginProduct?.dispose();
+		this.pluginProduct = undefined;
+		this.pluginAgentStore?.close();
+		this.pluginAgentStore = undefined;
 
 		const ownedPluginRegistries = this.ownsPluginRegistry
 			? [this.pluginRegistry]
@@ -306,6 +384,9 @@ export class PiboGatewayServer {
 		}
 		this.sessionStore = undefined;
 		this.ownsSessionStore = false;
+		if (this.ownsPluginData) this.pluginData?.close();
+		this.pluginData = undefined;
+		this.ownsPluginData = false;
 	}
 
 	private handleSocket(socket: Socket): void {

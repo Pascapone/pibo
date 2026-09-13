@@ -3,11 +3,12 @@ type: "Guide"
 title: "Pibo Quick Start — CLI + VS Code Extension"
 description: "Provides a German-language quick start for installing Pibo and using its VS Code extension."
 tags: ["cli", "installation", "quickstart", "vscode"]
-status: "draft"
+status: "deprecated"
 authority: "directive"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T15:47:50Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - id: "foundation-relocation-source"
     resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/guides/pibo-vscode-ext-quickstart.md"
@@ -15,8 +16,10 @@ sources:
     commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
     path: "docs/guides/pibo-vscode-ext-quickstart.md"
     sha256: "ff1b33edf70c89ce9b128382d05d5fa28735ede3fc3ba40429bece172fc2d716"
-    relation: "Byte-identical body lineage before Foundation relocation."
+    relation: "Originally byte-identical after Foundation relocation; current body adds a retirement notice."
 ---
+> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # Pibo Quick Start — CLI + VS Code Extension
 
 Diese Anleitung bringt dich in ungefähr 15 Minuten vom frischen Laptop zur

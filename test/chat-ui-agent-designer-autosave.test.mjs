@@ -6,9 +6,12 @@ import test from "node:test";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const agentsViewSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/AgentsView.tsx"), "utf8");
-const appSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/App.tsx"), "utf8");
 const modelSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/agent-designer-model.ts"), "utf8");
 const designerUiSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/designer-ui.tsx"), "utf8");
+const pluginDesignerSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx"), "utf8");
+const pluginWorkspaceSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/plugins/plugin-workspace.tsx"), "utf8");
+const builtinBrowserEntrySource = readFileSync(resolve(here, "../src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx"), "utf8");
+const packageSource = readFileSync(resolve(here, "../src/plugins/default-packages.ts"), "utf8");
 
 test("Agent Designer debounces autosave and serializes overlapping writes", () => {
 	assert.match(agentsViewSource, /const AGENT_AUTOSAVE_DELAY_MS = 900/);
@@ -86,23 +89,29 @@ test("Agent Designer exposes only truthful runtime-owned context and native-suba
 	assert.match(modelSource, /nativeSubagents: draft\.nativeSubagents \?\? null/);
 });
 
-test("Agent Designer keeps Pibo subagents and yielded subagent runs capability-gated", () => {
-	assert.match(agentsViewSource, /<SubagentDesigner[\s\S]*capabilityUnavailableReason=\{piboToolsUnavailableReason\}/);
-	assert.match(agentsViewSource, /title="pibo-run-control"[\s\S]*Pibo-managed tools and subagents/);
-	assert.match(agentsViewSource, /Private harness-native tools are included only when the runtime declares native-tool yielding/);
+test("Agent Designer keeps Pibo subagents and plugin-delivered control tools capability-gated", () => {
+	assert.match(agentsViewSource, /<SubagentDesigner[\s\S]*capabilityUnavailableReason=\{pluginToolsUnavailableReason\}/);
+	assert.match(agentsViewSource, /unsupportedDeliveryReason\(selectedRuntime\?\.capabilities\.tools\.piboManaged, "Plugin-managed tools"\)/);
+	assert.match(pluginDesignerSource, /plan \? plan\.valid \? "Server preview valid" : "Activation blocked — see contribution reasons"/);
+	assert.match(pluginDesignerSource, /plan\?\.diagnostics\.map/);
 });
 
-test("Agent Designer exposes goal lifecycle tooling as a default-enabled package switch", () => {
-	assert.match(agentsViewSource, /title="pibo-goal-control"/);
-	assert.match(agentsViewSource, /checked=\{draft\.goalControl\}/);
-	assert.match(agentsViewSource, /goalControl: !current\.goalControl/);
-	assert.match(modelSource, /goalControl: true/);
-	assert.match(modelSource, /goalControl: draft\.goalControl/);
+test("Agent Designer exposes goal lifecycle tooling as a default-enabled ordinary plugin", () => {
+	assert.match(packageSource, /GOAL_CONTROL_PLUGIN_ID = "pibo\.goal-control"/);
+	assert.match(packageSource, /goalControlPackageManifest[\s\S]*PIBO_GOAL_TOOL_NAMES\.map[\s\S]*defaultEnabled: true/);
+	assert.match(pluginDesignerSource, /catalog\?\.plugins\.map/);
+	assert.match(pluginDesignerSource, /checked=\{entry\?\.enabled \?\? false\}/);
+	assert.match(pluginDesignerSource, /setAgentPluginEnabled\(current\.pluginSelection, plugin, !entry\?\.enabled\)/);
+	assert.match(modelSource, /defaultPluginSelection[\s\S]*schemaVersion: 1, plugins: \[\]/);
 });
 
-test("navigation away from Agent Designer waits for a successful autosave", () => {
-	assert.match(appSource, /useBlocker\(\{/);
-	assert.match(appSource, /disabled: desktopTabsEnabled[\s\S]{0,240}desktopActiveTab\.target\.route\.area !== "agents"[\s\S]{0,80}: area !== "agents"/);
-	assert.match(appSource, /await autosave\(\)[\s\S]*return false[\s\S]*catch[\s\S]*return true/);
-	assert.match(appSource, /onAutosaveHandlerChange=\{updateAgentAutosaveHandler\}/);
+test("navigation, plugin-tab switches, and tab close wait for a successful Agent Designer autosave", () => {
+	assert.match(builtinBrowserEntrySource, /props\.registerBeforeLeave\(autosave\)/);
+	assert.match(builtinBrowserEntrySource, /handleAutosaveChange = useCallback[\s\S]*setAutosave\(\(\) => save\)/);
+	assert.match(builtinBrowserEntrySource, /onAutosaveHandlerChange=\{handleAutosaveChange\}/);
+	assert.match(pluginWorkspaceSource, /useBlocker\(\{/);
+	assert.match(pluginWorkspaceSource, /shouldBlockFn:[\s\S]*runBeforeLeave/);
+	assert.match(pluginWorkspaceSource, /const activateTab[\s\S]*await runBeforeLeave\(\[activeTabId\]\)/);
+	assert.match(pluginWorkspaceSource, /const closeTab[\s\S]*await runBeforeLeave\(\[instanceId\]\)/);
+	assert.match(pluginWorkspaceSource, /Plugin view changes were not saved/);
 });

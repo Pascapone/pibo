@@ -79,9 +79,8 @@ function createCustomAgentBuilder(agent: CustomAgentDefinition): InitialSessionC
 		.withBuiltinToolNames(agent.builtinToolNames)
 		.withAutoContextFiles(agent.autoContextFiles)
 		.withNativeSubagents(agent.nativeSubagents)
-		.withMcpServers(agent.mcpServers)
-		.withPiPackages(agent.piPackages.map((id) => ({ id })))
-		.withToolPackages({ runControl: agent.runControl, goalControl: agent.goalControl ?? true });
+		.withMcpServers(agent.pluginSelection ? [] : agent.mcpServers)
+		.withToolPackages(agent.pluginSelection ? {} : { runControl: agent.runControl, goalControl: agent.goalControl ?? true });
 	if (agent.mainModel) builder.withMainModel(agent.mainModel);
 	builder.withMainModelFallbacks(agent.mainModelFallbacks ?? []);
 	if (agent.subagentModel) builder.withSubagentModel(agent.subagentModel);

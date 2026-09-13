@@ -33,7 +33,7 @@ export function buildPluginContextPreview(plan: EffectivePluginPlan): PluginCont
 }
 
 /** Record only observed runtime deliveries; selected metadata is never invented model text. */
-export function capturePluginContextBuild(input: { plan: EffectivePluginPlan; resources: PiboRuntimeResourceSession; tools: readonly PiboToolDefinition[] }): PluginContextBuildSnapshot {
+export function capturePluginContextBuild(input: { plan: EffectivePluginPlan; resources: PiboRuntimeResourceSession; tools: readonly PiboToolDefinition[]; profile?: Pick<InitialSessionContext, "tools"> }): PluginContextBuildSnapshot {
 	const { plan, resources } = input;
 	if (plan.kind !== "generation" || plan.generation !== resources.sessionGeneration || plan.piboSessionId !== resources.piboSessionId) throw new Error("Build snapshot generation mismatch");
 	const inspection = resources.getInspection();
@@ -57,6 +57,18 @@ export function capturePluginContextBuild(input: { plan: EffectivePluginPlan; re
 		add({ id: `runtime/tool:${tool.name}`, kind: "tool-schema", origin: owner ? "plugin" : "harness", ...(owner ? { pluginId: owner.pluginId, pluginRevision: owner.pluginRevision, contributionId: owner.id } : {}), context: { kind: "context", stage: "tools", description: tool.description, loading: "runtime" }, status: "delivered", selected: true, selectionReason: "adapter accepted controlled tool definition", delivery: evidence, fallback: tool.name,
 			// A tool schema is a separate tool channel, never a system-prompt paragraph.
 			content: { visibility: "inspector", redacted: true, text: JSON.stringify(redactSensitiveValue({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })) } });
+	}
+	for (const tool of input.profile?.tools ?? []) {
+		if (tool.enabled === false || !tool.providerTool) continue;
+		const owner = plan.contributions.find((entry) => entry.contribution.kind === "tool" && entry.contribution.name === tool.name);
+		const node = owner ? nodes.find((entry) => entry.id === owner.id || entry.contributionId === owner.id) : undefined;
+		const evidence = { status: "delivered" as const, mode: "provider-extension", target: inspection.runtimeInstanceId, fidelity: "equivalent", generation: plan.generation! };
+		if (node) { node.delivery = evidence; node.status = "delivered"; }
+		const raw = JSON.stringify({ name: tool.name, description: tool.description, providerTool: tool.providerTool });
+		const text = JSON.stringify(redactSensitiveValue({ name: tool.name, description: tool.description, providerTool: tool.providerTool }));
+		add({ id: `runtime/provider:${tool.name}`, kind: "provider-tool", origin: owner ? "plugin" : "harness", ...(owner ? { pluginId: owner.pluginId, pluginRevision: owner.pluginRevision, contributionId: owner.id } : {}), context: { kind: "context", stage: "provider-tools", description: tool.description ?? tool.name, loading: "runtime" }, status: "delivered", selected: true, selectionReason: "adapter accepted provider-backed tool extension", delivery: evidence, fallback: tool.name,
+			// Provider configuration is inspector evidence. The adapter-owned wire prompt remains outside this snapshot.
+			content: { visibility: "inspector", redacted: text !== raw, text } });
 	}
 	for (const report of inspection.delivery) {
 		const owner = plan.contributions.find((entry) => {

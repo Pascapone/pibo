@@ -5,9 +5,10 @@ description: "Describes the end-to-end release procedure for Pibo's VS Code exte
 tags: ["release", "runbook", "vscode", "vsix"]
 status: "deprecated"
 authority: "directive"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T15:47:50Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - id: "foundation-relocation-source"
     resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/ops/vscode-extension-release.md"
@@ -15,8 +16,10 @@ sources:
     commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
     path: "docs/ops/vscode-extension-release.md"
     sha256: "4d7588693a51389ebc3ea53eb088272743e707e3d81a5f436ab58578769f56c2"
-    relation: "Byte-identical body lineage before Foundation relocation."
+    relation: "Originally byte-identical after Foundation relocation; current body adds a retirement notice."
 ---
+> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # Pibo VS Code Extension Release Runbook
 
 The Pibo VS Code extension is shipped as a `.vsix` artifact. This runbook describes the end-to-end release process and the split of responsibilities between the maintainer and the `pibo` release script.

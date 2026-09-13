@@ -12,7 +12,7 @@
 //
 // Usage:
 //   node scripts/create-github-release.mjs --tag v1.3.0 \
-//     --asset dist/apps/vscode-artifacts/pibo-vscode-ext-1.3.0.vsix
+//     --asset dist/release/pibo-artifact.tgz
 //   node scripts/create-github-release.mjs --tag v1.3.0 \
 //     --asset dist/.../pibo-vscode-ext-1.3.0.vsix \
 //     --notes-file release-notes.md --prerelease

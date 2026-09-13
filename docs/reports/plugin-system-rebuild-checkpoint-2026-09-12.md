@@ -5,8 +5,10 @@ description: "Dokumentiert den isolierten Implementierungsstand, geprüfte Modul
 tags: ["plugins", "validation", "migration", "checkpoint"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai-codex/gpt-6", at: "2026-09-12T08:32:31Z" }
+generated: { by: "openai-codex/gpt-6", at: "2026-09-12T09:57:58Z" }
 sources:
+  - id: "continuation-authorization"
+    resource: "scope:owner continuation instruction 2026-09-12; implement the complete rebuild with subagents; old-session restrictions explicitly do not apply and must be removed from the handoff"
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
   - id: "execution-ledger"
@@ -17,7 +19,7 @@ sources:
 
 # Einordnung
 
-Dies ist ein gesicherter Entwicklungszwischenstand des [vollständigen Umbaus](/plans/unified-plugin-system-rebuild.md), keine abgeschlossene Produktmigration. Der Nutzer begrenzte das verbleibende Arbeitsfenster und untersagte weitere Agents. Vorhandene Worker erhielten direkte Steering-Nachrichten zum geordneten Abschluss; ihre laufenden Aufgaben wurden nicht vorsorglich abgebrochen. Die [Abnahmematrix](/plans/unified-plugin-system-execution.md#acceptance-register) bleibt offen.
+Dies ist ein gesicherter Entwicklungszwischenstand des [vollständigen Umbaus](/plans/unified-plugin-system-rebuild.md), keine abgeschlossene Produktmigration. In der damaligen Session begrenzte der Nutzer das verbleibende Arbeitsfenster und untersagte für deren Abschluss weitere Agents. Diese zeitlich begrenzten Anweisungen gelten nicht für die Fortsetzung. Vorhandene Worker erhielten direkte Steering-Nachrichten zum geordneten Abschluss; ihre laufenden Aufgaben wurden nicht vorsorglich abgebrochen. Die [Abnahmematrix](/plans/unified-plugin-system-execution.md#acceptance-register) bleibt offen.
 
 Die Änderungen entstanden auf `plugin-system-rebuild` in einem separaten Worktree, ausgehend von `cac4dcd03945b9754db7be9ab2ab4324f10c335c`. Builds, Tests und temporäre Datenmutationen liefen im isolierten Docker-Worker. Der Controller-Gateway wurde nicht neu gestartet, umkonfiguriert oder aktualisiert. Es gibt keinen Pibo2-Nachweis, PR, Merge, Release oder veröffentlichten Kandidaten.
 
@@ -38,7 +40,7 @@ Die Änderungen entstanden auf `plugin-system-rebuild` in einem separaten Worktr
 
 Der Controller-Checkout `/root/code/pibo` enthält fremde Änderungen und ist **nicht** die Arbeitskopie dieses Umbaus. Quelländerungen, Builds und Tests gehören in den isolierten Docker-Worker. Die [genauen Prüfkommandos](artifacts/plugin-system-checkpoint-2026-09-12/validation-commands.txt) nennen den Zielcontainer ausdrücklich und verwenden die gemeinsame Validierungssperre. Bei einem neuen Docker-Worker dessen Aufbau und Git-Spiegel nach den vorhandenen Docker-Skills herstellen; keinen experimentellen Host-Gateway verwenden.
 
-**Weiterhin geltende Nutzergrenze:** Keine neuen oder wiederaufgenommenen Sub-Agents, keine Gateway-Neustarts, Deployments, PRs oder Releases. Historische Recherche-/Steering-Dokumente verleihen hierfür keine Erlaubnis. In diesem Audit wurden ausschließlich Übergabedokumentation und lokale Sicherung ergänzt, keine neuen Implementierungspakete begonnen.
+**Fortsetzung in der neuen Session, 2026-09-12:** Der Nutzer hat den vollständigen Umbau nach dem präzisierten Plan beauftragt und den Einsatz von Subagents ausdrücklich bestätigt. Die Abschlussbeschränkungen der alten Session sind aufgehoben und werden nicht auf neue Sessions übertragen. Dieser Bericht beschreibt den damaligen Implementierungs- und Prüfstand; den laufenden Arbeitsstand führt das [Arbeitsregister](/plans/unified-plugin-system-execution.md). Für Umsetzung und Abnahme gelten die aktuellen Projektregeln für Docker, Pibo2 und GitHub.
 
 # Fortschritt und Vollständigkeitsgrenze
 

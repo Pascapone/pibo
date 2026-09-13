@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { completeLogin, getLoginStatus, startLogin } from "../dist/auth/login-actions.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 function makeJwt(payload) {
 	const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -99,8 +99,11 @@ test("Pi runtime adapter preserves device, API-key, status, logout, and shared-s
 		throw new Error(`Unexpected fetch URL: ${url}`);
 	};
 
+	let product;
+	let registry;
 	try {
-		const registry = createDefaultPiboPluginRegistry();
+		product = await startTestPluginProduct("pibo-login-actions-product-");
+		registry = product.createDefaultRegistry();
 		registry.registerAgentRuntimeInstance({ id: "pi-secondary", adapterId: "pi", displayName: "Pi Secondary" });
 
 		const started = await registry.startAgentRuntimeAuth("pi", {
@@ -161,6 +164,8 @@ test("Pi runtime adapter preserves device, API-key, status, logout, and shared-s
 		assert.equal((await registry.getAgentRuntimeAuthStatus("pi")).find((status) => status.id === "anthropic")?.configured, false);
 		await registry.disposeAgentRuntimeAuth();
 	} finally {
+		await registry?.disposePlugins();
+		await product?.dispose();
 		globalThis.fetch = previousFetch;
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previousAgentDir;

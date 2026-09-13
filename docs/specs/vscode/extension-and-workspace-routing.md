@@ -5,11 +5,12 @@ description: "Defines the implemented VS Code extension command, workspace-folde
 tags:
   - "vscode"
   - "workspace-routing"
-status: "stable"
+status: "deprecated"
 authority: "normative"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -149,6 +150,8 @@ traceability:
       confidence: "high"
       follow_up: "Run the cookie-source tests, then validate local-auth success and Better Auth 401/403 behavior against disposable gateways without inspecting or modifying SQLite directly."
 ---
+> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # VS Code Extension Commands and Workspace Routing
 
 ## Authority and evidence boundary

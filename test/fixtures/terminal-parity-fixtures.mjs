@@ -492,7 +492,7 @@ export function markdownSyntaxFixture() {
 		"| `/status` | compact row |",
 		"",
 		"```bash",
-		"OPENAI_API_KEY=[redacted] pibo tui:sessions --room room_named_fixture | tee /tmp/out",
+		"OPENAI_API_KEY=[redacted] pibo gateway web status | tee /tmp/out",
 		"```",
 		"",
 		"```json",

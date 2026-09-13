@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import React from "react";
 import test from "node:test";
-import { renderToString } from "ink";
 import {
 	CLI_ONLY_SLASH_COMMANDS,
 	WEB_PARITY_SLASH_COMMANDS,
@@ -11,7 +9,6 @@ import {
 	buildTerminalStatusViewModel,
 	progressBarText,
 } from "../dist/session-ui/index.js";
-import { InkTerminalView } from "../dist/apps/cli-ui/index.js";
 import {
 	TERMINAL_PARITY_REDACTED,
 	TERMINAL_PARITY_SECRET,
@@ -319,7 +316,7 @@ test("detail fixture shares bounded preview labels and avoids unredacted detail 
 	assert.doesNotMatch(row.detailItems.find((item) => item.label === "Error").error, /detail-secret-value/);
 });
 
-test("Web source hooks and Ink output consume the same canonical terminal fixture", () => {
+test("Web source hooks consume the canonical terminal fixture", () => {
 	const rows = buildCanonicalTerminalRows();
 	const cards = buildTerminalCardDescriptors(rows);
 	const compactSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx"), "utf8");
@@ -336,16 +333,5 @@ test("Web source hooks and Ink output consume the same canonical terminal fixtur
 		assert.match(compactSource, new RegExp(hook.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 	}
 
-	const output = renderToString(React.createElement(InkTerminalView, { rows, maxRows: 40, maxLineChars: 180 }));
-	assert.match(output, /Audit the compact terminal renderer/);
-	assert.match(output, /▣ Status — status · done/);
-	assert.match(output, /▣ Thinking — thinking · done/);
-	assert.match(output, /▣ Model — model · done/);
-	assert.match(output, /▣ Login — login · done/);
-	assert.match(output, /Call failed detail_tool/);
-	assert.doesNotMatch(output, /▣ (Tool|Yielded run|Compaction|Command|Error)/);
-	assert.match(output, /Context: /);
-	assert.match(output, /Provider quota: unavailable/);
-	assert.doesNotMatch(output, /sk_fixture_secret|detail-secret-value/);
 	assert.ok(cards.some((card) => card.kind === "status"));
 });

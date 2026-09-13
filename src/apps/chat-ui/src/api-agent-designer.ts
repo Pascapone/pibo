@@ -216,12 +216,3 @@ export async function getAgentPluginCatalog(): Promise<{ catalog: AgentPluginCat
 export async function previewAgentPlugins(input: Pick<SaveCustomAgentInput, "schemaVersion" | "expectedRevision" | "runtimeInstanceId" | "pluginSelection" | "skills" | "contextFiles" | "subagents" | "builtinTools" | "builtinToolNames"> & { agentId?: string }): Promise<{ schemaVersion: 1; plan: EffectivePluginPlan }> {
 	return requestJson("/api/chat/agent-plugin-preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
 }
-
-/** @deprecated Inactive migration tombstones until the remaining shell imports are retired. No network or executable package path. */
-export async function postPiPackage(_source: string): Promise<AgentCatalog["piPackages"][number]> { throw new Error("Pi package API retired. Use unified plugins; legacy packages remain inactive."); }
-/** @deprecated See postPiPackage. */
-export async function patchPiPackage(_id: string, _input: { enabled: boolean }): Promise<AgentCatalog["piPackages"][number]> { throw new Error("Pi package API retired. Use unified plugins; legacy packages remain inactive."); }
-/** @deprecated See postPiPackage. */
-export async function deletePiPackage(_id: string): Promise<AgentCatalog["piPackages"][number]> { throw new Error("Pi package API retired. Legacy data is retained for migration."); }
-/** @deprecated MCP configuration is edited only in its plugin tab. */
-export async function patchMcpServerDescription(_name: string, _description: string): Promise<{ server: AgentCatalog["mcpServers"][number] }> { throw new Error("MCP configuration moved to its plugin tab."); }

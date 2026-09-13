@@ -33,7 +33,6 @@ import type {
 	ToolProfile,
 	ToolProfileRegistration,
 } from "../core/profiles.js";
-import type { PiboPiPackageInfo } from "../pi-packages/types.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
 import type { PiboTranscriptionProvider } from "../transcription/types.js";
 import type { PiboSpeechProvider } from "../speech/types.js";
@@ -84,7 +83,6 @@ export type PiboProfileInfo = {
 	diagnostics: PiboProfileDiagnostic[];
 	subagents: SubagentProfile[];
 	mcpServers: string[];
-	piPackages: string[];
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
 	mainModelFallbacks: ModelProfile[];
@@ -144,20 +142,6 @@ export type PiboContextFileInfo = {
 	agentProfileName?: string;
 };
 
-export type PiboCapabilityPackageInfo = {
-	name: string;
-	description: string;
-	toolNames: string[];
-	pluginId?: string;
-	pluginName?: string;
-};
-
-export type PiboCliToolContextInfo = {
-	name: string;
-	description: string;
-	snippet: string;
-};
-
 export type PiboMcpServerInfo = {
 	name: string;
 	transport: "stdio" | "http";
@@ -173,10 +157,7 @@ export type PiboCapabilityCatalog = {
 	skills: PiboSkillInfo[];
 	subagents: PiboSubagentInfo[];
 	contextFiles: PiboContextFileInfo[];
-	packages: PiboCapabilityPackageInfo[];
-	piboTools: PiboCliToolContextInfo[];
 	mcpServers: PiboMcpServerInfo[];
-	piPackages: PiboPiPackageInfo[];
 	loopStopConditions: PiboLoopStopConditionInfo[];
 	/** @deprecated Use loopStopConditions. */
 	ralphStopConditions: PiboLoopStopConditionInfo[];
@@ -273,7 +254,6 @@ export type PiboPluginApi = {
 	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void;
 	registerSpeechProvider(provider: PiboSpeechProvider): void;
 	registerWebApp(app: PiboWebApp): void;
-	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void;
 	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition): void;
 	/** @deprecated Use registerLoopStopCondition. */
 	registerRalphStopCondition(condition: PiboLoopStopConditionDefinition): void;

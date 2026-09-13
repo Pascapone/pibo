@@ -9,10 +9,20 @@ import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import {
 	CODEX_NATIVE_PROFILE_NAME,
 	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
-	createDefaultPiboPluginRegistry,
 } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { createPiboSession } from "../dist/sessions/store.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
+
+async function createProductRegistry(t) {
+	const product = await startTestPluginProduct("pibo-agent-runtime-registry-");
+	const registry = product.createDefaultRegistry();
+	t.after(async () => {
+		await registry.disposePlugins();
+		await product.dispose();
+	});
+	return registry;
+}
 
 function openInput(profile, overrides = {}) {
 	const piboSession = createPiboSession({
@@ -32,8 +42,8 @@ function openInput(profile, overrides = {}) {
 	};
 }
 
-test("default profiles expose configured Pi and distinct native Codex runtimes", () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("default profiles expose configured Pi and distinct native Codex runtimes", async (t) => {
+	const registry = await createProductRegistry(t);
 	const profile = registry.createProfile("base");
 	const runtime = registry.requireAgentRuntimeAdapter("pi");
 	const catalogEntry = registry.getCapabilityCatalog().agentRuntimes.find((entry) => entry.id === "pi");
@@ -71,8 +81,8 @@ test("default profiles expose configured Pi and distinct native Codex runtimes",
 	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
 });
 
-test("runtime registry reports availability diagnostics and validates profile options", async () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("runtime registry reports availability diagnostics and validates profile options", async (t) => {
+	const registry = await createProductRegistry(t);
 	const inspections = await registry.inspectAgentRuntimeInstances();
 	const pi = inspections.find((runtime) => runtime.id === "pi");
 	assert.equal(pi.available, true);
@@ -318,8 +328,8 @@ test("plugins register typed runtime drivers and configured instances", () => {
 	assert.equal(registry.getProfileInfos()[0].runtimeInstanceId, "fixture-primary");
 });
 
-test("custom Pi-backed runtime instance ids preserve persisted codex references without creating a profile alias", async () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("custom Pi-backed runtime instance ids preserve persisted codex references without creating a profile alias", async (t) => {
+	const registry = await createProductRegistry(t);
 	registry.registerAgentRuntimeInstance({ id: "codex", adapterId: "pi", displayName: "Persisted Pi Codex Instance" });
 	const profile = new InitialSessionContextBuilder("persisted-custom-profile")
 		.withAgentRuntime("codex")
@@ -330,8 +340,8 @@ test("custom Pi-backed runtime instance ids preserve persisted codex references 
 	assert.throws(() => registry.createProfile("codex"), /Unknown profile "codex"/);
 });
 
-test("an explicitly registered codex profile alias remains Pi compatibility", () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("an explicitly registered codex profile alias remains Pi compatibility", async (t) => {
+	const registry = await createProductRegistry(t);
 	registry.registerProfile({
 		name: "codex-compat-openai-web",
 		aliases: ["codex"],
@@ -684,8 +694,8 @@ test("fake adapter covers abort, failure, missing binding, and idempotent cleanu
 	);
 });
 
-test("Pi adapter opens the existing Pi runtime without rewriting the requested session id", async () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("Pi adapter opens the existing Pi runtime without rewriting the requested session id", async (t) => {
+	const registry = await createProductRegistry(t);
 	const adapter = registry.requireAgentRuntimeAdapter("pi");
 	const profile = new InitialSessionContextBuilder("pi-contract")
 		.withAgentRuntime("pi", { intentTracing: true })

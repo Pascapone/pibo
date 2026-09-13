@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
+import { createAgentPluginSelection } from "../dist/plugins/selection.js";
+import { profileFromPluginPlan } from "../dist/agent-runtime/plugin-plan.js";
 import {
 	BROWSER_USE_OPEN_TABS_TOOL_NAME,
 	BROWSER_USE_TAKE_SCREENSHOT_TOOL_NAME,
@@ -22,18 +27,24 @@ function fakeToolContext(cwd) {
 	return { cwd };
 }
 
-test("Codex browser interface is registered as one selectable native capability package", async () => {
+async function productRegistry(t) {
+	const root = await mkdtemp(join(tmpdir(), "codex-browser-plugin-"));
+	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const registry = createDefaultPiboPluginRegistry();
+	const product = await startPluginProductRuntime({ host: registry.getPluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [] });
+	t.after(async () => { await product.dispose(); await registry.disposePlugins(); data.close(); await rm(root, { recursive: true, force: true }); });
+	return { registry, product, data };
+}
+
+test("Codex browser interface is delivered by its ordinary installed plugin", async (t) => {
+	const { registry, product, data } = await productRegistry(t);
 	const catalog = registry.getCapabilityCatalog();
 	const tools = new Map(catalog.nativeTools.map((tool) => [tool.name, tool]));
 	for (const name of CODEX_BROWSER_TOOL_NAMES) {
-		assert.equal(tools.get(name)?.pluginId, "pibo.core");
+		assert.equal(tools.get(name)?.pluginId, "pibo.browser-tools");
 		assert.equal(tools.get(name)?.hasDefinition, false, `${name} is generated with its session controller at runtime`);
 	}
-	assert.deepEqual(
-		catalog.packages.find((pkg) => pkg.name === "codex-browser-interface")?.toolNames,
-		[...CODEX_BROWSER_TOOL_NAMES],
-	);
+	assert.equal(Object.hasOwn(catalog, "packages"), false, "the retired capability-package catalog must not return");
 
 	registry.upsertProfile({
 		name: "codex-browser-test",
@@ -45,14 +56,20 @@ test("Codex browser interface is registered as one selectable native capability 
 	});
 	const profile = registry.createProfile("codex-browser-test");
 	assert.ok(profile.tools.every((tool) => tool.builtInPiboTool === "codex_browser"));
-
-	const inspection = await inspectPiboProfile({ profile, persistSession: false });
+	const installation = data.plugins.getInstallation("pibo.browser-tools");
+	const selection = structuredClone(createAgentPluginSelection([installation]));
+	selection.plugins[0].enabled = true;
+	for (const name of CODEX_BROWSER_TOOL_NAMES) selection.plugins[0].contributions[name] = true;
+	const selected = new InitialSessionContext({ ...profile, pluginSelection: selection });
+	const plan = product.runtime.preview(selected, { adapterId: "pi", instanceId: "pi", capabilities: {} }, "ps_browser");
+	const effective = profileFromPluginPlan(selected, plan, registry.getPluginHost());
+	const inspection = await inspectPiboProfile({ profile: effective, persistSession: false });
 	for (const name of CODEX_BROWSER_TOOL_NAMES) {
 		const tool = inspection.tools.find((candidate) => candidate.name === name);
 		assert.ok(tool, `${name} should be inspectable`);
 		assert.equal(tool.hasDefinition, true);
 		assert.equal(tool.registered, true);
-		assert.equal(tool.active, true);
+		assert.equal(tool.active, true, `${name} remains selected in the declared profile preview`);
 	}
 });
 

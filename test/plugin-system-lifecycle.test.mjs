@@ -224,3 +224,32 @@ test('undeclared provider, undeclared service use and absent promised services f
 		assert.deepEqual(host.contributions.list(), []);
 	}
 });
+
+test('incremental plugin lifecycle leaves existing system services alive and rolls back only additions', async () => {
+	const host = new PluginHost(); const events = [];
+	const system = plugin('system', ctx => { events.push('system-start'); ctx.scope.defer(() => events.push('system-stop')); });
+	await host.start({ plugins: [system] });
+	await assert.rejects(host.add({ plugins: [plugin('broken', ctx => { ctx.scope.defer(() => events.push('broken-stop')); throw Error('broken'); })] }), /broken/);
+	assert.equal(host.inspect().state, 'active');
+	assert.deepEqual(host.inspect().plugins.map(p => p.pluginId), ['system']);
+	await host.add({ plugins: [plugin('agent')] });
+	const child = host.createSessionScope('agent', 'ps_a', 'g1');
+	await assert.rejects(host.remove('agent'), /session resources/);
+	await child.dispose();
+	await host.remove('agent');
+	assert.deepEqual(events, ['system-start', 'broken-stop']);
+	await host.stop();
+	assert.deepEqual(events, ['system-start', 'broken-stop', 'system-stop']);
+});
+
+test('app-to-agent dependencies reject before backend effects and provider removal preserves consumers', async () => {
+	let effects = 0; const c = { kind: 'service', required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'app' } };
+	const host = new PluginHost();
+	await assert.rejects(host.start({ plugins: [plugin('bad', () => effects++, { contributions: [{ ...c, id: 'app', scope: 'app', dependsOn: ['bad/agent'] }, { ...c, id: 'agent', scope: 'agent' }] })] }));
+	assert.equal(effects, 0);
+	await host.start({ plugins: [plugin('provider', ctx => { ctx.services.provide('db', {}); }, { services: { provides: [{ id: 'db', version: '1.0.0' }] } })] });
+	await host.add({ plugins: [plugin('consumer', () => {}, { services: { requires: [{ id: 'db', version: '^1.0.0' }] } })] });
+	await assert.rejects(host.remove('provider'), /consumer/);
+	assert.ok(host.services.get('db'));
+	await host.remove('consumer'); await host.remove('provider'); await host.stop();
+});

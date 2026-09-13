@@ -15,6 +15,7 @@ import { PiboLoopStore } from "../dist/loops/store.js";
 import { createPiboGoalToolDefinitions } from "../dist/loops/tools.js";
 import { listLoopJobTemplates } from "../dist/loops/templates.js";
 import { LOOP_GUIDE } from "../dist/tools/guides.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 function toolsByName(store, context = { piboSessionId: "ps_goal", piboRoomId: "room_goal", profileName: "goal-agent" }) {
 	return Object.fromEntries(createPiboGoalToolDefinitions(context, { store }).map((tool) => [tool.name, tool]));
@@ -52,15 +53,20 @@ test("Goal budget token accounting follows the persisted basis", () => {
 
 test("goal tool package is enabled by default or disabled as one profile capability", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-goal-profile-"));
+	const product = await startTestPluginProduct("pibo-goal-tools-product-");
+	const registry = product.createDefaultRegistry();
 	try {
 		for (const [enabled, expected] of [[undefined, true], [true, true], [false, false]]) {
 			const builder = new InitialSessionContextBuilder(`goal-${enabled}`);
-			const profile = enabled === undefined ? builder.createSession() : builder.withToolPackages({ goalControl: enabled }).createSession();
+			const legacyProfile = enabled === undefined ? builder.createSession() : builder.withToolPackages({ goalControl: enabled }).createSession();
+			const profile = product.materializeProfile(registry, legacyProfile, `ps_${enabled}`);
 			const inspection = await inspectPiboProfile({ cwd, profile, persistSession: false, modelDefaults: {}, sessionContext: { piboSessionId: `ps_${enabled}`, piboRoomId: "room_goal" } });
 			const active = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
 			for (const name of ["get_goal", "create_goal", "update_goal"]) assert.equal(active.has(name), expected, `${name} enabled=${enabled}`);
 		}
 	} finally {
+		await registry.disposePlugins();
+		await product.dispose();
 		rmSync(cwd, { recursive: true, force: true });
 	}
 });

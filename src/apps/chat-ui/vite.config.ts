@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const root = dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +17,18 @@ export default defineConfig({
 	build: {
 		outDir: "../../../dist/apps/chat-ui",
 		emptyOutDir: true,
+		rollupOptions: {
+			preserveEntrySignatures: "strict",
+			input: {
+				app: resolve(root, "index.html"),
+				"pibo-builtin-plugin": resolve(root, "src/plugins/builtin-browser-entry.tsx"),
+			},
+			output: {
+				entryFileNames: (chunk) => chunk.name === "pibo-builtin-plugin"
+					? "assets/pibo-builtin-plugin.js"
+					: "assets/[name]-[hash].js",
+			},
+		},
 	},
 	server: {
 		host: "127.0.0.1",

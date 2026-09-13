@@ -918,8 +918,3 @@ function ModelSelector({
 		</div>
 	);
 }
-
-/** @deprecated Read-only recovery marker for the old shell; no package controls or imports. */
-export function PiPackageDetails({ pkg }: { pkg: { name: string } }) {
-	return <p role="status" className="p-3 text-xs text-amber-200">{pkg.name}: legacy Pi package retained inactive. Use the unified plugin system; this package cannot execute.</p>;
-}

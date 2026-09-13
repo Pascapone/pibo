@@ -11,7 +11,7 @@ export function recordedBuildNodes(data: unknown): PluginBuildProvenanceNode[] {
 	return Array.isArray(nodes) ? nodes.filter((node): node is PluginBuildProvenanceNode => Boolean(node) && node.schemaVersion === 1 && typeof node.id === "string" && typeof node.status === "string" && typeof node.fallback === "string") : [];
 }
 export function BuildContextView(props: PluginViewProps) {
-	const [builds, setBuilds] = useState<BuildRecord[]>([]); const [nodes, setNodes] = useState<PluginBuildProvenanceNode[]>([]); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false);
+	const [builds, setBuilds] = useState<BuildRecord[]>([]); const [nodes, setNodes] = useState<PluginBuildProvenanceNode[]>([]); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(false); const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
 	const selected = typeof props.state.snapshotId === "string" ? props.state.snapshotId : "";
 	const [preview, setPreview] = useState(false);
 	useEffect(() => {
@@ -29,6 +29,17 @@ export function BuildContextView(props: PluginViewProps) {
 		void load.then((next) => { if (!abort.signal.aborted) setNodes(next); }).catch((error) => { if (!abort.signal.aborted) setError(String(error)); }).finally(() => { if (!abort.signal.aborted) setLoading(false); });
 		return () => abort.abort();
 	}, [props.piboSessionId, selected, preview]);
+	const copyModelContent = async (node: PluginBuildProvenanceNode) => {
+		const content = renderPluginNodeModelContentForCopy(node);
+		if (!content) return;
+		try {
+			await navigator.clipboard.writeText(content);
+			setCopiedNodeId(node.id);
+			window.setTimeout(() => setCopiedNodeId((current) => current === node.id ? null : current), 1200);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		}
+	};
 	return <section className="h-full overflow-auto p-3 space-y-3 text-xs" data-plugin-build-context>
 		<h2 className="font-bold uppercase">Build Context</h2>
 		<p className="font-mono break-all">Session {props.piboSessionId}</p>
@@ -37,10 +48,15 @@ export function BuildContextView(props: PluginViewProps) {
 		<p className="text-slate-400">Reading this inspector does not start a runtime, connect MCP, or execute hooks. Inspector metadata is not model prompt text.</p>
 		{loading ? <p role="status">Loading recorded evidence…</p> : null}{error ? <p role="alert" className="text-orange-300">{error}</p> : null}
 		{!loading && !nodes.length ? <p>No recorded nodes for this selection. Missing evidence is not reconstructed from today’s catalog.</p> : null}
-		{[...nodes].sort((a, b) => a.order - b.order).map((node) => <BuildNode key={node.id} node={node} onOpen={props.openView} />)}
+		{[...nodes].sort((a, b) => a.order - b.order).map((node) => <BuildNode key={node.id} node={node} copied={copiedNodeId === node.id} onCopy={() => { void copyModelContent(node); }} onOpen={props.openView} />)}
 	</section>;
 }
-function BuildNode({ node, onOpen }: { node: PluginBuildProvenanceNode; onOpen: (id: PluginQualifiedId, subview?: string) => void }) {
+export function renderPluginNodeModelContentForCopy(node: PluginBuildProvenanceNode): string {
+	if (node.content?.visibility !== "model" || node.content.redacted || !node.content.text) return "";
+	return node.content.text;
+}
+
+function BuildNode({ node, copied, onCopy, onOpen }: { node: PluginBuildProvenanceNode; copied: boolean; onCopy: () => void; onOpen: (id: PluginQualifiedId, subview?: string) => void }) {
 	return <details className="border border-slate-700 rounded-sm"><summary className="p-2 cursor-pointer flex flex-wrap gap-2"><span className="font-mono text-slate-500">{node.order}</span><span>{node.fallback}</span><span className="text-cyan-300">{node.status}</span><span className="text-slate-400">{node.origin}</span></summary>
 		<div className="p-2 space-y-2 border-t border-slate-700"><p className="font-mono break-all">{node.id} · {node.pluginRevision ?? node.origin}</p><p>{node.selectionReason}</p><p>Installed: {String(node.installed ?? "unknown")} · Global: {String(node.globallyActive ?? "unknown")} · Agent: {String(node.agentSelected ?? "unknown")} · Effective: {String(node.selected)} · Required: {String(node.required ?? false)}</p>
 		<p>{node.context.kind === "none" ? `No context effect: ${node.context.reason}` : `${node.context.stage} · ${node.context.loading} · ${node.context.description}`}</p>
@@ -49,6 +65,6 @@ function BuildNode({ node, onOpen }: { node: PluginBuildProvenanceNode; onOpen: 
 		{node.transformations?.map((item) => <p key={item.id}>{item.owner}: {item.operation} · {item.description}</p>)}
 		{node.configurationRevisions?.map((item, index) => <p key={index}>Configuration {item.scope} revision {item.revision}</p>)}
 		<p>Predecessors: {node.predecessors.join(", ") || "none"}</p>{node.tokens ? <p>{node.tokens.value} tokens ({node.tokens.method})</p> : null}
-		{node.contributionId ? <button className="text-cyan-300 underline" onClick={() => onOpen(node.contributionId!)}>Open owner plugin</button> : null}</div>
+		<div className="flex flex-wrap gap-3">{renderPluginNodeModelContentForCopy(node) ? <button type="button" className="text-cyan-300 underline" onClick={onCopy}>{copied ? "Copied model content" : "Copy model content"}</button> : null}{node.contributionId ? <button type="button" className="text-cyan-300 underline" onClick={() => onOpen(node.contributionId!)}>Open owner plugin</button> : null}</div></div>
 	</details>;
 }

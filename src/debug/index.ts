@@ -1411,7 +1411,7 @@ Commands:
   signals  Inspect live session signal snapshots through Chat Web APIs
   telemetry Inspect runtime observability telemetry
   web      Inspect browser render state via CDP
-  pty      Run and inspect interactive CLI/TUI commands under a PTY
+  pty      Run and inspect interactive commands under a PTY
 
 Next:
   pibo debug storage status --json
@@ -1429,7 +1429,7 @@ Next:
   pibo debug signals tree ps_...
   pibo debug telemetry sessions --active
   pibo debug web targets
-  pibo debug pty run -- pibo tui:sessions --demo
+  pibo debug pty run -- pibo --help
 `);
 }
 

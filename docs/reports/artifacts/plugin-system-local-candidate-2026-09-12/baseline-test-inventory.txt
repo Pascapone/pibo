@@ -1,0 +1,285 @@
+# Bestands-Testinventar: vollständige Plugin-Migration
+
+**Stand:** 12. September 2026  
+**Auftrag:** D19 / PLG-TEST-001 / AP19.7  
+**Owning Plan:** `/root/code/pibo/.worktrees/plugin-system-rebuild/docs/plans/unified-plugin-system-rebuild.md`  
+**Baseline:** `cac4dcd03945b9754db7be9ab2ab4324f10c335c`  
+**Handoff:** `docs/reports/plugin-system-rebuild-checkpoint-2026-09-12.md`
+
+## Abgrenzung
+
+Dieses Dokument ist ein **lesendes Bestandsinventar**, keine Code-Review und keine Abnahme des beweglichen Worker-Stands. Es wurden keine Tests ausgeführt und keine Source-/Testdateien geändert. Handoff-Ergebnisse sind als historische, gelesene Evidenz gekennzeichnet.
+
+Der aktuelle Worktree ist nicht sauber: `HEAD` ist `4160aaf7`, der Handoff-Teststand war `fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd`; zusätzlich liegen uncommittete Worker-Änderungen vor. Aussagen zum aktuellen Code sind deshalb nur Discovery-/Diff-Befunde.
+
+## 1. Baseline, Test-Runner und Standard-Coverage
+
+### Runner-Verhalten
+
+`package.json` der Baseline und des aktuellen Worktrees enthält:
+
+```text
+npm test = npm run build && node scripts/run-test-suite.mjs
+```
+
+`scripts/run-test-suite.mjs`:
+
+- erzeugt isolierte `HOME`, `PIBO_HOME`, XDG- und Temp-Pfade;
+- entfernt aus dem Kindprozess unter anderem `PIBO_COMPUTE_WORKER`;
+- verwendet bei **keinen Argumenten** alle unmittelbar unter `test/` liegenden `*.test.mjs` sowie alle unmittelbar unter `test/chat-vscode/` liegenden `*.test.mjs`;
+- sortiert beide Listen lexikografisch;
+- startet Node mit `--test --test-concurrency=2`;
+- verwendet bei Argumenten ausschließlich diese expliziten Argumente und keine Default-Discovery.
+
+Es gibt keine rekursive allgemeine `test/**`-Discovery. Aus der Baseline werden daher standardmäßig nicht entdeckt:
+
+- `test/vscode/*.test.mjs` (4 Dateien);
+- `test/fixtures/test-suite-home-probe.test.mjs` (1 Datei).
+
+### Zahlen und Runner-Diff
+
+| Stand | alle `*.test.mjs` | Default-Discovery | Bemerkung |
+|---|---:|---:|---|
+| Baseline `cac4dcd0` | 472 | 467 | keine `plugin-system-*`-Suite |
+| Handoff-Source `fdc7b887` | 490 | 485 | 18 neue Plugin-Testdateien enthalten |
+| aktueller Worktree, lesend gezählt | 491 | 486 | zusätzlich untracked `test/plugin-system-product-runtime.test.mjs`; nicht durch Handoff belegt |
+
+Der aktuelle `build`-Script-Diff gegenüber der Baseline fügt `npm run plugins:sdk:build` hinzu. `npm test` führt weiterhin zuerst den Build aus. `typecheck` bleibt separat; es gibt keinen eigenen Coverage-Script-/c8-/nyc-Gate in den Package-Scripts. Testanzahl ist daher keine Code-Coverage-Metrik.
+
+### Gelesene Handoff-Läufe, nicht von diesem Auftrag ausgeführt
+
+- Plugin-Fokus: historische Angabe **170/170 bestanden**, keine Skips; 18 `test/plugin-system-*.test.mjs`-Dateien am Commit `fdc7b887`.
+- Bestandsregressionen: explizite Auswahl von **19 Dateien**, **123 Tests**, **111 bestanden / 12 fehlgeschlagen**, keine Skips.
+- Diese beiden Aufrufe sind **nicht** der vollständige Repository-Lauf. Ein vollständiges `npm test` ist im Handoff nicht als Ergebnis ausgewiesen.
+- Die ursprünglichen Baseline-Testdateien erscheinen im aktuellen Diff nur als Bestand; gegenüber der Baseline sind im Testdiff keine bestehenden Bestandsdateien als geändert oder gelöscht ausgewiesen. Die neuen `plugin-system-*`-Dateien sind Ergänzungen.
+
+Die 19 Handoff-Regressionsdateien sind:
+
+```text
+test/plugin-registry.test.mjs
+test/agent-store.test.mjs
+test/agent-profiles.test.mjs
+test/chat-custom-agent-profiles.test.mjs
+test/runtime-portability.test.mjs
+test/context-build-inspector.test.mjs
+test/context-build-skills-tokens.test.mjs
+test/web-gateway.test.mjs
+test/agent-runtime-resource-service.test.mjs
+test/pibo-portable-tool-session.test.mjs
+test/runtime-routed-session.test.mjs
+test/model-catalog.test.mjs
+test/chat-ui-agent-designer-runtime-switch.test.mjs
+test/chat-ui-agent-designer-description-clear.test.mjs
+test/chat-ui-agent-designer-new-session-default.test.mjs
+test/chat-ui-agent-designer-sidebar-folders.test.mjs
+test/chat-ui-agent-designer-subagents.test.mjs
+test/chat-ui-agents-initial-draft.test.mjs
+test/chat-ui-agent-context-scope-accessibility.test.mjs
+```
+
+## 2. Bestandsinventar nach Produktbereich
+
+### 2.1 Plugin, Registry und Profiles
+
+**Primäre Baseline-Einstiege:**
+
+- `test/plugin-registry.test.mjs`
+  - `default plugin registry builds core and native Codex capabilities without retired aliases`
+  - `capability catalog exposes installed pibo tool context hints`
+  - `capability catalog keeps user skills separate from plugin skills`
+  - `capability catalog exposes registered Pi packages without activating them`
+  - `plugins can register profiles, gateway actions, and event listeners`
+  - `product events add metadata, preserve explicit fields, and isolate listeners`
+  - `plugin registry rejects duplicate registrations`
+- `test/agent-profiles.test.mjs`: unbekannte Context-/Skill-Referenzen, Subagent-Ausführungsoptionen, Runtime-Auswahl/-Optionen.
+- `test/agent-store.test.mjs`: Legacy-Profilmigration, globale Eindeutigkeit, Ordner, Rename/Delete/Referenzen, Goal-/Context-/MCP-/Built-in-Auswahl, Runtime-Optionen, Pi-Packages, Subagent-Overrides.
+- `test/chat-custom-agent-profiles.test.mjs`: Laden vor Channel-Start, doppelte Legacy-Profile, veraltete Toolreferenzen.
+- `test/profile-default-compat.test.mjs`: Legacy-Default-Auflösung und Erhalt nicht-default Profile.
+- `test/profile-cli.test.mjs`: native Codex ohne `codex`-Alias, gespeicherte Chat-Profile, persistierte Subagent-Ziele.
+- `test/agent-runtime-registry.test.mjs`: Runtime-Instanzen, Capability-/Diagnosevalidierung, Plugin-Driver, Alias-/Duplicate-/Disabled-Fälle, Lifecycle-Vertrag.
+- `test/agent-runtime-resource-service.test.mjs`: isolierte Skills/Context/MCP/Secrets, beobachtete Delivery, native Discovery, Deduplizierung, Provider-Grenzen, Generation-Cleanup.
+- `test/pibo-tool-contract.test.mjs`: JSON-Schema-/Pi-Kompilierung und Normalisierung alter Pi-förmiger Registrierungen.
+- `test/pi-packages.test.mjs`: Parser, Store, Auswahl, globale Deaktivierung, Runtime-Bridge und CLI des alten Pi-Package-Wegs.
+
+**Migrationsrelevanz:** Diese Tests bewahren effektive Profile, Herkunft, Auswahl, Runtime-Grenzen und den alten Pi-Package-Befund. Sie dürfen beim Wechsel auf Plugin-Beiträge nicht durch bloße Registry-Assertions ersetzt werden.
+
+### 2.2 Agent-Designer
+
+**Baseline-Dateien und belastbare Testnamen:**
+
+- `test/chat-ui-agent-designer-autosave.test.mjs`: Draft-/Autosave-/CAS-Verhalten.
+- `test/chat-ui-agent-designer-broken-tools.test.mjs`: fehlerhafte Toolauswahl und erklärbare Designer-Fehler.
+- `test/chat-ui-agent-designer-catalog-disclosure-accessibility.test.mjs`: Katalog-Disclosure und Accessibility.
+- `test/chat-ui-agent-designer-catalog-selection-accessibility.test.mjs`: Auswahlzustand und Accessibility.
+- `test/chat-ui-agent-designer-description-clear.test.mjs`: explizites Löschen der Beschreibung und PATCH-Roundtrip.
+- `test/chat-ui-agent-designer-new-session-default.test.mjs`:
+  - `Agent Designer keeps browsing and explicit session creation separate from the new-session default`
+  - `only the Sessions new-session dropdown updates the persisted profile preference`
+- `test/chat-ui-agent-designer-runtime-switch.test.mjs`: Runtime-inkompatible Modelle verwerfen, gelöschte Modelle serialisieren, `null`-Clears erhalten.
+- `test/chat-ui-agent-designer-sidebar-folders.test.mjs`: responsive Sidebar-Vertrag, Folder-Erstellung/Rename/Assignment/Delete, Draft-Folder-Zuordnung.
+- `test/chat-ui-agent-designer-subagents.test.mjs`: Beschreibung, Modell, Thinking und Runtime-Overrides pro Subagent.
+- `test/chat-ui-agents-initial-draft.test.mjs`: vorhandenen Agent initial auswählen; Draft nur explizit erzeugen.
+- `test/chat-ui-agent-context-scope-accessibility.test.mjs`: sichtbarer Context-File-Scope und Pressed-State.
+- `test/chat-ui-designer-default-model.test.mjs`: Default-/Clear-/Unset-Verhalten der Modellfelder.
+- `test/chat-ui-pi-packages-error-clear.test.mjs`: alter Pi-Package-Fehler wird beim Leeren der Quelle gelöscht.
+
+**Neu im Plugin-Testbestand am Handoff-Commit:**
+
+- `test/plugin-system-agent-designer.test.mjs`: Legacy-Fixtures, exakte Beitragssätze, unabhängige Ressourcen, Pflicht-/Runtime-Konflikte, Migration/CAS, API-v2-Normalisierung, Preview und fehlende Auswahl.
+- `test/plugin-system-agent-designer-ui.test.mjs`: Pflichtstatus sowie Session-/Settings-Scope und stale Preview.
+
+### 2.3 Runtime und Context / Build Context
+
+**Baseline-Einstiege:**
+
+- `test/context-build-inspector.test.mjs`: Default-Context, generated-tool inspector metadata, materialisierte Toolnamen, Codex-Browser-Grenze, Subagent-/Run-Oberfläche, Runtime-Kontext, Web-Search-Provider-Payload, keine finale Prompt-Duplikation.
+- `test/context-build-skills-tokens.test.mjs`: Skill-Prompt-Entry statt vollem Body, Token-/Byte-Budgets, leerer/disabled Skill-Elternknoten.
+- `test/chat-ui-context-build-origin.test.mjs`: Origin als inspector-only Header und Ausschluss aus Copy-Output.
+- `test/agent-runtime-adapter-skill.test.mjs`, `test/agent-runtime-boundaries.test.mjs`, `test/agent-runtime-history.test.mjs`.
+- `test/runtime-portability.test.mjs`: Cross-Runtime-Projektion, bounded portable history, Rebind, Retry und Secret-Redaction.
+- `test/runtime-routed-session.test.mjs`: generische Router-Orchestrierung, Capability-Gating, Queue/Cancel/Fallback/Fork/Pool.
+- `test/runtime-session-binding.test.mjs`, `test/runtime-restart-recovery.test.mjs`, `test/runtime-interrupt-lifecycle.test.mjs`, `test/runtime-tool.test.mjs`.
+- `test/codex-native-resources.test.mjs`, `test/codex-native-subagents.test.mjs`, `test/omp-resources.test.mjs`, `test/omp-runtime.test.mjs`.
+- `test/pibo-portable-tool-session.test.mjs`: ein eingefrorener Tool-Satz für direkte und MCP-Lieferung.
+- `test/pibo-tool-mcp-bridge.test.mjs`: Loopback, Hash/Scope/Renew/Expiry/Revocation und isolierte MCP-Toolausführung.
+
+**Neu am Handoff-Commit:**
+
+- `test/plugin-system-context-build.test.mjs`: Legacy-Inspection ohne Runtime/MCP/Factory/Extension, immutable actual build/delivery, getrennte Preview, Session-/Generation-Grenze.
+- `test/plugin-system-runtime.test.mjs`: effektive Auswahl, Pi-only-Gating, Generation-Pinning, Retirement, Discovery-Policy und fehlende Agent-Scope-Lieferung.
+- `test/plugin-system-selection.test.mjs`: Pflicht-/Optionalbeiträge, Dependencies/Zyklen, Toolkonflikte, Runtime-/Service-Anforderungen, Scopes, Shell-Provider, system-only und gemischte Plugins.
+- `test/plugin-system-hooks.test.mjs`: Reihenfolge, Revalidierung, Fail-closed, Timeout/Cancel, Provenienz und Ausschluss fremder Harness-Definitionen.
+
+### 2.4 Goal, Run, Subagent und MCP
+
+**Run-/Goal-Bestand:**
+
+- `test/runs.test.mjs`: Start/Read/Wait/Cancel/Ack/List, Timeoutklassifikation, Cancellation, Admission, Ressourcenlimits, Persistenz und Notifications.
+- `test/run-reminder-admission.test.mjs`, `test/run-reminder-guard.test.mjs`.
+- `test/loop-api.test.mjs`, `test/loop-goal-mode.test.mjs`, `test/loop-goal-reopen.test.mjs`, `test/loop-goal-tools.test.mjs`, `test/loop-session-goal-command.test.mjs`.
+- `test/loop-admission-cancellation.test.mjs`, `test/loop-max-iterations-admission.test.mjs`, `test/loop-mode-edit-ownership.test.mjs`, `test/loop-provider-failure-policy.test.mjs`, `test/loop-service-shutdown.test.mjs`, `test/loop-turn-provenance.test.mjs`.
+
+Wichtige Namen sind unter anderem `goal mode reuses one Pibo Session while Ralph mode creates fresh sessions`, `native goal tools create, inspect, complete, and replace a session goal`, `Loop service shutdown drains an active run`, sowie die Cancellation-/Provenance-Fälle im Run- und Loop-Bestand.
+
+**Subagent-Bestand:**
+
+- `test/subagents.test.mjs`: stabile gemeinsame Tools, Profile, Delegation, Child-Sessions, Thread-Reuse, Observation-Cursors, Kill/Cancel und yielded delegated runs.
+- `test/subagent-observation-restart.test.mjs`: monotone/automatische Cursors über Router-Restart.
+- `test/agent-delegation-cards.test.mjs`: Delegation-Events, Card-Materialisierung und Trace-/Terminal-Signale.
+- `test/codex-native-subagents.test.mjs`: Pi-/Codex-Cross-Runtime-Delegation.
+
+**MCP-Bestand:**
+
+- `test/mcp-agent-context.test.mjs`: Beschreibungsänderung, Katalog, selektierter MCP-Context und Runtime-Inspection.
+- `test/mcp-cli.test.mjs`, `test/mcp-cli-fixture-server.test.mjs`: progressive CLI-Discovery, Config, Info/Call und Fixture-Server.
+- `test/mcp-config-filter.test.mjs`, `test/mcp-config-merge.test.mjs`: Filter, Prioritäten und sichere Pfade.
+- `test/mcp-daemon.test.mjs`, `test/mcp-daemon-ownership.test.mjs`: Endpoint-/PID-/Lease-/Crash-/Concurrent-Ownership.
+- `test/mcp-grep-pattern.test.mjs`, `test/mcp-output.test.mjs`: Toolnamenfilter und sichere Darstellung.
+- `test/pibo-tool-mcp-bridge.test.mjs`: interne session-scoped Pibo-Bridge; diese ist vom externen MCP-CLI-Plugin zu unterscheiden.
+
+### 2.5 Browser, Shell, Settings und Terminal
+
+**Browser/Shell/Tabs:**
+
+- `test/cdp-client.test.mjs`, `test/browser-pool-state.test.mjs`, `test/codex-browser-interface.test.mjs`: bounded CDP, Pool-Leases, Browser-Controller und Sessionbindung.
+- `test/chat-fallback-shell.test.mjs`: `fallback Chat shell has valid inline JavaScript and identifies itself`.
+- `test/chat-ui-desktop-tabs-accessibility.test.mjs`: New-Tab-Katalog, ARIA, Keyboard/Pointer-Reorder, Resize/Collapse und Desktop/Mobile-Gating.
+- `test/chat-ui-desktop-tabs-behavior.test.mjs`: Preview, Ressourcen-Pause und Fokus nach Tab-Schließen.
+- `test/chat-ui-desktop-tabs-model.test.mjs`: Dedupe, Close-Focus, Reorder, Persistenz und Route-Reconciliation.
+- `test/chat-ui-responsive-tab-modules.test.mjs`: responsive Pane-Sidebars und Agent-Folder.
+- flankierend: `chat-ui-app-routes`, `chat-ui-app-route-selection`, `chat-ui-app-navigation-merge`, `chat-ui-session-*`, `chat-ui-room-*`, `chat-web-app-sessions`.
+
+**Settings/Context-Editoren:**
+
+- `test/chat-ui-preview-settings.test.mjs`: Preview mit Concurrency-/Speech-/Transcription-Settings.
+- `test/chat-ui-debug-settings.test.mjs`: validierte Debug-Thresholds und Debug-Route.
+- `test/chat-ui-settings-timezone-accessibility.test.mjs`: Label-/Selector-Vertrag.
+- `test/context-files-web.test.mjs`: Autosave, Revisionen, globale Managed Files, Migration und Recovery.
+- `test/chat-user-skill-profiles.test.mjs`, `test/user-skills.test.mjs`, `test/skills-cli.test.mjs`: unabhängige User-Skills.
+
+**Terminal/Replay/History:**
+
+- `test/chat-ui-terminal-*.test.mjs`: Character-/Height-Clamping, File-Drop/Upload, Fullscreen, Header/Usage, Bilder, JSON-Disclosure, Timing, Spacing, Status, Resources und Viewport-Resize.
+- zentrale Namen: `Terminal preserves follow and reading positions when its viewport shrinks`, `Compact Terminal reconciles a recent canonical assistant with its fail-closed native-history echo`, `compact row generation covers core terminal row kinds deterministically`, `shared terminal view-model source stays renderer-neutral`.
+- `test/session-ui-terminal-rows.test.mjs`: 27 Fälle für Row-Kinds, Browser/REPL, Errors, Streaming-Order, Images, Compaction, Tool-Display und Subagents.
+- `test/terminal-parity-fixtures.test.mjs`: Web-/Ink-Parität, Ordering, Redaction, Status und Previewquellen.
+- `test/terminal-reading-position.test.mjs`, `test/compact-terminal-native-history-dedup.test.mjs`, `test/chat-ui-trace-*`, `test/trace-*`.
+- zusätzlich alte Operatorflächen: `test/ink-cli-terminal-design-contract.test.mjs`, `test/ink-cli-terminal-rendering-parity-final.test.mjs`, `test/ink-cli-v2-current-state.test.mjs`, `test/local-routed-tui*.test.mjs`.
+
+### 2.6 Migration und Lifecycle
+
+**Baseline-Migrationsnachweise:**
+
+- `test/legacy-project-migration.test.mjs`: Upgrade, Receipts, Rollback, WAL-/Archive-Recovery, Idempotenz und Konflikte.
+- `test/data-schema-retired-scope-migration.test.mjs`: schema-/Foreign-Key-Rebuild und idempotente Reparatur.
+- `test/preview-session-ownership-migration.test.mjs`: Session-Ownership-Migration.
+- `test/pibo-data-session-store.test.mjs`: Sessions-to-v2-Migration und Runtime-Bindings.
+- `test/session-store.test.mjs`, `test/session-router-store.test.mjs`: Identitäten, Profile, Bindings, Restart, Runtime-Reopen, Pi-Package-Erhalt.
+- `test/runtime-restart-recovery.test.mjs`, `test/web-channel-shutdown.test.mjs`, `test/storage-backup.test.mjs`, `test/storage-maintenance.test.mjs`.
+- `test/cron-store-lifecycle.test.mjs` und Workflow-Lifecycle-Suiten sind allgemeine Lifecycle-Regressionen, aber keine Plugin-Deinstallation.
+
+**Alter Erweiterungsweg:** `test/pi-packages.test.mjs` und `test/chat-ui-pi-packages-error-clear.test.mjs` bleiben als Negativ-/Migrationsbefund wichtig. Sie dürfen erst nach einem gleichwertigen neuen Nachweis entfernt oder fachlich ersetzt werden.
+
+**Neu am Handoff-Commit:**
+
+- `test/plugin-system-install.test.mjs`: lokale/versionierte Artefakte, Hash/SDK/Entrypoint/Dependency, Stage/Drain/Crash/Recovery.
+- `test/plugin-system-lifecycle.test.mjs`: Graph, Provider-Replacement, Scope-LIFO, Cleanup-Fehler, Legacy-Fassade und System-/Agent-Abhängigkeiten.
+- `test/plugin-system-migration-journal.test.mjs`: A23-Cross-Store-Journal, SIGKILL-/Checkpoint-Recovery, Dry-Run und Postconditions.
+- `test/plugin-system-store.test.mjs`: Installation-CAS/Tombstones, Session-Tabsets, Scopes/Credentials, immutable Snapshots, keine Delete-Cascade.
+- `test/plugin-system-uninstall.test.mjs`: A17–A21-Auswirkungsplan, Retirement, Drain, Crash-Recovery, bestätigte Revision und Verbraucher-CAS.
+- `test/plugin-system-session-recovery.test.mjs`: kompatible Wiederinstallation, inkompatible Revision, optionale Beiträge und Legacy-Snapshots.
+
+## 3. Die zwölf Handoff-Fehler
+
+Die folgende Tabelle übernimmt die Fehler aus `regression-summary.txt` und `committed-regressions.log`. „Alte Erwartung“ meint die Assertion am Baseline-Commit, nicht eine Bewertung des aktuellen Worker-Codes.
+
+| # | Baseline-Test | Alte Erwartung | Zuständiger Produktbereich / AP |
+|---:|---|---|---|
+| 1 | `test/agent-store.test.mjs:657` — `custom agent store persists selected registered Pi packages` | Doppelte Pi-Package-Auswahl wird dedupliziert; unbekanntes `missing-package` löst `Unknown Pi package ...` aus. | AgentStore/Profile + Entfernung des Pi-Package-Wegs; AP16/AP18 |
+| 2 | `test/chat-ui-agent-designer-new-session-default.test.mjs:15` — `only the Sessions new-session dropdown updates the persisted profile preference` | Zwei `onNewSessionProfileChange`-Anschlüsse und drei erwartete Referenzen an `setPreferredNewSessionProfile`; nur die Sessions-Auswahl schreibt die Präferenz. | Designer/Session-Default-Persistenz; AP10/AP17 |
+| 3 | `test/chat-ui-agent-designer-sidebar-folders.test.mjs:13` — `Agent Designer uses the standard responsive sidebar contract` | `App.tsx` übergibt `initialAgentFolders={bootstrap.agentFolders}` sowie Mobile-/Tab-Sidebar-Props; Designer nutzt den Standard-Responsive-Vertrag. | Agent-Designer-Shell/Sidebar; AP10/AP17 |
+| 4 | `test/context-build-inspector.test.mjs:31` — `default base context build does not select Pibo native tooling context` | Base-Profil enthält keinen Pibo-Native-Tooling-Context, aber generiertes `tools/get_goal` samt PIBO-Badge und Schema. | Default-Komposition, Build Context, Goal-Tooling; AP06/AP11/AP13 |
+| 5 | `test/context-build-inspector.test.mjs:44` — `generated tool origins remain inspector-only parent metadata` | Generierte Tools `runtime`, `pibo_agents_observe`, Run/Goal-/Codex-Compat-Tools besitzen `inspectorOrigin`, keine modellsichtbare Origin-Kindzeile und keine direkten Origin-Tokens. | Provenienz-/Inspector-Modell; AP06/AP11 |
+| 6 | `test/context-build-inspector.test.mjs:114` — `portable runtime manifest uses materialized callable names for fixed and factory profile tools` | Factory wird je einmal für Inspection und Runtime-Assembly materialisiert; Manifest enthält tatsächliche Callable-Namen, nicht Registrierungsnamen. | Portable Tool-Lieferung/Profile; AP06/AP12 |
+| 7 | `test/context-build-inspector.test.mjs:189` — `portable runtime manifest excludes controller-backed Codex browser tools when no controller exists` | Ohne Controller sind Definitionen, aktive und yieldable Toolnamen sowie Tool-Pakete leer. | Codex-Browser-/Capability-Gating; AP06/AP12/AP19 |
+| 8 | `test/context-build-inspector.test.mjs:301` — `context build exposes one shared agent surface and the available name-description catalog` | Run-Start kennt `pibo_agents_send_message`; Observe-Schema hat dokumentierte Defaults; Delegated-Context und vollständiges Tool-Manifest enthalten genau die gemeinsame Agent-Oberfläche. | Run-/Subagent-Context und Katalog; AP06/AP13 |
+| 9 | `test/context-build-inspector.test.mjs:382` — `context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate` | Snapshot ist hierarchisch (`totalNodes > topLevelNodes`), enthält Session-Context und Web-Search-Provider-Payload, aber keinen „final prompt“. | Build Context/Web-Search-Lieferung; AP06/AP11/AP12 |
+| 10 | `test/context-build-inspector.test.mjs:428` — `runtime context exposes app context and resource ids without partition fields` | `pibo://runtime/session-context.md` enthält App, Pibo Session/Room und keine alten User-/Partition-Felder. | Runtime-Context-Scope; AP06/AP11 |
+| 11 | `test/context-build-skills-tokens.test.mjs:30` — `context build skill node exposes only the prompt-entry XML, not the full body` | Skill-Knoten verweist auf den absoluten Skillpfad und enthält nur Prompt-Entry-XML; Body bleibt draußen, Bytes/Tokens beziehen sich auf sichtbaren Entry. | Skill-Inspector/Token-Provenienz; AP06/AP11 |
+| 12 | `test/context-build-skills-tokens.test.mjs:104` — `context build still warns when a skill file cannot be read for inspection` | Auch ohne Skill-Datei existiert der Skills-Elternknoten mit `state: disabled` und `badges: ["EMPTY"]`; keine fehlende Struktur. | Skill-Fehler-/Empty-State-Inspector; AP06/AP11 |
+
+Diese zwölf Fälle sind **nicht** pauschal als Produktregression oder als veraltete Erwartung klassifiziert. PLG-TEST-001 verlangt je Fall eine Entscheidung: Verhalten erhalten und Produktcode korrigieren oder bei ausdrücklich geändertem Vertrag einen neuen Verhaltensnachweis neben der begründeten Erwartungsänderung führen.
+
+## 4. Mapping AP11 und AP12–AP19
+
+| Paket | Vorhandene Regressionseinstiege | Neue/ergänzende Plugin-Suiten | Noch konkret zu belegende Lücke |
+|---|---|---|---|
+| **AP11** Web Annotations / erster Durchstich | `web-annotations-attachments`, `web-annotations-cdp-api`, `web-annotations-store`, `web-annotations-tools`; `chat-ui-web-annotation-*`; `chat-ui-context-build-origin`; Desktop-Tabs; Runtime-/Context-Suiten | `plugin-system-agent-designer*`, `browser*`, `browser-routes`, `context-build`, `hooks`, `runtime`, `selection`, `web-dispatch` | Gewöhnlicher installierter Plugin-Pfad mit Default-Manifests, echtem Designer/API/Runtime/Browser/Terminal/Settings-Durchstich, headful A→B→A, zwei Sessions und Build-Context gegen tatsächliche Delivery. |
+| **AP12** Built-ins / Codex Compat | `plugin-registry`, `agent-runtime-registry`, `agent-runtime-resource-service`, `codex-compat`, `codex-browser-interface`, `gateway-tool`, `pibo-tool-contract`, `pibo-portable-tool-session`, `codex-native-resources`, `omp-resources` | `plugin-system-selection`, `plugin-system-runtime`, `plugin-system-context-build` | Jede alte Toolfamilie braucht Besitzer-Manifest, alte Teilmengenerhaltung, Pi/Codex/OMP-Status und echte Liefer-/Negativfälle; Codex Compat und `codex-native` müssen integriert getrennt bleiben. |
+| **AP13** Run/Goal/Subagents | `runs`, Run-Reminder, alle `loop-*`, `subagents`, `subagent-observation-restart`, `agent-delegation-cards`, `codex-native-subagents` | vor allem `plugin-system-selection`/`runtime`/`context-build`; kein eigenständiger neuer Run-/Goal-Plugin-Durchstich im Handoff | Plugin-Auswahl muss Run-/Goal-/Subagent-Semantik über den echten Standard-Host erhalten: Reminders, Cancellation, Thread-Reuse, Parent/Child-Runtime und systemweite Goal-Seite. |
+| **AP14** MCP-CLI / Adapter | `mcp-agent-context`, `mcp-cli`, `mcp-cli-fixture-server`, `mcp-config-*`, `mcp-daemon*`, `mcp-output`, `pibo-tool-mcp-bridge` | indirekt `plugin-system-context-build`, `selection`, `browser` | `pibo.mcp-cli` als Plugin mit Besitzer-Tab, Settings-/Context-Unteransichten, Secret-/Daemon-Lifecycle, zweitem Fixture-Adapter und Trennung zur internen Codex-Tool-Bridge. |
+| **AP15** Deinstallation / Update / Sessions | `session-store`, `session-router-store`, `runtime-restart-recovery`, `storage-*`, `web-channel-shutdown`, Run-/Loop-Lifecycle | `plugin-system-install`, `lifecycle`, `store`, `uninstall`, `session-recovery`, `migration-journal` | Vollständiger Produktmanager mit realen Verbrauchern, headful Web-/CLI-Flow, laufenden Runs, Drain-Grenze, Wiederinstallation und erhaltenen Settings-/Tab-/Build-Befunden. Handoff nennt Standard-Manager/Consumer-Collector noch offen. |
+| **AP16** Bestandsmigration / Pi-Packages | `pi-packages`, `agent-store`, `agent-profiles`, `legacy-project-migration`, `data-schema-retired-scope-migration`, `preview-session-ownership-migration`, `pibo-data-session-store`, `chat-ui-pi-packages-error-clear`, `user-skills` | `plugin-system-agent-designer`, `migration-journal`, `session-recovery`, `selection` | Realitätsnahe Altprofile mit Native Tools, Run/Goal, MCP, User-Ressourcen, Feature-Settings, Context-Optionen und alten Tabs; idempotenter Dry-Run, Backup/Resume, unbekannte Packages inaktiv, native Pi-Discovery negativ. Handoff sagt globale Tab-/Settings-Fixtures noch unvollständig. |
+| **AP17** übrige UI/Dienste | `chat-fallback-shell`, Desktop-Tabs, responsive Tab-Module, Settings-, Composer-, Navigation-, Terminal-, Workflow- und Web-App-Suiten | `plugin-system-browser`, `browser-routes`, `agent-designer-ui`, `product-runtime` (aktuell untracked, daher nicht Handoff-Evidenz) | Standard-Shell, alternative Shell und übrige Dienste müssen wirklich über dieselben Provider-/Manifest-Verträge laufen; Desktop und schmale Ansicht sowie Terminal/Composer brauchen headful Belege. |
+| **AP18** Übergangsbrücken entfernen | `pi-packages`, Designer-Katalog-/Broken-Tools-/Package-Fehler, `profile-cli`, `tools-cli`, `legacy-product-vocabulary-gate`, statische UI-/Route-Tests | `plugin-system-cli`, `backend-loader`, `manifest`, `selection` | Vollständiger Negativnachweis über API, UI, Sidebar, Deep Links, beide Renderzweige, Package-Exports, Build und aktive Doku; legitime Migrationsleser und User-Ressourcen müssen getrennt sichtbar bleiben. |
+| **AP19** integrierte Abnahme / AP19.7 | Default-Runner umfasst Baseline plus neue top-level Plugin-Dateien; `npm test` ist der vorgesehene Gesamteinstieg | alle 18 Handoff-Plugin-Suiten plus aktuelle uncommittete Erweiterungen | Kein vollständiger Repository-Lauf im Handoff, kein Pibo2-Nachweis, keine headful Standard-/Ersatz-Shell-Abnahme, kein installierter Paketinhalt und kein abgeschlossener Test-/Discovery-Diff. A29–A42 müssen zusätzlich einzeln belegt werden. |
+
+## 5. Konkret fehlende Nachweise für die vollständige Migration
+
+1. **Default-Komposition:** Installierte Default-Plugin-Manifeste, Manager, Host und Browser-Einstiege sind laut Handoff noch nicht vollständig verdrahtet. Die neuen isolierten Contract-Tests beweisen daher nicht den Standard-Webpfad.
+2. **Erster echter Durchstich AP11:** Web Annotations muss über Installation, Designer, API, Runtime, Plugin-Tab, Settings/Context, Build Context, Terminal und zwei sessiongebundene Tabsets laufen.
+3. **System-/Agent-Scope:** A38–A42 verlangen system-only, agent-only und gemischte/Goal-Plugins inklusive Neustart, fehlender Systemabhängigkeit und unabhängiger App-Nutzung. Die neuen Selection-Tests sind dafür Vorstufen, keine integrierte Produktabnahme.
+4. **Build Context:** A33–A35 verlangen Vergleich von gespeichertem tatsächlichem Generationsstand, Preview, Delivery, Hook-Transformation, User-Ressourcen, progressive Skills, MCP, Subagents und Harness-Grenzen. Die zwölf offenen Legacy-Fehler zeigen genau diese noch ungeklärte Paritätskante.
+5. **Session-Tabsets:** A29–A32 und A36–A37 brauchen Persistenz, Unteransicht, Deep Link, Reload/Restart, späte A-Antworten während B, Zwei-Browser-CAS und Migration globaler v1-Tabs.
+6. **Laufzeitbeleg:** A06/A24/A28 sowie AP19.3 verlangen echte harmlose portable Toolausführung unter Pi, Codex Native und OMP sowie Pi-only-/MCP-Negativfälle. Plugin-Aktivierung oder ein Unit-Fixture-Plan genügt nicht.
+7. **Migration/Lifecycle:** A17–A25 verlangen vollständige Verbraucherzählung, Retirement/Drain, Crash-Recovery, kompatible und inkompatible Reinstallation, Sessions-/History-/Bindings-Erhalt und installierten Paketinhalt.
+8. **Entfernung alter Wege:** AP16/AP18 brauchen einen expliziten Pfad-/API-/UI-/Build-/Test-Diff für Pi Packages, Capability-Package-Reste, alte Context-/Settings-Sonderwege sowie eigenständige TUI/VS-Code-Flächen.
+9. **AP19.7:** Vor Abschluss muss der komplette Bestandsbestand plus Ergänzungen mit dem exakten integrierten Kandidaten laufen. Für jede Änderung an einem Bestandstest sind Pfad, Testname, alte Erwartung, Planbegründung und Ersatznachweis zu dokumentieren. Discovery darf nicht durch Runner-Filter verkleinert werden.
+
+## Kurzbefund
+
+- Der Bestand ist groß und fachlich gut verteilt; die Baseline enthält bereits belastbare Regressionen für Registry/Profile, Designer, Runtime/Context, Run/Goal/Subagent/MCP, Browser/Shell/Settings/Terminal sowie Migration/Lifecycle.
+- Der Runner entdeckt standardmäßig 467 von 472 Baseline-Testdateien; fünf verschachtelte Dateien sind nicht Teil von `npm test`.
+- Die Handoff-Evidenz umfasst 18 neue Plugin-Dateien und einen begrenzten 19-Datei-Regressionslauf, nicht die vollständige Suite.
+- Die zwölf Fehler sind einzeln verortet: einer Pi-Package-Migration, zwei Designer/Shell-Verträgen und neun Runtime-/Build-Context-/Skill-Inspector-Erwartungen.
+- Bestehende Tests sollen unverändert als Paritätsanker bleiben. Der aktuelle Bericht empfiehlt keine Teständerung und nimmt den beweglichen Worker-Stand nicht ab.

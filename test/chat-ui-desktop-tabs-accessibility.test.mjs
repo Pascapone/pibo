@@ -26,9 +26,10 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 		'aria-label="Collapse workspace tabs"',
 		'aria-label="Reopen workspace tabs"',
 	]) assert.match(source, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-	for (const label of ["Sessions", "VS Code", "Workflows", "Cron", "Loops", "Agent Designer", "Context", "Settings", "Preview", "Raw Events", "Web Annotations", "Runtime Requests", "Session Inspector"]) {
+	for (const label of ["Sessions", "Workflows", "Cron", "Loops", "Agent Designer", "Context", "Settings", "Preview", "Raw Events", "Web Annotations", "Runtime Requests", "Session Inspector"]) {
 		assert.match(source, new RegExp(`label: "${label}"`));
 	}
+	assert.doesNotMatch(source, /label: "VS Code"|area: "vscode"/);
 	assert.doesNotMatch(source, /aria-haspopup="menu"|role="menu"|pointerdown.*closeFromOutside/);
 	assert.doesNotMatch(source, /event\.key === "Escape"/);
 	const resizeHandler = source.slice(source.indexOf("const startResize"), source.indexOf("const shellStyle"));
@@ -39,15 +40,15 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 	assert.match(styles, /prefers-reduced-motion: reduce[\s\S]*desktop-tab-drop-gap/);
 });
 
-test("App gates the new three-region shell to Desktop and keeps the route shell for Mobile", async () => {
+test("App keeps the three-region plugin workspace and exposes narrow-screen navigation", async () => {
 	const [app, chrome, pane, desktopSidebar] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/app-chrome.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/session-trace-pane.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/desktop-session-sidebar.tsx", "utf8"),
 	]);
-	assert.match(app, /const desktopTabsEnabled = !isMobileSidebarViewport/);
-	assert.match(app, /desktopTabsEnabled \? \(/);
+	assert.match(app, /const desktopTabsEnabled = true/);
+	assert.match(app, /<PluginWorkspaceProvider piboSessionId=\{selectedPiboSessionId\}>/);
 	assert.match(app, /<DesktopSessionSidebar/);
 	assert.match(desktopSidebar, /data-pibo-debug="desktop-session-sidebar"/);
 	assert.match(desktopSidebar, /aria-label="Resize Sessions sidebar"/);
@@ -56,9 +57,11 @@ test("App gates the new three-region shell to Desktop and keeps the route shell 
 	assert.match(app, /data-pibo-debug="desktop-session-center"/);
 	assert.match(app, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
 	assert.match(app, /sessionViewId=\{sessionViewId\}[\s\S]*currentSessionView=\{currentSessionView\}[\s\S]*containerResponsive/);
-	assert.match(app, /data-pibo-debug="route-shell"/);
-	assert.match(app, /isAppFullscreen \|\| desktopTabsEnabled \? null : \(/);
-	assert.match(app, /desktopTabsEnabled \? "grid-rows-\[auto_1fr\]"/);
+	assert.match(app, /data-pibo-debug="desktop-route-shell"/);
+	assert.match(app, /aria-label="Workspace navigation"/);
+	assert.match(app, />Sessions<\/button>.*>Terminal<\/button>.*>Plugins<\/button>/s);
+	assert.match(app, /hidden=\{isAppFullscreen \|\| \(isMobileSidebarViewport && !mobileSidebarOpen\)\}/);
+	assert.match(app, /<PluginWorkspaceTabs hidden=\{isTerminalFullscreen \|\| \(isMobileSidebarViewport && !pluginPanelOpen\)\} narrow=\{isMobileSidebarViewport\} \/>/);
 	assert.match(app, /<DesktopSessionSidebar[\s\S]*identity=\{identity\}/);
 	assert.match(desktopSidebar, /data-pibo-debug="desktop-sidebar-app-header"/);
 	assert.match(desktopSidebar, />Pibo Chat</);

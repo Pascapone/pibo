@@ -4,12 +4,11 @@ import { AlertTriangle, LogOut, List, Menu, RefreshCw, UserRound } from "lucide-
 import { signInWithGoogle, signOut } from "./api-auth";
 import type { BootstrapData } from "./types";
 
-export type AppArea = "sessions" | "vscode" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
+export type AppArea = "sessions" | "workflows" | "cron" | "loops" | "agents" | "context" | "settings";
 
 const BASE_MAIN_NAV_AREAS: readonly AppArea[] = ["sessions", "workflows", "cron", "loops", "agents", "context", "settings"];
 const APP_AREA_LABELS: Record<AppArea, string> = {
 	sessions: "sessions",
-	vscode: "VS Code",
 	workflows: "workflows",
 	cron: "cron",
 	loops: "loops",
@@ -18,10 +17,8 @@ const APP_AREA_LABELS: Record<AppArea, string> = {
 	settings: "settings",
 };
 
-export function mainNavAreas(vscodeEnabled: boolean): readonly AppArea[] {
-	return vscodeEnabled
-		? ["sessions", "vscode", "workflows", "cron", "loops", "agents", "context", "settings"]
-		: BASE_MAIN_NAV_AREAS;
+export function mainNavAreas(): readonly AppArea[] {
+	return BASE_MAIN_NAV_AREAS;
 }
 const MAIN_NAV_MENU_ID = "main-navigation-menu";
 
@@ -31,7 +28,6 @@ type AppHeaderProps = {
 	mobileAreaMenuOpen: boolean;
 	mobileSidebarTriggerRef: RefObject<HTMLButtonElement | null>;
 	totalRoomUnreadCount: number;
-	vscodeEnabled?: boolean;
 	showMobileSidebarTrigger?: boolean;
 	onOpenMobileSidebar: () => void;
 	onSelectMainNavArea: (area: AppArea) => void;
@@ -156,7 +152,6 @@ export function AppHeader({
 	mobileAreaMenuOpen,
 	mobileSidebarTriggerRef,
 	totalRoomUnreadCount,
-	vscodeEnabled = false,
 	showMobileSidebarTrigger = true,
 	onOpenMobileSidebar,
 	onSelectMainNavArea,
@@ -167,7 +162,7 @@ export function AppHeader({
 	const mobileAreaMenuButtonRef = useRef<HTMLButtonElement>(null);
 	const mobileAreaMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
 	const pendingMenuFocusIndexRef = useRef<number | null>(null);
-	const navigationAreas = mainNavAreas(vscodeEnabled);
+	const navigationAreas = mainNavAreas();
 
 	const focusMenuItem = (index: number) => {
 		const normalizedIndex = (index + navigationAreas.length) % navigationAreas.length;

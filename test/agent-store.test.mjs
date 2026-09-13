@@ -8,7 +8,6 @@ import { createCustomAgentProfileDefinition } from "../dist/apps/chat/agent-prof
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { normalizeAgentSubagents } from "../dist/apps/chat/chat-request-normalizers.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
-import { upsertPiPackage } from "../dist/pi-packages/store.js";
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
@@ -654,33 +653,20 @@ test("custom agent store persists thinking, fast, and built-in mode options", ()
 	store.close();
 });
 
-test("custom agent store persists selected registered Pi packages", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pibo-agent-store-pi-packages-"));
-	await withCwd(cwd, () => {
-		upsertPiPackage({
-			id: "demo-package",
-			name: "demo-package",
-			source: "/tmp/demo-package",
-			installSpec: "/tmp/demo-package",
-			resourceTypes: ["extension"],
-			installStatus: "installed",
-			installPath: "/tmp/demo-package",
-			diagnostics: [],
-		});
-		const store = new CustomAgentStore(join(cwd, "agents.sqlite"));
-		const agent = store.create({
-			displayName: "package-agent",
-			piPackages: ["demo-package", "demo-package"],
-		});
-
-		assert.deepEqual(agent.piPackages, ["demo-package"]);
-		assert.throws(
-			() => store.update(agent.id, { piPackages: ["missing-package"] }),
-			/Unknown Pi package "missing-package"/,
-		);
-
-		store.close();
+test("custom agent store preserves legacy Pi package names as inactive migration data", () => {
+	const path = join(mkdtempSync(join(tmpdir(), "pibo-agent-store-pi-packages-")), "agents.sqlite");
+	let store = new CustomAgentStore(path);
+	const agent = store.create({
+		displayName: "package-agent",
+		piPackages: ["demo-package", "demo-package"],
 	});
+	assert.deepEqual(agent.piPackages, ["demo-package"]);
+	const updated = store.update(agent.id, { piPackages: ["missing-package", "missing-package"] });
+	assert.deepEqual(updated.piPackages, ["missing-package"]);
+	store.close();
+	store = new CustomAgentStore(path);
+	assert.deepEqual(store.get(agent.id)?.piPackages, ["missing-package"]);
+	store.close();
 });
 
 test("custom agent store persists ordered main provider fallbacks and legacy subagent model overrides", () => {

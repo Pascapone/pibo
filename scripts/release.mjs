@@ -2,25 +2,22 @@
 // Orchestrate a Pibo release end-to-end.
 //
 // Steps:
-//   1. Bump the version in package.json, package-lock.json, and the VS Code extension manifest.
-//   2. Run the full build (tsc + web-ui + vscode webview + esbuild).
-//   3. Package the VS Code extension into dist/apps/vscode-artifacts/.
-//   4. (Optional) Publish the npm package: `npm publish`.
-//   5. (Optional) Create a GitHub Release that attaches the VSIX.
-//
-// The VSIX is the artifact the user uploads to the VS Code Marketplace.
+//   1. Bump the version in package.json and package-lock.json.
+//   2. Run the full build.
+//   3. (Optional) Publish the npm package: `npm publish`.
+//   4. (Optional) Create a GitHub Release.
 //
 // Usage:
 //   node scripts/release.mjs --version 1.3.0 [--publish-npm] [--create-release]
 //   node scripts/release.mjs --version 1.3.0 --no-publish --no-release
 //                                              ^^^^^^^^^^^^^^^^^^^^^^^^
-//                                              just bump + build + package
+//                                              just bump + build
 //
 // This script does NOT push to git or create tags automatically; the
 // maintainer reviews the diff, commits, and pushes manually.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,8 +25,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const rootPackageJsonPath = resolve(root, "package.json");
 const rootPackageLockPath = resolve(root, "package-lock.json");
-const extensionPackageJsonPath = resolve(root, "src/apps/chat-vscode/package.json");
-const artifactsDir = resolve(root, "dist/apps/vscode-artifacts");
 const npmCommand = process.platform === "win32" ? ["cmd.exe", "/c", "npm.cmd"] : ["npm"];
 
 function isValidSemver(version) {
@@ -106,13 +101,11 @@ const args = parseArgs(process.argv.slice(2));
 const currentRoot = readJson(rootPackageJsonPath);
 const currentLock = readJson(rootPackageLockPath);
 const currentLockedRoot = currentLock.packages?.[""];
-const currentExtension = readJson(extensionPackageJsonPath);
 if (currentLock.name !== currentRoot.name || currentLockedRoot?.name !== currentRoot.name) {
 	throw new Error("package-lock.json does not describe the root package");
 }
 
 console.log(`[release] root @pasko70/pibo: ${currentRoot.version} -> ${args.version}`);
-console.log(`[release] ${currentExtension.publisher}.${currentExtension.name}: ${currentExtension.version} -> ${args.version}`);
 
 if (args.dryRun) {
 	console.log("[release] --dry-run: not writing files or invoking side-effects.");
@@ -126,23 +119,10 @@ currentLock.version = args.version;
 currentLockedRoot.version = args.version;
 writeJson(rootPackageLockPath, currentLock);
 
-currentExtension.version = args.version;
-writeJson(extensionPackageJsonPath, currentExtension);
-
 console.log(`[release] updated package manifests and root lock metadata`);
 
 runInherit(npmCommand, ["run", "--silent", "build"]);
-console.log(`[release] built server + web UIs + VS Code WebView`);
-
-runInherit(npmCommand, ["run", "--silent", "vscode:package"]);
-console.log(`[release] packaged VS Code extension`);
-
-const expectedVsix = resolve(artifactsDir, `${currentExtension.name}-${args.version}.vsix`);
-if (!existsSync(expectedVsix)) {
-	throw new Error(`Expected VSIX not found at ${expectedVsix}`);
-}
-const sizeBytes = statSync(expectedVsix).size;
-console.log(`[release] VSIX ready: ${expectedVsix} (${sizeBytes} bytes)`);
+console.log(`[release] built package and web UIs`);
 
 if (args.publishNpm) {
 	console.log(`[release] publishing @pasko70/pibo@${args.version} to npm…`);
@@ -161,14 +141,9 @@ if (args.createRelease) {
 	if (!headOnTag) {
 		console.log(`[release] head is at ${headSha}; create the tag ${tag} and push it before creating the GitHub Release.`);
 	} else {
-		console.log(`[release] creating GitHub Release ${tag} with the VSIX attached (via Pibo GitHub App)…`);
+		console.log(`[release] creating GitHub Release ${tag} via Pibo GitHub App…`);
 		const createReleaseScript = resolve(here, "create-github-release.mjs");
-		const output = runCaptured("node", [
-			createReleaseScript,
-			"--tag", tag,
-			"--asset", expectedVsix,
-			"--asset-name", `${currentExtension.name}-${args.version}.vsix`,
-		]);
+		const output = runCaptured("node", [createReleaseScript, "--tag", tag]);
 		// Surface the script's own log lines so the user sees progress.
 		for (const line of output.split("\n")) console.log(line);
 		const match = output.match(/https:\/\/github\.com\/[^\s]+\/releases\/tag\/[^\s]+/);
@@ -184,7 +159,4 @@ if (args.createRelease) {
 }
 
 console.log("\n[release] done.");
-console.log(`  VSIX: ${expectedVsix}`);
-console.log(`  marketplace: upload the VSIX via https://marketplace.visualstudio.com/manage`);
-console.log(`  size: ${sizeBytes} bytes`);
 if (releaseUrl) console.log(`  GitHub Release: ${releaseUrl}`);

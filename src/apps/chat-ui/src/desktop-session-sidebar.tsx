@@ -1,6 +1,7 @@
 import { PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { AccountMenu } from "./app-chrome";
+import { mobileSidebarA11yProps } from "./mobile-sidebar-accessibility";
 import type { BootstrapData } from "./types";
 import {
 	DESKTOP_COLLAPSED_SIDEBAR_WIDTH,
@@ -28,6 +29,9 @@ export function DesktopSessionSidebar({
 	identity,
 	children,
 	hidden = false,
+	mobileOverlay = false,
+	mobileOpen = false,
+	sidebarRef,
 }: {
 	state: DesktopSessionSidebarState;
 	onStateChange: (state: DesktopSessionSidebarState) => void;
@@ -35,11 +39,16 @@ export function DesktopSessionSidebar({
 	identity: BootstrapData["identity"];
 	children: ReactNode;
 	hidden?: boolean;
+	mobileOverlay?: boolean;
+	mobileOpen?: boolean;
+	sidebarRef?: RefObject<HTMLElement | null>;
 }) {
+	const collapsed = state.collapsed && !mobileOverlay;
 	const shellStyle = {
-		width: state.collapsed ? `${DESKTOP_COLLAPSED_SIDEBAR_WIDTH}px` : `${state.width}px`,
+		width: collapsed ? `${DESKTOP_COLLAPSED_SIDEBAR_WIDTH}px` : `${state.width}px`,
 	} as CSSProperties;
 
+	const mobileA11y = mobileSidebarA11yProps(mobileOverlay, mobileOpen, "Sessions sidebar");
 	const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
 		event.preventDefault();
 		const startX = event.clientX;
@@ -59,12 +68,18 @@ export function DesktopSessionSidebar({
 
 	return (
 		<aside
+			ref={sidebarRef}
 			data-pibo-debug="desktop-session-sidebar"
-			data-pibo-state={state.collapsed ? "collapsed" : "open"}
-			tabIndex={-1}
+			data-pibo-state={collapsed ? "collapsed" : "open"}
+			data-pibo-mobile-sidebar={mobileOverlay || undefined}
+			tabIndex={mobileA11y.tabIndex ?? -1}
 			hidden={hidden}
-			aria-hidden={hidden || undefined}
-			className="@container relative min-h-0 shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"
+			aria-hidden={hidden || mobileA11y["aria-hidden"] || undefined}
+			inert={mobileA11y.inert}
+			role={mobileA11y.role}
+			aria-modal={mobileA11y["aria-modal"]}
+			aria-label={mobileA11y["aria-label"]}
+			className={`@container relative min-h-0 shrink-0 overflow-hidden border-r border-slate-800 bg-[#1a262b] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4] ${mobileOverlay ? "absolute inset-y-0 left-0 z-40 shadow-2xl shadow-black/60" : ""}`}
 			style={shellStyle}
 		>
 			<div
@@ -74,7 +89,7 @@ export function DesktopSessionSidebar({
 				aria-valuemin={DESKTOP_SESSION_SIDEBAR_MIN_WIDTH}
 				aria-valuemax={DESKTOP_SESSION_SIDEBAR_MAX_WIDTH}
 				aria-valuenow={state.width}
-				tabIndex={state.collapsed ? -1 : 0}
+				tabIndex={collapsed ? -1 : 0}
 				onPointerDown={startResize}
 				onKeyDown={(event) => {
 					if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -82,9 +97,9 @@ export function DesktopSessionSidebar({
 					const currentWidth = event.currentTarget.parentElement?.getBoundingClientRect().width ?? state.width;
 					onStateChange(resizeDesktopSessionSidebar(state, currentWidth + (event.key === "ArrowRight" ? 24 : -24)));
 				}}
-				className={`absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${state.collapsed ? "hidden" : ""}`}
+				className={`absolute inset-y-0 right-0 z-20 w-2 touch-none cursor-col-resize outline-none hover:bg-[#11a4d4]/35 focus-visible:bg-[#11a4d4]/60 ${collapsed || mobileOverlay ? "hidden" : ""}`}
 			/>
-			{state.collapsed ? (
+			{collapsed ? (
 				<div className="flex h-full flex-col items-center gap-2 bg-[#151f24] pb-2">
 					<div className="flex h-14 w-full shrink-0 items-center justify-center border-b border-slate-800">
 						<img src="/apps/chat/assets/pwa-images/android/launchericon-512x512.png" alt="Pibo Chat" title="Pibo Chat" className="h-5 w-5" />

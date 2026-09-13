@@ -70,7 +70,7 @@ Workspace-scoped files are separate and live under the active workspace:
 <workspace>/.pibo
 ```
 
-Examples include custom prompts and Pi package registrations.
+Examples include custom prompts and workspace-owned context files.
 
 ## Server notes
 
@@ -158,7 +158,6 @@ Useful scripts:
 ```bash
 npm run dev -- --help
 npm run profile -- codex
-npm run tui:routed -- codex
 npm run gateway
 npm run gateway:web
 npm test
@@ -171,24 +170,16 @@ npm run typecheck
 pibo config       # local config under ${PIBO_HOME:-~/.pibo}/config.json
 pibo mcp          # discover and call configured MCP servers
 pibo tools        # install and inspect curated external CLI tools
-pibo pi-packages  # register Pi Coding Agent packages
 pibo debug        # inspect local Pibo data stores
 pibo setup        # plan and manage supported host installation profiles
 pibo profile      # inspect runtime profiles
-pibo tui          # start the direct Pi TUI
-pibo tui:routed   # start the routed Pibo TUI
 pibo gateway      # local gateway runtime
 pibo gateway:web  # authenticated web gateway runtime
 ```
 
 ## Further docs
 
-- `docs/architecture.md` describes runtime architecture and boundaries.
-- `docs/mcp.md` documents MCP configuration and commands.
-- `docs/tools.md` documents curated external CLI tools.
-- `docs/pi-packages.md` documents Pi package registration.
-- `docs/chat-rooms-event-log.md` documents Chat Web rooms and durable event storage.
-- `docs/progress.md` is the short implementation status snapshot.
+The installed package includes the installation profiles and operator runbooks linked above. The source checkout contains the complete specifications, plans, and evidence bundle.
 
 ## Philosophy
 

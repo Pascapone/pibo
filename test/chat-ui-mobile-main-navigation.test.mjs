@@ -79,7 +79,6 @@ async function runScenarios() {
 					mobileAreaMenuOpen: open,
 					mobileSidebarTriggerRef,
 					totalRoomUnreadCount: 2,
-					vscodeEnabled: true,
 					onOpenMobileSidebar() {},
 					onSelectMainNavArea(area) {
 						actionOrder.push("select:" + area);
@@ -217,7 +216,7 @@ test("mobile main-navigation menu has complete keyboard, focus, pointer, and des
 		hasPopup: "menu",
 		controls: "main-navigation-menu",
 		expanded: false,
-		desktopItems: 8,
+		desktopItems: 7,
 		desktopMenuItems: 0,
 		sidebarTriggerWired: true,
 	});
@@ -227,7 +226,7 @@ test("mobile main-navigation menu has complete keyboard, focus, pointer, and des
 		assert.deepEqual(result[scenario], { open: true, focus: "sessions", prevented: true });
 	}
 	assert.deepEqual(result["open-ArrowUp"], { open: true, focus: "settings", prevented: true });
-	assert.deepEqual(result.pointerOpen, { open: true, focus: "trigger", items: 8 });
+	assert.deepEqual(result.pointerOpen, { open: true, focus: "trigger", items: 7 });
 	assert.deepEqual(result.outsideClose, { open: false, focus: "trigger" });
 	assert.deepEqual(result.navigation, ["sessions", "settings", "sessions", "settings", "sessions"]);
 	assert.deepEqual(result.escape, { open: false, focus: "trigger", prevented: true });

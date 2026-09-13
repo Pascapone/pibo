@@ -1397,11 +1397,11 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		if (context && !context.pluginId) userContextFiles.push(name);
 		else add("context-file", name, context?.pluginId);
 	}
-	for (const name of agent.mcpServers) add("mcp-server", name, "pibo.mcp-cli");
+	if (agent.mcpServers.length > 0) add("mcp-adapter", "mcp-cli", "pibo.mcp-cli");
 	if (agent.goalControl !== false) for (const name of PIBO_GOAL_TOOL_NAMES) add("tool", name, "pibo.goal-control");
 	// send_message is yielded-only; the other three tools remain direct. Do not enable general Run targets.
 	const manualSubagents = agent.subagents.length > 0;
-	if (manualSubagents) for (const name of PIBO_AGENT_TOOL_NAMES) add("tool", name, "pibo.subagents");
+	if (manualSubagents) for (const name of PIBO_AGENT_TOOL_NAMES) add("tool", name, "pibo.agent-delegation");
 	// Baseline Pi wraps only bash (not read/edit/write) when full Run Control is enabled.
 	const piNativeYielding = options.runtime.adapterId === "pi" && agent.runControl;
 	if (piNativeYielding && (agent.builtinTools === "disabled" || !agent.builtinToolNames.includes("bash"))) diagnostics.push({

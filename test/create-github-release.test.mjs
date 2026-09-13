@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { chmod, mkdtemp, mkdir, readFile, rm, truncate, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdtemp, mkdir, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -11,6 +11,7 @@ import { ASSET_MAX_BYTES, createRelease, preflightReleaseAsset } from "../script
 
 const execFileAsync = promisify(execFile);
 const scriptPath = resolve("scripts/create-github-release.mjs");
+const githubAuthPath = resolve("scripts/lib/github-app-auth.mjs");
 const fetchMockPath = resolve("test/fixtures/create-github-release-fetch-mock.mjs");
 
 function jsonResponse(body, status = 200) {
@@ -71,10 +72,31 @@ async function makeFixture(t) {
 	const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 	const appKeyPath = join(root, "synthetic-private-key.pem");
 	const appEnvPath = join(root, "synthetic.env");
+	const localFetchMockPath = join(root, "create-github-release-fetch-mock.mjs");
+	const localScriptDir = join(root, "scripts");
+	const localScriptPath = join(localScriptDir, "create-github-release.mjs");
+	const localGithubAuthPath = join(localScriptDir, "lib", "github-app-auth.mjs");
+	const localJwtRoot = join(root, "node_modules", "jsonwebtoken");
+	await Promise.all([
+		mkdir(join(localScriptDir, "lib"), { recursive: true }),
+		mkdir(localJwtRoot, { recursive: true }),
+	]);
 	await writeFile(appKeyPath, privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o644 });
 	await writeFile(appEnvPath, "", { mode: 0o644 });
+	await Promise.all([
+		copyFile(fetchMockPath, localFetchMockPath),
+		copyFile(scriptPath, localScriptPath),
+		copyFile(githubAuthPath, localGithubAuthPath),
+		writeFile(join(localJwtRoot, "package.json"), JSON.stringify({ name: "jsonwebtoken", type: "module", exports: "./index.mjs" }), { mode: 0o644 }),
+		writeFile(join(localJwtRoot, "index.mjs"), "export default { sign() { return 'synthetic-jwt'; } };\n", { mode: 0o644 }),
+	]);
+	await Promise.all([
+		chmod(localFetchMockPath, 0o644),
+		chmod(localScriptPath, 0o644),
+		chmod(localGithubAuthPath, 0o644),
+	]);
 	t.after(() => rm(root, { recursive: true, force: true }));
-	return { root, appKeyPath, appEnvPath };
+	return { root, appKeyPath, appEnvPath, fetchMockPath: localFetchMockPath, scriptPath: localScriptPath };
 }
 
 function releaseOptions(fixture, assetPath, fetchImpl) {
@@ -194,8 +216,8 @@ async function runCli(fixture, assetPath, options = {}) {
 	await chmod(logPath, 0o666);
 	const args = [
 		"--import",
-		fetchMockPath,
-		scriptPath,
+		fixture.fetchMockPath,
+		options.uid === undefined ? scriptPath : fixture.scriptPath,
 		"--tag",
 		"v9.9.9",
 		"--owner",

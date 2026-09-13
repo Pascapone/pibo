@@ -13,7 +13,8 @@ export type PluginViewProps = {
 	state: PluginJsonObject;
 	updateState: (state: PluginJsonObject) => void;
 	request: <T>(path: string, init?: RequestInit) => Promise<T>;
-	openView: (viewId: PluginQualifiedId, subviewId?: string) => void;
+	openView: (viewId: PluginQualifiedId, subviewId?: string, state?: PluginJsonObject) => void;
+	registerBeforeLeave: (handler: () => Promise<void>) => () => void;
 };
 export type PluginRendererProps = { envelope: PluginArtifactEnvelope; piboSessionId: string; openView: PluginViewProps["openView"] };
 export type PluginComposerHook = { descriptor: PluginHookDescriptor; run: (value: PluginJsonValue, context: { piboSessionId: string; signal: AbortSignal }) => Promise<PluginHookResult> | PluginHookResult };

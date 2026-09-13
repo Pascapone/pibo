@@ -4,7 +4,6 @@ import {
 	ChevronRight,
 	ChevronsRight,
 	Clock3,
-	Code2,
 	GitBranch,
 	Layers3,
 	ListTree,
@@ -93,10 +92,9 @@ const SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
 	{ id: "session-inspector", label: "Session Inspector", description: "Session, signal, and runtime metadata", icon: ListTree, target: { kind: "session-tool", tool: "session-inspector" } },
 ] as const;
 
-export function desktopTabCatalog(_vscodeEnabled: boolean): readonly CatalogEntry[] {
+export function desktopTabCatalog(): readonly CatalogEntry[] {
 	const routes: CatalogEntry[] = [
 		{ id: "sessions", label: "Sessions", description: "Focus the fixed Rooms and Sessions navigation", icon: Layers3, sessionsAction: true },
-		{ id: "vscode", label: "VS Code", description: "Embedded workspace editor", icon: Code2, target: { kind: "route", route: { area: "vscode" } } },
 		{ id: "workflows", label: "Workflows", description: "Workflow definitions and drafts", icon: Workflow, target: { kind: "route", route: { area: "workflows" } } },
 		{ id: "cron", label: "Cron", description: "Scheduled jobs", icon: Clock3, target: { kind: "route", route: { area: "cron" } } },
 		{ id: "loops", label: "Loops", description: "Goal and legacy Ralph loops", icon: GitBranch, target: { kind: "route", route: { area: "loops" } } },
@@ -125,7 +123,6 @@ export function useDesktopTabWorkspace(route: ChatAppRoute, enabled: boolean): {
 
 export function DesktopTabSidebar({
 	state,
-	vscodeEnabled,
 	onStateChange,
 	onActivate,
 	onClose,
@@ -136,7 +133,6 @@ export function DesktopTabSidebar({
 	fullscreen = false,
 }: {
 	state: DesktopTabState;
-	vscodeEnabled: boolean;
 	onStateChange: (state: DesktopTabState) => void;
 	onActivate: (tab: DesktopTab) => void;
 	onClose: (tab: DesktopTab) => boolean | Promise<boolean>;
@@ -154,7 +150,7 @@ export function DesktopTabSidebar({
 	const [dragInsertion, setDragInsertion] = useState<DesktopTabDragInsertion | null>(null);
 	const focusAfterCloseRef = useRef(false);
 	const activeTab = activeDesktopTab(state);
-	const entries = useMemo(() => desktopTabCatalog(vscodeEnabled), [vscodeEnabled]);
+	const entries = useMemo(() => desktopTabCatalog(), []);
 
 	useLayoutEffect(() => {
 		if (activeTab?.target.kind === "new-tab") catalogRef.current?.querySelector<HTMLButtonElement>("button[data-catalog-entry]")?.focus();

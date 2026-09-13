@@ -1,18 +1,31 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { basename } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import test from "node:test";
 import {
 	buildCodexCompatSystemPrompt,
 } from "../dist/core/codex-compat.js";
 import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
+import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import {
 	addOpenAiWebSearchProviderTool,
 	normalizeOpenAiWebSearchConfig,
 } from "../dist/tools/web-search.js";
 
-test("default registry exposes base and native Codex without retired compatibility agents", () => {
+async function productRegistry(t) {
+	const root = await mkdtemp(join(tmpdir(), "codex-compat-plugin-"));
+	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const registry = createDefaultPiboPluginRegistry();
+	const product = await startPluginProductRuntime({ host: registry.getPluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [] });
+	t.after(async () => { await product.dispose(); await registry.disposePlugins(); data.close(); await rm(root, { recursive: true, force: true }); });
+	return registry;
+}
+
+test("ordinary runtime packages expose base and native profiles without retired compatibility agents", async (t) => {
+	const registry = await productRegistry(t);
 	const profile = registry.createProfile("base");
 
 	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
@@ -29,15 +42,15 @@ test("default registry exposes base and native Codex without retired compatibili
 	assert.throws(() => registry.createProfile("pibo-kimi-coding"), /Unknown profile "pibo-kimi-coding"/);
 });
 
-test("default registry keeps core and compatibility capabilities without built-in agents", () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("ordinary installed plugins keep native-tooling and Codex compatibility capabilities without compatibility agents", async (t) => {
+	const registry = await productRegistry(t);
 	const catalog = registry.getCapabilityCatalog();
 	const nativeTooling = catalog.contextFiles.find((contextFile) => contextFile.key === "Pibo Native Tooling");
 	const codexBasePrompt = catalog.contextFiles.find((contextFile) => contextFile.key === "Codex Base Prompt");
 
 	assert.ok(nativeTooling);
-	assert.equal(nativeTooling.pluginId, "pibo.core");
-	assert.equal(nativeTooling.pluginName, "Pibo Core");
+	assert.equal(nativeTooling.pluginId, "pibo.browser-tools");
+	assert.equal(nativeTooling.pluginName, "Pibo Browser Tools");
 	assert.equal(basename(nativeTooling.path), "pibo-native-tooling.md");
 	assert.equal(existsSync(nativeTooling.path), true);
 	assert.ok(codexBasePrompt);
@@ -46,13 +59,13 @@ test("default registry keeps core and compatibility capabilities without built-i
 	assert.equal(existsSync(codexBasePrompt.path), true);
 });
 
-test("default registry exposes web_search as a core native tool", () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("ordinary installed web-search plugin exposes web_search", async (t) => {
+	const registry = await productRegistry(t);
 	const catalog = registry.getCapabilityCatalog();
 	const webSearch = catalog.nativeTools.find((tool) => tool.name === "web_search");
 
 	assert.ok(webSearch);
-	assert.equal(webSearch.pluginId, "pibo.core");
+	assert.equal(webSearch.pluginId, "pibo.web-search");
 	assert.equal(webSearch.hasDefinition, false);
 	assert.deepEqual(webSearch.providerTool, {
 		kind: "web_search",
@@ -65,8 +78,8 @@ test("default registry exposes web_search as a core native tool", () => {
 	});
 });
 
-test("default registry exposes codex_image_generation as a Codex-compatible native tool", () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("ordinary installed Codex compatibility plugin exposes codex_image_generation", async (t) => {
+	const registry = await productRegistry(t);
 	const catalog = registry.getCapabilityCatalog();
 	const imageTool = catalog.nativeTools.find((tool) => tool.name === "codex_image_generation");
 

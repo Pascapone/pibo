@@ -616,7 +616,7 @@ async function createDoctorStatus(options: { piboHome?: string; domain?: string;
 		}
 		for (const check of installation.checks) checks.push({ ...check, name: `setup.${check.name}` });
 		const componentNames = new Set(installation.components.map((component) => component.name));
-		for (const service of componentNames.has("vscode-web") ? ["pibo-web", "pibo-code-server", "caddy"] : ["pibo-web", "caddy"]) {
+		for (const service of ["pibo-web", "caddy"]) {
 			const active = commandOutput("systemctl", ["is-active", service]) === "active";
 			checks.push({ name: `service:${service}`, status: active ? "ok" : "fail", detail: active ? `${service} is active` : `${service} is not active; repair with ${installation.repairCommand}` });
 		}
@@ -655,35 +655,7 @@ async function createDoctorStatus(options: { piboHome?: string; domain?: string;
 				checks.push({ name: "http:web-annotations", status: "fail", detail: `Web Annotations route probe failed: ${error instanceof Error ? error.message : String(error)}` });
 			}
 		}
-		if (componentNames.has("vscode-web")) {
-			const listeners = commandOutput("ss", ["-ltnH"]);
-			if (!listeners) checks.push({ name: "listener:vscode-web", status: "warn", detail: "Could not inspect TCP listeners with ss" });
-			else {
-				const lines = listeners.split("\n").filter((line) => /:4790\b/.test(line));
-				const unsafe = lines.some((line) => /(?:0\.0\.0\.0|\[::\]|\*):4790\b/.test(line));
-				const loopback = lines.some((line) => /127\.0\.0\.1:4790\b/.test(line));
-				checks.push({ name: "listener:vscode-web", status: unsafe || !loopback ? "fail" : "ok", detail: unsafe ? "VS Code Web is exposed beyond loopback" : loopback ? "VS Code Web listens only on 127.0.0.1:4790" : "VS Code Web is not listening on 127.0.0.1:4790" });
-			}
-			try {
-				const response = await fetch("http://127.0.0.1:4790/healthz", { signal: AbortSignal.timeout(3_000) });
-				checks.push({ name: "http:vscode-web-internal", status: response.ok ? "ok" : "fail", detail: response.ok ? "VS Code Web internal health endpoint is reachable" : `VS Code Web internal health returned HTTP ${response.status}` });
-			} catch (error) {
-				checks.push({ name: "http:vscode-web-internal", status: "fail", detail: `VS Code Web internal health failed: ${error instanceof Error ? error.message : String(error)}` });
-			}
-			const publicDomain = options.domain ?? installationManifest?.domain;
-			if (publicDomain) {
-				try {
-					const response = await fetch(`https://${publicDomain}/apps/vscode/`, { redirect: "manual", signal: AbortSignal.timeout(5_000) });
-					const protectedStatus = [302, 303, 307, 308, 401, 403].includes(response.status);
-					checks.push({ name: "proxy:vscode-auth", status: protectedStatus ? "ok" : "fail", detail: protectedStatus ? `Unauthenticated VS Code Web request was blocked with HTTP ${response.status}` : response.status === 200 ? "VS Code Web returned HTTP 200 without authentication" : `VS Code Web proxy returned unexpected HTTP ${response.status}` });
-				} catch (error) {
-					checks.push({ name: "proxy:vscode-auth", status: "fail", detail: `VS Code Web public auth-gate probe failed: ${error instanceof Error ? error.message : String(error)}` });
-				}
-				const websocketStatus = commandOutput("curl", ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", "--http1.1", "-H", "Connection: Upgrade", "-H", "Upgrade: websocket", "-H", "Sec-WebSocket-Version: 13", "-H", "Sec-WebSocket-Key: cGliby1zZXR1cC1wcm9iZQ==", `https://${publicDomain}/apps/vscode/ws?pibo-setup-doctor=1`]);
-				const websocketProtected = websocketStatus !== undefined && [302, 303, 307, 308, 401, 403].includes(Number(websocketStatus));
-				checks.push({ name: "proxy:vscode-websocket-auth", status: websocketProtected ? "ok" : "fail", detail: websocketProtected ? `Unauthenticated VS Code WebSocket upgrade was blocked with HTTP ${websocketStatus}` : `VS Code WebSocket auth-gate probe failed${websocketStatus ? ` with HTTP ${websocketStatus}` : ""}` });
-			} else checks.push({ name: "proxy:vscode-auth", status: "warn", detail: "No installation domain is recorded; pass --domain to verify the public auth gate" });
-		}
+
 	} else {
 		checks.push({ name: "setup.manifest", status: "warn", detail: "No setup-managed installation profile is recorded. Inspect one with `pibo setup plan --profile batteries-included`." });
 	}
@@ -768,17 +740,19 @@ function installationActionIsComplete(action: InstallationAction): boolean {
 	}
 }
 
+// Upgrade-only cleanup for manifests created before the retired embedded editor component was removed.
 function removeComponentsNoLongerPlanned(manifest: InstallationManifest, plan: InstallationPlan): void {
-	const installed = new Set(manifest.components.map((component) => component.name));
-	const planned = new Set(plan.components.map((component) => component.name));
+	const installed = new Set<string>(manifest.components.map((component) => component.name));
+	const planned = new Set<string>(plan.components.map((component) => component.name));
 	if (installed.has("vscode-web") && !planned.has("vscode-web")) execFileSync("systemctl", ["disable", "--now", "pibo-code-server"], { stdio: "inherit" });
 	if (installed.has("browser-tools") && !planned.has("browser-tools")) {
 		for (const path of [join(manifest.piboHome, "tools/browser-use/.venv"), join(manifest.piboHome, "tools/agent-browser/node")]) rmSync(path, { recursive: true, force: true });
 	}
 }
 
+// Uninstall must still stop services recorded by historical manifests.
 function stopInstalledServices(manifest: InstallationManifest): void {
-	const componentNames = new Set(manifest.components.map((component) => component.name));
+	const componentNames = new Set<string>(manifest.components.map((component) => component.name));
 	if (componentNames.has("vscode-web")) execFileSync("systemctl", ["disable", "--now", "pibo-code-server"], { stdio: "inherit" });
 	execFileSync("systemctl", ["disable", "--now", "pibo-web"], { stdio: "inherit" });
 	if (componentNames.has("browser-tools")) {
@@ -982,9 +956,9 @@ export async function runSetupCli(argv = process.argv): Promise<void> {
 			const uninstallPlan = {
 				profile: manifest.profile,
 				components: manifest.components,
-				services: ["pibo-web", ...(manifest.components.some((component) => component.name === "vscode-web") ? ["pibo-code-server"] : []), "caddy"],
+				services: ["pibo-web", ...(manifest.components.some((component) => (component.name as string) === "vscode-web") ? ["pibo-code-server"] : []), "caddy"],
 				ownedFiles: manifest.ownedFiles.map((file) => file.path),
-				preserves: [manifest.piboHome, manifest.workspaceRoot, "VS Code settings", "authenticated browser profiles", "sessions and product data"],
+				preserves: [manifest.piboHome, manifest.workspaceRoot, "authenticated browser profiles", "sessions and product data"],
 			};
 			const execute = options.apply === true || (options.root !== undefined && options.yes === true);
 			if (!execute) {

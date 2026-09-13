@@ -124,9 +124,7 @@ import { disposeTelemetryRetentionMaintenance, isTelemetryRetentionMaintenanceDu
 import { loadModelCatalog } from "./model-catalog.js";
 import { createCustomAgentProfileDefinition, createCustomAgentRuntimeValidationProfile } from "./agent-profiles.js";
 import { createDefaultPiboReliabilityStore, PiboReliabilityStore } from "../../reliability/store.js";
-import { listMcpServerInfos } from "../../mcp/agent-context.js";
 import { getDefaultPiboWorkspace } from "../../core/workspace.js";
-import { findPiPackage, listPiPackages } from "../../pi-packages/store.js";
 import { ScopedUserSkillManager } from "../../user-skills/manager.js";
 import { ChatDataIngestService, legacyOutputIdempotencyKey, outputIdempotencyKey, outputPersistenceDeliveryKey, outputPersistenceErrorIsRetryable } from "../../data/ingest-service.js";
 import { ChatEventCommandService } from "./data/event-command-service.js";
@@ -148,7 +146,7 @@ import { handleChatCronApiRequest } from "./cron-api.js";
 import { handleChatLoopApiRequest } from "./loop-api.js";
 import { prepareWebAnnotationMessageAttachments, type PreparedWebAnnotationAttachments } from "../../web-annotations/attachments.js";
 import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
-import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell, CHAT_VSCODE_MOUNT_PATH, isVscodeAppPath, responseBuiltVscodeAsset, responseVscodeAppShell } from "./static-assets.js";
+import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell } from "./static-assets.js";
 import {
 	executeProviderAuthAction,
 	isProviderAuthAction,
@@ -171,9 +169,7 @@ import {
 	handleChatSettingsRoute,
 } from "./chat-settings-routes.js";
 import {
-	chatCapabilityRoute,
-	chatCapabilityRouteRequiresSameOrigin,
-	handleChatCapabilityRoute,
+	agentPluginRoute, handleAgentPluginRoute, normalizePluginAgentCreate, normalizePluginAgentUpdate, validateAgentPluginPlanMutation,
 } from "./chat-capability-routes.js";
 import {
 	chatUserSkillRoute,
@@ -352,20 +348,8 @@ export const CHAT_WEB_CHANNEL = "pibo.chat-web";
 export { CHAT_WEB_MOUNT_PATH } from "./static-assets.js";
 export { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 
-export type ChatVscodeWebIntegrationOptions = {
-	url?: string;
-	workspaceRoot?: string;
-};
-
-export type ChatWebIntegrations = {
-	vscode?: {
-		url: string;
-		workspaceRoot?: string;
-	};
-};
-
 import type { PluginManager } from "../../plugins/manager.js";
-import { PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PluginSessionPlanReader } from "../../plugins/product-services.js";
+import { catalogPluginServices, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PluginSessionPlanReader } from "../../plugins/product-services.js";
 import { handlePluginManagementRoute, pluginManagementRoute, pluginManagementRouteRequiresSameOrigin } from "./plugin-management-routes.js";
 import { handlePluginBrowserRoute, pluginBrowserRoute } from "./plugin-browser-routes.js";
 
@@ -374,7 +358,6 @@ export type ChatWebAppOptions = {
 	pluginManager?: PluginManager;
 	pluginSessionPlan?: PluginSessionPlanReader;
 	defaultProfile?: string;
-	piPackageStoreCwd?: string;
 	agentStorePath?: string;
 	userSkillGlobalRoot?: string;
 	userSkillWorkspaceRoot?: string;
@@ -384,7 +367,6 @@ export type ChatWebAppOptions = {
 	workflowStorePath?: string;
 	cronStorePath?: string;
 	ralphStorePath?: string;
-	vscodeWeb?: ChatVscodeWebIntegrationOptions;
 };
 
 type ChatPersistenceMetrics = {
@@ -501,7 +483,6 @@ type ChatWebAppState = {
 	workflowLifecycleEventStore: ChatWorkflowLifecycleEventStore;
 	workflowPromptAssetStore: ChatWorkflowPromptAssetStore;
 	telemetryRetentionMaintenance: TelemetryRetentionMaintenanceState;
-	integrations: ChatWebIntegrations;
 };
 
 type WebOutputPersistenceDelivery = {
@@ -533,14 +514,13 @@ type ChatGatewayResourceMetrics = {
 };
 
 type ChatBootstrapCatalog = {
-	agents: ReturnType<NonNullable<PiboWebAppContext["channelContext"]["getProfiles"]>>;
+	agents: ReturnType<typeof serializeAgentProfile>[];
 	customAgents: ReturnType<typeof serializeCustomAgents>;
 	agentFolders: ReturnType<CustomAgentStore["listFolders"]>;
 	modelDefaults: PiboModelDefaults;
 	modelCatalog: Awaited<ReturnType<typeof loadModelCatalog>>;
 	agentCatalog: Awaited<ReturnType<typeof buildAgentCatalog>>;
 	capabilities: { actions: ReturnType<PiboWebAppContext["channelContext"]["getGatewayActions"]> };
-	integrations: ChatWebIntegrations;
 };
 
 const BOOTSTRAP_CATALOG_CACHE_TTL_MS = 30_000;
@@ -560,7 +540,7 @@ function loadBootstrapCatalog(
 		loadModelCatalog(process.cwd()),
 		buildAgentCatalog(context, state),
 	]).then(([modelCatalog, agentCatalog]) => ({
-		agents: context.channelContext.getProfiles?.() ?? [],
+		agents: (context.channelContext.getProfiles?.() ?? []).map(serializeAgentProfile),
 		customAgents: serializeCustomAgents(state.agentStore.list({ includeArchived: true }), context),
 		agentFolders: state.agentStore.listFolders(),
 		modelDefaults: loadChatModelDefaults(process.cwd()),
@@ -569,7 +549,6 @@ function loadBootstrapCatalog(
 		capabilities: {
 			actions: context.channelContext.getGatewayActions(),
 		},
-		integrations: state.integrations,
 	}));
 	state.bootstrapCatalogCache = { expiresAt: now + BOOTSTRAP_CATALOG_CACHE_TTL_MS, value };
 	value.catch(() => {
@@ -587,7 +566,6 @@ type WorkflowProfilePickerOption = {
 	source: "custom" | "global";
 	visibility: "global";
 	archived: false;
-	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
 };
@@ -880,33 +858,6 @@ function workflowStorePath(options: ChatWebAppOptions, dataStore: PiboDataStore)
 	if (options.workflowStorePath) return options.workflowStorePath;
 	if (dataStore.path === ":memory:") return ":memory:";
 	return join(dirname(dataStore.path), "pibo-workflows.sqlite");
-}
-
-function resolveVscodeWebUrl(value: string | undefined): string | undefined {
-	const trimmed = value?.trim();
-	if (!trimmed) return undefined;
-	const configurationOrigin = "https://pibo.invalid";
-	try {
-		const parsed = new URL(trimmed, `${configurationOrigin}/`);
-		if (trimmed.startsWith("/") && !trimmed.includes("\\") && parsed.origin === configurationOrigin) {
-			return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-		}
-	} catch {
-		// Fall through to the startup error below.
-	}
-	throw new Error("VS Code Web URL must be a same-origin absolute path beginning with /");
-}
-
-function resolveChatWebIntegrations(options: ChatWebAppOptions): ChatWebIntegrations {
-	const url = resolveVscodeWebUrl(options.vscodeWeb?.url ?? process.env.PIBO_VSCODE_WEB_URL);
-	if (!url) return {};
-	const workspaceRoot = (options.vscodeWeb?.workspaceRoot ?? process.env.PIBO_VSCODE_WEB_WORKSPACE_ROOT)?.trim();
-	return {
-		vscode: {
-			url,
-			...(workspaceRoot ? { workspaceRoot } : {}),
-		},
-	};
 }
 
 function createPersistenceMetrics(): ChatPersistenceMetrics {
@@ -1868,10 +1819,28 @@ function ensureCustomAgentProfiles(state: ChatWebAppState, context: PiboWebAppCo
 	}
 }
 
+function serializeAgentProfile(profile: ReturnType<NonNullable<PiboWebAppContext["channelContext"]["getProfiles"]>>[number]) {
+	const {
+		nativeTools: _legacyNativeTools,
+		mcpServers: _legacyMcpServers,
+		runControl: _legacyRunControl,
+		goalControl: _legacyGoalControl,
+		...publicProfile
+	} = profile;
+	return publicProfile;
+}
+
 function serializeCustomAgent(agent: CustomAgentDefinition, context: PiboWebAppContext) {
+	const {
+		nativeTools: _legacyNativeTools,
+		mcpServers: _legacyMcpServers,
+		piPackages: _legacyPiPackages,
+		runControl: _legacyRunControl,
+		goalControl: _legacyGoalControl,
+		...publicAgent
+	} = agent;
 	return {
-		...agent,
-		brokenNativeTools: listBrokenNativeTools(agent.nativeTools, context),
+		...publicAgent,
 		brokenContextFiles: listBrokenContextFiles(agent.contextFiles, context),
 	};
 }
@@ -1899,13 +1868,11 @@ function requireAgentFolderAssignmentAvailable(state: ChatWebAppState, folderId:
 const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 	"runtimeInstanceId",
 	"runtimeOptions",
+	"pluginSelection",
 	"nativeSubagents",
-	"nativeTools",
 	"skills",
 	"contextFiles",
 	"subagents",
-	"mcpServers",
-	"piPackages",
 	"mainModel",
 	"mainModelFallbacks",
 	"subagentModel",
@@ -1918,8 +1885,6 @@ const RUNTIME_PROFILE_UPDATE_FIELDS = new Set([
 	"builtinTools",
 	"builtinToolNames",
 	"autoContextFiles",
-	"runControl",
-	"goalControl",
 ]);
 
 function customAgentUpdateAffectsRuntime(update: object): boolean {
@@ -1982,13 +1947,6 @@ async function requireValidCustomAgentRuntime(agent: CustomAgentDefinition, cont
 	);
 }
 
-function listBrokenNativeTools(names: readonly string[], context: PiboWebAppContext): string[] {
-	const catalog = context.channelContext.getCapabilityCatalog?.();
-	if (!catalog) return [];
-	const knownNames = new Set(catalog.nativeTools.map((tool) => tool.name));
-	return names.filter((name) => !knownNames.has(name));
-}
-
 function listBrokenContextFiles(keys: readonly string[], context: PiboWebAppContext): string[] {
 	const catalog = context.channelContext.getCapabilityCatalog?.();
 	if (!catalog) return [];
@@ -2029,10 +1987,9 @@ async function buildAgentCatalog(context: PiboWebAppContext, state: ChatWebAppSt
 		skills: [],
 		subagents: [],
 		contextFiles: [],
-		packages: [],
-		piboTools: [],
 		mcpServers: [],
-		piPackages: [],
+		loopStopConditions: [],
+		ralphStopConditions: [],
 	};
 	let agentRuntimes: AgentRuntimeInstanceInspection[] = (baseCatalog.agentRuntimes ?? []).map((runtime) => {
 		const diagnostics: AgentRuntimeDiagnostic[] = runtime.enabled ? [] : [{
@@ -2061,11 +2018,12 @@ async function buildAgentCatalog(context: PiboWebAppContext, state: ChatWebAppSt
 			}));
 		}
 	}
+	const { mcpServers: _legacyMcpServers, nativeTools: _projectedPluginTools, ...publicCatalog } = baseCatalog;
+	delete (publicCatalog as Record<string, unknown>).packages;
+	delete (publicCatalog as Record<string, unknown>).piboTools;
 	return {
-		...baseCatalog,
+		...publicCatalog,
 		agentRuntimes,
-		mcpServers: await listMcpServerInfos(),
-		piPackages: listPiPackages(),
 		userSkills: state.userSkillManager.list(),
 	};
 }
@@ -2094,7 +2052,6 @@ function buildWorkflowProfilePicker(
 			source: "custom",
 			visibility: "global",
 			archived: false,
-			nativeTools: [...agent.nativeTools],
 			skills: [...agent.skills],
 			contextFiles: [...agent.contextFiles],
 		});
@@ -2111,7 +2068,6 @@ function buildWorkflowProfilePicker(
 			source: "global",
 			visibility: "global",
 			archived: false,
-			nativeTools: [...(profile.nativeTools ?? [])],
 			skills: [...(profile.skills ?? [])],
 			contextFiles: [...(profile.contextFiles ?? [])],
 		});
@@ -3332,14 +3288,6 @@ function workflowValidationBlockedResponse(message: string, response: WorkflowVa
 	}, { status: 422 });
 }
 
-function agentsSelectingPiPackage(state: ChatWebAppState, packageId: string): CustomAgentDefinition[] {
-	const pkg = findPiPackage(packageId);
-	const aliases = new Set([packageId, ...(pkg ? [pkg.id, pkg.name] : [])]);
-	return state.agentStore
-		.list({ includeArchived: true })
-		.filter((agent) => agent.piPackages.some((selected) => aliases.has(selected)));
-}
-
 function agentsSelectingSkill(state: ChatWebAppState, skillName: string): CustomAgentDefinition[] {
 	return state.agentStore
 		.list({ includeArchived: true })
@@ -3559,7 +3507,6 @@ async function buildContextBuildSnapshotForRequest(input: {
 	context: PiboWebAppContext;
 	webSession: PiboWebSession;
 	piboSessionId?: string;
-	piPackageStoreCwd: string;
 }): Promise<PiboContextBuildSnapshot> {
 	const createProfile = input.context.channelContext.createProfile;
 	if (!createProfile) throw new PiboWebHttpError("Profile inspection is not available", 503);
@@ -3623,7 +3570,6 @@ async function buildContextBuildSnapshotForRequest(input: {
 		if (runtime.adapterId === "pi" && runtimeInfo.available) {
 			const snapshot = await inspectPiboContextBuild({
 				cwd,
-				piPackageStoreCwd: input.piPackageStoreCwd,
 				profile,
 				activeModel: selectedSession.activeModel,
 				thinkingLevel: initialThinkingLevel,
@@ -4702,8 +4648,6 @@ async function sendChatMessage(input: {
 
 
 export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
-	const integrations = resolveChatWebIntegrations(options);
-	const piPackageStoreCwd = options.piPackageStoreCwd ?? process.cwd();
 	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
@@ -4759,7 +4703,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		workflowLifecycleEventStore: new ChatWorkflowLifecycleEventStore(workflowCatalogStore),
 		workflowPromptAssetStore: new ChatWorkflowPromptAssetStore(workflowCatalogStore),
 		telemetryRetentionMaintenance: {},
-		integrations,
 	};
 
 	const earlyTraceCache=new TraceResponseCache();
@@ -4768,6 +4711,22 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		context.requireSession({
 			request,
 		});
+
+	const validatePluginAgentSave = async (agent: CustomAgentDefinition, context: PiboWebAppContext, existing?: CustomAgentDefinition) => {
+		const manager = options.pluginManager ?? context.channelContext.getService?.<PluginManager>(PLUGIN_MANAGEMENT_SERVICE);
+		if (!manager) throw new PiboWebHttpError("Plugin management service is unavailable", 503);
+		const host = context.channelContext.getService?.<import("../../plugins/host.js").PluginHost>(PLUGIN_HOST_SERVICE);
+		const instances = await context.channelContext.inspectAgentRuntimeInstances?.();
+		const runtime = instances?.find((item) => item.id === agent.runtimeInstanceId);
+		if (!runtime?.enabled || !runtime.available) throw new PiboWebHttpError("Runtime instance is unavailable", 400);
+		const installations = manager.store.listInstallations();
+		validateAgentPluginPlanMutation({ agent, existing,
+			catalog: { schemaVersion: 1, revision: installations.reduce((sum, i) => sum + i.stateRevision, 0), installations },
+			runtime: { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject },
+			...catalogPluginServices(host, installations),
+			configurations: installations.flatMap(({ pluginId }) => [manager.store.getConfig({ scope: "app", pluginId }), manager.store.getConfig({ scope: "agent", pluginId, agentId: agent.id })].filter((c) => c !== undefined)),
+		});
+	};
 
 	const application:PiboWebApp = {
 		name: CHAT_WEB_APP_NAME,
@@ -4815,6 +4774,24 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/auth-check` && request.method === "GET") {
 				await requireSession(request, context);
 				return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+			}
+			const designerPluginRoute = agentPluginRoute(url.pathname, request.method);
+			if (designerPluginRoute) {
+				await requireSession(request, context);
+				if (request.method !== "GET") requireSameOriginJsonRequest(request);
+				const manager = options.pluginManager ?? context.channelContext.getService?.<PluginManager>(PLUGIN_MANAGEMENT_SERVICE);
+				if (!manager) throw new PiboWebHttpError("Plugin management service is unavailable", 503);
+				const installations = manager.store.listInstallations();
+				const host = context.channelContext.getService?.<import("../../plugins/host.js").PluginHost>(PLUGIN_HOST_SERVICE);
+				return handleAgentPluginRoute({ route: designerPluginRoute, request, agents: state.agentStore,
+					...catalogPluginServices(host, installations),
+					catalog: { schemaVersion: 1, revision: installations.reduce((sum, i) => sum + i.stateRevision, 0), installations },
+					resolveRuntime: async (instanceId) => {
+						const runtime = (await context.channelContext.inspectAgentRuntimeInstances?.())?.find((r) => r.id === instanceId);
+						if (!runtime?.enabled || !runtime.available) throw new PiboWebHttpError("Runtime instance is unavailable", 400);
+						return { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject };
+					},
+				});
 			}
 			const pluginRoute = pluginManagementRoute(url.pathname, request.method);
 			if (pluginRoute) {
@@ -4880,11 +4857,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseChatAppShell();
 			}
 
-			const builtVscodeAsset = responseBuiltVscodeAsset(request, url.pathname);
-			if (builtVscodeAsset) return builtVscodeAsset;
-			if (isVscodeAppPath(url.pathname) && request.method === "GET") {
-				return responseVscodeAppShell();
-			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/upload` && request.method === "POST") {
 				requireSameOriginMultipartRequest(request);
@@ -5118,7 +5090,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					context,
 					webSession,
 					piboSessionId: url.searchParams.get("piboSessionId") || undefined,
-					piPackageStoreCwd,
 				});
 				return responseJson({ snapshot });
 			}
@@ -5663,19 +5634,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return response;
 			}
 
-			const capabilityRoute = chatCapabilityRoute(url.pathname, request.method);
-			if (capabilityRoute) {
-				if (chatCapabilityRouteRequiresSameOrigin(capabilityRoute)) requireSameOriginJsonRequest(request);
-				await requireSession(request, context);
-				return handleChatCapabilityRoute({
-					route: capabilityRoute,
-					request,
-					cwd: process.cwd(),
-					invalidateBootstrapCatalogCache: () => invalidateBootstrapCatalogCache(state),
-					agentsSelectingPiPackage: (packageId) => agentsSelectingPiPackage(state, packageId),
-				});
-			}
-
 			const userSkillRoute = chatUserSkillRoute(url.pathname, request.method);
 			if (userSkillRoute) {
 				if (chatUserSkillRouteRequiresSameOrigin(userSkillRoute)) requireSameOriginJsonRequest(request);
@@ -5744,10 +5702,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const input = normalizeCreateRuntimeFeatureOverrides(createAgentInput(body), context);
+				const input = normalizeCreateRuntimeFeatureOverrides(normalizePluginAgentCreate(body), context);
 				requireAgentProfileNameAvailable(state, context, input.displayName);
 				requireAgentFolderAssignmentAvailable(state, input.folderId);
 				await requireValidCustomAgentRuntime(previewCustomAgentCreate(input), context);
+				await validatePluginAgentSave(previewCustomAgentCreate(input), context);
 				const agent = state.agentStore.create(input);
 				context.channelContext.upsertProfile?.(createCustomAgentProfileDefinition(agent));
 				invalidateBootstrapCatalogCache(state);
@@ -5760,7 +5719,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const webSession = await requireSession(request, context);
 				const existing = requireSharedAgent(state.agentStore.get(patchAgentId));
 				const body = await readJsonBody<ChatAgentBody>(request);
-				const rawUpdate = createAgentUpdate(body);
+				const { update: rawUpdate, expectedRevision } = normalizePluginAgentUpdate(body, existing);
 				const update = normalizeUpdateRuntimeFeatureOverrides(
 					rawUpdate,
 					rawUpdate.runtimeInstanceId ?? existing.runtimeInstanceId,
@@ -5775,9 +5734,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				if (archived === true && !existing.archivedAt) {
 					requireCustomAgentNotTargeted(state, existing, { activeOnly: true });
 				}
-				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update) : existing;
+				await validatePluginAgentSave(previewCustomAgentUpdate(existing, update), context, existing);
+				const updated = Object.keys(update).length ? state.agentStore.update(patchAgentId, update, { expectedRevision }) : existing;
 				const afterUpdate = requireSharedAgent(updated);
-				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived);
+				const agent = archived === undefined ? afterUpdate : state.agentStore.setArchived(patchAgentId, archived, { expectedRevision: afterUpdate.revision });
 				const sharedAgent = requireSharedAgent(agent);
 				if (existing.profileName !== sharedAgent.profileName) context.channelContext.removeProfile?.(existing.profileName);
 				if (sharedAgent.archivedAt) {

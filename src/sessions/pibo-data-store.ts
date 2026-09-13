@@ -87,14 +87,17 @@ export class PiboDataSessionStore implements PiboSessionStore {
 	private readonly db: DatabaseSync;
 	private readonly ownsDataStore: boolean;
 
-	constructor(dataStore: PiboDataStore | string = new PiboDataStore()) {
+	constructor(dataStore?: PiboDataStore | string) {
 		this.#concreteRuntimeBindingCasIdentity = new.target === PiboDataSessionStore;
 		if (typeof dataStore === "string") {
 			this.dataStore = new PiboDataStore(dataStore);
 			this.ownsDataStore = true;
-		} else {
+		} else if (dataStore) {
 			this.dataStore = dataStore;
 			this.ownsDataStore = false;
+		} else {
+			this.dataStore = new PiboDataStore();
+			this.ownsDataStore = true;
 		}
 		this.db = this.dataStore.db;
 	}
@@ -781,7 +784,7 @@ export function resolvePiboDataRuntimeBindingCas(
 }
 
 export function createDefaultPiboDataSessionStore(): PiboDataSessionStore {
-	return new PiboDataSessionStore(new PiboDataStore());
+	return new PiboDataSessionStore();
 }
 
 function groupRunsByController(runs: readonly PiboRunSnapshot[]): Map<string, PiboRunSnapshot[]> {

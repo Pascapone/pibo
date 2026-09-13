@@ -68,7 +68,6 @@ function profileWithSessionIds(
 		mcpServers: profile.mcpServers,
 		contextFiles: profile.contextFiles,
 		diagnostics: profile.diagnostics,
-		piPackages: profile.piPackages,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
 		autoContextFiles: profile.autoContextFiles,

@@ -2,24 +2,49 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
-import test from "node:test";
+import test, { after } from "node:test";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { piboCorePlugin } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
+
+const pluginProduct = await startTestPluginProduct("pibo-session-router-product-");
+after(() => pluginProduct.dispose());
+
+function createRouter(options = {}) {
+	const pluginRegistry = options.pluginRegistry ?? pluginProduct.createDefaultRegistry();
+	const usesProductHost = pluginRegistry.getPluginHost() === pluginProduct.host;
+	const router = new PiboSessionRouter({
+		...(usesProductHost ? { pluginRuntime: pluginProduct.runtime } : {}),
+		...options,
+		pluginRegistry,
+	});
+	if (usesProductHost) {
+		const disposeAll = router.disposeAll.bind(router);
+		router.disposeAll = async () => {
+			try {
+				await disposeAll();
+			} finally {
+				await pluginRegistry.disposePlugins();
+			}
+		};
+	}
+	return router;
+}
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
 
 function createTestRegistry(actionName, execute) {
 	return PiboPluginRegistry.create({
+		host: pluginProduct.host,
 		plugins: [
 			definePiboPlugin({
 				id: `test.${actionName}`,
@@ -70,7 +95,7 @@ test("session router uses the Pibo session profile when creating a runtime", asy
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 	});
@@ -106,7 +131,7 @@ test("session router clears accepted signal activity when idle steering is rejec
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 	});
@@ -138,7 +163,7 @@ test("session router clears accepted signal activity when idle steering is rejec
 
 test("session router creates implicit runtime sessions in the app context context", async () => {
 	const store = new InMemoryPiboSessionStore();
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 	});
@@ -168,7 +193,7 @@ test("session router defaults runtimes to the user home workspace", async () => 
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 	});
@@ -202,7 +227,7 @@ test("session router applies product model defaults instead of workspace-local d
 		profile: "base",
 		workspace: cwd,
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		cwd,
 		persistSession: false,
 		sessionStore: store,
@@ -218,90 +243,6 @@ test("session router applies product model defaults instead of workspace-local d
 			}),
 			/product-provider\/product-model/,
 		);
-	} finally {
-		await router.disposeAll();
-		await rm(cwd, { recursive: true, force: true });
-	}
-});
-
-test("session router preserves selected Pi packages when creating a runtime", async () => {
-	const cwd = await mkdtemp(join(tmpdir(), "pibo-router-pi-package-"));
-	const packageDir = join(cwd, "router-package");
-	await mkdir(packageDir, { recursive: true });
-	await writeFile(join(packageDir, "package.json"), JSON.stringify({
-		name: "router-package",
-		pi: { extensions: ["index.js"] },
-	}), "utf-8");
-	await writeFile(join(packageDir, "index.js"), `
-export default function(pi) {
-	pi.registerTool({
-		name: "router_package_tool",
-		label: "Router Package Tool",
-		description: "Tool provided by a selected Pi package.",
-		parameters: { type: "object", properties: {}, additionalProperties: false },
-		async execute() {
-			return { content: [{ type: "text", text: "ok" }] };
-		},
-	});
-}
-`, "utf-8");
-	upsertPiPackage({
-		id: "router-package",
-		name: "router-package",
-		source: packageDir,
-		installSpec: packageDir,
-		resourceTypes: ["extension"],
-		installStatus: "installed",
-		installPath: packageDir,
-		enabled: true,
-		diagnostics: [],
-	}, cwd);
-
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
-				id: "test.router-package",
-				register(api) {
-					api.registerProfile({
-						name: "package-profile",
-						create() {
-							return new InitialSessionContextBuilder("package-profile")
-								.withBuiltinTools("disabled")
-								.withPiPackages([{ id: "router-package" }])
-								.createSession();
-						},
-					});
-				},
-			}),
-		],
-	});
-	const store = new InMemoryPiboSessionStore();
-	store.create({
-		id: "ps_package",
-		piSessionId: "11111111-1111-4111-8111-111111111111",
-		channel: "pibo.test",
-		kind: "chat",
-		profile: "package-profile",
-		workspace: cwd,
-	});
-	const router = new PiboSessionRouter({
-		cwd,
-		persistSession: false,
-		sessionStore: store,
-		pluginRegistry: registry,
-		profile: registry.createProfile("package-profile"),
-	});
-
-	try {
-		const output = await router.emit({
-			type: "execution",
-			piboSessionId: "ps_package",
-			action: "status",
-		});
-
-		assert.equal(output.type, "execution_result");
-		assert.equal(output.result.activeTools.includes("router_package_tool"), true);
 	} finally {
 		await router.disposeAll();
 		await rm(cwd, { recursive: true, force: true });
@@ -327,7 +268,7 @@ test("session router creates a visible branch Pibo session for clone operations"
 		},
 		cancelled: false,
 	}));
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -380,7 +321,7 @@ test("snapshot fork persistence keeps the active source runtime attached", async
 		selectedText: "completed prompt",
 		summaryEntryId: event.params.entryId,
 	}));
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -453,7 +394,7 @@ test("forking a named delegated session preserves lineage and title without copy
 		summaryEntryId: event.params.entryId,
 		};
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -522,7 +463,7 @@ test("session router discards a derived native handle when branch persistence fa
 		},
 		cancelled: false,
 	}));
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -568,7 +509,7 @@ test("session router reconciles a branch that persisted exactly before create th
 		current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
 		cancelled: false,
 	}));
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -618,7 +559,7 @@ test("session router compensates an uninspectable commit before allowing a retry
 			cancelled: false,
 		};
 	});
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	const router = createRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
@@ -651,7 +592,7 @@ test("session router compensates mismatched post-commit branches before rejectin
 		current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
 		cancelled: false,
 	}));
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	const router = createRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
@@ -677,7 +618,7 @@ test("session router reports reconciliation cleanup failure without rebinding th
 	};
 	store.delete = () => { throw new Error("compensating delete unavailable"); };
 	let nativeClones = 0;
-	const registry = createTestRegistry("session.clone", (context) => {
+	const executeClone = (context) => {
 		nativeClones += 1;
 		return {
 			piboSessionId: context.piboSessionId,
@@ -685,9 +626,12 @@ test("session router reports reconciliation cleanup failure without rebinding th
 			current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
 			cancelled: false,
 		};
-	});
-	const createRouter = () => new PiboSessionRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
-	let router = createRouter();
+	};
+	const makeRouter = () => {
+		const registry = createTestRegistry("session.clone", executeClone);
+		return createRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	};
+	let router = makeRouter();
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
@@ -702,7 +646,7 @@ test("session router reports reconciliation cleanup failure without rebinding th
 		assert.equal(residual.metadata["pibo.sessionIdentityReconciliation.v1"].state, "cleanup-required");
 
 		await router.disposeAll();
-		router = createRouter();
+		router = makeRouter();
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
 			/refusing another session identity operation/,
@@ -739,7 +683,7 @@ test("session router updates a Pibo session before emitting switch results", asy
 		},
 		cancelled: false,
 	}));
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -810,7 +754,7 @@ test("session router evicts only idle routed runtimes and preserves yielded runs
 	});
 	const store = new InMemoryPiboSessionStore();
 	createStoredSession(store, { id: "ps_idle" });
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -841,7 +785,7 @@ test("idle runtime eviction keeps durable session signals reopenable", async () 
 	const registry = createTestRegistry("status", async () => ({ disposed: false }));
 	const store = new InMemoryPiboSessionStore();
 	createStoredSession(store, { id: "ps_idle_signal" });
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		pluginRegistry: registry,
@@ -884,7 +828,7 @@ test("dispose removes cached parent and child routed runtimes", async () => {
 		profile: "base",
 		parentId: "ps_parent",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_parent", action: "status" });
@@ -906,7 +850,7 @@ test("message acceptance starts a signal turn before cold runtime creation resol
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 
 	try {
 		const pending = router.emit({ type: "message", piboSessionId: "ps_cold_message", id: "m-cold", text: "hi", source: "user" });
@@ -954,7 +898,7 @@ test("restart signal reconstruction roots nested sessions independently of store
 
 	const controlStore = new InMemoryPiboSessionStore();
 	const controlTopology = await createTopology(controlStore, "ps_signal_control");
-	const controlRouter = new PiboSessionRouter({ persistSession: false, sessionStore: controlStore });
+	const controlRouter = createRouter({ persistSession: false, sessionStore: controlStore });
 	const controlTree = controlRouter.snapshotSignalTree(controlTopology.root.id);
 	const control = await captureStatusActivity(controlRouter, controlTopology);
 	await controlRouter.disposeAll();
@@ -972,10 +916,10 @@ test("restart signal reconstruction roots nested sessions independently of store
 	restartStore.close();
 	restartStore = new SqlitePiboSessionStore(databasePath);
 	const storeOrder = restartStore.list().map((session) => session.id);
-	restartRouter = new PiboSessionRouter({ persistSession: false, sessionStore: restartStore });
+	restartRouter = createRouter({ persistSession: false, sessionStore: restartStore });
 	const restartTree = restartRouter.snapshotSignalTree(restartTopology.root.id);
 	await restartRouter.disposeAll();
-	restartRouter = new PiboSessionRouter({ persistSession: false, sessionStore: restartStore });
+	restartRouter = createRouter({ persistSession: false, sessionStore: restartStore });
 	const restart = await captureStatusActivity(restartRouter, restartTopology);
 
 	assert.deepEqual({
@@ -1004,7 +948,7 @@ test("restart signal reconstruction roots nested sessions independently of store
 test("cached identity reservations reject queued messages before signal acceptance", async () => {
 	const store = new InMemoryPiboSessionStore();
 	createStoredSession(store, { id: "ps_identity_signal_admission", profile: "base" });
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_identity_signal_admission", action: "status" });
@@ -1049,7 +993,7 @@ test("cold runtime creation failure terminalizes the accepted signal turn", asyn
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 		modelDefaults: () => ({ main: { provider: "missing-provider", id: "missing-model" } }),
@@ -1074,7 +1018,7 @@ test("abort action terminalizes the active turn before runtime abort work", asyn
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_action", action: "status" });
@@ -1097,7 +1041,7 @@ test("kill action disposes cached runtimes without cancelling yielded runs", asy
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_kill_action", action: "status" });
@@ -1125,7 +1069,7 @@ test("kill_all action disposes the runtime and cancels its yielded runs", async 
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_kill_all_action", action: "status" });
@@ -1155,7 +1099,7 @@ test("kill cancels child sessions but not yielded runs", async () => {
 		profile: "base",
 		parentId: "ps_parent",
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 	});
@@ -1202,7 +1146,7 @@ test("session router flushes queued telemetry and rejects new work during dispos
 		profile: "base",
 		metadata: { chatRoomId: "room_router_telemetry_flush" },
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore,
 		telemetryStore: dataStore.telemetry,
@@ -1255,7 +1199,7 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 		profile: "base",
 		parentId: "ps_parent",
 	});
-	const router = new PiboSessionRouter({
+	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
 	});
@@ -1330,7 +1274,7 @@ test("session router keeps the persisted runtime instance when the profile defau
 		profile: "mutable-profile",
 		runtimeBinding: { runtimeInstanceId: "frozen-a", adapterId: "frozen-fake", state: "unbound" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = createRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
 	try {
 		const status = await router.emit({ type: "execution", piboSessionId: "ps_frozen_runtime", action: "status" });
 		assert.equal(status.type, "execution_result");
@@ -1380,7 +1324,7 @@ test("session router persists live binding changes after a runtime turn settles"
 		profile: "binding-sync-profile",
 		runtimeBinding: { runtimeInstanceId: "binding-sync", adapterId: "binding-sync-fake", state: "unbound" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = createRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
 	try {
 		await router.emit({ type: "message", piboSessionId: "ps_binding_sync", id: "binding-sync-turn", text: "go", source: "user" });
 		await waitFor(() => store.get("ps_binding_sync")?.runtimeBinding?.metadata?.durable === true);
@@ -1412,7 +1356,7 @@ test("session router lazily creates the reserved Pi transcript for an empty migr
 			metadata: { migrationSource: "schema-v4", nativePresenceExpected: false },
 		},
 	});
-	const firstRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	const firstRouter = createRouter({ cwd, persistSession: true, sessionStore: store });
 	let firstLocator;
 	try {
 		const status = await firstRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
@@ -1427,7 +1371,7 @@ test("session router lazily creates the reserved Pi transcript for an empty migr
 	}
 
 	if (firstLocator) await rm(firstLocator, { force: true });
-	const reopenedRouter = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	const reopenedRouter = createRouter({ cwd, persistSession: true, sessionStore: store });
 	try {
 		const status = await reopenedRouter.emit({ type: "execution", piboSessionId: "ps_empty_migrated_pi", action: "status" });
 		assert.equal(status.type, "execution_result");
@@ -1456,7 +1400,7 @@ test("session router marks a missing bound Pi transcript instead of creating a r
 			protocol: "pi-sdk",
 		},
 	});
-	const router = new PiboSessionRouter({ cwd, persistSession: true, sessionStore: store });
+	const router = createRouter({ cwd, persistSession: true, sessionStore: store });
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_missing_pi", action: "status" }),
@@ -1478,7 +1422,7 @@ test("signal snapshots order known parents without rereading each stored Session
 	createStoredSession(store, { piSessionId: undefined, id: "ps_parent", parentId: "ps_root" });
 	createStoredSession(store, { piSessionId: undefined, id: "ps_root" });
 	for (let index = 0; index < 508; index += 1) createStoredSession(store, { piSessionId: undefined, id: `ps_other_${index}` });
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 	const get = store.get.bind(store);
 	const list = store.list.bind(store);
 	let reads = 0;
@@ -1519,7 +1463,7 @@ test("listed Session depth matches store traversal for roots, missing parents, a
 	for (const [id, parentId] of [["root"], ["child", "root"], ["orphan", "missing"], ["self", "self"], ["cycle_a", "cycle_b"], ["cycle_b", "cycle_a"]]) {
 		createStoredSession(store, { piSessionId: undefined, id, parentId });
 	}
-	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
+	const router = createRouter({ persistSession: false, sessionStore: store });
 	try {
 		const sessions = new Map(store.list().map((session) => [session.id, session]));
 		for (const [id, depth] of [["root", 0], ["child", 1], ["orphan", 1], ["missing", 0], ["self", 1], ["cycle_a", 2], ["cycle_b", 2]]) {

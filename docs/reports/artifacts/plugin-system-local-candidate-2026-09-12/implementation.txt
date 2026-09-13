@@ -1,0 +1,189 @@
+# Plugin-System-Rebuild – Implementierungsprotokoll
+
+Datum: 2026-09-12
+Worktree: `/root/code/pibo/.worktrees/plugin-system-rebuild`
+Worker: `pibo-dev-plugin-system-system-rebuild` (Korrektur: tatsächlicher Name `pibo-dev-plugin-system-rebuild`)
+Ausgangsbasis: `cac4dcd03945b9754db7be9ab2ab4324f10c335c`; getestetes altes Fundament `fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd`.
+
+## Verbindliche Grenzen
+
+- Umsetzung und Source ausschließlich im Worktree; Builds/Tests ausschließlich in Docker `/workspace`.
+- Jeder Build/Test unter `flock /tmp/plugin-system-validation.lock`.
+- Kein Controller-Gateway, keine Host-Builds, kein Deployment, Push, PR oder Commit.
+- Keine impliziten Run-/Goal-Abbrüche und keine Löschung erhaltenswerter Daten.
+- System-Lifecycle, Agent-Auswahl, Runtime-Generation und sessiongebundene Tab-Ownership bleiben getrennt.
+
+## Arbeitsplan
+
+1. Aktuellen Parent-Diff und Produktverdrahtung verifizieren und korrigieren.
+2. Vollständige Consumer-/Session-Plan-/CLI-/Web-Service-Anbindung als eine Wahrheit herstellen.
+3. AP11 als gewöhnlich installiertes Web-Annotations-Plugin end-to-end schließen.
+4. AP12–AP18 extrahieren/migrieren und produktive Altwege entfernen.
+5. A01–A42 mit fokussierten, integrierten, Paket- und headful Belegen prüfen; externe Pibo2-Abnahme bleibt beim Parent.
+6. Spezifikationen/Guides/Planstatus gegen nachgewiesenen Stand abgleichen.
+
+## Subagents
+
+Vier read-only Codex-Subagents wurden ohne Controller-Gateway gestartet: Produktverdrahtung, AP11, Inventar AP00/AP12–18 und Test-/Abnahmematrix. Sie dürfen weder editieren noch bauen/testen und schreiben nur `/tmp`-Berichte. Die Implementierungsverantwortung und Integration bleibt hier.
+
+## Laufender Stand
+
+- Uncommitted Parent-Diff gesichert und nicht überschrieben.
+- Initialer Container-Build plus fokussierte Lifecycle/Selection/Runtime/Web/CLI-Tests läuft unter dem vorgeschriebenen Lock.
+- Erste bestätigte Integrationslücken aus Source-Lesung: Gateway übergibt noch weder vollständigen `PluginConsumerCollector` noch `PluginSessionPlanReader`; `runDefaultPluginCli` besitzt keinen Host-Lifecycle/Collector; `product-runtime.ts` erzeugt standardmäßig einen weiteren `PiboDataStore` statt zwingend den App-Store zu teilen; Lifecycle-/Dispose-Ownership und bereits aktiver externer Registry-Host müssen präzisiert werden.
+
+### Validierung 2026-09-12 10:01 UTC
+
+- Container-`npm run build`: bestanden.
+- Fokussierter Lauf `plugin-system-{lifecycle,selection,runtime,web-dispatch,cli}`: 58/58 bestanden.
+- Dies bestätigt nur das aktuelle Fundament und die letzten Scope-Änderungen, nicht AP11 oder den Gesamtumbau.
+
+### Produktverdrahtung und erster gewöhnlicher Built-in-Pfad, 2026-09-12 10:33 UTC
+
+- Gateway und Plugin-CLI besitzen jetzt je Prozess genau einen langlebigen `PluginHost`, einen persistierten `PluginManager`, vollständigen Existing-Store-/Profil-/Live-Consumer-Collector und kontrollierte Recovery-/Dispose-Grenzen.
+- `PiboDataSessionStore` teilt den zugrunde liegenden `PiboDataStore` ohne Doppel-Ownership. Gateway-Startfehler führen über denselben Stop-Pfad und lassen den Host wieder `idle`.
+- Das reservierte Management-Systemplugin veröffentlicht Host, Manager und sessiongebundenen Plan-Reader als echte deklarierte Dienste, ohne vorhandene Systemdienste neu zu starten.
+- `pibo.web-annotations` wurde aus der statischen Default-Registry entfernt und wird bei einem noch nie gesehenen Store als versioniertes lokales Paket über `PluginManager.install` + `activate`, Artifact-Hashing, SDK-Auflösung und den normalen Backend-Loader installiert. Explizite Deaktivierung/Deinstallation bleibt maßgeblich.
+- Das gewöhnliche Paket liefert sechs Tools, Skill, API-Web-App, Annotations-View mit Settings-/Context-Unteransichten, Build-Context-View und Terminal-Beitrag. Der Browser-Entry wird als stabiler Vite-Mehrfacheinstieg gebaut und durch das installierte Artifact exportiert.
+- Runtime-Pläne filtern rein produktinterne, nicht katalogisierte Managementdienste aus der Agent-Serviceprovider-Auswahl; dadurch bleiben Managementdienste systemweit verfügbar, ohne in Agent-Generationen zu geraten.
+- Neue Integrationsbelege: persistierter Plugin-Neustart ohne Doppelregistrierung, Registry-/Runtime-Projektion der installierten Annotations-Beiträge, Gateway-Host/Collector/Lifecycle und vollständiges Cleanup bei `EADDRINUSE`.
+
+### Validierung 2026-09-12 10:36 UTC
+
+- Container-TypeScript-Haupttypecheck: bestanden.
+- Container-`npm run build`: bestanden; `dist/apps/chat-ui/assets/pibo-builtin-plugin.js` vorhanden.
+- Fokussierter integrierter Lauf über Product Runtime, Gateway, CLI, Lifecycle, Runtime, Browser-Routen/-Host und Web-Dispatch: 65/65 bestanden.
+- AP11 ist damit im normalen Installpfad technisch durchstochen, aber die geforderte authentifizierte headful Zwei-Session-Abnahme, Daten-/Reinstall-Belege und die drei Aktivierungsformen A38–A41 stehen noch aus. AP12–AP18 und AP19 bleiben offen.
+
+### AP11 headful Worker-Abnahme, 2026-09-12 10:55 UTC
+
+- Der frisch gebaute Kandidat lief ausschließlich im Worker unter `/workspace` mit isoliertem `HOME=/tmp/plugin-rebuild-home`; kein Host-/Controller-Gateway und kein Deployment wurden verwendet.
+- Browser Use wurde zuerst wie vorgeschrieben versucht, konnte wegen einer bereits anders konfigurierten/implizit geleasten Browser-Pool-Session den Remote-CDP-Target nicht übernehmen. Als dokumentierter Fallback lief ein echter sichtbarer Chromium unter Xvfb im Worker (1440×1000), gesteuert und gescreenshotet über den vorhandenen CDP-Client; alle Prüfskripte liefen im Worker unter dem vorgeschriebenen `flock`.
+- Ein zuerst gefundener echter Fehler wurde behoben: der stabile Vite-Plugin-Entry hatte ohne `preserveEntrySignatures` keine Exporte; nach Rollup-Korrektur exportiert er `WebAnnotationsView`/`BuildContextView`. Der stabile Assetname wird nicht mehr fälschlich immutable gecacht; das installierte Artifact referenziert zusätzlich seine Paketversion.
+- Ein zweiter echter Fehler wurde behoben: produktinterne Managementdienste waren in Designer-/Runtime-Serviceprovider-Wahlen sichtbar, obwohl sie keine Store-Kataloginstallation sind. Der zentrale `catalogPluginServices`-Filter wird nun in Runtime, Agent-Save und Designer-Preview verwendet.
+- Neuer Default-/Builtin-Profile-Aufbau erhält bei vorhandenem Produktkatalog eine bekannte initiale Plugin-Auswahl statt `unknown`; ein frisch gestarteter `base`-Agent zeigte beide installierten Views ohne Sonderfall.
+- Headful nachgewiesen: installierter Katalog ohne Modulfehler; Öffnen des Annotations-Tabs; Erfassung einer realen Annotation über die installierte API; Anzeige derselben stabilen Annotation-ID im Tab; generischer Settings-Editor mit Session-Scope; gespeicherte Konfiguration Revision 1 und side-effect-freie Preview; registrierter Build-Context-Tab; zwei Sessions A/B mit B-Agent `annotations-off`; B bot keine Agent-Views an, A stellte Tab, Revision und Annotation bei A→B→A wieder her.
+- Belege: `/tmp/plugin-rebuild-headful-plugin-ready.png`, `...annotations-tab.png`, `...annotation-created.png`, `...settings.png`, `...settings-saved.png`, `...build-context.png`, `...session-b.png`, `...session-a-restored.png`.
+- Die separate Web-Annotation-Datenbank blieb über Gateway-Neustarts und Neuimport der UI erhalten. Produkt-Runtime-Tests belegen zusätzlich, dass eine zweite Host-Initialisierung dieselbe installierte Revision genau einmal lädt.
+- Noch offen innerhalb AP11: explizite defekte Aktivierungs-/fehlender-Renderer-Reinstall-Fixture, A38–A41 als vollständige Designer/API/Runtime/Browser-Matrix und externe Pibo2-Abnahme. AP12–AP18 beginnen erst nach diesen lokalen Fixtures.
+
+### AP11-Aktivierungsformen sowie AP12–AP15 Extraktionsstand, 2026-09-12 11:35 UTC
+
+- A38–A41 wurden durch gewöhnlich installierte System-only-, Agent-only-, Mixed-, Missing-Service- und Unsupported-Runtime-Fixtures ergänzt. Der fokussierte Plugin-Systemlauf erreichte zunächst 184/184 und nach den Extraktionen 205/205 bzw. den jeweils erweiterten Lauf vollständig grün.
+- AP12: `pibo.code-runtime`, `pibo.file-editing`, `pibo.web-search`, `pibo.browser-tools`, `pibo.gateway-tools` und `pibo.codex-compat` werden als versionierte lokale Standardpakete materialisiert, installiert und aktiviert. Tool-, Kontext- und Settings-Beiträge laufen über den gewöhnlichen Host/Loader; Web Search, Hashline, Runtime, Browser/Node-REPL, Gateway und Codex Compatibility sind nicht mehr im statischen `pibo.core`-Toolkatalog registriert. Legacy-Profilauswahl wird ohne zusätzliche Befugnisse auf exakte Paketrevisionen abgebildet.
+- AP13: `pibo.run-control`, `pibo.goal-control` und `pibo.agent-delegation` deklarieren die stabilen generierten Toolnamen als Pluginbeiträge. Die vorhandenen sessiongebundenen Controller erzeugen Definitionen nur für den effektiven Pluginplan; Goal bleibt bei der Bestandsmigration standardmäßig ausgewählt, Run und Agent-Delegation nur entsprechend alter Profilflags/Subagents. Laufende Arbeit bleibt weiter vom UI-Mount getrennt.
+- AP14: `pibo.mcp-cli` besitzt einen expliziten `mcp-adapter`-Beitrag. Der Runtime-Resource-Service konsumiert den ausgewählten Adaptervertrag für Config-Laden, Secret-Scoping, Transportklassifikation und Agent-Kontext; die interne Pibo-Tool-MCP-Bridge bleibt davon getrennt. Ein zweites gewöhnlich installiertes Fixture-Plugin liefert denselben Vertrag und materialisiert erfolgreich isolierte MCP-Konfiguration und Kontext.
+- AP15: Vorhandene Impact-/Drain-/Recovery-Flows wurden erneut geprüft: 14/14 Uninstall-/Session-Recovery-Fälle grün, einschließlich eindeutiger Consumerzählung, falscher/abgelaufener/staler Bestätigung, Revalidierung, Admission-Sperre, Drain ohne Abort, Tombstones mit erhaltenen Tabs/Configs/Snapshots, Crash-Recovery, exakter Reinstall und expliziter Kompatibilität.
+- Zusätzlich wurden Pi, Codex Native und OMP als gewöhnliche Systempakete mit Runtime-Driver-/Instance-Beiträgen projiziert; Base/Codex/OMP-Profile werden im Produktkatalog durch installierte Profilbeiträge bereitgestellt. Diese vorgezogene AP17-Arbeit ist produktseitig und in Product-Runtime-Tests grün, die direkte CLI-Komposition muss vor Altwegentfernung jedoch noch auf denselben Product Runtime umgestellt werden.
+
+### Validierung 2026-09-12 11:35 UTC
+
+- Haupt-Typecheck und Chat-UI-Typecheck nach AP12/AP13: bestanden.
+- AP12/Plugin-System plus Familienregressionen: 205/205 bestanden; späterer erweiterter Plugin-Lauf einschließlich MCP-Adapter ebenfalls vollständig grün.
+- MCP-Bestandsregressionen (`mcp-cli`, Filter, Merge, Daemon-Ownership, Agent-Context, Runtime-Resource-Service) plus alle Plugin-Systemtests: bestanden.
+- Zweiter MCP-Adapter: 1/1 bestanden.
+- AP15 Uninstall/Session-Recovery: 14/14 bestanden.
+- Bekannte noch offene Bestandsabweichung: mehrere alte `inspectPiboProfile`-Tests erwarten weiterhin ausgeführte dynamische Factories/automatische Ressourcen, während die aktuelle Implementierung bewusst eine side-effect-freie deklarierte Preview liefert. Der Testdiff muss in AP19 einzeln ersetzt oder die Kompatibilität gezielt wiederhergestellt werden; der Yielded-Bash-Systemd-Fall bleibt workerumgebungsabhängig.
+
+### Reviewability checkpoint, 2026-09-12 16:05 UTC
+
+- Letzter vollständiger Root-Lauf: `node scripts/run-test-suite.mjs` nach erfolgreichem Build, ohne Hänger, Watchdog-Abbruch oder Force-Exit. Ergebnis: **2.946 Tests, 2.857 bestanden, 80 fehlgeschlagen, 9 übersprungen, 0 abgebrochen/cancelled**; Laufzeit 616.709 s. Vollständiges Log im Worker: `/tmp/plugin-rebuild-full-test.log`.
+- Die 80 Fehler waren 80 benannte Fälle in 25 Dateien, aber stark gruppiert: 26 `session-router-store`, 22 `subagents`, 5 `agent-runtime-registry`, drei Agent-Designer-Autosave-Fälle, drei Profile-CLI-Fälle sowie kleinere UI-Source-, Tool-/MCP-/Goal-, Gateway- und retirierte TUI/CLI-Session-Gruppen. Mehrere spätere Fehler waren Kaskaden desselben fehlenden produktnahen Plugin-Hosts beziehungsweise nicht freigegebener Legacy-Facade-Scopes.
+- Seit diesem Root-Lauf behoben und fokussiert verifiziert:
+  - `session-router-store`: vorher 26 Fehler; jetzt **34/34 grün**.
+  - Ursache 1: Bestandsfixtures erzeugten nur eine statische Registry und sahen die gewöhnlich installierten Runtime-/Profilbeiträge nicht. Die Test-Composition startet nun den echten Product Runtime/Host und verwendet keine zweite produktive Aktivierungs- oder Inspectorwahrheit.
+  - Ursache 2: `disposeRoutedSession()` konnte dieselbe Plugin-Generation bei überlappender Session-Bereinigung zweimal freigeben. Die Generation wird nun vor asynchronem Dispose atomar aus dem Router-Ownership-Index genommen und nur bei fehlgeschlagenem Runtime-Dispose zurückgelegt.
+  - Haupt-Typecheck und vollständiger Build nach dieser Korrektur: bestanden.
+  - Frühere Fünf-Dateien-Gruppe (`plugin-registry`, Agent-Catalog-Mutationen, Agent-Store, Terminal-Parity-Fixtures, Session-UI-View-Models): vollständig grün.
+  - AP11-Fokus: defekte Web-Annotations-Aktivierung, kontrollierte Wiederherstellung der alten Revision, echte Deinstallation/Neuinstallation und erhaltene Annotation-Daten sind grün; fehlender Terminal-Renderer zeigt den gespeicherten Textfallback. Product-Runtime-/Browser-Fokuslauf ist grün.
+  - OKF: `docs:indexes:write`, `docs:validate`, `docs:indexes:check`, `docs:log:check` und `docs:validator:test` sind vollständig grün. Retirierte VS-Code-/TUI-/Pi-Package-Dokumente und der gelöschte Host-README-Pfad sind im Ledger korrekt klassifiziert.
+- Noch verbleibende, bereits aus dem Root-Lauf bekannte Gruppen (kein neuer breiter Lauf bis zu weiteren Änderungen):
+  - `subagents.test.mjs` und `codex-native-subagents.test.mjs`: produktnahe Runtime-/Control-Tool-Composition für Legacy-Fixtures herstellen; keine parallele statische Toolaktivierung.
+  - `agent-runtime-registry`, `hashline-tool`, `runtime-tool`, `login-actions`, `loop-goal-tools`, `mcp-agent-context`: Tests auf denselben gewöhnlich installierten Product Runtime/Host umstellen und anschließend echte Vertragsabweichungen getrennt behandeln.
+  - `profile-cli`: der reale CLI-Inspect-Pfad startet die installierte Produktkomposition noch nicht; dies ist eine Produktintegrationslücke, keine bloße Assertionmigration.
+  - Agent-Designer/Responsive/Fullscreen/Workflow-Source-Tests: direkte App-/Designer-Imports gegen die neuen `pibo.product-ui`-/`pibo.standard-shell`-Browserbeiträge auditieren und aktive Verträge dort erhalten.
+  - `web-gateway-root-landing` und malformed-user-skill startup: gewöhnlich installierte App-/Profilbeiträge in der Fixture-Composition sichtbar machen.
+  - `local-routed-tui.test.mjs` ist ausschließlich retirierter TUI-Scope. `stream-render-final-review` und `stream-render-rereview2` enthalten noch `LocalCliSessionSource`-Importe und müssen in erhaltene renderer-neutrale Datenverträge versus retirierte CLI-Session-Oberfläche getrennt werden.
+  - `create-github-release`: unreadable-asset-Subprozess kann als UID 65534 den Repository-Fixture-Pfad nicht traversieren; Mock muss in das test-eigene zugängliche Tempverzeichnis kopiert werden. Dies ist unabhängig von der Pluginarchitektur.
+- Die zwölf historischen Handoff-Fälle: **alle einzeln grün**. Legacy-Profile behalten den bestehenden tatsächlichen Inspectorvertrag; `pluginSelection`-Profile verwenden den gemeinsamen Resolver mit side-effect-freier Preview und getrennt gespeichertem Actual Build. Portable Tooldefinitionen bleiben fail-closed.
+- Individueller Testdiff-Audit: `/tmp/plugin-rebuild-test-diff-audit.md` (76 geänderte/gelöschte/neue Testdateien gegen Baseline, Einzelzeilen-Ledger in Arbeit). Primärinventar: `/tmp/plugin-rebuild-existing-test-inventory.md`.
+- Konkret fehlend für einen lokal reviewbaren Kandidaten: verbleibende fokussierte Fehlergruppen schließen; danach genau einen neuen vollständigen Root-Lauf; npm-Paketinhalt, `npm pack` und externe Installation; integrierte headful Product-UI-/Standard-Shell-Abnahme; Einzeldatei-Testdiff-Audit vollständig ausfüllen; Legacy-Suchen und Abschlussdokumentation; geordnetes Stoppen verbliebener Xvfb/Chromium-Prozesse. Externe Pibo2-Abnahme bleibt außerhalb dieses Workers.
+
+### Finaler lokaler Candidate-Checkpoint, 2026-09-12 19:10 UTC
+
+#### Implementierungsstand
+
+- AP00–AP18 sind im bestehenden uncommitted Candidate vollständig verdrahtet: ein Product Plugin Host/Manager/Resolver-Pfad; ordinary installed Built-ins; system-/agent-/mixed activation; generation-pinned Pi/Codex-Native/OMP runtime projections; sessiongebundene Tabs/Settings/Build Context; Agent Designer; Web Annotations; Toolfamilien; Run/Goal/Delegation; MCP adapter contract; uninstall/recovery/migration; product UI/standard shell; removal of executable Pi-package, VS Code/code-server/VSIX and standalone Ink/local-routed-TUI surfaces.
+- Die letzten UI-Lücken wurden geschlossen: Plugin-Plan-basierte Built-in-Tool-Ersetzungen, Workflow-Roombindung, missing-plugin diagnostics/removal, recoverable async before-leave guards für Plugin-Tabs/Routes und Agent-Autosave sowie mobile modal/inert/backdrop/Escape/focus semantics.
+- Die beiden nach dem ersten exakten Root-Lauf verbleibenden Fehlergruppen wurden ohne Produktabschwächung korrigiert: Der Baseline-Vertrag von `inspectPiboProfile` zeigt ausgewählte Browser-Tools weiterhin als aktiv; der neue Runtime-Test erwartet ausdrücklich den Erhalt des manuellen Nicht-Plugin-Tools `legacy-write`.
+
+#### Exakte Aggregate-Abnahme
+
+- Default-Dateiliste: 463 top-level `test/*.test.mjs`, `/tmp/plugin-rebuild-default-test-files-pass.txt`, SHA-256 `672f55cf672fea67bb5ede5b4387ea9f06e0873d696fc24023a257a851309635`.
+- Finaler Lauf im Worker unter `flock`, isoliertem Runner-HOME, innerem `--test-timeout=120000` und äußerem Prozesslimit: **2.962 Tests; 2.953 bestanden; 0 fehlgeschlagen; 9 übersprungen; 0 abgebrochen; 642.671,767 ms**. Log: `/tmp/plugin-rebuild-full-test-exact-pass.log`.
+- Der vorherige exakte Lauf terminierte ebenfalls regulär und fand vier Assertionsfehler in zwei Gruppen; nach fokussiertem 2-Dateien-Rerun waren beide Gruppen grün. Log: `/tmp/plugin-rebuild-root-failures-focused.log`.
+- Ein früherer Aufruf nur mit `--test-timeout` löste versehentlich Nodes rekursive Eigendiscovery einschließlich Fixtures aus. Er endete mit Timeout und bleibt ausschließlich Diagnose: `/tmp/plugin-rebuild-full-test-auto-discovery-invalid.log`. Er wird nicht als Root-/Abnahmeumfang ausgegeben.
+
+#### Testdiff-/Discovery-Audit
+
+- Detailaudit: `/tmp/plugin-rebuild-test-diff-audit.md`.
+- 83 geänderte/gelöschte Baseline-Dateien einzeln klassifiziert: 52 modifiziert, 31 gelöscht. 25 neue Supplementdateien/-fixtures einschließlich vier noch untracked Candidate-Tests.
+- Baseline-Runner: 467 Dateien (459 top-level plus acht `test/chat-vscode`); Candidate: 463 top-level. 26 Default-Dateien entfallen ausschließlich mit explizit retirten Pi-Package-, VS-Code-/code-server-/VSIX- und Ink/local-TUI-Surfaces; 22 Plugin-Systemtests kommen hinzu. Der Runner ändert sonst weder Concurrency, Isolation noch Ergebnispropagation.
+- Alle zwölf historischen Handoff-Fälle sind einzeln grün. Timeout, Force-Exit, Ressourcenabbruch und automatische rekursive Discovery zählen nicht als Erfolg.
+
+#### Build, Paket und Dokumentation
+
+- Vollständiger Typecheck und Build nach den finalen Produkt-/UI-Änderungen: grün.
+- `test/npm-package-contents.test.mjs`: 5/5 grün, einschließlich realem `npm pack`, externer temporärer Installation, Root-/Subpath-Imports, Plugin-Manifeste/-Assets/-Skills/-Kontext und Ausschluss retirierter Pfade.
+- OKF nach finaler Ledger-Aktualisierung: `docs:indexes:write`, `docs:validate`, `docs:indexes:check`, `docs:log:check` grün; Validator-Suite 86/86 grün. Log: `/tmp/plugin-rebuild-docs-final.log`.
+- `docs/plans/unified-plugin-system-execution.md` beschreibt nun den lokalen Candidate, die exakte Testsuite und die verbleibenden Freigabeblocker. Der historische Checkpointbericht bleibt unverändert als damaliger Stand gekennzeichnet.
+
+#### Headful- und Browsernachweise
+
+- Ordinary installed Product UI und `pibo.product-ui/agent-designer` im echten Browser geöffnet.
+- Agent-Designer-Änderung per Autosave durch Plugin-Tab-Close erhalten.
+- Web Annotations über gewöhnlichen Installations-/API-/Tabpfad einschließlich Settings und Build Context geprüft; A→B→A, abweichende Agent-Auswahl, Reload/Gateway-Neustart sowie gespeicherte Revision/Annotation wiederhergestellt.
+- Mobile Sessions Drawer headful geprüft: `role=dialog`, `aria-modal=true`, inerte/verborgene Hintergrundregion, Backdrop, Escape-Schließen und Trigger-Fokuswiederherstellung.
+- Screenshots: `/tmp/plugin-rebuild-product-ui-desktop.png`, `/tmp/plugin-rebuild-product-ui-mobile.png`, `/tmp/plugin-rebuild-mobile-session-drawer-open.png` sowie die früheren `/tmp/plugin-rebuild-headful-*.png`.
+- Browser-Use-Lease `pibo-chat-slot-002` wurde freigegeben; der testweise Worker-Gateway wurde geordnet beendet.
+
+#### Legacy-/Ressourcenabschluss
+
+- Keine aktiven Imports der entfernten `pi-packages`, `chat-vscode`, `src/vscode`, `cli-session`, `apps/cli-ui` oder `src/local`-Module.
+- Verbliebene Tokens sind absichtlich begrenzt: inaktive Agent-Store-Migrationsspalten/Diagnostik, historisches Setup-Cleanup für alte `pibo-code-server`-Installationen, Paket-Ausschlussregeln und der fremde Theme-Bezeichner `vscodeTheme`.
+- Nach finaler Prüfung: Validierungslock frei; keine `node --test`-/Runner-, Candidate-Gateway-, Chromium- oder Xvfb-Prozesse aus dieser Arbeit aktiv.
+
+#### Verbleibende formale Freigabeblocker
+
+Der lokale Candidate ist reviewbar und seine exakte Aggregate-Suite ist grün, der Gesamtplan darf jedoch noch nicht als global akzeptiert/archiviert gelten:
+
+1. AP19.3/A06 und der all-runtime Teil von A28 benötigen echte Provider-/Modellaufrufe unter Pi, Codex Native und OMP auf Pibo2. Der lokale kontrollierte Adaptertest ist kein Ersatz.
+2. AP19.2 verlangt noch explizite headful Beobachtungen für Replacement-Shell, visuellen Uninstall-/Placeholder-/Reinstall-Flow und Terminal-Scroll/Replay mit demselben Candidate.
+3. AP19.5 verlangt aktuelle Domain-Spezifikationen mit Commit-Traceability. Die OKF-Regel fordert dafür einen realen Commit; dieser Auftrag verbietet Commit/Push/PR. Deshalb wurde keine unzulässige uncommitted Implementierung als current spec ausgegeben.
+4. Externe Pibo2-Abnahme liegt außerhalb dieses lokalen Workers.
+
+Kein Commit, Push, PR, Deployment, Controller-Gateway-Neustart oder Eingriff in produktive Daten wurde ausgeführt.
+
+### Post-headful Management-UI-Korrektur, 2026-09-12 19:39 UTC
+
+- Der zusätzliche echte Uninstall-Parcours fand zwei gekoppelte UI-Fehler: `PluginManagement` rief bereits nach dem read-only Plan-Schritt `onChanged()` auf und verlor dadurch die lokale Bestätigungsansicht; außerdem zeigte die Komponente das nicht existente Feld `status` statt des persistierten Operationsfelds `state`.
+- Korrektur: Workspace-/Katalogrefresh erfolgt nur noch nach katalogverändernden Aktionen (Activate, Confirm, Resume/Cancel, Install). Plan und Inspect behalten ihre lokale Ergebnis-/Bestätigungsansicht. Die Überschrift zeigt `Operation prepared` aus `state`.
+- Neuer Verhaltensvertrag in `test/plugin-system-browser.test.mjs`: Plan bleibt gemountet, ruft keinen Katalogrefresh auf, zeigt den Zustand und hält Confirm bis zur exakten Plugin-ID deaktiviert. Fokuslauf nach vollem Typecheck/Build: 22/22 grün (`/tmp/plugin-rebuild-management-ui-validation.log`).
+- Headful über sichtbares Chrome/Xvfb und CDP, nachdem Browser Use wegen eines stale Pool-Lease nicht attachen konnte:
+  - Terminalhistorie aus isolierten Fixture-Nachrichten war scrollbar; Top `0`, Bottom `max`, und nach Reload wurde die historische Fehlerprojektion derselben Session wiederhergestellt und am Bottom verankert. Screenshots `/tmp/plugin-rebuild-terminal-replay-top.png` und `/tmp/plugin-rebuild-terminal-replay-reload.png`.
+  - Uninstall-Plan für `pibo.web-annotations` blieb sichtbar als `Operation prepared`, zeigte Impact/Consumer und aktivierte Confirm erst nach exakter Texteingabe. Screenshot `/tmp/plugin-rebuild-uninstall-confirmation.png`.
+  - Nach Confirm blieb ein gespeicherter `pibo.web-annotations/annotations`-Tab als erklärter Placeholder mit Zustand `{filter:"open", marker:"retained-after-uninstall"}` erhalten. Screenshots `/tmp/plugin-rebuild-uninstall-placeholder-before.png` und `...-after.png`; Server-Tabset blieb Revision 1 mit identischem State.
+  - Exakte Revision `sha256:0f2b62126a667eb247639da6affb21b7cb251a04cb5ac840c25900983cf709b4` wurde danach wieder installiert und aktiviert; Abschlusszustand `active`, State-Revision 13.
+- Finaler exakter Root-Lauf nach dieser Produktkorrektur: **2.963 Tests, 2.954 bestanden, 0 fehlgeschlagen, 9 übersprungen, 0 abgebrochen, 592.176,459 ms**. Exakte 463-Dateiliste und Hash unverändert; Log `/tmp/plugin-rebuild-full-test-exact-post-ui.log`.
+- Zu diesem Zeitpunkt verblieb lokal nur noch die headful Replacement-Shell-Aktivierung; der folgende Abschnitt schließt sie. Pibo2/real-provider und commit-backed Specification bleiben die externen/formalen Blocker.
+
+### Headful Replacement-Shell-Abnahme, 2026-09-12 19:44 UTC
+
+- Gewöhnliches lokales Fixture `fixture.alternative-shell` mit `pibo.plugin.json`, Backend- und Browser-Entry installiert und aktiviert. Der App-Beitrag `fixture.alternative-shell/shell` ist `shell-provider`, ersetzt deklarativ `pibo.standard-shell/shell` und registriert die Shell ausschließlich über `PluginBrowserSetup.registerShell`.
+- Für die isolierte Abnahme wurde `pibo.standard-shell` über den normalen Plan-/Confirm-Lifecycle entfernt, das Fixture über die Management-API installiert/aktiviert und die App headfully neu geladen. DOM-Nachweis: `data-alternative-shell="fixture.alternative-shell"`, feste Pibo-Session-ID, Composer und Plugin Workspace funktionsfähig, keine Alerts/Modulfehler. Screenshot: `/tmp/plugin-rebuild-alternative-shell.png`.
+- Danach wurde das Fixture regulär deinstalliert und dieselbe Standard-Shell-Revision aus ihrer ordinary local package source wieder installiert/aktiviert. Nach Reload war die Alternative abwesend, Workspace/Composer blieben funktionsfähig und es gab keine Alerts. Screenshot: `/tmp/plugin-rebuild-standard-shell-restored.png`.
+- Damit ist die lokale AP19.2-Headful-Matrix vollständig. Verbleibende formale Blocker sind ausschließlich Pibo2/echte Provider für A06/A28/AP19.3 und commit-backed current specifications für AP19.5; beides ist unter den aktuellen Grenzen nicht lokal abschließbar.
+
+### Finaler Paketnachweis desselben Candidates, 2026-09-12 19:47 UTC
+
+- `test/npm-package-contents.test.mjs` nach der Management-UI-Korrektur erneut ausgeführt: **5/5 grün**, reguläre Terminierung nach 100.220 ms. Der Lauf umfasst echtes `npm pack`, externe temporäre Installation, Root-/Subpath-Imports, Runtime-/Plugin-Assets, Dokumentationslinkschluss und unavailable-tool contract. Log: `/tmp/plugin-rebuild-package-final-candidate.log`.

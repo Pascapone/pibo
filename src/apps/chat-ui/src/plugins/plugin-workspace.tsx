@@ -1,11 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useBlocker } from "@tanstack/react-router";
 import type { EffectivePluginPlan, PluginBrowserCatalog, PluginQualifiedId, PluginTabInstance } from "../../../../plugins/sdk";
 import { BrowserPluginContext, BrowserPluginHost, PluginErrorBoundary, sessionPluginRequest, type PluginViewProps } from "./browser-host";
 import { availablePluginViews, closePluginTab, openPluginTab, parsePluginTabDeepLink, pluginRequest, pluginTabDeepLink, SessionTabController, updatePluginTab } from "./session-tab-controller";
 import { PluginSettings } from "./plugin-settings";
 import { PluginManagement } from "./plugin-management";
 
-type Workspace = { controller: SessionTabController; host: BrowserPluginHost | null; plan: EffectivePluginPlan | null; catalog: PluginBrowserCatalog | null; agentId?: string; roomId?: string; error: string | null; openView: PluginViewProps["openView"]; refresh: () => void };
+type Workspace = { controller: SessionTabController; host: BrowserPluginHost | null; plan: EffectivePluginPlan | null; catalog: PluginBrowserCatalog | null; agentId?: string; roomId?: string; error: string | null; openView: PluginViewProps["openView"]; refresh: () => void; activateTab: (instanceId: string) => Promise<boolean>; closeTab: (instanceId: string) => Promise<boolean>; registerBeforeLeave: (instanceId: string, handler: () => Promise<void>) => () => void };
 const WorkspaceContext = createContext<Workspace | null>(null);
 /** Keyed by session at the application boundary; closures and pending saves retain their original owner. */
 export function PluginWorkspaceProvider({ piboSessionId, children }: { piboSessionId: string | null; children: ReactNode }) {
@@ -19,6 +20,8 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 	const [source, setSource] = useState<{ plan: EffectivePluginPlan; catalog: PluginBrowserCatalog; agentId?: string; roomId?: string } | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [revision, refresh] = useReducer((value) => value + 1, 0);
+	const [, guardsChanged] = useReducer((value) => value + 1, 0);
+	const leaveGuards = useRef(new Map<string, () => Promise<void>>());
 	const linkHandled = useRef(false);
 	useEffect(() => { const unsubscribe = controller.subscribe(rerender); void controller.load(); return () => { unsubscribe(); void controller.flush(); }; }, [controller]);
 	useEffect(() => {
@@ -34,14 +37,52 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 		}).catch((error) => { if (!abort.signal.aborted) setError(String(error)); });
 		return () => { abort.abort(); if (next) void next.dispose(); setHost(null); };
 	}, [piboSessionId, revision]);
-	const openView: PluginViewProps["openView"] = (requestedId, subviewId) => {
+	const registerBeforeLeave = useCallback((instanceId: string, handler: () => Promise<void>) => {
+		leaveGuards.current.set(instanceId, handler);
+		guardsChanged();
+		return () => {
+			if (leaveGuards.current.get(instanceId) !== handler) return;
+			leaveGuards.current.delete(instanceId);
+			guardsChanged();
+		};
+	}, []);
+	const runBeforeLeave = useCallback(async (instanceIds: readonly string[]): Promise<boolean> => {
+		try {
+			for (const instanceId of instanceIds) await leaveGuards.current.get(instanceId)?.();
+			return true;
+		} catch (caught) {
+			setError(`Plugin view changes were not saved: ${caught instanceof Error ? caught.message : String(caught)}`);
+			return false;
+		}
+	}, []);
+	const activateTab = useCallback(async (instanceId: string): Promise<boolean> => {
+		const activeTabId = controller.state.activeTabId;
+		if (activeTabId && activeTabId !== instanceId && !await runBeforeLeave([activeTabId])) return false;
+		controller.edit((state) => ({ ...state, activeTabId: instanceId }));
+		return true;
+	}, [controller, runBeforeLeave]);
+	const closeTab = useCallback(async (instanceId: string): Promise<boolean> => {
+		if (!await runBeforeLeave([instanceId])) return false;
+		controller.edit((state) => closePluginTab(state, instanceId));
+		return true;
+	}, [controller, runBeforeLeave]);
+	useBlocker({
+		disabled: leaveGuards.current.size === 0,
+		enableBeforeUnload: false,
+		shouldBlockFn: async ({ current, next }) => current.pathname === next.pathname ? false : !await runBeforeLeave([...leaveGuards.current.keys()]),
+	});
+	const openView: PluginViewProps["openView"] = (requestedId, subviewId, state) => {
 		if (!source) return;
-		// Provenance links may name a non-view contribution; resolve its owner's declared view.
-		const entry = source.plan.contributions.find((entry) => entry.id === requestedId);
-		const ownerId = entry?.pluginId ?? requestedId.split("/")[0];
-		const viewId = entry?.contribution.view ? requestedId : source.plan.contributions.find((item) => item.pluginId === ownerId && item.contribution.view)?.id;
-		if (!viewId) { setError(`No effective view for ${requestedId}. Its retained history remains readable.`); return; }
-		try { controller.edit((state) => openPluginTab(state, source.plan, source.catalog, viewId, { subviewId })); } catch (error) { setError(String(error)); }
+		void (async () => {
+			const activeTabId = controller.state.activeTabId;
+			if (activeTabId && !await runBeforeLeave([activeTabId])) return;
+			// Provenance links may name a non-view contribution; resolve its owner's declared view.
+			const entry = source.plan.contributions.find((entry) => entry.id === requestedId);
+			const ownerId = entry?.pluginId ?? requestedId.split("/")[0];
+			const viewId = entry?.contribution.view ? requestedId : source.plan.contributions.find((item) => item.pluginId === ownerId && item.contribution.view)?.id;
+			if (!viewId) { setError(`No effective view for ${requestedId}. Its retained history remains readable.`); return; }
+			try { controller.edit((tabset) => openPluginTab(tabset, source.plan, source.catalog, viewId, { subviewId, state })); } catch (error) { setError(String(error)); }
+		})();
 	};
 	useEffect(() => {
 		if (!source || !controller.ready || linkHandled.current) return;
@@ -53,7 +94,7 @@ function SessionWorkspace({ piboSessionId, children }: { piboSessionId: string; 
 			controller.edit((state) => saved ? { ...state, activeTabId: saved.instanceId } : openPluginTab(state, source.plan, source.catalog, link.viewId, link));
 		} catch (error) { setError(`Deep link unavailable: ${String(error)}`); }
 	}, [source, controller.ready]);
-	const workspace: Workspace = { controller, host, plan: source?.plan ?? null, catalog: source?.catalog ?? null, agentId: source?.agentId, roomId: source?.roomId, error, openView, refresh };
+	const workspace: Workspace = { controller, host, plan: source?.plan ?? null, catalog: source?.catalog ?? null, agentId: source?.agentId, roomId: source?.roomId, error, openView, refresh, activateTab, closeTab, registerBeforeLeave };
 	const Shell = host?.shell;
 	const shellContent = Shell ? <PluginErrorBoundary fallback={children}><Shell piboSessionId={piboSessionId}>{children}</Shell></PluginErrorBoundary> : children;
 	return <WorkspaceContext.Provider value={workspace}><BrowserPluginContext.Provider value={host ? { host, openView } : null}>{shellContent}</BrowserPluginContext.Provider></WorkspaceContext.Provider>;
@@ -81,13 +122,13 @@ export function PluginWorkspaceTabs({ hidden = false, narrow = false }: { hidden
 		{localCopy ? <textarea aria-label="Retained tabset export" readOnly value={localCopy} className="m-2 min-h-32 bg-[#0e1116] font-mono text-xs" /> : null}
 		{workspace.error || controller.error ? <div role="alert" className="p-3 text-xs text-orange-300">{workspace.error ?? controller.error?.message}{controller.conflict ? <><p>Another browser saved this session. Your local state has been retained, not overwritten.</p><button className="underline mr-2" onClick={() => setLocalCopy(JSON.stringify(state, null, 2))}>Export local edits</button><button className="underline" onClick={() => { setLocalCopy(JSON.stringify(state, null, 2)); void controller.load(); }}>Keep local copy and load server version</button></> : <button className="underline ml-2" onClick={() => { void controller.flush(); workspace.refresh(); }}>Retry</button>}</div> : null}
 		{catalogOpen ? <div className="p-2 grid gap-1 border-b border-slate-700 max-h-64 overflow-auto">{views.length ? views.map((view) => <button className="text-left border border-slate-700 p-2 text-xs hover:border-cyan-600" key={view.id} onClick={() => { workspace.openView(view.id); setCatalogOpen(false); }}>{view.contribution.view!.title}<span className="block text-slate-500 font-mono">{view.id}</span></button>) : <p className="text-xs text-slate-400">No effective browser views in this session plan.</p>}</div> : null}
-		<div role="tablist" aria-label="Session plugin tabs" className="flex overflow-x-auto border-b border-slate-700 shrink-0">{state.tabs.map((tab, index) => <div key={tab.instanceId} className="flex shrink-0"><button ref={(node) => { if (node) tabButtons.current.set(tab.instanceId, node); else tabButtons.current.delete(tab.instanceId); }} role="tab" id={`plugin-tab-${tab.instanceId}`} aria-controls={`plugin-panel-${tab.instanceId}`} aria-selected={tab === active} tabIndex={tab === active ? 0 : -1} className={`text-xs px-3 py-2 border-b ${tab === active ? "text-cyan-300 border-cyan-500 bg-cyan-500/10" : "text-slate-400 border-transparent"}`} onClick={() => edit((state) => ({ ...state, activeTabId: tab.instanceId }))} onKeyDown={(event) => {
+		<div role="tablist" aria-label="Session plugin tabs" className="flex overflow-x-auto border-b border-slate-700 shrink-0">{state.tabs.map((tab, index) => <div key={tab.instanceId} className="flex shrink-0"><button ref={(node) => { if (node) tabButtons.current.set(tab.instanceId, node); else tabButtons.current.delete(tab.instanceId); }} role="tab" id={`plugin-tab-${tab.instanceId}`} aria-controls={`plugin-panel-${tab.instanceId}`} aria-selected={tab === active} tabIndex={tab === active ? 0 : -1} className={`text-xs px-3 py-2 border-b ${tab === active ? "text-cyan-300 border-cyan-500 bg-cyan-500/10" : "text-slate-400 border-transparent"}`} onClick={() => { void workspace.activateTab(tab.instanceId); }} onKeyDown={(event) => {
 			if (!["ArrowLeft", "ArrowRight", "Home", "End", "Delete"].includes(event.key)) return; event.preventDefault();
-			if (event.key === "Delete") { edit((state) => closePluginTab(state, tab.instanceId)); return; }
+			if (event.key === "Delete") { void workspace.closeTab(tab.instanceId); return; }
 			const next = state.tabs[event.key === "Home" ? 0 : event.key === "End" ? state.tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + state.tabs.length) % state.tabs.length]!;
 			if (event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) edit((state) => { const tabs = [...state.tabs]; tabs.splice(index, 1); tabs.splice(state.tabs.indexOf(next), 0, tab); return { ...state, tabs }; });
 			else { edit((state) => ({ ...state, activeTabId: next.instanceId })); tabButtons.current.get(next.instanceId)?.focus(); }
-		}}>{tab.fallback}</button><button className="px-1 text-xs text-slate-500" aria-label={`Close ${tab.fallback}`} onClick={() => edit((state) => closePluginTab(state, tab.instanceId))}>×</button></div>)}</div>
+		}}>{tab.fallback}</button><button className="px-1 text-xs text-slate-500" aria-label={`Close ${tab.fallback}`} onClick={() => { void workspace.closeTab(tab.instanceId); }}>×</button></div>)}</div>
 		<div className="min-h-0 flex-1 overflow-hidden relative">{state.tabs.map((tab) => {
 			const entry = plan?.contributions.find((entry) => entry.id === tab.viewId && entry.pluginRevision === tab.pluginRevision);
 			const visible = tab === active;
@@ -99,6 +140,7 @@ export function PluginWorkspaceTabs({ hidden = false, narrow = false }: { hidden
 }
 function PluginTabPanel({ workspace, tab, active }: { workspace: Workspace; tab: PluginTabInstance; active: boolean }) {
 	const { host, plan, controller } = workspace;
+	const registerBeforeLeave = useCallback((handler: () => Promise<void>) => workspace.registerBeforeLeave(tab.instanceId, handler), [tab.instanceId, workspace.registerBeforeLeave]);
 	const abort = useMemo(() => new AbortController(), [tab.instanceId, active, host]);
 	useEffect(() => () => abort.abort(), [abort]);
 	const entry = plan?.contributions.find((entry) => entry.id === tab.viewId && entry.pluginRevision === tab.pluginRevision);
@@ -110,7 +152,7 @@ function PluginTabPanel({ workspace, tab, active }: { workspace: Workspace; tab:
 	return <div className="h-full flex flex-col min-h-0">
 		{view.subviews?.length ? <nav aria-label={`${view.title} subviews`} className="flex gap-1 p-2 border-b border-slate-700">{view.subviews.map((item) => <button key={item.id} aria-current={tab.subviewId === item.id ? "page" : undefined} className={`text-xs px-2 py-1 ${tab.subviewId === item.id ? "text-cyan-300 bg-cyan-500/10" : "text-slate-400"}`} onClick={() => controller.edit((state) => updatePluginTab(state, tab.instanceId, { subviewId: item.id }))}>{item.title}</button>)}</nav> : null}
 		{subview?.settingsScopes?.length ? <PluginSettings key={`${tab.instanceId}:${subview.id}`} pluginId={tab.pluginId} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} scopes={subview.settingsScopes} /> : null}
-		<div className="min-h-0 flex-1 overflow-auto"><PluginErrorBoundary key={`${tab.instanceId}:${tab.pluginRevision}`} fallback={fallback}><Component tab={tab} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} roomId={workspace.roomId} active={active} signal={abort.signal} state={tab.state} updateState={(state) => { if (!abort.signal.aborted) controller.edit((current) => updatePluginTab(current, tab.instanceId, { state })); }} request={sessionPluginRequest(tab.piboSessionId, tab.pluginId, abort.signal)} openView={workspace.openView} /></PluginErrorBoundary></div>
+		<div className="min-h-0 flex-1 overflow-auto"><PluginErrorBoundary key={`${tab.instanceId}:${tab.pluginRevision}`} fallback={fallback}><Component tab={tab} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} roomId={workspace.roomId} active={active} signal={abort.signal} state={tab.state} updateState={(state) => { if (!abort.signal.aborted) controller.edit((current) => updatePluginTab(current, tab.instanceId, { state })); }}request={sessionPluginRequest(tab.piboSessionId, tab.pluginId, abort.signal)} openView={workspace.openView} registerBeforeLeave={registerBeforeLeave} /></PluginErrorBoundary></div>
 	</div>;
 }
 function LegacyTabImport({ workspace }: { workspace: Workspace }) {

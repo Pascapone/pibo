@@ -4,7 +4,7 @@ import type { AgentPluginSelection, PluginContribution, PluginDiagnostic } from 
 export type AgentPluginCatalog = {
 	schemaVersion: 1;
 	revision: number;
-	plugins: { pluginId: string; name: string; revision: string; version: string; state: string; enabled: boolean; contributions: PluginContribution[]; initialSelection: AgentPluginSelection["plugins"][number] }[];
+	plugins: { pluginId: string; name: string; revision: string; version: string; state: string; enabled: boolean; contributions: PluginContribution[]; initialSelection?: AgentPluginSelection["plugins"][number] }[];
 };
 
 export type AgentPluginMigrationReport = {

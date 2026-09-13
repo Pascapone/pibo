@@ -10,7 +10,6 @@
   ],
   "exclude": [
     "../../src/apps/chat-ui/**",
-    "../../src/apps/context-files-ui/**",
-    "../../src/apps/chat-vscode/**"
+    "../../src/apps/context-files-ui/**"
   ]
 }

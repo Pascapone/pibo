@@ -1,0 +1,70 @@
+# Plugin rebuild continuation: orchestrator record
+
+Session: ps_c5596e29-e5db-47e8-a736-714f4a1c99cf
+Worktree: /root/code/pibo/.worktrees/plugin-system-rebuild
+Worker: pibo-dev-plugin-system-rebuild, /workspace
+Original baseline: cac4dcd03945b9754db7be9ab2ab4324f10c335c
+Historical tested source: fdc7b887f73bdf9aa5fcf873b1bc931d921ba3dd
+
+## Owner instructions in this continuation
+
+- Implement all AP00–AP19 and A01–A42 from owning plan, including system-only/agent-only/mixed Goal behavior.
+- Use subagents; old-session closure restrictions explicitly do not carry over. Handoff and ledger corrected.
+- Preserve existing tests wherever possible, using them as primary behavioral parity proof. New tests supplement. Any unavoidable existing-test/runner changes require per-test justification and retained/replacement behavior evidence.
+
+## Local checks already run by orchestrator
+
+All through docker exec -w /workspace pibo-dev-plugin-system-rebuild flock /tmp/plugin-system-validation.lock.
+
+- Backend tsc: node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json
+- Initial selection/runtime/lifecycle run: 47 passed, 1 failed (system-only empty contribution package dependencies disappeared when selection helper stopped creating synthetic agent entries).
+- Fixed the resolver's system-only package dependency root selection; did not change the old test expectation.
+- Subsequent selection/runtime/lifecycle/CLI run: 53 passed, 0 failed. New tests cover app tool non-delivery, mixed app availability despite agent deselection/runtime incompatibility, invalid app->agent dependencies, incremental host lifecycle and resource/dependency blockers.
+- Backend tsc after initial v2 Web dispatcher additions: passed.
+- Later product-runtime.ts/Gateway bootstrap additions were handed to implementation worker as UNTESTED/incomplete wiring, with missing full collectors and session preview clearly identified.
+- Documentation core/strict/migration/index/log: passed; 84 documentation validator tests passed after initial planning.
+- Subsequent handoff restriction removal and test preservation policy: strict/index/log passed, no errors or warnings.
+- git diff --name-status baseline -- test: only added plugin tests/fixtures; no pre-existing test file changed or removed at time of first audit (~10:02 UTC). Recheck at final candidate.
+
+These are incremental checks, not completed AP11/AP19, headful, real-provider, installed-package or Pibo2 acceptance.
+
+## Delegation
+
+Implementation: thread plugin-rebuild-implementation, session ps_14610306-2f8d-4e34-92a4-8963f73d4324, original run run_e85e8fa8-dbf0-455a-b3a4-623f43703d18; test-policy steering run run_c0869cfa-e2a7-4dea-afeb-e50c25d3a321. Worker owns all product/test files; parent owns plan and acceptance coordination.
+Research: thread plugin-rebuild-inventory, session ps_53a20903-4bfd-4d7d-bf7f-3be34ba63908, run run_d13472a3-e3de-41bd-9a1a-2355996c34ac; expected /tmp/plugin-rebuild-current-inventory.md.
+
+## Remaining acceptance
+
+Follow owning plan, including all existing tests; no AP accepted yet. Audit original 12 failures individually, test/runner diff vs original baseline, real installed AP11 and mixed activation fixtures, broad extraction/migration/legacy removal, integrated local full suite and headful flow. Commit exact candidate and build/package in worker, then isolated Pibo2 pool acceptance through authenticated relevant public paths and Pi/Codex/OMP real-provider tool execution. No controller-host mutation, no merge/release publication.
+
+## 10:30 UTC orchestration status
+
+Native Pibo MCP calls have returned `Auth required` since about 10:18; retries did not restore them. No gateway restart, credential mutation, or access bypass attempted. Read-only operator CLI with PIBO_HOME=/root/.pibo confirms implementation child ps_14610306-2f8d-4e34-92a4-8963f73d4324 remains running (activity 10:28:59). Source ownership remains with that worker.
+
+Completed test inventory: /tmp/plugin-rebuild-existing-test-inventory.md. Worker has the binding preservation policy already, but this final report pointer could not yet be sent after MCP failure. Baseline 467 default-discovered suites, twelve historical failures located; no execution by researcher.
+
+AP11 acceptance worksheet: /tmp/plugin-rebuild-ap11-acceptance.md. Read-only SSH pool discovery succeeded at 10:27; no lease acquired or deployment attempted.
+
+## Reminder turn 10:33 UTC: connection restored, delivery correction
+
+Native MCP works again in the new reminder turn. Consumed terminal research run run_987a3801-e840-49bf-bb58-871d830fa9c6 and failed steering runs run_1d7780fd-257b-49ed-9e79-c833da23c75f / run_b72669b3-66a9-4459-b97a-d8610756feae. Both steering failures were runtime queue oldest_wait_age capacity (950428 / 1066837 ms against 600000 ms), not authentication failures. Their inventory pointer and AP11 staging clarification MUST NOT be assumed delivered.
+
+Main implementation run run_e85e8fa8-dbf0-455a-b3a4-623f43703d18 and test-policy steering run run_c0869cfa-e2a7-4dea-afeb-e50c25d3a321 remain running. The latter may still be queued; delivery is not proven. Preserve both runs. In the next user/Goal continuation, consolidate pending inventory pointers and AP11 acceptance sequencing into one message after the worker turn, reusing the same thread. This reminder forbids new runs/subagents, so no resend attempted.
+
+## 13:33 UTC user-requested short plan audit
+
+Worker is active, latest message 13:28. Report says AP12–15 extraction proceeded after local AP11 fixtures without parent Pibo2 gate, and latest messages cover AP16–19. Baseline diff now modifies/deletes numerous existing tests, including agent-store, plugin-registry context-hint tests, chat-ui-app-agent-catalog-mutations, and removed TUI/VSCode/Pi-package suites; runner drops chat-vscode discovery. Some removals correspond to explicitly retired surfaces, but individual preservation/replacement audit is not established. No full acceptance claimed.
+
+Consolidated corrective steering attempted as run_3c848ab9-db28-47bc-94c9-65e8340705da on same worker thread, failed immediately. Do NOT assume delivered. Pending: AP11 candidate/evidence handover before further broad work; test-by-test diff justification and equivalent behavior coverage; all twelve historical failures individually classified. Preserve current work and reuse worker when steering is possible.
+
+## Steering correction delivered through supported client
+
+User clarified that active sessions require steering. Discovered pibo client --help and used an interactive client targeting worker ps_14610306-2f8d-4e34-92a4-8963f73d4324 explicitly on loopback 4789. Sent /steer with consolidated test-preservation audit, all twelve failures, research artifact, and AP11 candidate handover requirements. Gateway acknowledged: steer delivered to active turn cd7eec68-a77c-4fac-8bb6-3a2b7ce4d22c. Closed only the console client via /quit. No worker/session cancellation or gateway mutation. Subsequent active-turn corrections should use this supported steering path, not enqueue another delegated turn. Worker response not yet observed at delivery acknowledgement.
+
+## Monitoring through 17:29 UTC
+
+User explicitly requests 10-minute sleep/check cycles and steering when needed. CLI observation remains functional while native MCP token is expired. Worker continues in same session on active event loop_msg_1c1f1d6f-9648-44ff-a430-1eceab5ab7c8; original delegated request completed at16:06 with checkpoint, not full task completion.
+
+16:05 latest full suite reported2946 tests,2857pass,80fail,9skip,0cancel. Worker reports historical12 cases green, session-router34/34 green; later subagent71/71 green after fixing migration capability expansion and preserving manual tools. Test audit /tmp/plugin-rebuild-test-diff-audit.md. Parent has not independently accepted whole audit.
+
+17:16 steering about new hanging three-file run delivered; no response or new tools through17:27. Parent inspected exact Docker PIDs142453/142462/142463/142469/142471; test children persisted26+min, open DB workers including deleted root-landing fixture files. Diagnostic /tmp/plugin-monitor-hang-1728.json inside Docker. Verified wrapper cmdline and PGID142453, sent SIGTERM only to that test group. Validation lock subsequently free. No worker session or gateway terminated. Follow-up /steer delivered describing intervention and requiring isolated, bounded individual reproductions and cleanup fixes. Worker resumed commentary immediately. Continue 10-minute supervision; do not call this a passed test or final acceptance.

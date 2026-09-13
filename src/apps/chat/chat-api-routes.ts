@@ -183,31 +183,6 @@ export function workflowCatalogResourceId(pathname: string): string | undefined 
 	}
 }
 
-export function piPackageResourceId(pathname: string): string | undefined {
-	const prefix = `${CHAT_WEB_API_PREFIX}/pi-packages/`;
-	if (!pathname.startsWith(prefix)) return undefined;
-	const encodedId = pathname.slice(prefix.length);
-	if (!encodedId || encodedId.includes("/")) return undefined;
-	try {
-		return decodeURIComponent(encodedId);
-	} catch {
-		throw new PiboWebHttpError("Invalid Pi package id", 400);
-	}
-}
-
-export function mcpServerResourceName(pathname: string): string | undefined {
-	const prefix = `${CHAT_WEB_API_PREFIX}/mcp-servers/`;
-	const suffix = "/description";
-	if (!pathname.startsWith(prefix) || !pathname.endsWith(suffix)) return undefined;
-	const encodedName = pathname.slice(prefix.length, -suffix.length);
-	if (!encodedName || encodedName.includes("/")) return undefined;
-	try {
-		return decodeURIComponent(encodedName);
-	} catch {
-		throw new PiboWebHttpError("Invalid MCP server name", 400);
-	}
-}
-
 export function userSkillResourceId(pathname: string): string | undefined {
 	const prefix = `${CHAT_WEB_API_PREFIX}/user-skills/`;
 	if (!pathname.startsWith(prefix)) return undefined;

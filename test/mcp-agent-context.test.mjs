@@ -5,12 +5,15 @@ import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
+import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
+import { mcpAdapterFromPluginPlan } from "../dist/agent-runtime/plugin-plan.js";
 import {
 	ENABLED_MCP_SERVERS_CONTEXT_PATH,
 	getMcpAgentContextFile,
 	listMcpServerInfos,
 	setMcpServerDescription,
 } from "../dist/mcp/agent-context.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 test("MCP descriptions update the winning config source", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-mcp-description-source-"));
@@ -194,20 +197,44 @@ test("runtime profile inspection includes selected MCP context", async () => {
 
 	const previousConfigPath = process.env.MCP_CONFIG_PATH;
 	process.env.MCP_CONFIG_PATH = configPath;
+	let product;
+	let registry;
+	let resources;
+	let resourceSession;
 	try {
-		const withMcp = new InitialSessionContextBuilder("mcp-agent")
+		product = await startTestPluginProduct("pibo-mcp-context-product-");
+		registry = product.createDefaultRegistry();
+		resources = new PiboRuntimeResourceService({ rootDir: join(cwd, "runtime-resources"), mcpConfigPath: configPath });
+		const adapter = registry.requireAgentRuntimeAdapter("pi");
+		const withMcp = product.materializeProfile(registry, new InitialSessionContextBuilder("mcp-agent")
 			.withAutoContextFiles(false)
 			.withMcpServers(["filesystem"])
-			.createSession();
-		const inspection = await inspectPiboProfile({ cwd, profile: withMcp, persistSession: false });
+			.createSession(), "ps_mcp_context");
+		resourceSession = await resources.createSession({
+			piboSessionId: "ps_mcp_context",
+			runtimeInstanceId: "pi",
+			adapterId: adapter.descriptor.id,
+			sessionGeneration: "generation-mcp-context",
+			profile: withMcp,
+			cwd,
+			capabilities: adapter.descriptor.capabilities,
+			strict: false,
+			verifyMcp: false,
+			mcpAdapter: mcpAdapterFromPluginPlan(withMcp, product.host),
+		});
+		const inspection = await inspectPiboProfile({ cwd, profile: withMcp, persistSession: false, resources: resourceSession });
 		assert.ok(inspection.contextFiles.some((file) => file.path === ENABLED_MCP_SERVERS_CONTEXT_PATH));
 
-		const withoutMcp = new InitialSessionContextBuilder("mcp-agent")
+		const withoutMcp = product.materializeProfile(registry, new InitialSessionContextBuilder("mcp-agent")
 			.withAutoContextFiles(false)
-			.createSession();
+			.createSession(), "ps_without_mcp_context");
 		const emptyInspection = await inspectPiboProfile({ cwd, profile: withoutMcp, persistSession: false });
 		assert.equal(emptyInspection.contextFiles.some((file) => file.path === ENABLED_MCP_SERVERS_CONTEXT_PATH), false);
 	} finally {
+		await resourceSession?.dispose();
+		await resources?.dispose();
+		await registry?.disposePlugins();
+		await product?.dispose();
 		if (previousConfigPath === undefined) {
 			delete process.env.MCP_CONFIG_PATH;
 		} else {

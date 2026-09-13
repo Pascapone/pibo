@@ -17,6 +17,34 @@
       "types": "./dist/plugins/host.d.ts",
       "import": "./dist/plugins/host.js"
     },
+    "./plugin-builtin/web-annotations": {
+      "types": "./dist/plugins/packaged-web-annotations.d.ts",
+      "import": "./dist/plugins/packaged-web-annotations.js"
+    },
+    "./plugin-builtin/tool-families": {
+      "types": "./dist/plugins/packaged-tool-families.d.ts",
+      "import": "./dist/plugins/packaged-tool-families.js"
+    },
+    "./plugin-builtin/control-tools": {
+      "types": "./dist/plugins/packaged-control-tools.d.ts",
+      "import": "./dist/plugins/packaged-control-tools.js"
+    },
+    "./plugin-builtin/runtime-adapters": {
+      "types": "./dist/plugins/packaged-runtime-adapters.d.ts",
+      "import": "./dist/plugins/packaged-runtime-adapters.js"
+    },
+    "./plugin-builtin/profiles": {
+      "types": "./dist/plugins/packaged-profiles.d.ts",
+      "import": "./dist/plugins/packaged-profiles.js"
+    },
+    "./plugin-builtin/mcp-cli": {
+      "types": "./dist/plugins/packaged-mcp-cli.d.ts",
+      "import": "./dist/plugins/packaged-mcp-cli.js"
+    },
+    "./plugin-builtin/product-ui": {
+      "types": "./dist/plugins/packaged-product-ui.d.ts",
+      "import": "./dist/plugins/packaged-product-ui.js"
+    },
     "./package.json": "./package.json",
     "./*": "./*"
   },
@@ -26,16 +54,23 @@
   "description": "Minimal TypeScript wrapper around Pi Coding Agent.",
   "files": [
     "dist",
+    "!dist/apps/chat-vscode-web/**",
+    "!dist/apps/cli-ui/**",
+    "!dist/cli-session/**",
+    "!dist/local/**",
+    "!dist/pi-packages/**",
+    "!dist/plugins/chat-vscode-web.*",
+    "!dist/vscode/**",
     "packages/workflows/dist",
     "!packages/workflows/dist/testing/**",
     "packages/workflows/package.json",
-    "!dist/apps/vscode-artifacts/**",
     "context",
     "skills/builtin/**",
     "docs/project/operations/**",
+    "!docs/project/operations/index.md",
+    "!docs/project/operations/vscode-extension-release.md",
     "docs/project/installation-profiles.md",
     "docs/project/guides/pibo-on-windows-via-wsl.md",
-    "docs/project/guides/pibo-vscode-ext-quickstart.md",
     "!docs/README.md",
     "!docs/project/README.md",
     "README.md",
@@ -57,9 +92,6 @@
   "scripts": {
     "dev": "tsx src/bin/pibo.ts",
     "profile": "tsx src/bin/pibo.ts profile",
-    "tui": "tsx src/bin/pibo.ts tui",
-    "tui:routed": "tsx src/bin/pibo.ts tui:routed",
-    "tui:gateway": "tsx src/bin/pibo.ts tui gateway-producer",
     "gateway": "tsx src/bin/pibo.ts gateway",
     "gateway:web": "npm run web-ui:build && tsx src/bin/pibo.ts gateway:web",
     "client": "tsx src/bin/pibo.ts client",
@@ -68,15 +100,11 @@
     "context-files-ui:build": "vite build --config src/apps/context-files-ui/vite.config.ts",
     "context-files-ui:typecheck": "tsc -p src/apps/context-files-ui/tsconfig.json --noEmit",
     "web-ui:build": "npm run chat-ui:build && npm run context-files-ui:build",
-    "vscode:typecheck": "tsc -p src/apps/chat-vscode/extension/tsconfig.json --noEmit && tsc -p src/apps/chat-vscode/extension/webview/tsconfig.json --noEmit",
-    "vscode:webview:build": "vite build --config src/apps/chat-vscode/extension/webview/vite.config.ts",
-    "vscode:extension:build": "esbuild src/apps/chat-vscode/extension/src/extension.ts --bundle --platform=node --target=node24 --format=cjs --outfile=src/apps/chat-vscode/dist/extension/extension.cjs --external:vscode --sourcemap=inline",
-    "vscode:package": "node scripts/vscode-package.mjs",
     "workflows:build": "npm run build --workspace @pasko70/pibo-workflows",
     "workflows:typecheck": "npm run typecheck --workspace @pasko70/pibo-workflows",
     "release": "node scripts/release.mjs",
     "release:github": "node scripts/create-github-release.mjs",
-    "build": "npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run plugins:sdk:build && npm run web-ui:build && npm run vscode:webview:build && node scripts/ensure-bin-executable.mjs",
+    "build": "npm run clean && npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run plugins:sdk:build && npm run web-ui:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node scripts/run-test-suite.mjs",
     "docs:validate": "npm run docs:validate:strict",
@@ -88,14 +116,13 @@
     "docs:log:check": "node scripts/check-okf-log.mjs",
     "docs:validator:test": "node --test test/okf-validator.test.mjs test/okf-authoring-guidance.test.mjs",
     "check:product-vocab": "node scripts/legacy-product-vocabulary-gate.mjs",
-    "validate:ink-web-derived": "node scripts/ink-cli-web-derived-parity-validate.mjs",
     "compute:limited-worker-smoke": "node scripts/compute-limited-worker-smoke.mjs",
     "validate:goal-endurance": "node scripts/goal-endurance-check.mjs",
-    "typecheck": "npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck && npm run vscode:typecheck",
+    "typecheck": "npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck",
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "prepack": "npm run build && node scripts/package-shrinkwrap.mjs prepare",
     "postpack": "node scripts/package-shrinkwrap.mjs clean",
-    "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json"
+    "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json && node scripts/write-plugin-builtin-declarations.mjs"
   },
   "dependencies": {
     "@balena/dockerignore": "1.0.2",
@@ -103,7 +130,6 @@
     "@earendil-works/pi-ai": "0.85.0",
     "@earendil-works/pi-coding-agent": "0.85.0",
     "@earendil-works/pi-server": "0.85.0",
-    "@earendil-works/pi-tui": "0.85.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tailwindcss/vite": "^4.2.4",
     "@tanstack/react-query": "^5.100.7",
@@ -116,7 +142,6 @@
     "acorn-walk": "8.3.4",
     "better-auth": "1.6.30",
     "commander": "^14.0.3",
-    "ink": "^7.0.3",
     "lexical": "^0.35.0",
     "lucide-react": "^0.545.0",
     "prismjs": "^1.30.0",
@@ -142,14 +167,12 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "@vscode/vsce": "^3.6.0",
     "esbuild": "^0.28.2",
     "react-test-renderer": "19.2.5",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.10",
     "vite-tsconfig-paths": "^5.1.4",
-    "vscode": "file:src/apps/chat-vscode/extension/vscode-shim",
     "yaml": "^2.9.0"
   }
 }

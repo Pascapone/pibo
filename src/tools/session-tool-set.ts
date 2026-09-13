@@ -123,7 +123,7 @@ export function createPiboSessionToolDefinitions(
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
 	const selectedNames = profile.effectivePluginPlan ? new Set(profile.tools.map((tool) => tool.name)) : undefined;
 	const isSelected = (tool: PiboToolDefinition) => !selectedNames || selectedNames.has(tool.name)
-		|| (profile.subagents.some((agent) => agent.enabled !== false) && tool.name.startsWith("pibo_agents_"));
+		|| (profile.toolPackages.runControl === true && nativeYieldableTools.includes(tool));
 	const wrap = (tool: PiboToolDefinition) => options.pluginHookScope && options.pluginHooks?.length
 		? wrapPluginToolHooks(tool, options.pluginHooks, options.pluginHookScope) : tool;
 	const yieldableTools = [

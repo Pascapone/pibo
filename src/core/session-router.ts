@@ -11,9 +11,11 @@ import {
 } from "./profiles.js";
 import { createDefaultPiboPluginRegistry, createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import type { PiboPluginRegistry } from "../plugins/registry.js";
-import { PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
+import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
 import { capturePluginContextBuild, persistPluginContextBuild, persistPluginHookEvidence } from "../agent-runtime/plugin-context-build.js";
 import type { PluginJsonObject } from "../plugins/manifest.js";
+import type { PluginConsumer } from "../plugins/operations.js";
+import type { PluginSessionPlanReader } from "../plugins/product-services.js";
 import { runPluginHooks } from "../agent-runtime/plugin-hooks.js";
 import type { PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./runtime.js";
 import {
@@ -277,7 +279,6 @@ function profileForSession(
 		subagents: baseProfile.subagents.filter((subagent) => !hasReachedSubagentMaxDepth(subagent, subagentDepth)),
 		mcpServers: baseProfile.mcpServers,
 		contextFiles: baseProfile.contextFiles,
-		piPackages: baseProfile.piPackages,
 		builtinTools: baseProfile.builtinTools,
 		builtinToolNames: baseProfile.builtinToolNames,
 		autoContextFiles: baseProfile.autoContextFiles,
@@ -913,6 +914,7 @@ export class PiboSessionRouter {
 	private async disposeRoutedSession(piboSessionId: string, session: RoutedSession, reason: string): Promise<void> {
 		const disposal = Promise.resolve().then(() => session.dispose());
 		const pluginGeneration = this.pluginGenerations.get(piboSessionId);
+		const ownsPluginGeneration = pluginGeneration !== undefined && this.pluginGenerations.delete(piboSessionId);
 		let runtimeDisposed = false;
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		const timedOut = new Promise<never>((_resolve, reject) => {
@@ -936,9 +938,10 @@ export class PiboSessionRouter {
 			const resources = this.runtimeResourceSessions.get(piboSessionId);
 			if (resources) await resources.dispose();
 			if (this.runtimeResourceSessions.get(piboSessionId) === resources) this.runtimeResourceSessions.delete(piboSessionId);
-			if (runtimeDisposed && pluginGeneration) {
+			if (runtimeDisposed && pluginGeneration && ownsPluginGeneration) {
 				this.options.pluginRuntime!.release(pluginGeneration);
-				if (this.pluginGenerations.get(piboSessionId) === pluginGeneration) this.pluginGenerations.delete(piboSessionId);
+			} else if (pluginGeneration && ownsPluginGeneration && !this.pluginGenerations.has(piboSessionId)) {
+				this.pluginGenerations.set(piboSessionId, pluginGeneration);
 			}
 		}
 	}
@@ -1332,6 +1335,46 @@ export class PiboSessionRouter {
 	listRuns(options: { includeConsumed?: boolean; includeDetached?: boolean } = {}): PiboRunSnapshot[] {
 		return this.runRegistry.listAll(options);
 	}
+
+	/** Live product consumers come from the router's real generations and run registry. */
+	collectPluginConsumers(pluginId: string): PluginConsumer[] {
+		const consumers: PluginConsumer[] = [];
+		const activeSessions = new Map<string, PluginRuntimeGeneration>();
+		for (const [piboSessionId, generation] of this.pluginGenerations) {
+			const plugin = generation.plan.plugins.find((entry) => entry.pluginId === pluginId);
+			if (!plugin) continue;
+			activeSessions.set(piboSessionId, generation);
+			consumers.push({ kind: "session", id: piboSessionId, usage: "active", revision: plugin.revision, generation: generation.plan.generation });
+			consumers.push({ kind: "runtime", id: `${piboSessionId}:${generation.plan.generation}`, usage: "active", revision: plugin.revision, generation: generation.plan.generation });
+		}
+		for (const run of this.runRegistry.listActiveRuns()) {
+			const generation = activeSessions.get(run.controllerPiboSessionId);
+			const plugin = generation?.plan.plugins.find((entry) => entry.pluginId === pluginId);
+			if (plugin) consumers.push({ kind: "run", id: run.runId, usage: "active", revision: plugin.revision, generation: generation!.plan.generation });
+		}
+		return consumers;
+	}
+
+	/** Actual reads are immutable snapshots; preview uses the same pure resolver as admission. */
+	readPluginSessionPlan: PluginSessionPlanReader = async (piboSessionId, kind) => {
+		const piboSession = this.resolvePiboSession(piboSessionId);
+		const roomId = typeof piboSession.metadata?.chatRoomId === "string" ? piboSession.metadata.chatRoomId : undefined;
+		if (kind === "actual") {
+			const snapshot = this.options.pluginRuntime?.options.store.listGenerationSnapshots(piboSessionId).at(-1);
+			if (!snapshot) throw new Error(`No recorded plugin generation exists for ${piboSessionId}`);
+			return { plan: snapshot.plan, roomId };
+		}
+		if (!this.options.pluginRuntime) throw new Error("Plugin runtime preview is unavailable");
+		const profile = this.getSessionRuntimeProfile(piboSessionId);
+		const binding = this.resolveSessionRuntimeBinding(piboSession);
+		const adapter = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId).requireAgentRuntimeAdapter(binding.runtimeInstanceId);
+		const plan = this.options.pluginRuntime.preview(profile, {
+			adapterId: binding.adapterId,
+			instanceId: binding.runtimeInstanceId,
+			capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject,
+		}, piboSessionId);
+		return { plan, ...(profile.pluginAgentId ? { agentId: profile.pluginAgentId } : {}), ...(roomId ? { roomId } : {}) };
+	};
 
 	getRunJobReliabilityStatus() {
 		return this.reliabilityStore?.getRunJobReliabilityStatus() ?? {
@@ -1768,6 +1811,7 @@ export class PiboSessionRouter {
 				cwd: workspace,
 				timezone: userSettings.timezone,
 				capabilities: runtimeAdapter.descriptor.capabilities,
+				mcpAdapter: mcpAdapterFromPluginPlan(sessionProfile, this.pluginRegistry.getPluginHost()),
 			});
 			this.runtimeResourceSessions.set(piboSession.id, resources);
 		} catch (error) {
@@ -1815,7 +1859,6 @@ export class PiboSessionRouter {
 					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
-						piPackageStoreCwd: this.options.piPackageStoreCwd,
 						thinkingLevel: initialThinkingLevel ?? this.options.thinkingLevel,
 						retryDefaults: resolvePiboSessionRetryDefaults(piboSession.kind, this.options.retryDefaults),
 						extensionFactories: [
@@ -1878,7 +1921,7 @@ export class PiboSessionRouter {
 				});
 				bindingSync.expectedRevision = binding.revision;
 			}
-			if (pluginGeneration) persistPluginContextBuild(this.options.pluginRuntime!.options.store, capturePluginContextBuild({ plan: pluginGeneration.plan, resources, tools: portableTools.getDefinitions() }));
+			if (pluginGeneration) persistPluginContextBuild(this.options.pluginRuntime!.options.store, capturePluginContextBuild({ plan: pluginGeneration.plan, resources, tools: portableTools.getDefinitions(), profile: pluginGeneration.profile }));
 		} catch (error) {
 			await runtimeSession.dispose();
 			setup.nativeCleanupUncertain = false;

@@ -1,5 +1,5 @@
 import type { SaveCustomAgentInput, DesignerPluginFields, AgentPluginCatalog } from "../api-agent-designer";
-import type { AgentPluginSelection, PluginContribution } from "../../../../plugins/sdk.js";
+import type { AgentPluginSelection, EffectivePluginPlan, PluginContribution } from "../../../../plugins/sdk.js";
 import { THINKING_LEVELS, type AgentCatalog, type AgentRuntimeCatalogEntry, type BootstrapData, type CustomAgent, type ModelCatalog, type ModelProfile, type ThinkingLevel } from "../types";
 
 export type AgentDraft = Omit<SaveCustomAgentInput, "description" | "mainModel" | "subagentModel"> & DesignerPluginFields & {
@@ -350,10 +350,6 @@ export function normalizeBuiltinToolNames(names: string[] | undefined, mode: "de
 }
 
 export type ContextFileCatalogItem = AgentCatalog["contextFiles"][number];
-/** Read-only transitional type for the browser owner's remaining legacy migration display. */
-export type PiPackageCatalogItem = AgentCatalog["piPackages"][number];
-/** Never represents an executable installation or activation. */
-export function piPackageMeta(_pkg: PiPackageCatalogItem): string { return "Legacy Pi package · inactive · migration required"; }
 export type SkillCatalogItem = AgentCatalog["skills"][number];
 export type CatalogGroupKind = "builtin" | "plugin" | "custom" | "user";
 export const DEFAULT_BUILTIN_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
@@ -495,11 +491,30 @@ export function isNotFoundError(message: string): boolean {
 }
 
 /** Existing snapshots never acquire defaults or a new artifact revision implicitly. */
+export function buildPluginBuiltinToolReplacementMap(plan: EffectivePluginPlan | undefined): Map<string, string[]> {
+	const replacements = new Map<string, string[]>();
+	for (const entry of plan?.contributions ?? []) {
+		if (entry.contribution.kind !== "tool") continue;
+		const replacedBuiltinTools = entry.contribution.metadata?.replacesBuiltinTools;
+		if (!Array.isArray(replacedBuiltinTools)) continue;
+		for (const builtinTool of replacedBuiltinTools) {
+			if (typeof builtinTool !== "string") continue;
+			const replacers = replacements.get(builtinTool) ?? [];
+			replacers.push(entry.contribution.name ?? entry.id);
+			replacements.set(builtinTool, replacers);
+		}
+	}
+	return replacements;
+}
+
 export function setAgentPluginEnabled(selection: AgentPluginSelection, plugin: AgentPluginCatalog["plugins"][number], enabled: boolean): AgentPluginSelection {
 	const next = structuredClone(selection);
 	const entry = next.plugins.find((item) => item.pluginId === plugin.pluginId);
 	if (entry) entry.enabled = enabled;
-	else next.plugins.push({ ...structuredClone(plugin.initialSelection), enabled });
+	else {
+		if (!plugin.initialSelection) throw new Error("System-only plugins have no agent selection");
+		next.plugins.push({ ...structuredClone(plugin.initialSelection), enabled });
+	}
 	return next;
 }
 export function setAgentPluginContribution(selection: AgentPluginSelection, pluginId: string, contribution: PluginContribution, enabled: boolean): AgentPluginSelection {

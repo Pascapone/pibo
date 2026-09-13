@@ -5,7 +5,6 @@ import { TOOL_CALL_REFERENCE_QUERY_PARAM } from "./tool-call-reference";
 
 export type ChatAppRoute =
 	| { area: "sessions"; roomId?: string; piboSessionId?: string; sessionViewId?: ChatSessionViewId; toolCallNodeId?: string }
-	| { area: "vscode" }
 	| { area: "workflows"; draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string }
 	| { area: "agents" }
 	| { area: "cron" }
@@ -22,10 +21,9 @@ export type NavigationOptions = {
 type SessionViewSearch = { view: ChatSessionViewId; toolCall?: string };
 type ContextSearch = { piboSessionId?: string };
 
-type SettingsNavigationTo = "/settings/debug" | "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/pi-packages" | "/settings/skills" | "/settings/providers" | "/settings";
+type SettingsNavigationTo = "/settings/debug" | "/settings/concurrency" | "/settings/previews" | "/settings/transcription" | "/settings/speech" | "/settings/shortcuts" | "/settings/maintenance" | "/settings/skills" | "/settings/providers" | "/settings";
 
 type ChatRouteNavigationRequest =
-	| { to: "/vscode"; replace: boolean }
 	| { to: "/workflows/drafts/$draftId"; params: { draftId: string }; replace: boolean }
 	| { to: "/workflows/view/$workflowId/$workflowVersion"; params: { workflowId: string; workflowVersion: string }; replace: boolean }
 	| { to: "/workflows"; replace: boolean }
@@ -40,7 +38,6 @@ type ChatRouteNavigationRequest =
 	| { to: "/settings/speech"; replace: boolean }
 	| { to: "/settings/shortcuts"; replace: boolean }
 	| { to: "/settings/maintenance"; replace: boolean }
-	| { to: "/settings/pi-packages"; replace: boolean }
 	| { to: "/settings/skills"; replace: boolean }
 	| { to: "/settings/providers"; replace: boolean }
 	| { to: "/settings"; replace: boolean }
@@ -59,7 +56,6 @@ export function chatRouteFromLocation(pathname: string, search: Record<string, u
 	const sessionViewId = parseChatSessionViewId(search.view);
 	const toolCallNodeId = nonEmptySearchString(search[TOOL_CALL_REFERENCE_QUERY_PARAM]);
 	if (parts[0] === "context") return { area: "context", ...(contextPiboSessionId ? { piboSessionId: contextPiboSessionId } : {}) };
-	if (parts[0] === "vscode") return { area: "vscode" };
 	if (parts[0] === "workflows" && parts[1] === "drafts" && parts[2]) return { area: "workflows", draftId: parts[2] };
 	if (parts[0] === "workflows" && parts[1] === "view" && parts[2] && parts[3]) return { area: "workflows", viewWorkflowId: parts[2], viewWorkflowVersion: parts[3] };
 	if (parts[0] === "workflows") return { area: "workflows" };
@@ -80,7 +76,6 @@ export function chatNavigationRequest(target: ChatAppRoute, replace: boolean, ne
 		view: nextSessionViewId,
 		...(target.area === "sessions" && target.toolCallNodeId ? { toolCall: target.toolCallNodeId } : {}),
 	};
-	if (target.area === "vscode") return { to: "/vscode", replace };
 	if (target.area === "workflows") {
 		if (target.draftId) return { to: "/workflows/drafts/$draftId", params: { draftId: target.draftId }, replace };
 		if (target.viewWorkflowId && target.viewWorkflowVersion) {
@@ -178,7 +173,6 @@ function settingsPanelFromPathPart(part: string | undefined): SettingsPanel {
 	if (part === "speech") return "speech";
 	if (part === "shortcuts") return "shortcuts";
 	if (part === "maintenance") return "maintenance";
-	if (part === "pi-packages") return "pi-packages";
 	if (part === "skills") return "skills";
 	if (part === "providers") return "providers";
 	return "general";
@@ -192,7 +186,6 @@ function settingsPathForPanel(panel: SettingsPanel | undefined): SettingsNavigat
 	if (panel === "speech") return "/settings/speech";
 	if (panel === "shortcuts") return "/settings/shortcuts";
 	if (panel === "maintenance") return "/settings/maintenance";
-	if (panel === "pi-packages") return "/settings/pi-packages";
 	if (panel === "skills") return "/settings/skills";
 	if (panel === "providers") return "/settings/providers";
 	return "/settings";

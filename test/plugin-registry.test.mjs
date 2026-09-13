@@ -1,14 +1,34 @@
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { createDefaultPiboPluginRegistry, createGatewayProducerPiboPluginRegistry } from "../dist/plugins/builtin.js";
 import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
-import { upsertPiPackage } from "../dist/pi-packages/store.js";
-import { findCliToolEntry } from "../dist/tools/registry.js";
+import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
+import { findCliToolEntry, listInstalledCliToolAgentContexts } from "../dist/tools/registry.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
+
+async function startProductRegistry(t, createRegistry) {
+	const root = await mkdtemp(join(tmpdir(), "pibo-plugin-registry-product-"));
+	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	const registry = createRegistry();
+	const product = await startPluginProductRuntime({
+		host: registry.getPluginHost(),
+		data,
+		artifactRoot: join(root, "artifacts"),
+		collectConsumers: async () => [],
+	});
+	t.after(async () => {
+		await product.dispose();
+		data.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	return registry;
+}
 
 async function withPiboHome(piboHome, run) {
 	const previous = process.env.PIBO_HOME;
@@ -21,24 +41,14 @@ async function withPiboHome(piboHome, run) {
 	}
 }
 
-async function withCwd(cwd, run) {
-	const previous = process.cwd();
-	process.chdir(cwd);
-	try {
-		return await run();
-	} finally {
-		process.chdir(previous);
-	}
-}
-
-test("default plugin registry builds core and native Codex capabilities without retired aliases", () => {
-	const registry = createDefaultPiboPluginRegistry();
+test("default plugin registry builds core and installed package capabilities without retired aliases", async (t) => {
+	const registry = await startProductRegistry(t, createDefaultPiboPluginRegistry);
 	const catalog = registry.getCapabilityCatalog();
 
 	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
 	assert.deepEqual(registry.createProfile("base").builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.ok(catalog.nativeTools.some((tool) => (
-		tool.name === "web_search" && tool.pluginId === "pibo.core" && tool.hasDefinition === false
+		tool.name === "web_search" && tool.pluginId === "pibo.web-search" && tool.hasDefinition === false
 	)));
 	assert.ok(catalog.nativeTools.some((tool) => tool.name === "apply_patch" && tool.pluginId === "pibo.codex-compat"));
 	assert.ok(catalog.nativeTools.some((tool) => tool.name === "view_image" && tool.pluginId === "pibo.codex-compat"));
@@ -181,8 +191,8 @@ test("default plugin registry builds core and native Codex capabilities without 
 	]);
 });
 
-test("gateway producer profile is available only through its parked registry", () => {
-	const registry = createGatewayProducerPiboPluginRegistry();
+test("gateway producer profile composes with the installed gateway tool package only through its parked registry", async (t) => {
+	const registry = await startProductRegistry(t, createGatewayProducerPiboPluginRegistry);
 	const gatewayProducer = registry.createProfile("gateway-producer");
 
 	assert.equal(gatewayProducer.profileName, "pibo-gateway-producer");
@@ -207,21 +217,17 @@ test("capability catalog exposes installed pibo tool context hints", async () =>
 		writeFileSync(paths.executablePath, "#!/bin/sh\n");
 		writeFileSync(graphifyPaths.executablePath, "#!/bin/sh\n");
 
-		const registry = createDefaultPiboPluginRegistry();
-		const catalog = registry.getCapabilityCatalog();
-		const browserUseCatalogEntry = catalog.piboTools.find((tool) => tool.name === "browser-use");
-		const graphifyCatalogEntry = catalog.piboTools.find((tool) => tool.name === "graphify");
-		const ralphCatalogEntry = catalog.piboTools.find((tool) => tool.name === "ralph");
-
-		assert.ok(browserUseCatalogEntry);
-		assert.match(browserUseCatalogEntry.snippet, /tools env browser-use/);
-		assert.match(browserUseCatalogEntry.snippet, /tools browser-use lease acquire/);
-		assert.ok(graphifyCatalogEntry);
-		assert.match(graphifyCatalogEntry.snippet, /tools env graphify/);
-		assert.match(graphifyCatalogEntry.snippet, /GRAPH_REPORT\.md/);
-		assert.ok(ralphCatalogEntry);
-		assert.match(ralphCatalogEntry.snippet, /pibo ralph templates/);
-		assert.match(ralphCatalogEntry.snippet, /pibo tools guide ralph ralph/);
+		const contexts = listInstalledCliToolAgentContexts();
+		const browserUseContext = contexts.find((tool) => tool.name === "browser-use");
+		const graphifyContext = contexts.find((tool) => tool.name === "graphify");
+		const ralphContext = contexts.find((tool) => tool.name === "ralph");
+		assert.match(browserUseContext?.snippet ?? "", /tools env browser-use/);
+		assert.match(browserUseContext?.snippet ?? "", /tools browser-use lease acquire/);
+		assert.match(graphifyContext?.snippet ?? "", /tools env graphify/);
+		assert.match(graphifyContext?.snippet ?? "", /GRAPH_REPORT\.md/);
+		assert.match(ralphContext?.snippet ?? "", /pibo ralph templates/);
+		assert.match(ralphContext?.snippet ?? "", /pibo tools guide ralph ralph/);
+		assert.equal(Object.hasOwn(createDefaultPiboPluginRegistry().getCapabilityCatalog(), "piboTools"), false);
 
 		rmSync(paths.rootDir, { recursive: true, force: true });
 		rmSync(graphifyPaths.rootDir, { recursive: true, force: true });
@@ -243,27 +249,6 @@ test("capability catalog keeps user skills separate from plugin skills", () => {
 			pluginName: undefined,
 		},
 	);
-});
-
-test("capability catalog exposes registered Pi packages without activating them", async () => {
-	const cwd = join(tmpdir(), `pibo-plugin-registry-pi-packages-${Math.random().toString(36).slice(2)}`);
-	mkdirSync(cwd, { recursive: true });
-	await withCwd(cwd, () => {
-		upsertPiPackage({
-			id: "catalog-package",
-			name: "catalog-package",
-			source: "/tmp/catalog-package",
-			installSpec: "/tmp/catalog-package",
-			resourceTypes: ["skill"],
-			installStatus: "registered",
-			diagnostics: [{ type: "warning", message: "not installed" }],
-		});
-		const registry = createDefaultPiboPluginRegistry();
-		const catalog = registry.getCapabilityCatalog();
-
-		assert.equal(catalog.piPackages.find((pkg) => pkg.id === "catalog-package")?.installStatus, "registered");
-		assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
-	});
 });
 
 test("plugins can register profiles, gateway actions, and event listeners", async () => {

@@ -14,8 +14,9 @@ import { WorkflowLibraryPanel } from "./workflows/WorkflowLibraryPanel";
 import { WorkflowRawIrEditor } from "./workflows/WorkflowRawIrEditor";
 import { WorkflowVersionViewer } from "./workflows/WorkflowVersionViewer";
 import { WorkflowPill } from "./workflows/workflow-shared-ui";
+import type { PiboRoom } from "./types";
 
-export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion, onCreateWorkflowSession }: { draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string; onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void }) {
+export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion, onCreateWorkflowSession, room }: { draftId?: string; viewWorkflowId?: string; viewWorkflowVersion?: string; onCreateWorkflowSession?: (workflowId: string, workflowVersion: string) => void; room?: PiboRoom }) {
 	return (
 		<main className="h-full min-h-0 overflow-auto bg-[#101d22]">
 			<section className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6 max-[720px]:p-4" aria-labelledby="workflows-title">
@@ -44,7 +45,7 @@ export function WorkflowsArea({ draftId, viewWorkflowId, viewWorkflowVersion, on
 						description="Load a UI draft wrapper and keep Pibo Workflow IR as the editable source of truth."
 					>
 						{draftId ? (
-							<WorkflowBuilderDraftLoader draftId={draftId} />
+							<WorkflowBuilderDraftLoader draftId={draftId} room={room} />
 						) : viewWorkflowId && viewWorkflowVersion ? (
 							<WorkflowVersionViewer workflowId={viewWorkflowId} workflowVersion={viewWorkflowVersion} />
 						) : (
@@ -80,7 +81,7 @@ function WorkflowBuilderLanding() {
 	);
 }
 
-function WorkflowBuilderDraftLoader({ draftId }: { draftId: string }) {
+function WorkflowBuilderDraftLoader({ draftId, room }: { draftId: string; room?: PiboRoom }) {
 	const [draft, setDraft] = useState<WorkflowDraftRecord | undefined>();
 	const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
 	const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -123,7 +124,7 @@ function WorkflowBuilderDraftLoader({ draftId }: { draftId: string }) {
 		);
 	}
 
-	return <WorkflowDraftEditorShell draft={draft} />;
+	return <WorkflowDraftEditorShell draft={draft} room={room} />;
 }
 
 function WorkflowExplicitNonGoalsPanel() {
@@ -168,7 +169,7 @@ function WorkflowSecurityBoundaryPanel() {
 	);
 }
 
-function WorkflowDraftEditorShell({ draft }: { draft: WorkflowDraftRecord }) {
+function WorkflowDraftEditorShell({ draft, room }: { draft: WorkflowDraftRecord; room?: PiboRoom }) {
 	const [currentDraft, setCurrentDraft] = useState(draft);
 	const [versionIntent, setVersionIntent] = useState<"patch" | "minor" | "major">(draft.versionIntent);
 	const [publishState, setPublishState] = useState<"idle" | "validating" | "validated" | "publishing" | "published" | "error">("idle");
@@ -308,6 +309,7 @@ function WorkflowDraftEditorShell({ draft }: { draft: WorkflowDraftRecord }) {
 
 			<WorkflowGraphCanvas
 				draft={currentDraft}
+				room={room}
 				onDraftChange={setCurrentDraft}
 				renderInspectors={(props) => <WorkflowInspectorsPanel {...props} />}
 			/>

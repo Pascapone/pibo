@@ -117,7 +117,7 @@ test("mobile sidebar helpers cover modal state, nested keyboard ownership, focus
 
 test("every responsive Chat Web drawer applies shared modal semantics and preserves an actionable backdrop", async () => {
 	const drawers = [
-		["src/apps/chat-ui/src/App.tsx", "Chat sidebar"],
+		["src/apps/chat-ui/src/desktop-session-sidebar.tsx", "Sessions sidebar"],
 		["src/apps/chat-ui/src/agents/AgentsSidebar.tsx", "Agents sidebar"],
 		["src/apps/chat-ui/src/CronArea.tsx", "Cron jobs sidebar"],
 		["src/apps/chat-ui/src/LoopArea.tsx", "Loop jobs sidebar"],
@@ -143,10 +143,9 @@ test("every responsive Chat Web drawer applies shared modal semantics and preser
 });
 
 test("App owns initial focus, bidirectional containment, Escape close, and delayed trigger restoration", async () => {
-	const [appSource, helperSource, chromeSource] = await Promise.all([
+	const [appSource, helperSource] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/mobile-sidebar-accessibility.ts", "utf8"),
-		readFile("src/apps/chat-ui/src/app-chrome.tsx", "utf8"),
 	]);
 	assert.match(appSource, /useMobileSidebarModal/);
 	assert.match(appSource, /const closeMobileSidebar = useMobileSidebarModal/);
@@ -160,6 +159,8 @@ test("App owns initial focus, bidirectional containment, Escape close, and delay
 	assert.match(helperSource, /triggerRef\.current/);
 	assert.match(helperSource, /sidebarRef\?\.current/);
 	assert.match(helperSource, /rootRef\?\.current/);
-	assert.match(chromeSource, /mobileSidebarTriggerRef/);
-	assert.match(chromeSource, /ref=\{mobileSidebarTriggerRef\}/);
+	assert.match(appSource, /mobileSidebarTriggerRef/);
+	assert.match(appSource, /ref=\{mobileSidebarTriggerRef\}/);
+	assert.match(appSource, /sidebarRef: mobileSidebarRef/);
+	assert.match(appSource, /rootRef: mobileSidebarRootRef/);
 });

@@ -183,47 +183,30 @@ test("setup plan can write generated files to a staging directory", () => {
 	}
 });
 
-test("Batteries Included is the default complete profile with a loopback authenticated IDE route", () => {
+test("Batteries Included is the default complete profile without a bundled IDE", () => {
 	const plan = JSON.parse(pibo(["setup", "plan", "--domain", "pibo.example.com", "--json"]));
 	assert.equal(plan.profile, "batteries-included");
 	assert.deepEqual(plan.components.map((component) => component.name), [
 		"core",
-		"vscode-web",
 		"browser-tools",
 		"managed-browser",
 		"web-annotations",
 		"mcp-defaults",
 	]);
-	assert.ok(plan.services.every((service) => service.public === false));
-	assert.deepEqual(plan.ports.find((port) => port.name === "vscode-web"), {
-		name: "vscode-web",
-		host: "127.0.0.1",
-		port: 4790,
-		exposure: "public-via-proxy",
-	});
+	assert.deepEqual(plan.services.map((service) => service.name), ["pibo-web"]);
+	assert.equal(plan.ports.some((port) => port.name === "vscode-web"), false);
+	assert.deepEqual(plan.downloads, []);
 	const caddy = plan.files.find((file) => file.path === "/etc/caddy/Caddyfile").content;
-	assert.match(caddy, /forward_auth 127\.0\.0\.1:4788/);
-	assert.match(caddy, /uri \/api\/chat\/bootstrap/);
-	assert.match(caddy, /reverse_proxy 127\.0\.0\.1:4790/);
-	assert.match(caddy, /frame-ancestors 'self'/);
+	assert.match(caddy, /reverse_proxy 127\.0\.0\.1:4788/);
+	assert.doesNotMatch(caddy, /apps\/vscode|127\.0\.0\.1:4790|forward_auth/);
 	const gateway = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-web.service").content;
-	assert.match(gateway, /PIBO_VSCODE_WEB_URL=\/apps\/vscode\//);
+	assert.doesNotMatch(gateway, /PIBO_VSCODE/);
 	assert.ok(plan.actions.some((action) => / gateway web restart$/.test(action.command)));
-	assert.ok(plan.actions.some((action) => /sha256sum -c/.test(action.command)));
 	const browserProfiles = plan.actions.find((action) => action.id === "browser-profiles");
 	assert.match(browserProfiles.command, /install -d -m 700/);
 	assert.match(browserProfiles.command, /browser-use\/home\/chrome-profiles/);
-	assert.match(browserProfiles.command, /browser-use\/home\/auth-pool/);
 	assert.match(browserProfiles.command, /agent-browser\/home\/profiles\/leases/);
-	assert.ok(plan.actions.some((action) => action.id === "health" && /Connection: Upgrade/.test(action.command)));
 	assert.equal(plan.components.find((component) => component.name === "core").version, packageVersion);
-	assert.equal(plan.components.find((component) => component.name === "vscode-web").sha256["linux-amd64"], plan.downloads[0].sha256["linux-amd64"]);
-	const codeService = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-code-server.service").content;
-	assert.match(codeService, /User=pibo-code/);
-	assert.match(codeService, /--bind-addr 127\.0\.0\.1:4790 --auth none/);
-	assert.match(codeService, /ProtectSystem=strict/);
-	const settings = JSON.parse(plan.files.find((file) => file.path === "/etc/pibo/code-server-default-settings.json").content);
-	assert.equal(settings["workbench.colorTheme"], "Default Dark Modern");
 	const mcpFile = plan.files.find((file) => file.path.endsWith("/setup/mcp-defaults.json"));
 	assert.equal(mcpFile.mode, 0o600);
 	const mcp = JSON.parse(mcpFile.content);
@@ -231,7 +214,6 @@ test("Batteries Included is the default complete profile with a loopback authent
 	const mcpWrapper = plan.files.find((file) => file.path.endsWith("/setup/bin/chrome-devtools-mcp"));
 	assert.equal(mcpWrapper.mode, 0o755);
 	assert.match(mcpWrapper.content, /browser-use --pibo-ensure-chrome/);
-	assert.match(mcpWrapper.content, /--no-usage-statistics --no-performance-crux/);
 	assert.ok(!mcp.mcpServers.filesystem.allowedTools.some((name) => /write|move|create|edit/i.test(name)));
 });
 
@@ -278,14 +260,10 @@ test("generated systemd units quote configurable paths with spaces", () => {
 	const workspaceRoot = "/srv/pibo workspace test";
 	const plan = createInstallationPlan({ profile: "batteries-included", piboHome, workspaceRoot });
 	const gateway = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-web.service").content;
-	const codeServer = plan.files.find((file) => file.path === "/etc/systemd/system/pibo-code-server.service").content;
 
 	assert.match(gateway, /Environment="PIBO_HOME=\/var\/lib\/pibo home test"/);
-	assert.match(gateway, /Environment="PIBO_VSCODE_WORKSPACE_ROOT=\/srv\/pibo workspace test"/);
 	assert.match(gateway, /Environment="MCP_CONFIG_PATH=\/var\/lib\/pibo home test\/setup\/mcp-defaults\.json"/);
-	assert.match(codeServer, /WorkingDirectory=\/srv\/pibo workspace test/);
-	assert.match(codeServer, /--disable-workspace-trust "\/srv\/pibo workspace test"/);
-	assert.match(codeServer, /ReadWritePaths="\/srv\/pibo workspace test" \/var\/lib\/pibo-code/);
+	assert.doesNotMatch(gateway, /PIBO_VSCODE|pibo-code-server/);
 });
 
 test("setup preflights every target before writing and preserves unmanaged files", () => {
@@ -337,17 +315,17 @@ test("profile staging is idempotent and status reports pinned component versions
 	const piboHome = "/var/lib/pibo-test";
 	try {
 		const first = pibo(["setup", "install", "--profile", "batteries-included", "--pibo-home", piboHome, "--domain", "pibo.example.com", "--write-to", dir]);
-		assert.match(first, /Written: 8; unchanged: 0/);
+		assert.match(first, /Written: 5; unchanged: 0/);
 		const manifestPath = join(dir, "var/lib/pibo-test/setup/installation.json");
 		const before = readFileSync(manifestPath, "utf8");
 		const second = pibo(["setup", "install", "--profile", "batteries-included", "--pibo-home", piboHome, "--domain", "pibo.example.com", "--write-to", dir]);
-		assert.match(second, /Written: 0; unchanged: 8/);
+		assert.match(second, /Written: 0; unchanged: 5/);
 		assert.equal(readFileSync(manifestPath, "utf8"), before);
 		const status = JSON.parse(pibo(["setup", "status", "--pibo-home", piboHome, "--root", dir, "--json"]));
 		assert.equal(status.installed, true);
 		assert.equal(status.profile, "batteries-included");
 		assert.equal(status.checks.every((check) => check.status === "ok"), true);
-		assert.equal(status.components.find((component) => component.name === "vscode-web").version, "4.135.0");
+		assert.equal(status.components.some((component) => component.name === "vscode-web"), false);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -384,11 +362,11 @@ test("component add upgrades a staged Vanilla install without changing its profi
 	const piboHome = "/var/lib/pibo-test";
 	try {
 		pibo(["setup", "install", "--profile", "vanilla", "--pibo-home", piboHome, "--write-to", dir]);
-		pibo(["setup", "component", "add", "vscode-web", "--pibo-home", piboHome, "--root", dir]);
+		pibo(["setup", "component", "add", "web-annotations", "--pibo-home", piboHome, "--root", dir]);
 		const status = JSON.parse(pibo(["setup", "status", "--pibo-home", piboHome, "--root", dir, "--json"]));
 		assert.equal(status.profile, "vanilla");
-		assert.ok(status.components.some((component) => component.name === "vscode-web"));
-		assert.ok(existsSync(join(dir, "etc/systemd/system/pibo-code-server.service")));
+		assert.ok(status.components.some((component) => component.name === "web-annotations"));
+		assert.equal(existsSync(join(dir, "etc/systemd/system/pibo-code-server.service")), false);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -418,7 +396,6 @@ test("profile transition removes obsolete owned resources while preserving works
 		assert.equal(manifest.profile, "vanilla");
 		assert.deepEqual(manifest.components.map((component) => component.name), ["core"]);
 		assert.equal(existsSync(join(dir, "etc/systemd/system/pibo-code-server.service")), false);
-		assert.equal(existsSync(join(dir, "opt/pibo/code-server/4.135.0")), false);
 		assert.equal(existsSync(join(dir, "var/lib/pibo-test/setup/mcp-runtime")), false);
 		assert.equal(readFileSync(workspaceData, "utf8"), "preserve transition data\n");
 	} finally {
@@ -509,8 +486,8 @@ test("upgrade, component-add, and uninstall discovery support JSON without mutat
 		pibo(["setup", "install", "--profile", "vanilla", "--pibo-home", piboHome, "--write-to", dir]);
 		const upgrade = JSON.parse(pibo(["setup", "upgrade", "--pibo-home", piboHome, "--root", dir, "--json"]));
 		assert.equal(upgrade.profile, "vanilla");
-		const component = JSON.parse(pibo(["setup", "component", "add", "vscode-web", "--pibo-home", piboHome, "--root", dir, "--json"]));
-		assert.ok(component.components.some((entry) => entry.name === "vscode-web"));
+		const component = JSON.parse(pibo(["setup", "component", "add", "web-annotations", "--pibo-home", piboHome, "--root", dir, "--json"]));
+		assert.ok(component.components.some((entry) => entry.name === "web-annotations"));
 		assert.equal(existsSync(join(dir, "etc/systemd/system/pibo-code-server.service")), false);
 		const uninstall = JSON.parse(pibo(["setup", "uninstall", "--pibo-home", piboHome, "--root", dir, "--json"]));
 		assert.equal(uninstall.profile, "vanilla");

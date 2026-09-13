@@ -79,11 +79,6 @@ export type SkillProfile = {
 	pluginId?: string;
 };
 
-export type PiPackageProfile = {
-	id: string;
-	enabled?: boolean;
-};
-
 export type ContextFileScope = "global" | "agent";
 export type ContextFileSource = "plugin" | "managed";
 
@@ -177,7 +172,6 @@ export type InitialSessionContextOptions = {
 	tools?: readonly ToolProfileRegistration[];
 	subagents?: readonly SubagentProfile[];
 	mcpServers?: readonly string[];
-	piPackages?: readonly PiPackageProfile[];
 	contextFiles?: readonly ContextFileProfile[];
 	diagnostics?: readonly PiboProfileDiagnostic[];
 	builtinTools?: BuiltinToolsMode;
@@ -211,7 +205,6 @@ export class InitialSessionContext {
 	readonly tools: readonly ToolProfile[];
 	readonly subagents: readonly SubagentProfile[];
 	readonly mcpServers: readonly string[];
-	readonly piPackages: readonly PiPackageProfile[];
 	readonly contextFiles: readonly ContextFileProfile[];
 	readonly diagnostics: readonly PiboProfileDiagnostic[];
 	readonly builtinTools: BuiltinToolsMode;
@@ -244,7 +237,6 @@ export class InitialSessionContext {
 		this.tools = (options.tools ?? []).map(normalizeToolProfile);
 		this.subagents = (options.subagents ?? []).map(cloneSubagentProfile);
 		this.mcpServers = [...(options.mcpServers ?? [])];
-		this.piPackages = [...(options.piPackages ?? [])];
 		this.contextFiles = [...(options.contextFiles ?? [])];
 		this.diagnostics = (options.diagnostics ?? []).map((diagnostic) => ({ ...diagnostic }));
 		this.builtinTools = options.builtinTools ?? "default";
@@ -278,7 +270,6 @@ export class InitialSessionContextBuilder {
 	private tools: ToolProfile[] = [];
 	private subagents: SubagentProfile[] = [];
 	private mcpServers: string[] = [];
-	private piPackages: PiPackageProfile[] = [];
 	private contextFiles: ContextFileProfile[] = [];
 	private diagnostics: PiboProfileDiagnostic[] = [];
 	private builtinTools: BuiltinToolsMode = "default";
@@ -417,21 +408,6 @@ export class InitialSessionContextBuilder {
 		return this;
 	}
 
-	withPiPackages(packages: readonly PiPackageProfile[]): this {
-		this.piPackages = [...packages];
-		return this;
-	}
-
-	addPiPackage(pkg: PiPackageProfile): this {
-		this.piPackages.push(pkg);
-		return this;
-	}
-
-	addPiPackages(packages: readonly PiPackageProfile[]): this {
-		this.piPackages.push(...packages);
-		return this;
-	}
-
 	addContextFile(contextFile: ContextFileProfile): this {
 		this.contextFiles.push(contextFile);
 		return this;
@@ -483,7 +459,6 @@ export class InitialSessionContextBuilder {
 			tools: this.tools,
 			subagents: this.subagents,
 			mcpServers: this.mcpServers,
-			piPackages: this.piPackages,
 			contextFiles: this.contextFiles,
 			diagnostics: this.diagnostics,
 			builtinTools: this.builtinTools,

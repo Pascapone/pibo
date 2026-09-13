@@ -470,15 +470,6 @@ export type NavigationData = {
 	sessions: PiboWebSessionNode[];
 };
 
-export type VscodeWebIntegration = {
-	url: string;
-	workspaceRoot?: string;
-};
-
-export type WebIntegrations = {
-	vscode?: VscodeWebIntegration;
-};
-
 export type BootstrapData = NavigationData & {
 	agents: AgentProfile[];
 	customAgents: CustomAgent[];
@@ -487,7 +478,6 @@ export type BootstrapData = NavigationData & {
 	modelCatalog?: ModelCatalog;
 	agentCatalog?: AgentCatalog;
 	capabilities: { actions: Array<{ name: string; description?: string; slashCommands: string[] }> };
-	integrations?: WebIntegrations;
 };
 
 
@@ -599,12 +589,9 @@ export type AgentProfile = {
 	aliases: string[];
 	runtimeInstanceId?: string;
 	runtimeOptions?: Record<string, unknown>;
-	nativeTools?: string[];
 	skills?: string[];
 	contextFiles?: string[];
 	subagents?: CustomAgentSubagent[];
-	mcpServers?: string[];
-	piPackages?: string[];
 	model?: ModelProfile;
 	mainModel?: ModelProfile;
 	mainModelFallbacks?: ModelProfile[];
@@ -619,8 +606,6 @@ export type AgentProfile = {
 	builtinToolNames?: string[];
 	autoContextFiles?: boolean;
 	nativeSubagents?: boolean;
-	runControl?: boolean;
-	goalControl?: boolean;
 };
 
 export type UserSkill = {
@@ -779,7 +764,6 @@ export type AgentRuntimeCatalogEntry = {
 
 export type AgentCatalog = {
 	agentRuntimes: AgentRuntimeCatalogEntry[];
-	nativeTools: Array<{ name: string; description?: string; yieldable: boolean; hasDefinition: boolean; portable: boolean; replacesBuiltinTools?: string[]; pluginId?: string; pluginName?: string }>;
 	skills: Array<{ name: string; path: string; kind: "builtin" | "plugin" | "user"; pluginId?: string; pluginName?: string }>;
 	subagents: Array<{
 		name: string;
@@ -800,37 +784,6 @@ export type AgentCatalog = {
 		pluginId?: string;
 		pluginName?: string;
 		agentProfileName?: string;
-	}>;
-	packages: Array<{ name: string; description: string; toolNames: string[] }>;
-	piboTools: Array<{ name: string; description: string; snippet: string }>;
-	mcpServers: Array<{
-		name: string;
-		transport: "stdio" | "http";
-		description?: string;
-		descriptionSource?: "user" | "registry";
-		hasDescription: boolean;
-		editable: boolean;
-	}>;
-	piPackages: Array<{
-		id: string;
-		name: string;
-		description?: string;
-		source: string;
-		installSpec: string;
-		version?: string;
-		repositoryUrl?: string;
-		resourceTypes: Array<"extension" | "skill" | "prompt" | "theme">;
-		extensionPaths?: string[];
-		skillNames?: string[];
-		promptNames?: string[];
-		themeNames?: string[];
-		discoveredToolNames?: string[];
-		installStatus: "registered" | "installed" | "missing" | "error";
-		installPath?: string;
-		enabled: boolean;
-		diagnostics: Array<{ type: "info" | "warning" | "error"; message: string }>;
-		addedAt?: string;
-		updatedAt?: string;
 	}>;
 	userSkills: UserSkill[];
 };
@@ -863,12 +816,9 @@ export type CustomAgent = {
 	description?: string;
 	runtimeInstanceId: string;
 	runtimeOptions: Record<string, unknown>;
-	nativeTools: string[];
 	skills: string[];
 	contextFiles: string[];
 	subagents: CustomAgentSubagent[];
-	mcpServers: string[];
-	piPackages: string[];
 	mainModel?: ModelProfile;
 	mainModelFallbacks: ModelProfile[];
 	subagentModel?: ModelProfile;
@@ -882,9 +832,6 @@ export type CustomAgent = {
 	builtinToolNames: string[];
 	autoContextFiles: boolean;
 	nativeSubagents?: boolean;
-	runControl: boolean;
-	goalControl: boolean;
-	brokenNativeTools?: string[];
 	brokenContextFiles?: string[];
 	createdAt: string;
 	updatedAt: string;

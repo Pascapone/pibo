@@ -9,7 +9,7 @@ import { CustomAgentStore, previewCustomAgentCreate, previewCustomAgentUpdate, i
 import { PluginStore } from "../dist/plugins/store.js";
 import { PLUGIN_STORE_SCHEMA } from "../dist/plugins/store-schema.js";
 import { resolvePluginContributions } from "../dist/plugins/resolution.js";
-import { validatePluginAgentMutation, normalizePluginAgentCreate, normalizePluginAgentUpdate, validateAgentPluginPlanMutation, resolveAgentPluginPreview, buildAgentPluginCatalog, handleAgentPluginRoute, handleChatCapabilityRoute } from "../dist/apps/chat/chat-capability-routes.js";
+import { validatePluginAgentMutation, normalizePluginAgentCreate, normalizePluginAgentUpdate, validateAgentPluginPlanMutation, resolveAgentPluginPreview, buildAgentPluginCatalog, handleAgentPluginRoute } from "../dist/apps/chat/chat-capability-routes.js";
 import { createPiboSessionToolDefinitions } from "../dist/tools/session-tool-set.js";
 const { agentDraftToSaveInput, agentToDraft, createBlankAgentDraft, compatibleModelSelectionsForRuntime, setAgentPluginEnabled, setAgentPluginContribution, acceptAgentPluginRevision } = await tsImport("../src/apps/chat-ui/src/agents/agent-designer-model.ts", import.meta.url);
 
@@ -166,7 +166,6 @@ test("API v2 rejects legacy/version/required manipulation; unchanged unresolved 
 	const unknown = { ...agent, pluginSelection: { ...selection, plugins: [{ ...selection.plugins[0], pluginId: "missing.plugin" }] } };
 	assert.equal(validateAgentPluginPlanMutation({ existing: unknown, agent: { ...unknown, description: "new" }, catalog, runtime: runtime() }).valid, false);
 	assert.throws(() => validateAgentPluginPlanMutation({ existing: unknown, agent: { ...unknown, runtimeInstanceId: "omp-native" }, catalog, runtime: runtime("omp-native") }), /missing|installed/i);
-	const retired = await handleChatCapabilityRoute({ route: { kind: "retired-capability-route" } }); assert.equal(retired.status, 410);
 });
 
 test("preview route ignores forged runtime capabilities, is read-only, and catalog hides artifact paths", async () => {

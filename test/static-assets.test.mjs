@@ -8,13 +8,10 @@ import {
 	gzipSync,
 } from "node:zlib";
 import {
-	CHAT_VSCODE_MOUNT_PATH,
 	CHAT_WEB_MOUNT_PATH,
 	STATIC_ASSET_BROTLI_QUALITY,
 	responseBuiltChatAsset,
 	responseBuiltChatIndex,
-	responseBuiltVscodeAsset,
-	responseVscodeAppShell,
 } from "../dist/apps/chat/static-assets.js";
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
@@ -74,7 +71,7 @@ async function assertBuiltAssetCompression({ pathname, respond }) {
 	assert.deepEqual(repeatedGzip, gzip);
 }
 
-test("built Chat and VS Code assets use explicit deterministic compression with stable caching", async () => {
+test("built Chat assets use explicit deterministic compression with stable caching", async () => {
 	assert.equal(STATIC_ASSET_BROTLI_QUALITY, 5);
 
 	const chatIndex = responseBuiltChatIndex();
@@ -82,10 +79,5 @@ test("built Chat and VS Code assets use explicit deterministic compression with 
 	await assertBuiltAssetCompression({
 		pathname: await builtMainAssetPath(chatIndex, CHAT_WEB_MOUNT_PATH),
 		respond: responseBuiltChatAsset,
-	});
-
-	await assertBuiltAssetCompression({
-		pathname: await builtMainAssetPath(responseVscodeAppShell(), CHAT_VSCODE_MOUNT_PATH),
-		respond: responseBuiltVscodeAsset,
 	});
 });

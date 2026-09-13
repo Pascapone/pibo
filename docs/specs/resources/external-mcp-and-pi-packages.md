@@ -3,11 +3,12 @@ type: "Specification"
 title: "External MCP and Pi Package Management"
 description: "Defines the implemented external mcp and pi package management contract and its current ownership, security, and verification boundaries."
 tags: ["resources", "security-boundaries"]
-status: "stable"
+status: "deprecated"
 authority: "normative"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-RES-004"
@@ -226,6 +227,8 @@ open_evidence_gaps:
     specs: ["SPC-RES-001", "SPC-RES-002", "SPC-RES-003", "SPC-RES-004", "SPC-RES-005", "SPC-SEC-001", "SPC-SEC-002", "SPC-SEC-003"]
     gap: "No real-path, browser, external-provider, package-manager, host-lifecycle, Windows, or Pibo2 acceptance was performed; deterministic tests, build, typecheck, and package checks are recorded in the implementation report."
 ---
+> **Partly retired surface:** External MCP remains available through an installed MCP adapter plugin. The exclusive Pi-package CLI/API/UI/runtime surface described by this baseline specification was removed; stored package names survive only as inactive migration evidence. This mixed baseline is deprecated pending consolidation of the retained MCP contract. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 
 # Scope and exclusions
 

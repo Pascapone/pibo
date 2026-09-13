@@ -24,7 +24,10 @@
       "type": "Plan",
       "authority": "directive",
       "status": "draft",
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 117568,
+      "file_sha256": "7a4b290f07c54dc170ac037755016d1412b06309921894f08599e737571026fa",
+      "body_sha256": "ed655182b6249f0346d5eb461572b6f70877de219ab1f99356a26ab70c98a5ac"
     },
     {
       "path": "docs/plans/unified-plugin-system-execution.md",
@@ -33,7 +36,10 @@
       "type": "Task Ledger",
       "authority": "directive",
       "status": "draft",
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 15047,
+      "file_sha256": "a39e548a6f98b7cb87631859ec8410bf5a7cf1638066c357aa9db63ec3bec6d0",
+      "body_sha256": "b8dd2c57753f453ff0745ae98345c790686df507cd874234bc6d2840964ab144"
     },
     {
       "path": "docs/reports/cordis-plugin-architecture-feasibility-2026-09-11.md",
@@ -9019,9 +9025,9 @@
       "type": "Guide",
       "authority": "directive",
       "status": "draft",
-      "file_bytes": 11829,
-      "file_sha256": "443f187c73a770febb7551afedb8df9abce2c2360c47319b98d80fc199aa597a",
-      "body_sha256": "132f00469edcfa8915525bff4d0c9d82573ae53868a74db81d5224d354ce1d25",
+      "file_bytes": 4640,
+      "file_sha256": "4de4fe8c31bea09a04f5b513a74d2c664173039e83926058e129abd6a4d4a826",
+      "body_sha256": "0c0361a3ecedfe15ca7434b2215bf313a75b9b8a4993ca4a65b9e3ba6b05b5ac",
       "lineage": null,
       "source_action": "relocated-pending-profile-conversion"
     },
@@ -9031,10 +9037,10 @@
       "classification": "OKF concept to migrate",
       "type": "Guide",
       "authority": "directive",
-      "status": "draft",
-      "file_bytes": 11428,
-      "file_sha256": "030d4b28cccd338f2bf775bb0c1c12380a4d8af63ab15dd81da7d6846c2066fb",
-      "body_sha256": "ff1b33edf70c89ce9b128382d05d5fa28735ede3fc3ba40429bece172fc2d716",
+      "status": "deprecated",
+      "file_bytes": 11855,
+      "file_sha256": "b1071a0f8b96df26df96342d54eddff995ffb299f08016faff3de23cee43d691",
+      "body_sha256": "952039ee12f03ece6d00c7719ac9e12f614938d67c859b359a9bc4c343795ef0",
       "lineage": null,
       "source_action": "relocated-pending-profile-conversion"
     },
@@ -9059,9 +9065,9 @@
       "type": "Reference",
       "authority": "informative",
       "status": "draft",
-      "file_bytes": 7736,
-      "file_sha256": "b6067b4c35596581076b045a0131c269bf138ef75abb8c39016219ca286bd283",
-      "body_sha256": "b0bc367fcf9fb515803da3f305b66467b1c1947c26ef755f1f8c019b5bfe7f82",
+      "file_bytes": 7319,
+      "file_sha256": "87c0771a7289191c04573c915cd82d752df302a95a07ee5e42beb8c687b044f5",
+      "body_sha256": "04194fd19f387a0057b396a23262b1fbdc12b0e6096d3a0017552e337bfbd3c2",
       "lineage": {
         "source_path": "docs/project/installation-profiles.md",
         "source_commit": "debba32a68137205df6351da9f3ae461004ca0c0",
@@ -9196,9 +9202,9 @@
       "type": "Runbook",
       "authority": "directive",
       "status": "deprecated",
-      "file_bytes": 9099,
-      "file_sha256": "4f9e8ba73362550a48abfdd22685e2c80e3331db4d8ee01bb015af9405a84e1c",
-      "body_sha256": "4d7588693a51389ebc3ea53eb088272743e707e3d81a5f436ab58578769f56c2",
+      "file_bytes": 9521,
+      "file_sha256": "d1ada0e1c33619e705ddee1966f092e079b64e41ed4eb531e9f521d8758dff25",
+      "body_sha256": "485fee68be86f945724a521594584af3df6b4940858046d68f1504edcf3144ad",
       "lineage": null,
       "source_action": "relocated-pending-profile-conversion"
     },
@@ -9286,10 +9292,10 @@
       "classification": "OKF concept to migrate",
       "type": "Reference",
       "authority": "informative",
-      "status": "draft",
-      "file_bytes": 5374,
-      "file_sha256": "70f90f247e10c8bddc8979e1a35c6c36db34bcade4c1cdfa184fab6e0c97ef7f",
-      "body_sha256": "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567",
+      "status": "deprecated",
+      "file_bytes": 5737,
+      "file_sha256": "6bb61bbb4eea49ca270a4f113130c108b1b793cc791bc8984d688c242ff2e18a",
+      "body_sha256": "7d6bb57453c0cf931fa49c94c49ec7885130d49ebcc95d91e4ab5d9499ae4e6a",
       "lineage": {
         "source_path": "docs/project/vscode-web-integration.md",
         "source_commit": "debba32a68137205df6351da9f3ae461004ca0c0",
@@ -12721,10 +12727,10 @@
       "classification": "canonical specification",
       "type": "Specification",
       "authority": "normative",
-      "status": "stable",
-      "file_bytes": 17509,
-      "file_sha256": "352b58c6b173450f9d86b96c0ef8027f5327082b4bb1d6b087b267359ba4f687",
-      "body_sha256": "b9442cd76414af8b2339d62feca6ed6827049ea267bb6a52a49416e03547fc9e",
+      "status": "deprecated",
+      "file_bytes": 17833,
+      "file_sha256": "e61ce255bf49aa7fed0ecf0c68cb7b18c975dae18dd15d1376b4c7565abb058d",
+      "body_sha256": "5e389e76c589f875b8fd8889b64594e6b59cbed615ffc106a9ed44f6b7921c88",
       "lineage": null
     },
     {
@@ -12881,10 +12887,10 @@
       "classification": "canonical specification",
       "type": "Specification",
       "authority": "normative",
-      "status": "stable",
-      "file_bytes": 27459,
-      "file_sha256": "ef73227a4b3d73e20ab1e60d88b93585524358172d52d056da4eab75a3f9d9a2",
-      "body_sha256": "7eefd2dca95ee41793a68a0e203b308827b8a4d05f702dfe7deb3befc37ff265",
+      "status": "deprecated",
+      "file_bytes": 27946,
+      "file_sha256": "a7e38be560aa3a13b58fb53331162aa36a74a87741ac579fa2396bf871ab4f37",
+      "body_sha256": "d2b532ea38f71c46fff487fbec9c8690d0e85164595623d6706defcf6579dbbf",
       "lineage": null
     },
     {
@@ -13129,10 +13135,10 @@
       "classification": "canonical specification",
       "type": "Specification",
       "authority": "normative",
-      "status": "stable",
-      "file_bytes": 24279,
-      "file_sha256": "39f79a76a55e8806d20b0958c9ad75b0024202c2c38b7b0d668f454d08588679",
-      "body_sha256": "0688d57157401a2e377d05c115ed0b4ac5b610967648c32d664ec034602660c8",
+      "status": "deprecated",
+      "file_bytes": 24651,
+      "file_sha256": "5fa9098b860a4927ddfc932c03239bccf80b17bd8ad2bfc7162e9b10dd411989",
+      "body_sha256": "9094d431680dc0e1d2cdbf5319eca0ab84a62bba327ec4f7b83a17bc54a1af99",
       "lineage": null
     },
     {
@@ -13155,10 +13161,10 @@
       "classification": "canonical specification",
       "type": "Specification",
       "authority": "normative",
-      "status": "stable",
-      "file_bytes": 32966,
-      "file_sha256": "ac281c03241c252f420d0aa4a82cd224d92eea6b1893069b4807688d220ccfd3",
-      "body_sha256": "f9354c3be02dcdf976b84589d00ba17400f9f5175d808e0e7916ccb3385791bf",
+      "status": "deprecated",
+      "file_bytes": 33352,
+      "file_sha256": "b9939dea928181c05d96e971c688ceb081b8a439c3ecf0cb8ab1fed6f1f5bf4a",
+      "body_sha256": "286cb85fe61a9a6c2dd61daf21691fb5fb4b630625222810ad7ac873cbd72144",
       "lineage": null
     },
     {
@@ -13203,10 +13209,10 @@
       "classification": "canonical specification",
       "type": "Specification",
       "authority": "normative",
-      "status": "stable",
-      "file_bytes": 16597,
-      "file_sha256": "998239cd576f94f6c525c884342f4b92a66fdabde0328f445aeacc3775732ecb",
-      "body_sha256": "8f42d222e8fead2087a5bb20c03b2eddf14190eaf14c09d6cad0685cec1de2ed",
+      "status": "deprecated",
+      "file_bytes": 16987,
+      "file_sha256": "ee8d66ec14311d01a8ac022d667f33d49e7c1c1590c8363c6467acd3db456893",
+      "body_sha256": "f1b7a2c95697244ee983c8a4ec81a53911004bf0c7d8a6c991283425aa9dfcb2",
       "lineage": null
     },
     {
@@ -13644,18 +13650,6 @@
       "body_sha256": "60e782f7c97e171cd10c656733463918f23c34a5ee36b5bb7c20c3f5aff6d0e7"
     },
     {
-      "path": "src/apps/chat-vscode/README.md",
-      "state": "host-exception",
-      "reason": "Colocated application documentation distributed with or linked from source.",
-      "classification": "host-owned exception",
-      "authority": null,
-      "status": null,
-      "lineage": null,
-      "file_bytes": 9090,
-      "file_sha256": "8137e1acde2e985155e952c1c94bf88a4b6776797385158b3c70b0747a7a6dd7",
-      "body_sha256": "8137e1acde2e985155e952c1c94bf88a4b6776797385158b3c70b0747a7a6dd7"
-    },
-    {
       "path": "src/skills/pibo-debug-auth/SKILL.md",
       "state": "host-exception",
       "reason": "Source Pibo debug-auth skill definition retained at its packaging and synchronization path.",
@@ -13958,7 +13952,10 @@
       "type": "Validation Report",
       "authority": "evidentiary",
       "status": "draft",
-      "lineage": null
+      "lineage": null,
+      "file_bytes": 31396,
+      "file_sha256": "e65b19acfe7d89b2bf822f158bc85c65d54730e97a2713ea136ead9f7b58c57f",
+      "body_sha256": "4170aa1905319075050d462b236211be040565ae935853ba19788eea5e943aba"
     }
   ]
 }

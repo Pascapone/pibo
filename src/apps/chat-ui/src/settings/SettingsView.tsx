@@ -83,8 +83,6 @@ export function SettingsView({
 	piboSessionId?: string | null;
 	onProviderAuthChanged?: () => void | Promise<void>;
 }) {
-	if (activePanel === "pi-packages") return <p className="p-3 text-xs text-orange-300">Pi Package execution has been removed. Use trusted Pibo plugins; retained package references require explicit migration.</p>;
-
 	if (activePanel === "skills") {
 		return (
 			<div className="overflow-auto p-6 max-[640px]:p-3">

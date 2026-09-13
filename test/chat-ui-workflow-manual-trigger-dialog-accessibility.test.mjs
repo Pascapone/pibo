@@ -19,6 +19,9 @@ test("manual triggers expose their Room and send its identity through the ordina
 	assert.match(source, /aria-label="Run Room"/);
 	assert.match(source, /Workspace: \{manualTriggerRoom\?\.workspace/);
 	assert.match(source, /roomId: manualTriggerDialog\.roomId/);
-	const app = readFileSync(join(process.cwd(), "src/apps/chat-ui/src/App.tsx"), "utf8");
-	assert.match(app, /MinimalWorkflowsArea room=\{bootstrap\.room\}/);
+	const browserEntry = readFileSync(join(process.cwd(), "src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx"), "utf8");
+	const workflowsArea = readFileSync(join(process.cwd(), "src/apps/chat-ui/src/WorkflowsArea.tsx"), "utf8");
+	assert.match(browserEntry, /<WorkflowsArea room=\{bootstrap\.room\}/);
+	assert.match(workflowsArea, /<WorkflowBuilderDraftLoader draftId=\{draftId\} room=\{room\}/);
+	assert.match(workflowsArea, /<WorkflowGraphCanvas[\s\S]*room=\{room\}/);
 });

@@ -155,7 +155,6 @@ export function AgentsView({
 	modelCatalog?: ModelCatalog;
 	onCreateSession: (profile: string) => void;
 	onEditContextFile: (key: string) => void;
-	onEditMcpServer?: (name: string) => void;
 	piboSessionId?: string;
 	sessionProfileName?: string;
 	onOpenPluginSettings?: (target: AgentPluginSettingsTarget) => void;
@@ -196,6 +195,7 @@ export function AgentsView({
 	const [deleteConfirmName, setDeleteConfirmName] = useState("");
 	const [localError, setLocalError] = useState<string | null>(null);
 	const [runtimeOptionsError, setRuntimeOptionsError] = useState<string | null>(null);
+	const [pluginBuiltinToolReplacements, setPluginBuiltinToolReplacements] = useState<Map<string, string[]>>(() => new Map());
 	const [newContextFileName, setNewContextFileName] = useState("");
 	const [newContextFileScope, setNewContextFileScope] = useState<"global" | "agent">("agent");
 	const currentDraftRef = useRef(draft);
@@ -481,7 +481,7 @@ export function AgentsView({
 			? null
 			: selectedRuntime.diagnostics.find((diagnostic) => diagnostic.severity === "error")?.message ?? "The selected runtime is unavailable."
 		: `Runtime instance "${draft.runtimeInstanceId}" is not registered.`;
-	const piboToolsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.tools.piboManaged, "Pibo-managed tools");
+	const pluginToolsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.tools.piboManaged, "Plugin-managed tools");
 	const skillsUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.skills, "Skills");
 	const contextUnavailableReason = runtimeUnavailableReason ?? unsupportedDeliveryReason(selectedRuntime?.capabilities.context, "Context delivery");
 	const contextDiscovery = selectedRuntime?.capabilities.contextDiscovery;
@@ -871,9 +871,9 @@ export function AgentsView({
 								onToggle={() => setDraft((current) => ({ ...current, autoContextFiles: !(current.autoContextFiles ?? true) }))}
 							/>
 						) : null}
-						{selectedRuntime?.adapterId === "pi" ? <BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={new Map()} /> : null}
+						{selectedRuntime?.adapterId === "pi" ? <BuiltinToolsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} capabilityUnavailableReason={piBuiltinToolsUnavailableReason} replacements={pluginBuiltinToolReplacements} /> : null}
 					</DesignerPanel>
-					<AgentPluginsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} piboSessionId={piboSessionId} sessionProfileName={sessionProfileName} onOpenPluginSettings={onOpenPluginSettings ? (target) => void runAfterAutosave(() => onOpenPluginSettings(target)) : undefined} />
+					<AgentPluginsDesigner draft={draft} setDraft={setDraft} readOnly={readOnly} piboSessionId={piboSessionId} sessionProfileName={sessionProfileName} onOpenPluginSettings={onOpenPluginSettings ? (target) => void runAfterAutosave(() => onOpenPluginSettings(target)) : undefined} onBuiltinToolReplacementsChange={setPluginBuiltinToolReplacements} />
 					<DesignerPanel title="Skills">
 						{skillsUnavailableReason ? <RuntimeCapabilityNotice reason={skillsUnavailableReason} /> : null}
 						<CatalogGroupGrid
@@ -979,7 +979,7 @@ export function AgentsView({
 						catalog={catalog ?? undefined}
 						legacyModelCatalog={modelCatalog}
 						readOnly={readOnly}
-						capabilityUnavailableReason={piboToolsUnavailableReason}
+						capabilityUnavailableReason={pluginToolsUnavailableReason}
 					/>
 					{archivedDraft && draft.profileName ? (
 						<DesignerPanel title="Delete Agent">

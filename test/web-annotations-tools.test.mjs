@@ -1,15 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
-import { createDefaultPiboPluginRegistry } from "../dist/plugins/builtin.js";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
-import { piboWebAnnotationsPlugin } from "../dist/plugins/web-annotations.js";
 import { WebAnnotationStore } from "../dist/web-annotations/store.js";
-import { WEB_ANNOTATION_TOOL_NAMES, createWebAnnotationToolProfiles } from "../dist/web-annotations/tools.js";
+import { createWebAnnotationToolProfiles } from "../dist/web-annotations/tools.js";
 
 function createAnnotationInput(overrides = {}) {
 	return {
@@ -45,82 +37,6 @@ async function execute(tool, params = {}) {
 	const result = await tool.execute("tool-call-1", params);
 	return result;
 }
-
-test("default registry catalogs Web Annotation tools without selecting them in a built-in profile", () => {
-	const registry = createDefaultPiboPluginRegistry();
-	const catalog = registry.getCapabilityCatalog();
-	const packageInfo = catalog.packages.find((pkg) => pkg.name === "web-annotation-agent-tools");
-	assert.ok(packageInfo);
-	assert.ok(registry.getWebApps().some((app) => app.name === "web-annotations" && app.apiPrefix === "/api/web-annotations"));
-	assert.equal(packageInfo.pluginId, "pibo.web-annotations");
-	assert.equal(packageInfo.pluginName, "Pibo Web Annotations");
-	assert.deepEqual(packageInfo.toolNames, [...WEB_ANNOTATION_TOOL_NAMES]);
-
-	for (const name of WEB_ANNOTATION_TOOL_NAMES) {
-		const toolInfo = catalog.nativeTools.find((tool) => tool.name === name);
-		assert.ok(toolInfo, `${name} should be cataloged`);
-		assert.equal(toolInfo.pluginId, "pibo.web-annotations");
-		assert.equal(toolInfo.hasDefinition, true);
-	}
-
-	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
-	const base = registry.createProfile("base");
-	for (const name of WEB_ANNOTATION_TOOL_NAMES) {
-		assert.equal(base.tools.some((tool) => tool.name === name), false, `${name} should not be selected by base`);
-	}
-});
-
-test("selected profile exposes Web Annotation tools during runtime assembly", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pibo-web-annotation-runtime-"));
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboWebAnnotationsPlugin,
-			definePiboPlugin({
-				id: "test.web-annotation-profile",
-				register(api) {
-					api.registerProfile({
-						name: "annotation-agent",
-						create(context) {
-							return new InitialSessionContextBuilder("annotation-agent")
-								.withBuiltinTools("disabled")
-								.addTools(context.getTools(WEB_ANNOTATION_TOOL_NAMES))
-								.createSession();
-						},
-					});
-				},
-			}),
-		],
-	});
-
-	try {
-		const profile = registry.createProfile("annotation-agent");
-		const inspection = await inspectPiboProfile({
-			cwd,
-			profile,
-			persistSession: false,
-			modelDefaults: {},
-			sessionContext: { piboSessionId: "ps_a", piboRoomId: "room_a" },
-		});
-		const activeTools = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
-		for (const name of WEB_ANNOTATION_TOOL_NAMES) assert.equal(activeTools.has(name), true, `${name} should be active`);
-
-		const runtime = await createPiboRuntime({
-			cwd,
-			profile,
-			persistSession: false,
-			modelDefaults: {},
-			sessionContext: { piboSessionId: "ps_a", piboRoomId: "room_a" },
-		});
-		try {
-			const runtimeTools = new Set(runtime.session.getActiveToolNames());
-			for (const name of WEB_ANNOTATION_TOOL_NAMES) assert.equal(runtimeTools.has(name), true, `${name} should be active in runtime`);
-		} finally {
-			await runtime.dispose();
-		}
-	} finally {
-		rmSync(cwd, { recursive: true, force: true });
-	}
-});
 
 test("annotation list and get tools derive app context/session from runtime context and bound output", async () => {
 	const store = new WebAnnotationStore({ path: ":memory:" });

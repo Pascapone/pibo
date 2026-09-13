@@ -6,11 +6,12 @@ tags:
   - "vscode"
   - "sidecar"
   - "delivery"
-status: "stable"
+status: "deprecated"
 authority: "normative"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T14:11:18.311Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -224,6 +225,8 @@ traceability:
       confidence: "high"
       follow_up: "Run all test/vscode files explicitly because root npm test omits that directory; add size-cap and checksum-policy tests; package, inspect, install, status, and uninstall the VSIX on Linux and Windows fixtures."
 ---
+> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # VS Code Sidecar, Webview, and Delivery
 
 ## Authority and evidence boundary

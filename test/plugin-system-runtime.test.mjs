@@ -34,7 +34,7 @@ for (const adapterId of ['pi', 'codex-native', 'omp']) test(`${adapterId}: effec
     ctx.register('disabled', { name: 'disabled', createDefinition() { throw new Error('unselected factory executed'); } });
   } }] });
   const selection = structuredClone(createAgentPluginSelection([installation])); selection.plugins[0].contributions.disabled = false; selection.plugins[0].config = { suffix: 'pinned' };
-  const profile = new InitialSessionContext({ profileName: 'agent', pluginSelection: selection, pluginSelectionRevision: 4, skills: [{ name: 'user', path: '/user/SKILL.md', kind: 'user' }], contextFiles: [{ key: 'user', path: '/user/AGENTS.md', source: 'managed' }], tools: [{ name: 'legacy-write', definition: definition('legacy-write') }], mcpServers: ['legacy-server'], piPackages: [{ id: 'legacy-package' }] });
+  const profile = new InitialSessionContext({ profileName: 'agent', pluginSelection: selection, pluginSelectionRevision: 4, skills: [{ name: 'user', path: '/user/SKILL.md', kind: 'user' }], contextFiles: [{ key: 'user', path: '/user/AGENTS.md', source: 'managed' }], tools: [{ name: 'legacy-write', definition: definition('legacy-write') }], mcpServers: ['legacy-server'] });
   const plan = resolveRuntimePluginPlan({ profile, runtime: { adapterId, instanceId: adapterId, capabilities: {} }, catalog: { schemaVersion: 1, revision: 1, installations: [installation] }, kind: 'generation', piboSessionId: 'ps_a', generation: 'g1' });
   assert.equal(plan.valid, true); assert.equal(privateCalls + portableCalls, 0);
   const effective = profileFromPluginPlan(profile, plan, host);
@@ -43,10 +43,10 @@ for (const adapterId of ['pi', 'codex-native', 'omp']) test(`${adapterId}: effec
   try {
     const session = service.createSession({ profile: effective, piboSessionId: 'ps_a', runtimeInstanceId: adapterId, adapterId, sessionGeneration: 'g1', cwd: '/tmp' });
     const tools = session.createDefinitions();
-    assert.deepEqual(tools.map(t => t.name), adapterId === 'pi' ? ['pi_private', 'portable'] : ['portable']);
+    assert.deepEqual(tools.map(t => t.name), adapterId === 'pi' ? ['legacy-write', 'pi_private', 'portable'] : ['legacy-write', 'portable']);
     assert.equal(privateCalls, adapterId === 'pi' ? 1 : 0); assert.equal(portableCalls, 1);
     assert.equal(seenConfig.configuration.suffix, 'pinned'); assert.equal(seenConfig.contributionId, 'test.runtime/portable');
-    assert.deepEqual(effective.mcpServers, []); assert.deepEqual(effective.piPackages, []);
+    assert.deepEqual(effective.mcpServers, []); assert.equal('piPackages' in effective, false);
     assert.equal(effective.skills[0].kind, 'user'); assert.equal(plan.resources.length, 2);
     assert.deepEqual(session.getDefinitions().map(t => t.name), tools.map(t => t.name));
     session.createDefinitions(); assert.equal(portableCalls, 1);
@@ -146,4 +146,18 @@ test('real router reserves before async adapter setup, pins active config, captu
     assert.ok(f.store.listBuildSnapshots('ps_router_plugin').some(s => s.snapshotId.startsWith('build-')));
   } finally { await router.disposeAll(); await host.stop(); }
   assert.equal(disposed, true); assert.equal(f.store.getAdmission('ps_router_plugin', pinned).state, 'released');
+});
+
+test('system tool registrations are not delivered to the model without agent scope', async t => {
+  const installation = install([contribution('system_command', { scope: 'app' }), contribution('agent_command')]);
+  const host = new PluginHost();
+  await host.start({ plugins: [{ installation, setup(ctx) {
+    ctx.register('system_command', { name: 'system_command', createDefinition() { throw new Error('App factory must not enter runtime'); } });
+    ctx.register('agent_command', { name: 'agent_command', definition: definition('agent_command') });
+  } }] });
+  t.after(() => host.stop());
+  const profile = new InitialSessionContext({ profileName: 'a', pluginSelection: createAgentPluginSelection([installation]) });
+  const plan = resolveRuntimePluginPlan({ profile, runtime: { adapterId: 'pi', instanceId: 'pi', capabilities: {} }, catalog: { schemaVersion: 1, revision: 1, installations: [installation] } });
+  assert.equal(plan.valid, true);
+  assert.deepEqual(profileFromPluginPlan(profile, plan, host).tools.map(t => t.name), ['agent_command']);
 });

@@ -3,8 +3,9 @@ type: "Reference"
 title: "Embedded VS Code Web"
 description: "Explains the current embedded VS Code Web topology, routing, theme, workspace, and security boundaries."
 tags: ["integration", "vscode", "web"]
-status: "draft"
+status: "deprecated"
 authority: "informative"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 migration_lineage:
   source_path: "docs/project/vscode-web-integration.md"
   source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
@@ -14,9 +15,11 @@ migration_lineage:
   source_sha256: "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567"
   source_body_sha256: "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  by: "openai/codex"
+  at: "2026-09-12T13:45:00Z"
 ---
+> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # Embedded VS Code Web
 
 Pibo Chat can expose a `VS Code` main-navigation area that embeds a separately running VS Code browser server. The tab is enabled only when the gateway has `PIBO_VSCODE_WEB_URL` configured.

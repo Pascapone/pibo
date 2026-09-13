@@ -1,14 +1,35 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createDefaultPiboProfile } from "./default-profile.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "./model-defaults.js";
-import type { InitialSessionContext, ModelProfile } from "./profiles.js";
+import { redactSensitiveText, redactSensitiveValue } from "./sensitive-data-redaction.js";
+import { getMcpAgentContextFile } from "../mcp/agent-context.js";
+import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
+import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
+import { type PiboAgentsController } from "../subagents/tool.js";
+import { getInstalledCliToolContextFile } from "../tools/registry.js";
+import {
+	WEB_SEARCH_PROMPT_CONTRIBUTION,
+	isWebSearchProviderTool,
+	normalizeOpenAiWebSearchConfig,
+} from "../tools/web-search.js";
+import {
+	buildPiboAvailableTools,
+	buildPiboGuidelines,
+	hasPiboSystemPromptTemplateMarkers,
+} from "./system-prompt-template.js";
+import { buildCodexCompatSystemPrompt } from "./codex-compat.js";
+import { readPiboBasePrompt } from "./base-prompt.js";
+import { DEFAULT_BUILTIN_TOOL_NAMES, InitialSessionContext, type ModelProfile } from "./profiles.js";
 import type { PiboThinkingLevel } from "./thinking.js";
 import { resolvePiboSubagentRuntimeSelections, type PiboResolvedSubagentRuntimeSelection } from "../subagents/runtime-selection.js";
 import type { PiboRuntimeOptions, PiboRuntimeSessionContext } from "./runtime.js";
 import type { AgentRuntimeCapabilities } from "../agent-runtime/capabilities.js";
 import type { AgentRuntimeDiagnostic, AgentRuntimeTransport } from "../agent-runtime/types.js";
+import { createPiboRuntime } from "./runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { buildLegacyContextPreview } from "../agent-runtime/legacy-context-preview.js";
-import { redactSensitiveValue } from "./sensitive-data-redaction.js";
 
 export type PiboContextBuildNodeKind =
 	| "prompt_section"
@@ -168,11 +189,285 @@ export function createPiboRuntimeResolutionManifest(input: {
 	};
 }
 
-/** Read-only compatibility preview. Actual evidence is captured at runtime generation setup. */
-export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}): Promise<PiboContextBuildSnapshot> {
-	const snapshot = buildLegacyContextPreview(options.profile ?? createDefaultPiboProfile(), options.cwd ?? getDefaultPiboWorkspace(), options.sessionContext?.piboSessionId, options.sessionContext?.piboRoomId);
-	// Callers may supply an already existing generation. Reading its observed metadata is safe;
-	// this inspector never creates it, refreshes it, or connects its MCP servers.
+type NodeInput = Omit<PiboContextBuildNode, "order" | "children"> & {
+	children?: NodeInput[];
+};
+
+const SECRET_KEY_RE = /(api[_-]?key|authorization|bearer|cookie|credential|oauth|password|secret|token)/i;
+
+function byteLength(text: string): number {
+	return Buffer.byteLength(text, "utf-8");
+}
+
+function estimateTokens(text: string): number {
+	if (text.length === 0) return 0;
+	return Math.ceil(text.length / 4);
+}
+
+function jsonText(value: unknown): string {
+	return JSON.stringify(value, null, 2);
+}
+
+function estimateDirectNodeTokens(node: PiboContextBuildNode): number {
+	if (node.kind === "runtime_manifest") return 0;
+	let tokens = 0;
+	if (node.hydratedText) tokens += estimateTokens(node.hydratedText);
+	if (node.schemaJson !== undefined) tokens += estimateTokens(jsonText(node.schemaJson));
+	if (node.payloadJson !== undefined) tokens += estimateTokens(jsonText(node.payloadJson));
+	if (node.notes?.length) tokens += estimateTokens(node.notes.join("\n"));
+	return tokens;
+}
+
+function applyTokenEstimates(node: PiboContextBuildNode): PiboContextBuildNode {
+	const estimatedTokens = estimateDirectNodeTokens(node);
+	const estimatedChildrenTokens = (node.children ?? []).reduce((total, child) => total + (child.estimatedSubtreeTokens ?? child.estimatedTokens ?? 0), 0);
+	const estimatedSubtreeTokens = estimatedTokens + estimatedChildrenTokens;
+	if (estimatedTokens > 0) node.estimatedTokens = estimatedTokens;
+	if (estimatedSubtreeTokens > 0) node.estimatedSubtreeTokens = estimatedSubtreeTokens;
+	return node;
+}
+
+function redactText(text: string): { value: string; redacted: boolean } {
+	const value = redactSensitiveText(text).replaceAll("[redacted]", "[REDACTED]");
+	return { value, redacted: value !== text };
+}
+
+function redactJson(value: unknown): { value: unknown; redacted: boolean } {
+	if (value === null || value === undefined) return { value, redacted: false };
+	if (typeof value === "string") return redactText(value);
+	if (typeof value === "number" || typeof value === "boolean") return { value, redacted: false };
+	if (Array.isArray(value)) {
+		let redacted = false;
+		const next = value.map((item) => {
+			const result = redactJson(item);
+			redacted ||= result.redacted;
+			return result.value;
+		});
+		return { value: next, redacted };
+	}
+	if (typeof value === "object") {
+		let redacted = false;
+		const output: Record<string, unknown> = {};
+		for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+			if (SECRET_KEY_RE.test(key)) {
+				output[key] = "[REDACTED]";
+				redacted = true;
+				continue;
+			}
+			const result = redactJson(item);
+			redacted ||= result.redacted;
+			output[key] = result.value;
+		}
+		return { value: output, redacted };
+	}
+	return { value: String(value), redacted: false };
+}
+
+function sanitizeNode(input: NodeInput, parentId?: string, order = 0): PiboContextBuildNode {
+	let redacted = input.redacted === true;
+	const { children, ...nodeInput } = input;
+	const node: PiboContextBuildNode = {
+		...nodeInput,
+		...(parentId ? { parentId } : {}),
+		order,
+	};
+
+	if (node.hydratedText !== undefined) {
+		const result = redactText(node.hydratedText);
+		node.hydratedText = result.value;
+		redacted ||= result.redacted;
+		node.bytes = node.bytes ?? byteLength(node.hydratedText);
+	}
+	if (node.schemaJson !== undefined) {
+		const result = redactJson(node.schemaJson);
+		node.schemaJson = result.value;
+		redacted ||= result.redacted;
+	}
+	if (node.payloadJson !== undefined) {
+		const result = redactJson(node.payloadJson);
+		node.payloadJson = result.value;
+		redacted ||= result.redacted;
+	}
+	if (node.metadata !== undefined) {
+		const result = redactJson(node.metadata);
+		node.metadata = result.value as Record<string, unknown>;
+		redacted ||= result.redacted;
+	}
+	if (node.notes !== undefined) {
+		const redactedNotes = node.notes.map((note) => redactText(note));
+		node.notes = redactedNotes.map((note) => note.value);
+		redacted ||= redactedNotes.some((note) => note.redacted);
+	}
+	if (children?.length) {
+		node.children = children.map((child, childIndex) => sanitizeNode(child, input.id, childIndex));
+	}
+	if (redacted) node.redacted = true;
+	return applyTokenEstimates(node);
+}
+
+function countNodes(nodes: readonly PiboContextBuildNode[]): number {
+	return nodes.reduce((count, node) => count + 1 + countNodes(node.children ?? []), 0);
+}
+
+function inspectionAgentsController(): PiboAgentsController {
+	const fail = () => {
+		throw new Error("Context build inspection cannot execute delegated-agent tools");
+	};
+	return {
+		sendMessage: fail,
+		listAgents: () => [],
+		observe: (input) => ({
+			filters: input,
+			observations: [],
+			nextAfterSequence: input.afterSequence ?? 0,
+			truncated: false,
+		}),
+		killAgent: fail,
+	};
+}
+
+function inspectionRunToolController(): PiboRunToolController {
+	const fail = () => {
+		throw new Error("Context build inspection cannot execute run-control tools");
+	};
+	return {
+		startToolRun: fail,
+		listRuns: () => [],
+		getRunStatus: fail,
+		waitForRun: fail,
+		readRun: fail,
+		cancelRun: fail,
+		ackRun: fail,
+	};
+}
+
+function withoutRequestedModels(profile: InitialSessionContext): InitialSessionContext {
+	return new InitialSessionContext({
+		profileName: profile.profileName,
+		sessionId: profile.sessionId,
+		parentSessionId: profile.parentSessionId,
+		thinkingLevel: profile.thinkingLevel,
+		mainThinkingLevel: profile.mainThinkingLevel,
+		subagentThinkingLevel: profile.subagentThinkingLevel,
+		fast: profile.fast,
+		mainFast: profile.mainFast,
+		subagentFast: profile.subagentFast,
+		skills: profile.skills,
+		tools: profile.tools,
+		subagents: profile.subagents,
+		mcpServers: profile.mcpServers,
+		contextFiles: profile.contextFiles,
+		diagnostics: profile.diagnostics,
+		builtinTools: profile.builtinTools,
+		builtinToolNames: profile.builtinToolNames,
+		autoContextFiles: profile.autoContextFiles,
+		nativeSubagents: profile.nativeSubagents,
+		toolPackages: profile.toolPackages,
+	});
+}
+
+function resolveProfilePath(cwd: string, path: string): string {
+	return path.startsWith("pibo://") ? path : resolve(cwd, path);
+}
+
+function toolDefinitionSchema(definition: ToolDefinition | undefined, toolInfo: { parameters?: unknown } | undefined): unknown {
+	return definition?.parameters ?? toolInfo?.parameters;
+}
+
+function generatedOriginForTool(name: string, profile: InitialSessionContext): string | undefined {
+	if (name === "runtime") return "pibo-runtime";
+	if (name.startsWith("pibo_agents_")) return "pibo-subagents";
+	if (name.startsWith("pibo_run_")) return "pibo-run-control";
+	if (PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number])) return "pibo-goal-control";
+	if (name === "apply_patch" || name === "view_image") return "codex-compat";
+	if (profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name)) return undefined;
+	return undefined;
+}
+
+function sourceForContextFile(path: string, profile: InitialSessionContext, cwd: string): PiboContextBuildNodeSource {
+	if (path === "pibo://runtime/session-context.md" || path === "pibo://runtime/delegated-agents.md") return "runtime";
+	if (path.endsWith(".pibo/context/installed-pibo-tools.md") || path === ".pibo/context/installed-pibo-tools.md") return "generated";
+	if (path.endsWith(".pibo/context/enabled-mcp-servers.md") || path === ".pibo/context/enabled-mcp-servers.md") return "generated";
+	const selected = profile.contextFiles.find((contextFile) => contextFile.enabled !== false && resolveProfilePath(cwd, contextFile.path) === path);
+	if (selected?.source === "managed") return "managed";
+	if (selected?.source === "plugin") return "plugin";
+	return selected ? "profile" : "pi";
+}
+
+function badgesForSource(source: PiboContextBuildNodeSource): string[] {
+	switch (source) {
+		case "generated":
+		case "runtime":
+			return ["GENERATED"];
+		case "managed":
+			return ["MANAGED"];
+		case "plugin":
+			return ["PLUGIN"];
+		case "pibo":
+			return ["PIBO"];
+		case "pi":
+			return ["PI"];
+		case "provider":
+			return ["PROVIDER"];
+		default:
+			return [];
+	}
+}
+
+async function readSkillMarkdown(path: string): Promise<string | undefined> {
+	try {
+		return await readFile(path, "utf-8");
+	} catch {
+		return undefined;
+	}
+}
+
+// Skills are advertised to the model via a small XML summary in the system
+// prompt (see formatSkillsForPrompt in @earendil-works/pi-coding-agent). Only the
+// name, description, and location land in the prompt; the full SKILL.md body
+// is loaded lazily by the model via the read tool. Mirror that exact
+// per-skill entry shape here so the inspector's token estimate matches what
+// the model actually sees, instead of the full markdown body.
+function escapeXmlAttribute(value: string): string {
+	return value
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&apos;");
+}
+
+type SkillEntryLike = {
+	name: string;
+	description: string;
+	filePath: string;
+};
+
+function formatSkillEntryForPrompt(skill: SkillEntryLike): string {
+	return [
+		"  <skill>",
+		`    <name>${escapeXmlAttribute(skill.name)}</name>`,
+		`    <description>${escapeXmlAttribute(skill.description)}</description>`,
+		`    <location>${escapeXmlAttribute(skill.filePath)}</location>`,
+		"  </skill>",
+	].join("\n");
+}
+
+function diagnosticsNodes(diagnostics: readonly PiboContextBuildDiagnostic[]): NodeInput[] {
+	return diagnostics.map((diagnostic, index) => ({
+		id: `diagnostics/${index}`,
+		kind: "diagnostic",
+		title: diagnostic.type.toUpperCase(),
+		source: "runtime",
+		state: diagnostic.type === "error" ? "error" : diagnostic.type === "warning" ? "warning" : "active",
+		badges: [diagnostic.type.toUpperCase()],
+		hydratedText: diagnostic.message,
+		metadata: diagnostic.nodeId ? { nodeId: diagnostic.nodeId } : undefined,
+	}));
+}
+
+async function inspectPluginContextPreview(options: PiboRuntimeOptions, profile: InitialSessionContext): Promise<PiboContextBuildSnapshot> {
+	const snapshot = buildLegacyContextPreview(profile, options.cwd ?? getDefaultPiboWorkspace(), options.sessionContext?.piboSessionId, options.sessionContext?.piboRoomId);
 	const inspection = options.resources?.getInspection();
 	if (inspection) {
 		const append = (id: string, title: string, kind: PiboContextBuildNodeKind, metadata: Record<string, unknown>, badges?: string[]) => {
@@ -186,6 +481,579 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 		snapshot.summary.totalNodes = snapshot.nodes.length;
 	}
 	return snapshot;
+}
+
+export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}): Promise<PiboContextBuildSnapshot> {
+	const selectedProfile = options.profile ?? createDefaultPiboProfile();
+	if (selectedProfile.pluginSelection) return inspectPluginContextPreview(options, selectedProfile);
+	const cwd = options.cwd ?? getDefaultPiboWorkspace();
+	const profile = options.profile ?? createDefaultPiboProfile();
+	const inspectionProfile = withoutRequestedModels(profile);
+	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
+	const hasYieldableTools =
+		profile.toolPackages.runControl === true ||
+		hasEnabledSubagents ||
+		profile.tools.some((tool) => tool.enabled !== false && tool.definition !== undefined && tool.yieldable !== false);
+	const runtime = await createPiboRuntime({
+		...options,
+		cwd,
+		profile: inspectionProfile,
+		activeModel: undefined,
+		persistSession: false,
+		agentsController: options.agentsController ?? (hasEnabledSubagents ? inspectionAgentsController() : undefined),
+		runToolController: options.runToolController ?? (hasYieldableTools ? inspectionRunToolController() : undefined),
+	});
+
+	try {
+		const generatedAt = new Date().toISOString();
+		const resourceLoader = runtime.services.resourceLoader;
+		const basePrompt = await readPiboBasePrompt(cwd);
+		const activePrompt = basePrompt.effectiveMode === "legacy"
+			? basePrompt.legacy
+			: basePrompt.effectiveMode === "custom" ? basePrompt.custom : basePrompt.library;
+		const activeToolNames = new Set(runtime.session.getActiveToolNames());
+		const allTools = runtime.session.getAllTools();
+		const toolInfoByName = new Map(allTools.map((tool) => [tool.name, tool]));
+		const providerTools = profile.tools.filter((tool) => tool.enabled !== false).filter(isWebSearchProviderTool);
+		const toolNames = [...new Set([...activeToolNames, ...providerTools.map((tool) => tool.name)])].sort((left, right) => left.localeCompare(right));
+		const selectedTools = [...activeToolNames];
+		const toolSnippets: Record<string, string> = {};
+		const promptGuidelines: string[] = [];
+		for (const name of selectedTools) {
+			const definition = runtime.session.getToolDefinition(name);
+			if (definition?.promptSnippet) toolSnippets[name] = definition.promptSnippet;
+			if (definition?.promptGuidelines?.length) promptGuidelines.push(...definition.promptGuidelines);
+		}
+
+		const resourceInspection = options.resources?.getInspection();
+		const resourceDelivery = new Map(resourceInspection?.delivery.map((report) => [report.contributionId, report]) ?? []);
+		const diagnostics: PiboContextBuildDiagnostic[] = [
+			...runtime.diagnostics.map((diagnostic) => ({
+				type: diagnostic.type,
+				message: diagnostic.message,
+			})),
+			...(resourceInspection?.diagnostics ?? []).map((diagnostic) => ({
+				type: diagnostic.severity,
+				message: diagnostic.message,
+			})),
+		];
+
+		if (profile.autoContextFiles === false) {
+			diagnostics.push({ type: "info", message: "Pi automatic context files are disabled for this profile." });
+		}
+
+		const promptChildren: NodeInput[] = [
+			{
+				id: "prompt/base",
+				kind: "prompt_section",
+				title: "Pibo Base Prompt",
+				source: basePrompt.effectiveMode,
+				state: "active",
+				badges: [basePrompt.effectiveMode.toUpperCase(), "LOCKED"],
+				path: activePrompt.path,
+				bytes: byteLength(activePrompt.markdown),
+				metadata: { mode: basePrompt.mode, effectiveMode: basePrompt.effectiveMode },
+				hydratedText: activePrompt.markdown,
+			},
+		];
+
+		if (hasPiboSystemPromptTemplateMarkers(activePrompt.markdown)) {
+			if (activePrompt.markdown.includes("{{availableTools}}")) {
+				const text = buildPiboAvailableTools({ selectedTools, toolSnippets });
+				promptChildren.push({
+					id: "prompt/available-tools-marker",
+					kind: "prompt_section",
+					title: "Available Tools Marker",
+					source: "generated",
+					state: "active",
+					badges: ["GENERATED"],
+					key: "{{availableTools}}",
+					hydratedText: text,
+					bytes: byteLength(text),
+					metadata: { toolCount: selectedTools.length, visibleSnippetCount: Object.keys(toolSnippets).length },
+				});
+			}
+			if (activePrompt.markdown.includes("{{guidelines}}")) {
+				const text = buildPiboGuidelines({ selectedTools, promptGuidelines });
+				promptChildren.push({
+					id: "prompt/guidelines-marker",
+					kind: "prompt_section",
+					title: "Guidelines Marker",
+					source: "generated",
+					state: "active",
+					badges: ["GENERATED"],
+					key: "{{guidelines}}",
+					hydratedText: text,
+					bytes: byteLength(text),
+					metadata: { guidelineCount: text.split("\n").filter(Boolean).length },
+				});
+			}
+		}
+
+		if (profile.toolPackages.codexCompat === true) {
+			const marker = "\n\n[base prompt continues here]";
+			const wrapper = buildCodexCompatSystemPrompt({
+				baseSystemPrompt: marker.trimStart(),
+				cwd,
+				shell: process.env.SHELL ?? "bash",
+				isChildSession: profile.parentSessionId !== undefined,
+			}).replace(marker.trimStart(), "[base prompt continues here]");
+			promptChildren.unshift({
+				id: "prompt/codex-compat-wrapper",
+				kind: "runtime_extension",
+				title: "Codex Compatibility Wrapper",
+				source: "generated",
+				state: "active",
+				badges: ["GENERATED", "APPROX"],
+				hydratedText: wrapper,
+				approximate: true,
+				notes: ["Shows deterministic wrapper text with a placeholder instead of duplicating the full base prompt."],
+			});
+		}
+
+		for (const tool of providerTools) {
+			if (tool.providerTool.kind !== "web_search") continue;
+			promptChildren.push({
+				id: `prompt/provider/${tool.name}`,
+				kind: "runtime_extension",
+				title: "Native Web Search Prompt Contribution",
+				source: "provider",
+				state: "active",
+				provider: tool.providerTool.provider,
+				badges: ["PROVIDER", "PROVIDER-BACKED"],
+				hydratedText: WEB_SEARCH_PROMPT_CONTRIBUTION,
+				metadata: { tool: tool.name, provider: tool.providerTool.provider },
+			});
+		}
+
+		const toolChildren: NodeInput[] = toolNames.map((name) => {
+			const providerTool = providerTools.find((tool) => tool.name === name);
+			const profileTool = profile.tools.find((tool) => tool.name === name);
+			const generatedOrigin = generatedOriginForTool(name, profile);
+			const toolSource: PiboContextBuildNodeSource = providerTool
+				? "provider"
+				: generatedOrigin
+					? "generated"
+					: profileTool
+						? "pibo"
+						: "pi";
+			const definition = runtime.session.getToolDefinition(name);
+			const info = toolInfoByName.get(name);
+			const children: NodeInput[] = [];
+			if (definition?.promptSnippet) {
+				children.push({
+					id: `tools/${name}/prompt-snippet`,
+					kind: "tool_prompt_snippet",
+					title: "Prompt Snippet",
+					source: toolSource,
+					state: "active",
+					hydratedText: definition.promptSnippet,
+				});
+			}
+			if (definition?.promptGuidelines?.length) {
+				children.push({
+					id: `tools/${name}/prompt-guidelines`,
+					kind: "tool_prompt_guidelines",
+					title: "Prompt Guidelines",
+					source: toolSource,
+					state: "active",
+					hydratedText: definition.promptGuidelines.map((guideline) => `- ${guideline}`).join("\n"),
+					metadata: { guidelineCount: definition.promptGuidelines.length },
+				});
+			}
+			const schema = toolDefinitionSchema(definition, info);
+			if (schema !== undefined) {
+				children.push({
+					id: `tools/${name}/definition`,
+					kind: "tool_definition",
+					title: "Tool Definition / Schema",
+					source: toolSource,
+					state: "active",
+					schemaJson: {
+						name,
+						description: definition?.description ?? info?.description,
+						inputSchema: schema,
+						parameters: schema,
+					},
+				});
+			}
+			if (providerTool?.providerTool.kind === "web_search") {
+				children.push({
+					id: `tools/${name}/provider-payload`,
+					kind: "provider_payload",
+					title: "Provider Payload",
+					source: "provider",
+					state: "active",
+					provider: providerTool.providerTool.provider,
+					badges: ["PROVIDER-BACKED"],
+					payloadJson: {
+						provider: providerTool.providerTool.provider,
+						toolKind: providerTool.providerTool.kind,
+						openAiWebSearch: normalizeOpenAiWebSearchConfig(providerTool.providerTool.options),
+					},
+				});
+				children.push({
+					id: `tools/${name}/provider-prompt`,
+					kind: "tool_prompt_snippet",
+					title: "Provider Prompt Contribution",
+					source: "provider",
+					state: "active",
+					hydratedText: WEB_SEARCH_PROMPT_CONTRIBUTION,
+				});
+			}
+			if (children.length === 0) {
+				children.push({
+					id: `tools/${name}/no-prompt-text`,
+					kind: "metadata",
+					title: "No Prompt Text",
+					source: toolSource,
+					state: "active",
+					hydratedText: "This tool has no separate prompt snippet or guideline. Its callable JSON Schema is the model-visible contribution.",
+					approximate: true,
+				});
+			}
+			const badges = [
+				"ACTIVE",
+				...(providerTool ? ["PROVIDER-BACKED"] : []),
+				...(generatedOrigin ? ["GENERATED", "PIBO"] : []),
+				...(toolSource === "pibo" ? ["PIBO"] : []),
+				...(profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name) ? ["PI"] : []),
+			];
+			return {
+				id: `tools/${name}`,
+				kind: "tool",
+				title: name,
+				source: toolSource,
+				state: "active",
+				provider: providerTool?.providerTool.provider,
+				badges,
+				metadata: {
+					registered: Boolean(info || providerTool),
+					hasDefinition: Boolean(definition || info),
+					description: definition?.description ?? info?.description ?? providerTool?.description,
+					...(toolSource === "pibo" || toolSource === "generated" ? { owner: "pibo", deliveryMode: "direct" } : {}),
+					...(generatedOrigin ? { inspectorOrigin: { label: generatedOrigin, modelVisible: false } } : {}),
+				},
+				children,
+			};
+		});
+
+		const agentsFiles = resourceLoader.getAgentsFiles().agentsFiles;
+		const installedToolContextFile = getInstalledCliToolContextFile();
+		const mcpAgentContextFile = options.resources
+			? options.resources.getContextContributions().find((contribution) => contribution.id === "context:enabled-mcp-servers")
+			: await getMcpAgentContextFile(profile.mcpServers);
+		const contextChildren: NodeInput[] = agentsFiles.map((contextFile) => {
+			const source = contextFile.path === installedToolContextFile?.path
+				? "generated"
+				: contextFile.path === mcpAgentContextFile?.path
+					? "generated"
+					: sourceForContextFile(contextFile.path, profile, cwd);
+			const contribution = resourceInspection?.context.find((candidate) =>
+				candidate.path === contextFile.path
+				|| candidate.sourcePath === contextFile.path
+				|| candidate.materializedPath === contextFile.path,
+			);
+			const delivery = contribution ? resourceDelivery.get(contribution.id) : undefined;
+			return {
+				id: `context-files/${contextFile.path}`,
+				kind: "context_file",
+				title: contextFile.path.split("/").pop() || contextFile.path,
+				source,
+				state: delivery?.status === "failed" || delivery?.status === "unsupported"
+					? "error"
+					: delivery?.status === "degraded"
+						? "warning"
+						: "active",
+				path: contextFile.path,
+				bytes: byteLength(contextFile.content),
+				badges: [
+					...badgesForSource(source),
+					...(contextFile.path === "pibo://runtime/session-context.md" ? ["LOCKED"] : []),
+					...(delivery ? [delivery.status.toUpperCase(), delivery.mode.toUpperCase(), delivery.fidelity.toUpperCase()] : []),
+				],
+				metadata: {
+					path: contextFile.path,
+					...(contribution ? { contributionId: contribution.id, intent: contribution.intent, required: contribution.required } : {}),
+					...(delivery ? { deliveryStatus: delivery.status, deliveryMode: delivery.mode, fidelity: delivery.fidelity, target: delivery.target } : {}),
+				},
+				notes: delivery?.diagnostic ? [delivery.diagnostic] : undefined,
+				hydratedText: contextFile.content,
+			};
+		});
+
+		const skills = resourceLoader.getSkills().skills;
+		const skillChildren: NodeInput[] = [];
+		for (const skill of skills) {
+			const markdown = await readSkillMarkdown(skill.filePath);
+			const promptEntry = formatSkillEntryForPrompt(skill);
+			const resourceSkill = resourceInspection?.skills.find((candidate) => candidate.name === skill.name);
+			const delivery = resourceSkill ? resourceDelivery.get(resourceSkill.contributionId) : undefined;
+			// The skill node reports only what is actually part of the model
+			// prompt: the formatted <skill>...</skill> entry. The full
+			// SKILL.md body is loaded lazily by the model via the read tool
+			// (or explicitly via /skill:name / $skill-name), so it must not
+			// inflate the model-context token estimate. The full file path
+			// and size are still surfaced via metadata for inspection.
+			skillChildren.push({
+				id: `skills/${skill.name}`,
+				kind: "skill",
+				title: skill.name,
+				source: "plugin",
+				path: skill.filePath,
+				bytes: byteLength(promptEntry),
+				badges: [
+					"ACTIVE",
+					...(delivery ? [delivery.status.toUpperCase(), delivery.mode.toUpperCase(), delivery.fidelity.toUpperCase()] : []),
+				],
+				metadata: {
+					description: skill.description,
+					filePath: skill.filePath,
+					disableModelInvocation: skill.disableModelInvocation,
+					fullFileBytes: markdown ? byteLength(markdown) : undefined,
+					fullFileLoadableBy: "read tool, /skill:name command, $skill-name inline expansion",
+					...(resourceSkill ? { contributionId: resourceSkill.contributionId, kind: resourceSkill.kind } : {}),
+					...(delivery ? { deliveryStatus: delivery.status, deliveryMode: delivery.mode, fidelity: delivery.fidelity, target: delivery.target } : {}),
+				},
+				hydratedText: markdown === undefined
+					? `Skill metadata is loaded, but ${skill.filePath} could not be read for inspection.`
+					: promptEntry,
+				state: delivery?.status === "failed" || delivery?.status === "unsupported"
+					? "error"
+					: delivery?.status === "degraded" || markdown === undefined
+						? "warning"
+						: "active",
+				notes: delivery?.diagnostic ? [delivery.diagnostic] : undefined,
+			});
+		}
+
+		const mcpChildren: NodeInput[] = (resourceInspection?.mcpServers ?? []).map((server) => {
+			const delivery = resourceDelivery.get(server.contributionId);
+			return {
+				id: `mcp/${server.name}`,
+				kind: "runtime_extension",
+				title: server.name,
+				source: "profile",
+				state: server.status === "failed" || delivery?.status === "failed" || delivery?.status === "unsupported"
+					? "error"
+					: delivery?.status === "degraded"
+						? "warning"
+						: "active",
+				badges: [
+					server.status.toUpperCase(),
+					...(delivery ? [delivery.mode.toUpperCase(), delivery.fidelity.toUpperCase()] : []),
+				],
+				metadata: {
+					contributionId: server.contributionId,
+					transport: server.transport,
+					serverName: server.serverName,
+					serverVersion: server.serverVersion,
+					protocolVersion: server.protocolVersion,
+					toolNames: server.tools.map((tool) => tool.name),
+					resourceUris: server.resources.map((resource) => resource.uri),
+					resourceTemplates: server.resourceTemplates.map((resource) => resource.uriTemplate),
+					secretEnvironmentKeys: server.secretEnvironmentKeys,
+					...(delivery ? { deliveryStatus: delivery.status, deliveryMode: delivery.mode, fidelity: delivery.fidelity, target: delivery.target } : {}),
+				},
+				hydratedText: server.instructions,
+				notes: [server.diagnostic, delivery?.diagnostic].filter((value): value is string => Boolean(value)),
+			};
+		});
+
+		const extensionChildren: NodeInput[] = [];
+		if (providerTools.length > 0) {
+			extensionChildren.push(...providerTools.map((tool) => ({
+				id: `runtime-extensions/provider-${tool.name}`,
+				kind: "runtime_extension" as const,
+				title: `${tool.name} Provider Adapter`,
+				source: "provider" as const,
+				state: "active" as const,
+				provider: tool.providerTool.provider,
+				badges: ["PROVIDER", "PROVIDER-BACKED"],
+				metadata: { kind: tool.providerTool.kind, provider: tool.providerTool.provider },
+				payloadJson: tool.providerTool.kind === "web_search" ? normalizeOpenAiWebSearchConfig(tool.providerTool.options) : undefined,
+				hydratedText: tool.providerTool.kind === "web_search" ? WEB_SEARCH_PROMPT_CONTRIBUTION : undefined,
+			})));
+		}
+		if (profile.toolPackages.codexCompat === true) {
+			extensionChildren.push({
+				id: "runtime-extensions/codex-compat",
+				kind: "runtime_extension",
+				title: "Codex Compatibility",
+				source: "generated",
+				state: "active",
+				badges: ["GENERATED"],
+				hydratedText: "Codex compatibility wraps the base system prompt and adds apply_patch/view_image tools when enabled.",
+			});
+		}
+
+		const runStartSchema = runtime.session.getToolDefinition("pibo_run_start")?.parameters as {
+			properties?: { toolName?: { enum?: unknown } };
+		} | undefined;
+		const yieldableToolNames = Array.isArray(runStartSchema?.properties?.toolName?.enum)
+			? runStartSchema.properties.toolName.enum.filter((name): name is string => typeof name === "string")
+			: [];
+		const activeToolPackages = [
+			...(PIBO_GOAL_TOOL_NAMES.some((name) => activeToolNames.has(name)) ? ["pibo-goal-control"] : []),
+			...(activeToolNames.has("apply_patch") || activeToolNames.has("view_image") ? ["codex-compat"] : []),
+			...(activeToolNames.has("pibo_run_start") ? ["pibo-run-control"] : []),
+		];
+		const runtimeManifest = createPiboRuntimeResolutionManifest({
+			profile,
+			cwd,
+			adapterId: "pi",
+			piboSessionId: options.sessionContext?.piboSessionId,
+			piboRoomId: options.sessionContext?.piboRoomId,
+			activeModel: options.activeModel,
+			thinkingLevel: options.thinkingLevel,
+			activeToolNames: toolNames,
+			yieldableToolNames,
+			activeToolPackages,
+			contextFilePaths: contextChildren.flatMap((node) => node.path ? [node.path] : []),
+			skillNames: skillChildren.map((node) => node.title),
+			modelDefaults: options.modelDefaults,
+			subagentProfileResolver: options.subagentProfileResolver,
+		});
+
+		const topLevel: NodeInput[] = [
+			{
+				id: "runtime-manifest",
+				kind: "runtime_manifest",
+				title: "Runtime Resolution Manifest",
+				source: "runtime",
+				state: "active",
+				badges: ["RESOLVED", "READ-ONLY"],
+				payloadJson: runtimeManifest,
+				notes: ["Resolution evidence for this inspection only. It is not a second profile configuration and is not injected into the agent prompt."],
+			},
+			{
+				id: "prompt",
+				kind: "prompt_section",
+				title: "Prompt / Runtime Shell",
+				source: "runtime",
+				state: "active",
+				badges: ["ACTIVE"],
+				metadata: { childCount: promptChildren.length, activeModel: runtimeManifest.effectiveModel },
+				children: promptChildren,
+			},
+			{
+				id: "tools",
+				kind: "tool_surface",
+				title: "Tool Prompt Surface",
+				source: "runtime",
+				state: "active",
+				badges: ["ACTIVE"],
+				metadata: {
+					activeTools: toolNames.length,
+					generatedTools: toolChildren.filter((node) => node.badges?.includes("GENERATED")).length,
+					builtInTools: toolNames.filter((name) => profile.builtinToolNames.includes(name)).length,
+					nativeTools: profile.tools.filter((tool) => tool.enabled !== false).length,
+					providerBackedTools: providerTools.length,
+				},
+				children: toolChildren,
+			},
+			{
+				id: "context-files",
+				kind: "context_files",
+				title: "Context Files",
+				source: "runtime",
+				state: "active",
+				badges: [profile.autoContextFiles === false ? "PI AUTO DISABLED" : "ACTIVE"],
+				metadata: {
+					childCount: contextChildren.length,
+					autoContextFiles: profile.autoContextFiles,
+					installedToolContext: Boolean(installedToolContextFile),
+					mcpContext: Boolean(mcpAgentContextFile),
+				},
+				children: contextChildren,
+			},
+			{
+				id: "skills",
+				kind: "skills",
+				title: "Skills",
+				source: "runtime",
+				state: skillChildren.length > 0 ? "active" : "disabled",
+				badges: skillChildren.length > 0 ? ["ACTIVE"] : ["EMPTY"],
+				metadata: { childCount: skillChildren.length },
+				children: skillChildren,
+			},
+			...(mcpChildren.length > 0 ? [{
+				id: "mcp",
+				kind: "runtime_extension" as const,
+				title: "External MCP Servers",
+				source: "runtime" as const,
+				state: mcpChildren.some((node) => node.state === "error")
+					? "error" as const
+					: mcpChildren.some((node) => node.state === "warning")
+						? "warning" as const
+						: "active" as const,
+				badges: [mcpChildren.every((node) => node.state === "active") ? "CONNECTED" : "DIAGNOSTICS"],
+				metadata: {
+					selectedServers: mcpChildren.length,
+					connectedServers: mcpChildren.filter((node) => node.badges?.includes("CONNECTED")).length,
+				},
+				children: mcpChildren,
+			}] : []),
+			{
+				id: "runtime-extensions",
+				kind: "runtime_extension",
+				title: "Runtime Extensions",
+				source: "runtime",
+				state: extensionChildren.length > 0 ? "active" : "disabled",
+				badges: extensionChildren.length > 0 ? ["ACTIVE"] : ["EMPTY"],
+				metadata: { childCount: extensionChildren.length },
+				children: extensionChildren,
+			},
+			{
+				id: "diagnostics",
+				kind: "diagnostic",
+				title: "Diagnostics",
+				source: "runtime",
+				state: diagnostics.some((diagnostic) => diagnostic.type === "error") ? "error" : diagnostics.some((diagnostic) => diagnostic.type === "warning") ? "warning" : "active",
+				badges: diagnostics.length > 0 ? ["DIAGNOSTICS"] : ["OK"],
+				metadata: {
+					warnings: diagnostics.filter((diagnostic) => diagnostic.type === "warning").length,
+					errors: diagnostics.filter((diagnostic) => diagnostic.type === "error").length,
+					infos: diagnostics.filter((diagnostic) => diagnostic.type === "info").length,
+				},
+				children: diagnostics.length ? diagnosticsNodes(diagnostics) : [{
+					id: "diagnostics/none",
+					kind: "diagnostic",
+					title: "No Diagnostics",
+					source: "runtime",
+					state: "active",
+					hydratedText: "No warnings or errors were reported while assembling this snapshot.",
+				}],
+			},
+		];
+
+		const nodes = topLevel.map((node, index) => sanitizeNode(node, undefined, index));
+		const estimatedTokens = nodes.reduce((total, node) => total + (node.estimatedSubtreeTokens ?? node.estimatedTokens ?? 0), 0);
+		const redactedDiagnostics = diagnostics.map((diagnostic) => {
+			const result = redactText(diagnostic.message);
+			return { ...diagnostic, message: result.value };
+		});
+		return {
+			version: 1,
+			generatedAt,
+			profileName: profile.profileName,
+			piboSessionId: options.sessionContext?.piboSessionId,
+			piboRoomId: options.sessionContext?.piboRoomId,
+			cwd,
+			activeModel: runtimeManifest.effectiveModel,
+			summary: {
+				topLevelNodes: nodes.length,
+				totalNodes: countNodes(nodes),
+				estimatedTokens,
+				warnings: redactedDiagnostics.filter((diagnostic) => diagnostic.type === "warning").length,
+				errors: redactedDiagnostics.filter((diagnostic) => diagnostic.type === "error").length,
+			},
+			nodes,
+			diagnostics: redactedDiagnostics,
+		};
+	} finally {
+		await runtime.dispose();
+	}
 }
 
 export function createContextBuildSessionContext(input: PiboRuntimeSessionContext | undefined): PiboRuntimeSessionContext | undefined {

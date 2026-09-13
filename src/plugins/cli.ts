@@ -25,7 +25,7 @@ const help: Record<string, string[]> = {
 	"config set": ["pibo plugins config set <plugin-id> --scope app|agent|session [--target-id <id>] --schema-version <number> --expected-revision <number> --values-json <object> [--json]", "Values replace this explicit target through the plugin schema and CAS. Credentials must be secretRef objects."],
 	"config schema": ["pibo plugins config schema <plugin-id> [--json]"],
 };
-export async function runPluginCli(args: readonly string[], options: { manager: PluginManager; write?: (text: string) => void }): Promise<number> {
+export async function runPluginCli(args: readonly string[], options: { manager: PluginManager | (() => PluginManager | Promise<PluginManager>); write?: (text: string) => void }): Promise<number> {
 	const write = options.write ?? ((text: string) => process.stdout.write(`${text}\n`));
 	const json = args.includes("--json");
 	try {
@@ -58,7 +58,7 @@ export async function runPluginCli(args: readonly string[], options: { manager: 
 		for (const flag of flags.keys()) if (flag !== "--json" && !(allowed[branch] ?? []).includes(flag)) throw new PluginValidationError(`Option ${flag} is not supported by ${branch}; nothing was changed`);
 		const positionalLimits: Record<string, number> = { list: 1, inspect: 2, install: 2, update: 2, activate: 2, status: 2, doctor: 2, "uninstall plan": 3, "uninstall confirm": 3, "operations list": 2, "operations show": 3, "operations resume": 3, "operations cancel": 3, recover: 1, "config show": 3, "config set": 3, "config schema": 3 };
 		if (positional.length > positionalLimits[branch]!) throw new PluginValidationError(`Unexpected arguments for ${branch}; use --help`);
-		const manager = options.manager;
+		const manager = typeof options.manager === "function" ? await options.manager() : options.manager;
 		const required = (value: string | undefined, label: string) => { if (!value) throw new PluginValidationError(`${label} is required; use --help`); return value; };
 		const expectedRevision = () => {
 			const value = required(flags.get("--expected-revision"), "--expected-revision");
@@ -116,5 +116,55 @@ export async function runPluginCli(args: readonly string[], options: { manager: 
 	} catch (error) {
 		const value = { error: pluginErrorMessage(error, "Plugin command failed"), code: (error as { code?: string })?.code ?? "plugin-command-failed" };
 		write(json ? JSON.stringify(value) : `${value.code}: ${value.error}`); return 1;
+	}
+}
+
+/** Help/argument validation stays import-free; product storage and the owning host open only for an actual operation. */
+export async function runDefaultPluginCli(args: readonly string[]): Promise<number> {
+	let data: import("../data/pibo-store.js").PiboDataStore | undefined;
+	let agentStore: import("../apps/chat/agent-store.js").CustomAgentStore | undefined;
+	let registry: import("./registry.js").PiboPluginRegistry | undefined;
+	let product: Awaited<ReturnType<typeof import("./product-runtime.js").startPluginProductRuntime>> | undefined;
+	try {
+		return await runPluginCli(args, { manager: async () => {
+			if (product) return product.manager;
+			const [dataModule, agentStoreModule, builtinModule, operationsModule, productModule, productServicesModule] = await Promise.all([
+				import("../data/pibo-store.js"), import("../apps/chat/agent-store.js"), import("./builtin.js"),
+				import("./operations.js"), import("./product-runtime.js"), import("./product-services.js"),
+			]);
+			data = new dataModule.PiboDataStore();
+			agentStore = agentStoreModule.createDefaultCustomAgentStore();
+			registry = builtinModule.createDefaultPiboPluginRegistry();
+			const host = registry.getPluginHost();
+			const catalog = () => {
+				const installations = data!.plugins.listInstallations();
+				return { schemaVersion: 1 as const, revision: installations.reduce((sum, installation) => sum + installation.stateRevision, 0), installations };
+			};
+			const collectProfiles = agentStoreModule.profileConsumerCollector(agentStore, catalog);
+			const collectLive: import("./operations.js").PluginConsumerCollector = async (pluginId) => {
+				const consumers: import("./operations.js").PluginConsumer[] = [];
+				for (const info of registry!.getProfileInfos()) {
+					const profile = builtinModule.createPiboProfileFromRegistryOrDefault(registry!, info.name);
+					const entry = profile.pluginSelection?.plugins.find((candidate) => candidate.pluginId === pluginId);
+					if (entry) consumers.push({ kind: "profile", id: info.name, usage: entry.enabled ? "optional" : "historical", revision: entry.revision });
+				}
+				for (const entry of host.contributions.list<import("./product-services.js").PluginOwnedConsumerCollector>(productServicesModule.PLUGIN_CONSUMER_COLLECTOR_RESOURCE)) {
+					consumers.push(...await entry.value(pluginId));
+				}
+				return operationsModule.pluginImpact(consumers).consumers;
+			};
+			product = await productModule.startPluginProductRuntime({
+				host,
+				data,
+				collectConsumers: operationsModule.createPluginConsumerCollector({ store: data, collectLive, collectProfiles }),
+			});
+			await product.recover();
+			return product.manager;
+		} });
+	} finally {
+		await product?.dispose();
+		await registry?.disposePlugins();
+		agentStore?.close();
+		data?.close();
 	}
 }

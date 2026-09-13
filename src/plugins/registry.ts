@@ -41,14 +41,11 @@ import type {
 	PiboProductEventInput,
 	PiboProductEventListener,
 	PiboCapabilityCatalog,
-	PiboCapabilityPackageInfo,
 	PiboProfileInfo,
 	PiboProfileBuildContext,
 	PiboProfileDefinition,
 	PiboLoopStopConditionDefinition,
 } from "./types.js";
-import { listInstalledCliToolAgentContexts } from "../tools/registry.js";
-import { listPiPackages } from "../pi-packages/store.js";
 import { AgentRuntimeAdapterRegistry } from "../agent-runtime/registry.js";
 import type {
 	AgentRuntimeAdapter,
@@ -203,6 +200,9 @@ export class PiboPluginRegistry {
 	private readonly speechSessionStartTimeoutMs: number;
 	private readonly projection = new PluginRegistryProjection();
 	private readonly agentRuntimes = new AgentRuntimeAdapterRegistry();
+	private projectedAgentRuntimeSignature = "";
+	private projectedAgentRuntimeDriverIds: string[] = [];
+	private projectedAgentRuntimeInstanceIds: string[] = [];
 	private readonly tools = this.projection.map<ToolProfile>("tool", (value, _contribution, pluginId) => normalizeToolProfile({ ...(value as ToolProfileRegistration), pluginId }));
 	private readonly subagents = this.projection.map<SubagentProfile>("subagent", (value) => value as SubagentProfile);
 	private readonly skills = this.projection.map<SkillProfile>("skill", (value, _contribution, pluginId) => ({ ...(value as SkillProfile), pluginId }));
@@ -220,7 +220,6 @@ export class PiboPluginRegistry {
 	private speechProvidersDisposed = false;
 	private speechDisposePromise?: Promise<void>;
 	private readonly webApps = this.projection.map<PiboWebApp>("web-app", (value) => value as PiboWebApp);
-	private readonly capabilityPackages = this.projection.map<PiboCapabilityPackageInfo>("capability-package");
 	private readonly eventListeners = new Set<PiboPluginEventListener>();
 	private readonly productEventListeners = new Set<PiboProductEventListener>();
 	private readonly loopStopConditions = this.projection.map<{ definition: PiboLoopStopConditionDefinition; pluginId?: string }>("loop-stop-condition", (value, _contribution, pluginId) => ({ definition: value as PiboLoopStopConditionDefinition, pluginId }));
@@ -281,64 +280,100 @@ export class PiboPluginRegistry {
 		for (const { scope } of [...this.pluginRecords.values()].reverse()) {
 			try { await scope.dispose(); } catch (error) { errors.push(error); }
 		}
+		try { this.syncProjectedAgentRuntimes(); } catch (error) { errors.push(error); }
 		if (errors.length) throw new AggregateError(errors, "Legacy plugin facade cleanup failed");
 	}
 
 	getPluginHost(): PluginHost { return this.projection.host; }
+
+	private syncProjectedAgentRuntimes(): void {
+		const entries = this.projection.host.contributions.list<{ installation: { revision: string }; contribution: { kind: string }; value: unknown }>("contribution")
+			.filter((entry) => entry.value.contribution.kind === "agent-runtime-driver" || entry.value.contribution.kind === "agent-runtime-instance");
+		const signature = entries.map((entry) => `${entry.key}:${entry.value.installation.revision}`).sort().join("|");
+		if (signature === this.projectedAgentRuntimeSignature) return;
+		for (const id of [...this.projectedAgentRuntimeInstanceIds].reverse()) this.agentRuntimes.unregisterInstance(id);
+		for (const id of [...this.projectedAgentRuntimeDriverIds].reverse()) this.agentRuntimes.unregisterDriver(id);
+		this.projectedAgentRuntimeDriverIds = [];
+		this.projectedAgentRuntimeInstanceIds = [];
+		for (const entry of entries.filter((item) => item.value.contribution.kind === "agent-runtime-driver")) {
+			const driver = entry.value.value as AgentRuntimeDriver<unknown>;
+			this.agentRuntimes.registerDriver(driver);
+			this.projectedAgentRuntimeDriverIds.push(driver.descriptor.id);
+		}
+		for (const entry of entries.filter((item) => item.value.contribution.kind === "agent-runtime-instance")) {
+			const instance = entry.value.value as AgentRuntimeInstanceDefinition;
+			this.agentRuntimes.registerInstance(instance);
+			this.projectedAgentRuntimeInstanceIds.push(instance.id);
+		}
+		this.projectedAgentRuntimeSignature = signature;
+	}
 
 	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void {
 		this.agentRuntimes.registerDriver(driver);
 	}
 
 	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): AgentRuntimeAdapter {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.registerInstance(instance);
 	}
 
 	getAgentRuntimeAdapter(instanceId: string): AgentRuntimeAdapter | undefined {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.getInstance(instanceId);
 	}
 
 	requireAgentRuntimeAdapter(instanceId: string): AgentRuntimeAdapter {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.requireInstance(instanceId);
 	}
 
 	openAgentRuntimeSession(instanceId: string, input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession> {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.openSession(instanceId, input);
 	}
 
 	getAgentRuntimeInstanceIds(): string[] {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.getInstanceIds();
 	}
 
 	inspectAgentRuntimeInstances() {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.inspectInstances();
 	}
 
 	getAgentRuntimeAuthStatus(runtimeInstanceId: string) {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.getAuthStatus(runtimeInstanceId);
 	}
 
 	startAgentRuntimeAuth(runtimeInstanceId: string, input: StartAgentRuntimeAuthInput) {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.startAuth(runtimeInstanceId, input);
 	}
 
 	completeAgentRuntimeAuth(runtimeInstanceId: string, input: CompleteAgentRuntimeAuthInput) {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.completeAuth(runtimeInstanceId, input);
 	}
 
 	cancelAgentRuntimeAuth(runtimeInstanceId: string, input: CancelAgentRuntimeAuthInput) {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.cancelAuth(runtimeInstanceId, input);
 	}
 
 	logoutAgentRuntimeAuth(runtimeInstanceId: string, input: LogoutAgentRuntimeAuthInput) {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.logoutAuth(runtimeInstanceId, input);
 	}
 
 	disposeAgentRuntimeAuth() {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.disposeAuth();
 	}
 
 	validateAgentRuntimeProfile(profile: InitialSessionContext, workspace?: string) {
+		this.syncProjectedAgentRuntimes();
 		return this.agentRuntimes.validateProfile({ profile, workspace });
 	}
 
@@ -624,10 +659,6 @@ export class PiboPluginRegistry {
 		this.webApps.set(app.name, app);
 	}
 
-	registerCapabilityPackage(pkg: PiboCapabilityPackageInfo): void {
-		this.addUnique(this.capabilityPackages, pkg.name, { ...pkg, toolNames: [...pkg.toolNames] }, "capability package");
-	}
-
 	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition, pluginId?: string): void {
 		if (!condition.type.trim()) throw new Error('Loop stop condition type is required');
 		if (!condition.name.trim()) throw new Error(`Loop stop condition "${condition.type}" name is required`);
@@ -697,7 +728,6 @@ export class PiboPluginRegistry {
 				diagnostics: sessionContext.diagnostics.map((diagnostic) => ({ ...diagnostic })),
 				subagents: sessionContext.subagents.filter((subagent) => subagent.enabled !== false),
 				mcpServers: [...sessionContext.mcpServers],
-				piPackages: sessionContext.piPackages.filter((pkg) => pkg.enabled !== false).map((pkg) => pkg.id),
 				model: sessionContext.model ? { ...sessionContext.model } : undefined,
 				mainModel: sessionContext.mainModel ? { ...sessionContext.mainModel } : undefined,
 				mainModelFallbacks: sessionContext.mainModelFallbacks.map((model) => ({ ...model })),
@@ -719,6 +749,7 @@ export class PiboPluginRegistry {
 	}
 
 	getCapabilityCatalog(): PiboCapabilityCatalog {
+		this.syncProjectedAgentRuntimes();
 		return {
 			agentRuntimes: this.agentRuntimes.getInstanceInfos(),
 			nativeTools: [...this.tools.values()].map((tool) => ({
@@ -759,34 +790,7 @@ export class PiboPluginRegistry {
 				pluginName: contextFile.pluginId ? this.pluginNames.get(contextFile.pluginId) : undefined,
 				agentProfileName: contextFile.agentProfileName,
 			})),
-			packages: [
-				{
-					name: "pibo-run-control",
-					description: "Expose pibo_run_* for Pibo-managed tools and subagents; private harness-native tools require explicit runtime capability.",
-					toolNames: [
-						"pibo_run_start",
-						"pibo_run_list",
-						"pibo_run_status",
-						"pibo_run_wait",
-						"pibo_run_read",
-						"pibo_run_cancel",
-						"pibo_run_ack",
-					],
-				},
-				{
-					name: "pibo-goal-control",
-					description: "Expose get_goal, create_goal, and update_goal as one native goal lifecycle package.",
-					toolNames: ["get_goal", "create_goal", "update_goal"],
-				},
-				...[...this.capabilityPackages.values()].map((pkg) => ({
-					...pkg,
-					toolNames: [...pkg.toolNames],
-					pluginName: pkg.pluginId ? this.pluginNames.get(pkg.pluginId) : pkg.pluginName,
-				})),
-			],
-			piboTools: listInstalledCliToolAgentContexts(),
 			mcpServers: [],
-			piPackages: listPiPackages(),
 			loopStopConditions: this.getLoopStopConditionInfos(),
 			ralphStopConditions: this.getLoopStopConditionInfos(),
 		};
@@ -881,11 +885,6 @@ export class PiboPluginRegistry {
 		const withPluginContext = (contextFile: ContextFileProfile): ContextFileProfile => (
 			contextFile.source === "managed" ? contextFile : { ...contextFile, pluginId }
 		);
-		const withPluginPackageContext = (pkg: PiboCapabilityPackageInfo): PiboCapabilityPackageInfo => ({
-			...pkg,
-			toolNames: [...pkg.toolNames],
-			pluginId,
-		});
 		const withPluginTranscriptionProviderContext = (provider: PiboTranscriptionProvider): PiboTranscriptionProvider => ({
 			...provider,
 			pluginId,
@@ -923,7 +922,6 @@ export class PiboPluginRegistry {
 			registerTranscriptionProvider: (provider) => this.registerTranscriptionProvider(withPluginTranscriptionProviderContext(provider)),
 			registerSpeechProvider: (provider) => this.registerSpeechProvider(withPluginSpeechProviderContext(provider)),
 			registerWebApp: (app) => this.registerWebApp(app),
-			registerCapabilityPackage: (pkg) => this.registerCapabilityPackage(withPluginPackageContext(pkg)),
 			registerLoopStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
 			registerRalphStopCondition: (condition) => this.registerLoopStopCondition(condition, pluginId),
 			onEvent: (listener) => {

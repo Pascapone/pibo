@@ -5,11 +5,12 @@ description: "Defines the implemented shared terminal view model and cli session
 tags:
 - operator
 - tooling
-status: "stable"
+status: "deprecated"
 authority: "normative"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -131,6 +132,8 @@ traceability:
         - "Fake sources are explicit only; local source operations remain app-global and close owned subscriptions/router state idempotently."
       confidence: high
 ---
+> **Partly retired surface:** The browser Compact Terminal projection remains in the product, but the standalone Ink/CLI session UI and `pibo tui*` commands described by this baseline specification were removed by the unified plugin-system rebuild. This mixed baseline is deprecated pending consolidation of the retained browser-terminal contract. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # Shared Terminal View Model and CLI Session UI
 
 ## Why

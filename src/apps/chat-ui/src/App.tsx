@@ -7,25 +7,13 @@ import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionR
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
-import { listUserSkills } from "./api-agent-designer";
-import type { AgentCatalog, BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot, UserSkill } from "./types";
+import type { BootstrapData, NavigationData, PiboSignalPatch, PiboSignalSnapshot, PiboSignalStatusPatch, PiboSignalStatusSnapshot } from "./types";
 import { countRender } from "./renderMetrics";
 import {
 	chatStreamEvent,
 	eventShouldRefreshNavigation,
 	liveSessionStatusFromEvent,
 } from "./tracing/chat-stream-events";
-import { ContextFilesView } from "./context/ContextFilesView";
-import { BasePromptView } from "./context/BasePromptView";
-import { CompactionPromptView } from "./context/CompactionPromptView";
-import { PiboToolsView } from "./context/PiboToolsView";
-import { McpToolsView } from "./context/McpToolsView";
-import { ContextBuildView } from "./context/ContextBuildView";
-import { ContextSidebar } from "./context/ContextSidebar";
-import type { ContextPanel } from "./context/types";
-import { CronArea } from "./CronArea";
-import { LoopArea } from "./LoopArea";
-import { AgentsView } from "./agents/AgentsView";
 import { SessionTracePane } from "./session-trace-pane";
 import { SessionSidebar } from "./session-sidebar";
 import { DesktopSessionSidebar, useDesktopSessionSidebar } from "./desktop-session-sidebar";
@@ -135,17 +123,14 @@ import {
 import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstrap-error";
 import { errorMessage } from "./error-message";
 import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";
-import { SettingsSidebar } from "./settings/SettingsSidebar";
 import { ResponsiveTabSidebarPanel } from "./responsive-pane-sidebar";
-import { SettingsView } from "./settings/SettingsView";
-import type { SettingsPanel } from "./settings/types";
 import { MinimalWorkflowsArea } from "./MinimalWorkflowsArea";
 import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";
 import { RoutedWorkflowsPanel } from "./desktop-workflow-version-panel";
 import { PluginWorkspaceProvider, PluginWorkspaceTabs } from "./plugins/plugin-workspace";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
-import { mobileSidebarA11yProps, useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
+import { useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
 import {
 	applySelectedSignalPatch,
 	applySignalPatchToBootstrap,
@@ -161,11 +146,6 @@ import {
 	signalSnapshotIncludesSession,
 } from "./app-signal-status";
 import { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";
-import {
-	removeAgentCatalogUserSkill,
-	updateAgentCatalogMcpServer,
-	upsertAgentCatalogUserSkill,
-} from "./app-agent-catalog-mutations";
 import { useAppDeleteActions } from "./app-delete-actions";
 import { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";
 import { selectedSessionBackendId } from "./selected-session-backend";
@@ -302,7 +282,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const routeSessionViewId = route.area === "sessions" ? route.sessionViewId : undefined;
 	const routeToolCallNodeId = route.area === "sessions" ? route.toolCallNodeId : undefined;
 	const routeWorkflowDraftId = route.area === "workflows" ? route.draftId : undefined;
-	const settingsPanel: SettingsPanel = route.area === "settings" ? route.panel ?? "general" : "general";
 	const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
 	const selectedPiboSessionIdRef = useRef<string | null>(null);
 	const optimisticSessionCreateOutcomeRef = useRef<OptimisticSessionCreateOutcome | null>(null);
@@ -365,9 +344,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [loadingPiboSessionId, setLoadingPiboSessionId] = useState<string | null>(null);
 	const [loadingRoomId, setLoadingRoomId] = useState<string | null>(null);
 	const [autoRenameSessionId, setAutoRenameSessionId] = useState<string | null>(null);
-	const [contextPanel, setContextPanel] = useState<ContextPanel>("build-context");
-	const [selectedContextFileKey, setSelectedContextFileKey] = useState<string | null>(null);
-	const [selectedMcpServerName, setSelectedMcpServerName] = useState<string | null>(null);
 	const [creatingRoom, setCreatingRoom] = useState(false);
 	const roomCreationOwnerRef = useRef<string | null>(null);
 	useEffect(() => {
@@ -385,12 +361,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (!desktopTabsEnabled || desktopActiveTool !== "preview") setDesktopPreviewFullscreen(false);
 	}, [desktopActiveTool, desktopTabsEnabled]);
 	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
+	const mobileSidebarRef = useRef<HTMLElement>(null);
+	const mobileSidebarRootRef = useRef<HTMLDivElement>(null);
 	const hideMobileSidebar = useCallback(() => setMobileSidebarOpen(false), []);
 	const closeMobileSidebar = useMobileSidebarModal({
 		isMobileViewport: isMobileSidebarViewport,
 		isOpen: mobileSidebarOpen,
 		onClose: hideMobileSidebar,
 		triggerRef: mobileSidebarTriggerRef,
+		sidebarRef: mobileSidebarRef,
+		rootRef: mobileSidebarRootRef,
 	});
 	const [mobileAreaMenuOpen, setMobileAreaMenuOpen] = useState(false);
 	const [gatewayMode, setGatewayMode] = useState<"main" | "fallback" | null>(null);
@@ -724,36 +704,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 	);
 
 	const viewSessionContext = useCallback((piboSessionId: string) => {
-		setContextPanel("build-context");
 		navigateToRoute({ area: "context", piboSessionId });
 	}, [navigateToRoute]);
-
-	const openContextFileEditor = useCallback((key: string) => {
-		setSelectedContextFileKey(key);
-		setContextPanel("context-files");
-		navigateToRoute({ area: "context" });
-	}, [navigateToRoute]);
-
-	const openMcpToolsEditor = useCallback((name: string) => {
-		setSelectedMcpServerName(name);
-		setContextPanel("mcp-tools");
-		navigateToRoute({ area: "context" });
-	}, [navigateToRoute]);
-
-	const updateMcpServerInBootstrap = useCallback((server: AgentCatalog["mcpServers"][number]) => {
-		setBootstrap((current) => current ? updateAgentCatalogMcpServer(current, server) : current);
-	}, []);
-
-
-	const upsertUserSkillInBootstrap = useCallback((skill: UserSkill) => {
-		setBootstrap((current) => current ? upsertAgentCatalogUserSkill(current, skill) : current);
-		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? upsertAgentCatalogUserSkill(current, skill) : current);
-	}, [queryClient]);
-
-	const removeUserSkillFromBootstrap = useCallback((skillId: string) => {
-		setBootstrap((current) => current ? removeAgentCatalogUserSkill(current, skillId) : current);
-		queryClient.setQueriesData<BootstrapData>({ queryKey: ["chat", "bootstrap"] }, (current) => current ? removeAgentCatalogUserSkill(current, skillId) : current);
-	}, [queryClient]);
 
 	const fetchNavigation = useCallback((input: {
 		piboSessionId?: string;
@@ -1742,7 +1694,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 		parentId: bootstrap.session?.parentId,
 	});
 	const totalRoomUnreadCount = countUnreadRooms(bootstrap.rooms);
-	const contextAgentProfiles = [...new Set([...bootstrap.agents.map((agent) => agent.name), ...bootstrap.customAgents.map((agent) => agent.profileName)])];
 	const identity = identityFromBootstrap(bootstrap);
 	const isTerminalFullscreen = terminalFullscreen
 		&& area === "sessions"
@@ -1753,7 +1704,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const isAppFullscreen = isTerminalFullscreen || isDesktopPreviewFullscreen;
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
-		: (area === "vscode" || area === "workflows" || area === "cron" || area === "loops" || area === "agents")
+		: (area === "workflows" || area === "cron" || area === "loops" || area === "agents")
 			? "h-full overflow-hidden"
 			: `grid ${area === "sessions" && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
@@ -1842,8 +1793,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						mobileAreaMenuOpen={mobileAreaMenuOpen}
 						mobileSidebarTriggerRef={mobileSidebarTriggerRef}
 						totalRoomUnreadCount={totalRoomUnreadCount}
-						vscodeEnabled={Boolean(bootstrap.integrations?.vscode)}
-						showMobileSidebarTrigger={area !== "vscode"}
+						showMobileSidebarTrigger
 						onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
 						onSelectMainNavArea={selectMainNavArea}
 						onToggleMobileAreaMenu={() => setMobileAreaMenuOpen((open) => !open)}
@@ -1860,11 +1810,13 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 
 				<div
+					ref={mobileSidebarRootRef}
 					data-pibo-debug="desktop-route-shell"
 					data-pibo-area={desktopPanelRoute?.area ?? "sessions"}
 					className={`min-h-0 flex overflow-hidden relative ${isMobileSidebarViewport ? "pb-10" : ""}`}
 				>
-					{isMobileSidebarViewport ? <nav aria-label="Workspace navigation" className="absolute bottom-0 left-0 right-0 z-20 flex justify-between border-t border-slate-700 bg-[#151f24] p-2 text-xs"><button onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}>Sessions</button><button onClick={() => setPluginPanelOpen(false)}>Terminal</button><button onClick={() => setPluginPanelOpen(true)}>Plugins</button></nav> : null}
+					{isMobileSidebarViewport ? <nav aria-label="Workspace navigation" className="absolute bottom-0 left-0 right-0 z-20 flex justify-between border-t border-slate-700 bg-[#151f24] p-2 text-xs"><button ref={mobileSidebarTriggerRef} onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}>Sessions</button><button onClick={() => setPluginPanelOpen(false)}>Terminal</button><button onClick={() => setPluginPanelOpen(true)}>Plugins</button></nav> : null}
+					{isMobileSidebarViewport && mobileSidebarOpen ? <div data-pibo-mobile-sidebar-backdrop aria-hidden="true" onClick={closeMobileSidebar} className="absolute inset-0 z-30 bg-black/60" /> : null}
 					<DesktopSessionSidebar
 						state={desktopSessionSidebar.state}
 						onStateChange={desktopSessionSidebar.setState}
@@ -1874,6 +1826,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 							navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId);
 						})}
 						hidden={isAppFullscreen || (isMobileSidebarViewport && !mobileSidebarOpen)}
+						mobileOverlay={isMobileSidebarViewport}
+						mobileOpen={mobileSidebarOpen}
+						sidebarRef={mobileSidebarRef}
 					>
 						<SessionSidebar
 							bootstrap={bootstrap}

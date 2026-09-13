@@ -282,7 +282,7 @@ export async function runDebugPty(args: string[]): Promise<void> {
 }
 
 function printPtyDiscovery(): void {
-	console.log(`pibo debug pty - run and inspect interactive CLI/TUI commands under a pseudo-terminal
+	console.log(`pibo debug pty - run and inspect interactive commands under a pseudo-terminal
 
 Commands:
   run             Run one command under PTY
@@ -292,7 +292,6 @@ Commands:
 Usage:
   pibo debug pty run [options] -- <command...>
   pibo debug pty scenario [options] <file>
-  pibo debug pty scenario --builtin cli-session-ui-mocked-e2e
 
 Common options:
   --rows <n>                 Terminal rows (default: ${DEFAULT_ROWS})
@@ -319,12 +318,7 @@ Safety:
 }
 
 function printBuiltinScenarios(): void {
-	console.log(`Built-in PTY scenarios:
-  cli-session-ui-mocked-e2e    Runs pibo tui:sessions without --demo using a deterministic debug fixture when available
-
-Next:
-  pibo debug pty scenario --builtin cli-session-ui-mocked-e2e --artifact
-`);
+	console.log("No built-in PTY scenarios are installed. Use `pibo debug pty scenario <file>`.");
 }
 
 function parsePtyOptions(args: string[]): PtyOptions {
@@ -428,41 +422,8 @@ async function loadScenarioFromOptions(options: PtyOptions): Promise<PtyScenario
 	return applyScenarioOverrides(scenario, options);
 }
 
-function builtinScenario(name: string, options: PtyOptions): PtyScenario {
-	if (name !== "cli-session-ui-mocked-e2e") throw new Error(`Unknown built-in PTY scenario "${name}"`);
-	return applyScenarioOverrides({
-		name,
-		command: ["pibo", "tui:sessions"],
-		rows: 24,
-		cols: 100,
-		timeoutMs: 90_000,
-		idleTimeoutMs: 15_000,
-		inputDelayMs: 45,
-		providerMode: "mocked",
-		artifactDir: "tmp/pty-smoke-artifacts/cli-session-ui-mocked-e2e",
-		env: {
-			PIBO_DEBUG_PTY_SCENARIO: "cli-session-ui-mocked-e2e",
-			PIBO_DEBUG_PTY_CLI_SESSIONS_MOCKED: "1",
-			PIBO_DEBUG_PTY_ASSISTANT_REPLY: "Mocked PTY assistant response",
-		},
-		steps: [
-			{ waitFor: "select room", timeoutMs: 20_000 },
-			{ press: "Enter" },
-			{ waitFor: "select session", timeoutMs: 10_000 },
-			{ press: "Enter" },
-			{ waitFor: "Created session", timeoutMs: 10_000 },
-			{ typeText: "Hi", iteration: true },
-			{ press: "Enter" },
-			{ waitFor: "Mocked PTY assistant response", timeoutMs: 10_000 },
-			{ typeText: "/status" },
-			{ press: "Enter" },
-			{ waitFor: "Runtime: local", timeoutMs: 10_000 },
-			{ typeText: "/exit" },
-			{ press: "Enter" },
-		],
-		expect: ["pibo sessions", "Created session", "Hi", "Mocked PTY assistant response", "Runtime: local"],
-		reject: ["UnhandledPromiseRejection", "source_closed"],
-	}, options);
+function builtinScenario(name: string, _options: PtyOptions): PtyScenario {
+	throw new Error(`Unknown built-in PTY scenario "${name}"`);
 }
 
 function applyScenarioOverrides(scenario: PtyScenario, options: PtyOptions): PtyScenario {
@@ -630,9 +591,6 @@ function normalizeScenario(input: PtyScenario, options: PtyOptions): NormalizedS
 	const idleTimeoutMs = input.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
 	const artifactDir = input.artifactDir ?? options.artifactDir ?? path.join("tmp", "pty-smoke-artifacts", `${safeName(name)}-${new Date().toISOString().replace(/[:.]/g, "-")}`);
 	const env = { ...(input.env ?? {}) };
-	if (env.PIBO_DEBUG_PTY_SCENARIO === "cli-session-ui-mocked-e2e" && env.PIBO_HOME === undefined) {
-		env.PIBO_HOME = path.resolve(artifactDir, "pibo-home");
-	}
 	return {
 		...input,
 		name,

@@ -547,7 +547,6 @@ function ProfileSelectionSummary({ option }: { option: WorkflowProfilePickerOpti
 			{option.description ? <div className="mt-1 text-slate-500">{option.description}</div> : null}
 			<div className="mt-2 flex flex-wrap gap-2 text-[11px]">
 				<WorkflowPill label={option.source === "custom" ? "Custom Agent" : "Global profile"} />
-				<WorkflowPill label={`${option.nativeTools.length} native tools`} />
 				<WorkflowPill label={`${option.skills.length} skills`} />
 				<WorkflowPill label={`${option.contextFiles.length} context files`} />
 			</div>

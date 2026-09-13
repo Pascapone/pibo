@@ -68,6 +68,7 @@ export function planPluginActivation(input: PluginActivationInput): PluginActiva
 	}
 	// Validate contribution identity/dependency contracts before any backend setup import/effect.
 	const contributionEdges = new Map<string, string[]>();
+	const contributionScopes = new Map(input.plugins.flatMap(({ installation }) => installation.manifest.contributions.map((c) => [qualifyPluginContribution(installation.pluginId, c.id), c.scope] as const)));
 	for (const [id, plugin] of plugins) for (const contribution of plugin.installation.manifest.contributions) {
 		contributionEdges.set(qualifyPluginContribution(id, contribution.id), [...contribution.dependsOn ?? []]);
 	}
@@ -77,7 +78,10 @@ export function planPluginActivation(input: PluginActivationInput): PluginActiva
 		if (contributionVisited.has(id)) return;
 		const dependencies = contributionEdges.get(id);
 		if (!dependencies) { fail("missing-contribution-dependency", `Missing contribution ${id}`, [...path, id]); return; }
-		for (const dependency of [...dependencies].sort()) visitContribution(dependency, [...path, id]);
+		for (const dependency of [...dependencies].sort()) {
+			if (contributionScopes.get(id as `${string}/${string}`) === "app" && contributionScopes.get(dependency as `${string}/${string}`) === "agent") fail("invalid-activation-scope-dependency", "App contributions cannot depend on agent selection", [id, dependency]);
+			visitContribution(dependency, [...path, id]);
+		}
 		contributionVisited.add(id);
 	}
 	for (const id of [...contributionEdges.keys()].sort()) visitContribution(id, []);
@@ -103,14 +107,33 @@ export class PluginHost {
 	private installations: PluginInstallation[] = [];
 	private diagnostics: PluginDiagnostic[] = [];
 	private stopPromise?: Promise<void>;
+	private providers: Record<string, string> = {};
 
 	inspect() {
 		return freezePluginValue({ state: this.state, plugins: structuredClone(this.installations), diagnostics: structuredClone(this.diagnostics) });
 	}
 
 	async start(input: PluginActivationInput): Promise<void> {
-		if (this.state !== "idle") throw new Error(`Plugin host is ${this.state}; stop/drain before activating another revision`);
-		const plan = planPluginActivation(input);
+		return this.activateDefinitions(input, false);
+	}
+
+	/** Add independent packages without restarting existing system services. */
+	async add(input: PluginActivationInput): Promise<void> {
+		return this.activateDefinitions(input, true);
+	}
+
+	private async activateDefinitions(input: PluginActivationInput, incremental: boolean): Promise<void> {
+		if (this.state !== (incremental ? "active" : "idle")) throw new Error(`Plugin host is ${this.state}; stop/drain before activating another revision`);
+		const previousCount = this.scopes.length;
+		const previousInstallations = this.installations.length;
+		const existingIds = new Set(this.installations.map((i) => i.pluginId));
+		const plan = planPluginActivation({
+			plugins: [...this.installations.map((installation) => ({ installation, setup() {} })), ...input.plugins],
+			providers: { ...this.providers, ...input.providers },
+		});
+		if (incremental) for (const [service, owner] of Object.entries(this.services.owners())) {
+			if (plan.providers[service] !== owner) throw new Error(`Service ${service} requires a drained composition boundary before replacement`);
+		}
 		this.diagnostics = [...plan.diagnostics];
 		if (!plan.valid) throw new PluginValidationError(plan.diagnostics);
 		const plugins = new Map(input.plugins.map((plugin) => [plugin.installation.pluginId, {
@@ -119,6 +142,7 @@ export class PluginHost {
 		this.state = "starting"; this.stopPromise = undefined;
 		try {
 			for (const id of plan.order) {
+				if (existingIds.has(id)) continue;
 				const definition = plugins.get(id)!;
 				const installation = definition.installation;
 				const manifest = installation.manifest;
@@ -157,10 +181,11 @@ export class PluginHost {
 				for (const service of manifest.services?.provides ?? []) if (plan.providers[service.id] === id && this.services.get(service.id) === undefined) throw new Error(`${id} did not provide declared service ${service.id}`);
 				this.installations.push(installation);
 			}
+			this.providers = { ...plan.providers };
 			this.state = "active";
 		} catch (error) {
 			this.diagnostics.push(pluginDiagnostic("activation-failed", error instanceof Error ? error.message : String(error), this.scopes.map((scope) => scope.pluginId)));
-			try { await this.cleanup(); this.state = "idle"; }
+			try { await this.cleanup(previousCount); this.installations.splice(previousInstallations); this.state = incremental ? "active" : "idle"; }
 			catch (cleanupError) { this.state = "failed"; throw new AggregateError([error, cleanupError], "Plugin activation and rollback failed"); }
 			throw error;
 		}
@@ -175,24 +200,53 @@ export class PluginHost {
 		return root.child(`${piboSessionId}/${generation}`);
 	}
 
+	/** Remove one drained root without disposing unrelated app services. */
+	async remove(pluginId: string): Promise<void> {
+		if (this.state !== "active") throw new Error(`Plugin host is ${this.state}`);
+		const index = this.scopes.findIndex((scope) => scope.pluginId === pluginId);
+		if (index < 0) return;
+		const root = this.scopes[index]!;
+		if (root.activeChildren > 0) throw new Error(`Plugin ${pluginId} still owns session resources`);
+		for (const installation of this.installations) {
+			if (installation.pluginId === pluginId) continue;
+			const m = installation.manifest;
+			const depends = m.dependencies?.some((d) => d.id === pluginId)
+				|| m.services?.requires?.some((s) => this.providers[s.id] === pluginId)
+				|| m.contributions.some((c) => c.dependsOn?.some((id) => id.startsWith(`${pluginId}/`)) || c.services?.some((s) => this.providers[s.id] === pluginId));
+			if (depends) throw new Error(`Plugin ${installation.pluginId} must drain before ${pluginId}`);
+		}
+		this.state = "stopping";
+		try {
+			await root.dispose();
+			this.scopes.splice(index, 1);
+			this.installations = this.installations.filter((i) => i.pluginId !== pluginId);
+			this.providers = Object.fromEntries(Object.entries(this.providers).filter(([, owner]) => owner !== pluginId));
+			this.state = "active";
+		} catch (error) {
+			this.state = "failed";
+			this.diagnostics.push(pluginDiagnostic("cleanup-failed", `Cleanup failed for ${pluginId}`, [pluginId]));
+			throw error;
+		}
+	}
+
 	stop(): Promise<void> {
 		if (this.stopPromise) return this.stopPromise;
-		if (this.state === "starting") return Promise.reject(new Error("Plugin host is starting"));
+		if (this.state === "starting" || this.state === "stopping") return Promise.reject(new Error(`Plugin host is ${this.state}`));
 		if (this.state === "failed") return Promise.reject(new PluginValidationError(this.diagnostics));
 		this.state = "stopping";
 		this.stopPromise = this.cleanup().then(() => { this.state = "idle"; }, (error) => { this.state = "failed"; throw error; });
 		return this.stopPromise;
 	}
 
-	private async cleanup(): Promise<void> {
+	private async cleanup(from = 0): Promise<void> {
 		const errors: unknown[] = [];
-		for (const scope of this.scopes.splice(0).reverse()) {
+		for (const scope of this.scopes.splice(from).reverse()) {
 			try { await scope.dispose(); } catch (error) {
 				errors.push(error);
 				this.diagnostics.push(pluginDiagnostic("cleanup-failed", `Cleanup failed for ${scope.instanceId}`, [scope.pluginId, scope.instanceId]));
 			}
 		}
 		if (errors.length) throw new AggregateError(errors, "Plugin host cleanup failed; activation/replacement remains blocked");
-		this.installations = [];
+		if (from === 0) { this.installations = []; this.providers = {}; }
 	}
 }

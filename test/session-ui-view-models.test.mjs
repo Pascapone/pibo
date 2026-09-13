@@ -192,7 +192,7 @@ test("app context room session picker descriptors include defaults empty rooms a
 	assert.ok(sessions.items[1].markers.includes("current"));
 });
 
-test("Web and Ink rich terminal renderers consume shared descriptors without crossing boundaries", () => {
+test("Web rich terminal renderer consumes shared descriptors", () => {
 	const statusCardSource = fs.readFileSync(path.resolve("src/apps/chat-ui/src/session-views/compact-terminal/TerminalStatusCard.tsx"), "utf8");
 	assert.match(statusCardSource, /buildTerminalCardDescriptor/, "Web status card should consume shared terminal card descriptors");
 	assert.match(statusCardSource, /statusView/, "Web status card should render from the shared status view model");
@@ -202,27 +202,7 @@ test("Web and Ink rich terminal renderers consume shared descriptors without cro
 	assert.match(statusCardSource, /data-shared-status-warning/, "Web status card should expose warning hooks");
 	assert.match(statusCardSource, /data-shared-status-error/, "Web status card should expose error hooks");
 	assert.doesNotMatch(statusCardSource, /OpenAI Codex quota/, "Web status card should use provider labels from descriptors instead of hardcoding OpenAI");
-
-	const inkRowSource = fs.readFileSync(path.resolve("src/apps/cli-ui/InkTerminalRow.ts"), "utf8");
-	assert.match(inkRowSource, /buildTerminalCardDescriptor\(row\)/, "Ink structured exceptions must pass through shared terminal card descriptors");
-	assert.match(inkRowSource, /InkTerminalCard/, "Ink should render shared structured exceptions with terminal-native card primitives");
-	assert.match(inkRowSource, /isStructuredCardException/, "Ink should explicitly limit card rendering to Web-equivalent structured exceptions");
-
-	const cliSourceDir = path.resolve("src/apps/cli-ui");
-	const cliFiles = listSourceFiles(cliSourceDir);
-	for (const file of cliFiles) {
-		const source = fs.readFileSync(file, "utf8");
-		assert.doesNotMatch(source, /src\/apps\/chat-ui|session-views\/compact-terminal|react-dom|lucide-react|\.module\.css|window\.|document\.|HTMLElement|Tailwind|className=/, `${path.relative(process.cwd(), file)} must not import Web DOM components or browser APIs`);
-	}
 });
-
-function listSourceFiles(dir) {
-	return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-		const filePath = path.join(dir, entry.name);
-		if (entry.isDirectory()) return listSourceFiles(filePath);
-		return /\.(?:ts|tsx)$/.test(entry.name) ? [filePath] : [];
-	});
-}
 
 test("Web Compact Terminal source preserves shared flow ordering hooks and streaming semantics", () => {
 	const fixtureRows = buildCanonicalTerminalRows();

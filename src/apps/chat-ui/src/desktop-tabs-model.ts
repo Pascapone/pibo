@@ -64,7 +64,6 @@ export function desktopTabTitle(target: DesktopTabTarget): string {
 		return "Session Inspector";
 	}
 	const route = target.route;
-	if (route.area === "vscode") return "VS Code";
 	if (route.area === "cron") return "Cron";
 	if (route.area === "loops") return "Loops";
 	if (route.area === "agents") return "Agent Designer";
@@ -191,7 +190,7 @@ export function activeDesktopTab(state: DesktopTabState): DesktopTab | null {
 export function desktopTabKeepsMounted(tab: DesktopTab): boolean {
 	if (tab.target.kind === "new-tab") return false;
 	if (tab.target.kind === "session-tool") return tab.target.tool === "preview";
-	return tab.target.route.area === "vscode";
+	return false;
 }
 
 export function desktopRouteForState(
@@ -349,7 +348,7 @@ function isDesktopSessionTool(value: unknown): value is DesktopSessionTool {
 }
 
 function isDesktopRoute(value: Record<string, unknown>): value is Exclude<ChatAppRoute, { area: "sessions" }> {
-	if (value.area === "vscode" || value.area === "agents" || value.area === "cron" || value.area === "loops") return true;
+	if (value.area === "agents" || value.area === "cron" || value.area === "loops") return true;
 	if (value.area === "workflows" || value.area === "context" || value.area === "settings") return true;
 	return false;
 }

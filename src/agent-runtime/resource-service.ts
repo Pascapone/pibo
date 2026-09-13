@@ -13,19 +13,13 @@ import type { InitialSessionContext } from "../core/profiles.js";
 import { piboHomePath } from "../core/pibo-home.js";
 import { protectPrivatePathsSync } from "../core/private-path.js";
 import { DEFAULT_USER_TIMEZONE } from "../core/user-settings.js";
-import {
-	isHttpServer,
-	loadConfigUnresolved,
-	type McpServersConfig,
-	type ServerConfig,
-} from "../mcp/config.js";
+import type { McpServersConfig, ServerConfig } from "../mcp/config.js";
 import {
 	redactMcpRuntimeError as redactResourceError,
-	scopePiboMcpServerConfig,
 	verifyPiboMcpServer,
 	type ScopedPiboMcpServerConfig,
 } from "../mcp/runtime-session.js";
-import { getMcpAgentContextFileFromConfig } from "../mcp/agent-context.js";
+import { MCP_CLI_ADAPTER, type PiboMcpAdapter } from "../plugins/mcp-adapter.js";
 import { getInstalledCliToolContextFile } from "../tools/registry.js";
 import { getDelegatedAgentContextFile } from "../subagents/context.js";
 import type {
@@ -83,6 +77,8 @@ export type CreatePiboRuntimeResourceSessionInput = {
 	strict?: boolean;
 	/** Defaults to true. Set false only for an explicit non-connecting inspection. */
 	verifyMcp?: boolean;
+	/** Selected external MCP provider. The internal Pibo tool bridge is separate. */
+	mcpAdapter?: PiboMcpAdapter;
 };
 
 export class PiboRuntimeResourceError extends Error {
@@ -522,9 +518,10 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 		const selected = [...new Set(this.input.profile.mcpServers.map((name) => name.trim()).filter(Boolean))];
 		for (const name of selected) this.requiredContributionIds.add(`mcp:${name}`);
 		if (selected.length === 0) return;
+		const adapter = this.input.mcpAdapter ?? MCP_CLI_ADAPTER;
 		let config: McpServersConfig;
 		try {
-			config = await loadConfigUnresolved(this.options.mcpConfigPath);
+			config = await adapter.loadConfig(this.options.mcpConfigPath);
 		} catch (error) {
 			const message = redactResourceError(error);
 			for (const name of selected) this.addFailedMcp(name, message);
@@ -537,16 +534,17 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				continue;
 			}
 			try {
-				const scoped = scopePiboMcpServerConfig(name, serverConfig, this.options.environment);
+				const scoped = adapter.scopeServer(name, serverConfig, this.options.environment);
+				const transport = adapter.isHttpServer(serverConfig) ? "http" : "stdio";
 				this.mcpServers.push({
 					name,
 					contributionId: `mcp:${name}`,
-					transport: isHttpServer(serverConfig) ? "http" : "stdio",
+					transport,
 					scoped,
 					inspection: {
 						contributionId: `mcp:${name}`,
 						name,
-						transport: isHttpServer(serverConfig) ? "http" : "stdio",
+						transport,
 						status: "configured",
 						tools: [],
 						resources: [],
@@ -558,11 +556,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				this.addFailedMcp(name, redactResourceError(error));
 			}
 		}
-		const mcpContext = getMcpAgentContextFileFromConfig(selected, {
-			mcpServers: Object.fromEntries(
-				selected.flatMap((name) => config.mcpServers[name] ? [[name, config.mcpServers[name]] as const] : []),
-			),
-		});
+		const mcpContext = adapter.createAgentContext(selected, config);
 		if (mcpContext) {
 			this.context.push({
 				id: ENABLED_MCP_CONTEXT_ID,

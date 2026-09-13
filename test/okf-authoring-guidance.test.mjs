@@ -130,7 +130,7 @@ test("migration plan records bounded standing authority for trivial validator an
 test("host exceptions use exact path-specific role reasons", () => {
 	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
 	const exceptions = ledger.records.filter((record) => record.state === "host-exception");
-	assert.equal(exceptions.length, 47);
+	assert.equal(exceptions.length, 46);
 	for (const record of exceptions) {
 		assert(!/[*?{}[\]]/.test(record.path), record.path);
 		assert.equal(record.path.endsWith("/"), false, record.path);
@@ -141,7 +141,8 @@ test("host exceptions use exact path-specific role reasons", () => {
 		"Built-in skill package, reference, evaluation fixture, or source skill kept in its host-owned native format outside the OKF bundle.",
 	];
 	for (const reason of genericReasons) assert.equal(exceptions.some((record) => record.reason === reason), false, reason);
-	assert.equal(new Set(exceptions.map((record) => record.reason)).size, 47, "each host-owned path needs its own role reason");
+	assert.equal(new Set(exceptions.map((record) => record.reason)).size, exceptions.length, "each host-owned path needs its own role reason");
+	assert.equal(exceptions.some((record) => record.path === "src/apps/chat-vscode/README.md"), false);
 });
 
 test("plan and evidence producers follow the corrected nested paths", () => {
@@ -167,14 +168,11 @@ test("documentation package scripts expose core, migration, strict, index, and l
 	assert(!pkg.files.includes("docs/ops/**"));
 });
 
-test("closed foundation relocations preserve the six accepted source bodies byte for byte", () => {
+test("closed foundation relocations preserve the three unchanged source bodies byte for byte", () => {
 	const expected = new Map([
-		["docs/project/guides/pibo-on-windows-via-wsl.md", "132f00469edcfa8915525bff4d0c9d82573ae53868a74db81d5224d354ce1d25"],
-		["docs/project/guides/pibo-vscode-ext-quickstart.md", "ff1b33edf70c89ce9b128382d05d5fa28735ede3fc3ba40429bece172fc2d716"],
 		["docs/project/operations/install-developer-host.md", "8e6ae80f901852ab0d38c0eb887d83f300107ecbebc2418da5e19ca9238e2e70"],
 		["docs/project/operations/install-user-host.md", "f3f6c51fe9f7b30fe8828cf844c82d8ef5ffebb715bab06d78348d5a9d547722"],
 		["docs/project/operations/upgrade-user-to-developer-host.md", "a48141d6456800b5e05472dfa7464d44a3b1605ad25a3209145a4d5bfcef22f8"],
-		["docs/project/operations/vscode-extension-release.md", "4d7588693a51389ebc3ea53eb088272743e707e3d81a5f436ab58578769f56c2"],
 	]);
 	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
 	for (const [path, hash] of expected) {
@@ -187,6 +185,35 @@ test("closed foundation relocations preserve the six accepted source bodies byte
 		assert.equal(record?.state, "conformant", `${path} ledger state`);
 		assert.equal(record?.body_sha256, hash, `${path} ledger body hash`);
 	}
+});
+
+test("retired Foundation documents record changed bodies instead of claiming current byte preservation", () => {
+	const sourceHashes = new Map([
+		["docs/project/guides/pibo-vscode-ext-quickstart.md", "ff1b33edf70c89ce9b128382d05d5fa28735ede3fc3ba40429bece172fc2d716"],
+		["docs/project/operations/vscode-extension-release.md", "4d7588693a51389ebc3ea53eb088272743e707e3d81a5f436ab58578769f56c2"],
+	]);
+	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
+	for (const [path, sourceHash] of sourceHashes) {
+		const content = readFileSync(path);
+		const envelope = /^---(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---(?:\r\n|\n|\r)/.exec(content.toString("utf8"));
+		assert(envelope, `${path} must have one frontmatter envelope`);
+		const bodyHash = createHash("sha256").update(content.subarray(Buffer.byteLength(envelope[0]))).digest("hex");
+		assert.notEqual(bodyHash, sourceHash, path);
+		assert.match(envelope[0], /relation: "Originally byte-identical after Foundation relocation; current body adds a retirement notice\."/);
+		assert.equal(ledger.records.find((record) => record.path === path)?.body_sha256, bodyHash);
+	}
+});
+
+test("the current WSL guide records rewritten lineage instead of claiming byte preservation", () => {
+	const path = "docs/project/guides/pibo-on-windows-via-wsl.md";
+	const content = readFileSync(path);
+	const envelope = /^---(?:\r\n|\n|\r)[\s\S]*?(?:\r\n|\n|\r)---(?:\r\n|\n|\r)/.exec(content.toString("utf8"));
+	assert(envelope, `${path} must have one frontmatter envelope`);
+	const bodyHash = createHash("sha256").update(content.subarray(Buffer.byteLength(envelope[0]))).digest("hex");
+	assert.notEqual(bodyHash, "132f00469edcfa8915525bff4d0c9d82573ae53868a74db81d5224d354ce1d25");
+	assert.match(envelope[0], /relation: "Rewritten for the current Linux-first gateway and Chat Web product surface\."/);
+	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
+	assert.equal(ledger.records.find((record) => record.path === path)?.body_sha256, bodyHash);
 });
 
 test("accepted historical plan bodies remain byte-preserved after upstream refresh", () => {

@@ -6,17 +6,14 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
-import {
-	CODEX_NATIVE_ADAPTER_ID,
-	CODEX_NATIVE_AGENT_RUNTIME_DRIVER,
-} from "../dist/agent-runtimes/codex-native/adapter.js";
+import { CODEX_NATIVE_ADAPTER_ID } from "../dist/agent-runtimes/codex-native/adapter.js";
 import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-native/config.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "../dist/plugins/builtin.js";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { definePiboPlugin } from "../dist/plugins/registry.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
 const fortyCombiningCodePoints = "e\u0301".repeat(20);
@@ -72,28 +69,25 @@ async function listFixtureMcpTools(client, threadId) {
 	});
 }
 
-function createRegistry(root, registerProfiles, childDriver) {
-	return PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
-				id: `test.codex-subagents.${basename(root)}`,
-				register(api) {
-					api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
-					api.registerAgentRuntimeInstance({
-						id: "codex-subagent-fixture",
-						adapterId: CODEX_NATIVE_ADAPTER_ID,
-						config: codexConfig(root),
-					});
-					if (childDriver) {
-						api.registerAgentRuntimeDriver(childDriver);
-						api.registerAgentRuntimeInstance({ id: "fixture-child", adapterId: "fixture-child" });
-					}
-					registerProfiles(api);
-				},
-			}),
-		],
-	});
+async function createRegistry(root, registerProfiles, childDriver) {
+	const product = await startTestPluginProduct(`pibo-codex-subagents-${basename(root)}-`);
+	const registry = product.createDefaultRegistry();
+	registry.registerPlugin(definePiboPlugin({
+		id: `test.codex-subagents.${basename(root)}`,
+		register(api) {
+			api.registerAgentRuntimeInstance({
+				id: "codex-subagent-fixture",
+				adapterId: CODEX_NATIVE_ADAPTER_ID,
+				config: codexConfig(root),
+			});
+			if (childDriver) {
+				api.registerAgentRuntimeDriver(childDriver);
+				api.registerAgentRuntimeInstance({ id: "fixture-child", adapterId: "fixture-child" });
+			}
+			registerProfiles(api);
+		},
+	}));
+	return { product, registry };
 }
 
 test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a different runtime", async (t) => {
@@ -105,7 +99,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 			return { events: [{ type: "assistant_message", text: `fixture child: ${input.text}` }] };
 		},
 	});
-	const registry = createRegistry(root, (api) => {
+	const { product, registry } = await createRegistry(root, (api) => {
 		api.registerProfile({
 			name: "codex-subagent-parent",
 			create() {
@@ -149,6 +143,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	const router = new PiboSessionRouter({
 		persistSession: false,
 		pluginRegistry: registry,
+		pluginRuntime: product.runtime,
 		sessionStore: store,
 		reliabilityStore,
 		cwd: workspace,
@@ -158,6 +153,8 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	router.subscribe((event) => events.push(event));
 	t.after(async () => {
 		await router.disposeAll();
+		await registry.disposePlugins();
+		await product.dispose();
 		reliabilityStore.close();
 		await rm(root, { recursive: true, force: true });
 	});
@@ -275,7 +272,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 test("a Pi parent yielded subagent request creates and reuses a native Codex child binding", async (t) => {
 	const root = await fixtureRoot("pibo-pi-codex-subagent-");
 	const workspace = join(root, "workspace");
-	const registry = createRegistry(root, (api) => {
+	const { product, registry } = await createRegistry(root, (api) => {
 		api.registerProfile({
 			name: "pi-subagent-parent",
 			create() {
@@ -319,6 +316,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	const router = new PiboSessionRouter({
 		persistSession: false,
 		pluginRegistry: registry,
+		pluginRuntime: product.runtime,
 		sessionStore: store,
 		reliabilityStore,
 		cwd: workspace,
@@ -328,6 +326,8 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	router.subscribe((event) => events.push(event));
 	t.after(async () => {
 		await router.disposeAll();
+		await registry.disposePlugins();
+		await product.dispose();
 		reliabilityStore.close();
 		await rm(root, { recursive: true, force: true });
 	});

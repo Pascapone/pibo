@@ -11,24 +11,52 @@ import {
 	setPiboConfigValue,
 } from "./config/config.js";
 import type { PiboRuntimeOptions } from "./core/runtime.js";
+import type { PluginJsonObject } from "./plugins/manifest.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
 import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
 async function resolveCliProfile(profileName?: string) {
-	const { createGatewayProducerPiboProfile, createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
+	const {
+		createGatewayProducerPiboPluginRegistry,
+		createPiboProfileFromRegistryOrDefault,
+	} = await import("./plugins/builtin.js");
+	const { profileFromPluginPlan } = await import("./agent-runtime/plugin-plan.js");
+	const { startPluginProductRuntime } = await import("./plugins/product-runtime.js");
 	const { createDefaultPiboUserProfileRegistry } = await import("./plugins/user-profile-resources.js");
-	const registry = createDefaultPiboUserProfileRegistry();
-	const profile = profileName === "gateway-producer" || profileName === "pibo-gateway-producer"
-		? createGatewayProducerPiboProfile()
-		: createPiboProfileFromRegistryOrDefault(registry, profileName);
-	return {
-		profile,
-		resolveSubagentProfile: (targetProfile: string) => createPiboProfileFromRegistryOrDefault(registry, targetProfile),
-	};
-}
-
-async function createCliProfile(profileName?: string) {
-	return (await resolveCliProfile(profileName)).profile;
+	const gatewayProducer = profileName === "gateway-producer" || profileName === "pibo-gateway-producer";
+	const registry = gatewayProducer
+		? createGatewayProducerPiboPluginRegistry()
+		: createDefaultPiboUserProfileRegistry();
+	const product = await startPluginProductRuntime({
+		host: registry.getPluginHost(),
+		collectConsumers: async () => [],
+	});
+	try {
+		const materializePreview = (targetProfile?: string) => {
+			const selected = createPiboProfileFromRegistryOrDefault(registry, targetProfile);
+			if (!selected.pluginSelection) return selected;
+			const adapter = registry.requireAgentRuntimeAdapter(selected.runtimeInstanceId);
+			const plan = product.runtime.preview(selected, {
+				adapterId: adapter.descriptor.id,
+				instanceId: selected.runtimeInstanceId,
+				capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject,
+			});
+			return profileFromPluginPlan(selected, plan, registry.getPluginHost());
+		};
+		const profile = materializePreview(profileName);
+		return {
+			profile,
+			resolveSubagentProfile: (targetProfile: string) => materializePreview(targetProfile),
+			dispose: async () => {
+				await registry.disposePlugins();
+				await product.dispose();
+			},
+		};
+	} catch (error) {
+		await registry.disposePlugins();
+		await product.dispose();
+		throw error;
+	}
 }
 
 function printJson(value: unknown): void {
@@ -139,12 +167,6 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
-	if (argv[2] === "pi-packages") {
-		const { runPiPackagesCli } = await import("./pi-packages/cli.js");
-		await runPiPackagesCli([argv[0] ?? "node", "pibo pi-packages", ...argv.slice(3)]);
-		return;
-	}
-
 	if (argv[2] === "debug") {
 		const { runDebugCli } = await import("./debug/index.js");
 		await runDebugCli([argv[0] ?? "node", "pibo debug", ...argv.slice(3)]);
@@ -187,6 +209,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "plugins") {
+		const { runDefaultPluginCli } = await import("./plugins/cli.js");
+		process.exitCode = await runDefaultPluginCli(argv.slice(3));
+		return;
+	}
+
 	if (argv[2] === "skills") {
 		const { runSkillsCli } = await import("./skills/cli.js");
 		await runSkillsCli([argv[0] ?? "node", "pibo skills", ...argv.slice(3)]);
@@ -211,20 +239,8 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
-	if (argv[2] === "vscode") {
-		const { runVscodeCli } = await import("./vscode/cli.js");
-		await runVscodeCli([argv[0] ?? "node", "pibo vscode", ...argv.slice(3)]);
-		return;
-	}
-
 	if (argv[2] === "config" && (argv[3] === "--help" || argv[3] === "-h" || argv.length === 3)) {
 		printConfigDiscovery();
-		return;
-	}
-
-	if (argv[2] === "tui:sessions" && (argv[3] === "--help" || argv[3] === "-h")) {
-		const { cliSessionsHelpText } = await import("./apps/cli-ui/index.js");
-		console.log(cliSessionsHelpText());
 		return;
 	}
 
@@ -253,18 +269,6 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runToolsCli } = await import("./tools/index.js");
 			await runToolsCli([argv[0] ?? "node", "pibo tools", ...args]);
-		});
-
-	program
-		.command("pi-packages")
-		.description("Register Pi Coding Agent packages")
-		.helpOption(false)
-		.allowUnknownOption(true)
-		.allowExcessArguments(true)
-		.argument("[args...]")
-		.action(async (args: string[]) => {
-			const { runPiPackagesCli } = await import("./pi-packages/cli.js");
-			await runPiPackagesCli([argv[0] ?? "node", "pibo pi-packages", ...args]);
 		});
 
 	program
@@ -387,18 +391,6 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 			await runLoopCli([argv[0] ?? "node", "pibo ralph", ...args], { mode: "ralph", commandName: "pibo ralph" });
 		});
 
-	program
-		.command("vscode")
-		.description("Manage the Pibo VS Code extension")
-		.helpOption(false)
-		.allowUnknownOption(true)
-		.allowExcessArguments(true)
-		.argument("[args...]")
-		.action(async (args: string[]) => {
-			const { runVscodeCli } = await import("./vscode/cli.js");
-			await runVscodeCli([argv[0] ?? "node", "pibo vscode", ...args]);
-		});
-
 	const config = program.command("config").description(`Manage pibo config at ${getDefaultPiboConfigPath()}`).helpOption(false);
 	config.action(() => {
 		printConfigDiscovery();
@@ -451,52 +443,14 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (profile?: string) => {
 			const { inspectPiboProfile } = await import("./core/runtime.js");
 			const resolved = await resolveCliProfile(profile);
-			printJson(await inspectPiboProfile({
-				profile: resolved.profile,
-				subagentProfileResolver: resolved.resolveSubagentProfile,
-			}));
-		});
-	program
-		.command("tui")
-		.argument("[profile]")
-		.description("Start the Pi TUI through pibo")
-		.action(async (profile?: string) => {
-			const { runPiboTui } = await import("./core/runtime.js");
-			await runPiboTui({ profile: await createCliProfile(profile) });
-		});
-	program
-		.command("tui:routed")
-		.helpOption("-h, --help", "Display help for command")
-		.option("--show-thinking", "Show routed thinking deltas in the local TUI")
-		.option("--thinking <level>", "Set routed thinking level: off, minimal, low, medium, high, xhigh, max", parsePiboThinkingLevel)
-		.argument("[profile]")
-		.description("Start the local routed Pibo TUI")
-		.action(
-			async (
-				profile: string | undefined,
-				options: { showThinking?: boolean; thinking?: PiboRuntimeOptions["thinkingLevel"] },
-			) => {
-				const { runLocalRoutedTui } = await import("./local/tui.js");
-				await runLocalRoutedTui({
-					profile,
-					showThinking: options.showThinking === true,
-					thinkingLevel: options.thinking,
-				});
-			},
-		);
-	program
-		.command("tui:sessions")
-		.description("Start the reduced Web Chat-derived session UI")
-		.option("--session <id>", "Open a specific Pibo session id")
-		.option("--max-rows <count>", "Limit rendered transcript rows", parsePositiveInteger)
-		.option("--demo", "Use deterministic fake session data for smoke testing")
-		.action(async (options: { session?: string; maxRows?: number; demo?: boolean }) => {
-			const { runCliSessionsUi } = await import("./apps/cli-ui/index.js");
-			await runCliSessionsUi({
-				initialSessionId: options.session,
-				maxRows: options.maxRows,
-				useFakeSource: options.demo === true,
-			});
+			try {
+				printJson(await inspectPiboProfile({
+					profile: resolved.profile,
+					subagentProfileResolver: resolved.resolveSubagentProfile,
+				}));
+			} finally {
+				await resolved.dispose();
+			}
 		});
 	program
 		.command("router")
@@ -589,7 +543,7 @@ Commands:
   auth         Manage Web authentication and machine identities
   mcp          Discover and call configured MCP servers
   tools        Install and inspect curated external CLI tools
-  pi-packages  Register Pi Coding Agent packages
+  plugins      Inspect and manage Pibo plugins
   debug        Inspect local Pibo data
   data         Inspect and maintain Pibo data stores
   compute      Manage Pibo Docker compute workers
@@ -600,11 +554,7 @@ Commands:
   cron         Manage scheduled Pibo jobs
   loop         Manage continuous agent loops (goal mode by default)
   ralph        Legacy alias for Ralph-mode loops
-  vscode       Manage the Pibo VS Code extension
   profile      Inspect a pibo profile, including active saved Chat custom agents
-  tui          Start the direct Pi TUI
-  tui:routed   Start the local routed Pibo TUI
-  tui:sessions  Start the reduced Web Chat-derived session UI
   client       Send queued or steering messages to one Pibo Session
   gateway      Inspect and restart host gateways through safe CLI commands
   gateway:web  Start a web gateway runtime (use --auth=local for loopback-only local auth)

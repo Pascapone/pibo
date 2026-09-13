@@ -1,17 +1,22 @@
 ---
 type: "Plan"
 title: "Pibo vollständig über Plugins erweitern: Umbauplan für Coding-Agents"
-description: "Definiert den Plugin-Umbau mit Agent-Designer, sessiongebundenen Tabs, plugin-eigenen Settings, vollständigem Build Context, Runtime-Beiträgen und sessionerhaltender Deinstallation."
+description: "Definiert den Plugin-Umbau mit getrennter systemweiter und agentbezogener Aktivierung, Agent-Designer, sessiongebundenen Tabs, plugin-eigenen Settings, vollständigem Build Context, Runtime-Beiträgen und sessionerhaltender Deinstallation."
 tags: ["plugins", "architecture", "agent-designer", "runtime", "web", "migration"]
 status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-11T19:47:33Z"
+  at: "2026-09-12T09:59:54Z"
 sources:
+  - id: "test-preservation"
+    resource: "scope:owner instruction 2026-09-12; preserve existing tests wherever possible and use them to prove behavioral parity after plugin migration; add new tests and justify unavoidable existing-test adjustments"
   - id: "owner-decisions"
     resource: "scope:owner conversation through 2026-09-11 including follow-up on Context/Settings, plugin-owned settings and context options, complete Build Context, persistent per-session desktop tabsets; plugin-only executable extensions, trusted plugins, Agent Designer, independent user resources, retained sessions"
     title: "Produktentscheidungen des Auftraggebers"
+  - id: "activation-scopes"
+    resource: "scope:owner clarification 2026-09-12; plugins may be system-only, agent-only or mixed; app-wide Goal mechanisms remain active independently of per-agent Goal tooling"
+    title: "Systemweite Funktionen und getrennt auswählbares Agent-Tooling"
   - id: "planning-direction"
     resource: "scope:2026-09-11 follow-up architecture assessment and requested implementation plan; evolve Pibo's own system using Cordis principles"
     title: "Arbeitsgrundlage: eigenes System statt Cordis-Integration"
@@ -57,7 +62,7 @@ Die folgenden Punkte stammen aus den Produktvorgaben; sie werden von Coding-Agen
 | D03 | Installierte Plugins sind voll vertrauenswürdiger Code und dürfen Pibo umfassend verändern. Es wird keine Plugin-Sandbox und keine künstliche Beschränkung auf additive Tabs eingeführt. |
 | D04 | Die Philosophie und Funktionen des Agent-Designers bleiben erhalten: Profile, Modelle, Runtime-Optionen, Ressourcen, Subagents und deren Konfiguration. |
 | D05 | Im Designer ersetzt ein Plugin-Bereich die direkten Pibo-Tool- und Package-Bereiche. Pi Built-in Tools bleiben separat konfigurierbar. |
-| D06 | Ein Agent kann ein Plugin vollständig aktivieren oder deaktivieren. Einzelne Beiträge lassen sich deaktivieren, soweit das Plugin sie als optional deklariert. Pflichtbeiträge sind bei aktiviertem Plugin verbindlich. |
+| D06 | Ein Agent kann die Agent-Beiträge eines Plugins aktivieren oder deaktivieren. Das verändert dessen systemweite Aktivierung nicht. Optionale Agent-Beiträge sind einzeln abwählbar; Pflichtbeiträge gelten innerhalb der aktivierten Agent-Seite. |
 | D07 | User-Skills und Kontextdateien bleiben unabhängig von Plugins hinzufügbar und auswählbar. Manuelle Subagent-Konfiguration bleibt zusätzlich zu pluginbereitgestellten Subagents bestehen. |
 | D08 | Der Built-in Pibo Tool Catalog wird in fachlich sinnvolle Plugins zerlegt. Codex Compat, Web Annotations, Run-Control und Goal-Control werden über denselben Vertrag bereitgestellt. |
 | D09 | Die heutige CLI-basierte MCP-Anbindung wird ein Plugin. Weitere MCP-Adapter können als Plugins denselben Liefervertrag verwenden. |
@@ -69,8 +74,22 @@ Die folgenden Punkte stammen aus den Produktvorgaben; sie werden von Coding-Agen
 | D15 | Jeder Desktop-Tab gehört zur beim Öffnen ausgewählten Pibo Session. Sessionwechsel stellt deren eigenes persistiertes Tabset einschließlich aktivem Tab und View-Zustand wieder her; das gilt auch für Context und Settings. |
 | D16 | Plugin-spezifische Settings sowie MCP-Tools-/Pibo-Native-Kontextoptionen liegen im zugehörigen Plugin-Tab. Context und Settings behalten keine fest verdrahteten Plugin-/Package-Sonderbereiche. Unabhängige User-Ressourcen bleiben zugänglich. |
 | D17 | Build Context macht die gesamte Kontextzusammensetzung einschließlich aller Plugins und Funktionen nachvollziehbar: Herkunft, Auswahl, Reihenfolge, Transformationen, Lieferung, Ausschlüsse und Grenzen der Einsehbarkeit. |
+| D18 | Ein Plugin kann ausschließlich systemweite, ausschließlich agentbezogene oder beide Arten von Beiträgen enthalten. Systemweite Aktivierung und Agent-Auswahl sind getrennte Zustände desselben Plugins; das Goal-Plugin ist der verbindliche Mischfall. |
+| D19 | Bestehende Tests bleiben möglichst unverändert und bilden den primären Nachweis, dass Pibo nach dem Plugin-Umbau wie zuvor funktioniert. Neue Tests ergänzen diesen Bestand. Unvermeidbare Anpassungen benötigen eine konkrete Begründung und erhalten den Verhaltensnachweis. |
 
 Voll vertrauenswürdiger Code ist keine Garantie gegen Fehlverhalten. Die folgenden Validierungen sichern konsistente normale Ausführung und Kompatibilität; sie behaupten keine Sicherheitsgrenze gegenüber absichtlich eingreifendem Plugin-Code. Bestehende Web-Authentisierung und Session-gebundene Tool-Credentials werden durch diese Vertrauensentscheidung nicht abgeschafft.
+
+## PLG-TEST-001: Bestehende Tests als Paritätsnachweis erhalten
+
+Der Umbau MUSS das bisherige Produktverhalten über die vorhandenen Tests absichern. Bestehende Tests sind ein zu erhaltender Vertrag, auch wenn sich die interne Implementierung in Plugins verlagert. Neue Plugin-Tests ergänzen fehlende Vertrags-, Scope-, Lifecycle- und Migrationsfälle; sie ersetzen weder die Bestandsregressionen noch den abschließenden vollständigen Testlauf.[^test-preservation]
+
+Bei einem fehlgeschlagenen Bestandstest MUSS zuerst geklärt werden, ob die Implementierung das bisherige Verhalten verletzt. Eine bestätigte Regression wird im Produktcode behoben. Ein grüner Plugin-Modultest rechtfertigt keine Änderung der bisherigen Erwartung. Insbesondere die zwölf im Handoff offenen Bestandsfehler werden einzeln untersucht und bis zur fachlichen Klärung offen geführt.
+
+Notwendige Anpassungen sind auf zwei nachvollziehbare Fälle begrenzt: Ein Test benötigt den neuen Plugin-Installations-/Setup-Pfad, behält aber seine bisherigen Verhaltensassertions; oder eine ausdrücklich im Plan vereinbarte Produktänderung macht die frühere Erwartung ungültig, etwa die Entfernung eines alten Erweiterungswegs. Im zweiten Fall MUSS der Ersatztest die neue gewünschte Funktion und gegebenenfalls den erklärten Umgang mit dem entfernten Pfad belegen. Es genügt nicht, einen alten Test durch eine Assertion auf neue interne Strukturen zu ersetzen.
+
+Tests dürfen nicht für einen grünen Lauf gelöscht, übersprungen, abgeschwächt oder über Runner-/Discovery-Änderungen ausgeschlossen werden. Eine fachlich notwendige Entfernung oder Änderung wird mit Dateipfad/Testname, bisheriger Erwartung, konkreter Planentscheidung beziehungsweise Setup-Grund und erhaltenem oder neuem Verhaltensnachweis im Abnahmebericht dokumentiert. Derselbe Nachweis gilt für bereits im früheren Umbaucheckpoint geänderte Tests; der Audit vergleicht auch gegen die ursprüngliche Baseline.
+
+AP00 sichert den vorhandenen Testumfang und bekannte Ausgangsfehler. AP11 nutzt die bestehenden Featuretests über den tatsächlichen Plugin-Pfad. AP12–AP18 führen bei jeder Extraktion die betroffenen Bestandsregressionen aus. AP19 prüft den gesamten bestehenden und ergänzten Testumfang am integrierten Kandidaten sowie den Testdiff gegen die Baseline. Testanzahlen und grüne Einzelmodule allein schließen diesen Nachweis nicht.
 
 # Zielverträge und Architektur
 
@@ -124,15 +143,37 @@ Mitgelieferte Provider erhalten keine pauschale technische Unersetzbarkeit. Ein 
 
 Direkter Zugriff auf interne React-Strukturen wird nicht als stabiler SDK-Vertrag angeboten. Voll vertrauenswürdiger Code kann technisch darüber hinausgehen; dafür wird keine Kompatibilitätsgarantie gegeben. Eine Registrierung kollidierender Tool-Namen wird ohne explizite Ersetzungsbeziehung abgewiesen.
 
+## PLG-ACT-001: Systemweite Aktivierung und Agent-Auswahl
+
+**Präzisierung vom 2026-09-12:** Ein Plugin MUSS systemweite und agentbezogene Funktionen unabhängig voneinander beschreiben können. „Systemweit“ bedeutet den Pibo App Context, unabhängig von ausgewähltem Agent, Room oder einer laufenden Session. Ein Paket besitzt weiterhin eine Plugin-ID, Revision und einen Installations-/Update-Lifecycle.[^activation-scopes]
+
+| Form | Systemweite Seite | Agent-Seite |
+|---|---|---|
+| Nur agentbezogen | Keine fachliche systemweite Aktivierung erforderlich | Tools, Skills, Kontext oder Hooks pro Agent auswählbar |
+| Nur systemweit | Dienste, Jobs, Routen oder App-Views funktionieren ohne Agent-Auswahl und ohne laufende Session | Kein wirkungsloser Aktivierungsschalter im Designer |
+| Gemischt, etwa Goal | Goal-Zustand, Loop-Steuerung und App-Funktionen bleiben systemweit verfügbar | Goal-Tools und zugehöriger Agent-Kontext separat pro Agent auswählbar |
+
+Installation, systemweite Aktivierung und Agent-Auswahl MÜSSEN getrennt gespeichert und angezeigt werden. Installiert bedeutet weder systemweit aktiv noch für jeden Agent ausgewählt. Die deklarative Standardkomposition aktiviert die systemweite Seite des mitgelieferten Goal-Plugins beim App-Start; sie bleibt auch aktiv, wenn kein Agent Goal-Tooling ausgewählt hat. Ein reines Agent-Plugin braucht keinen künstlichen fachlichen Systembeitrag. Ein reines System-Plugin darf im Designer zur Information erscheinen, aber nicht als auswählbares Agent-Toolpaket.
+
+Jeder Beitrag MUSS seinen Aktivierungsbereich deklarieren. Pflicht-/Optional-Regeln, Defaults und Abhängigkeiten gelten innerhalb dieses Bereichs. Ein gemischtes Plugin kann insbesondere einen verpflichtenden Systemdienst und optional auswählbares Agent-Tooling besitzen. Eine fehlende Runtime-Fähigkeit eines Agent-Beitrags blockiert nur dessen Agent-/Runtime-Aktivierung; sie schaltet keinen davon unabhängigen Systembeitrag ab.
+
+Agent-Beiträge dürfen explizit von Systemdiensten desselben oder eines anderen Plugins abhängen. Fehlt deren aktive kompatible Revision, MUSS die Auflösung die betroffene Agent-Auswahl mit Dependency-Pfad ablehnen. Ein Designer-Save aktiviert keine systemweite Funktion heimlich. Systemweite Aktivierung verleiht umgekehrt keinem Agent Tools, Skills, Kontext oder Hooks. Systemdienste dürfen nicht von der zufälligen Auswahl eines Agents abhängen. Systemweite Infrastruktur erzeugt insbesondere keine zweite native Tool-Lieferung außerhalb des Generationsplans.
+
+Systemdienste werden für die aktive App-Komposition gestartet und besitzen ihren eigenen Lifecycle. Sessionstart, Sessionende und Agent-Wechsel erzeugen oder entsorgen sie nicht erneut. Agent-/Generationsressourcen behalten ihre bestehende getrennte Ownership. Agent-Deaktivierung wirkt an der vorgesehenen Generationsgrenze und darf weder gemeinsame Systemdienste stoppen noch laufende Goals oder Runs implizit abbrechen. Eine ausdrücklich systemweite Deaktivierung, ein Update oder eine Deinstallation prüft alle betroffenen System- und Agent-Verbraucher nach PLG-LIFE-001 bis -003 und AP15; fehlende sichere Drain-Grenzen bleiben ein erklärter Konflikt.
+
+**UI und Konfiguration:** Systemstatus und Agent-Auswahl werden getrennt bezeichnet. Plugin-Settings deklarieren weiterhin ihren eigenen Daten-/Konfigurationsscope. Die Session-Ownership eines Desktop-Tabs bestimmt nicht die Lebensdauer des darin bedienten Systemdienstes. Eine systemweite View darf in Sessions von Agents ohne Plugin-Tooling verfügbar sein; Backend-Aktionen prüfen den Bereich der jeweiligen Funktion. Das erlaubt reguläre App-Bedienung, liefert dem Agent aber keine zusätzlichen Tools. Desktop-Tabs bleiben gemäß PLG-UI-001 sessiongebunden; der Systemdienst arbeitet auch ohne geöffneten Tab oder existierende Session.
+
+**Goal-Beispiel:** Agent A aktiviert Goal-Tooling, Agent B nicht. Beide können die systemweite Goal-Funktion in der App nutzen. Nur As neue Runtime-Generation erhält die ausgewählten Goal-Tools und den zugehörigen Kontext. Deaktiviert A sein Tooling oder endet seine Session, bleibt die systemweite Goal-Funktion aktiv; bestehende Arbeit folgt ihrem eigenen Lifecycle. Ein Neustart rekonstruiert Systemaktivierung und beide Agent-Auswahlen getrennt.
+
 ## PLG-SEL-001: Agent-Auswahl und Pflichtbeiträge
 
 Der Designer speichert die gewünschte Plugin-Auswahl sowie optionale Beitragsauswahl und Konfiguration. Pflichtbeiträge werden serverseitig berechnet und validiert. Ein manipuliertes API-Payload kann sie nicht als reguläre Konfiguration deaktivieren.
 
 Die Auflösung erfolgt in dieser Reihenfolge:
 
-1. Installierte und global aktivierbare Revisionen prüfen.
+1. Installierte Revisionen und den getrennten systemweiten Aktivierungsplan prüfen; reine Agent-Beiträge benötigen keine künstliche Systemaktivierung.
 2. Agent-Auswahl und Plugin-Konfiguration validieren.
-3. Pflichtbeiträge und Beitragsabhängigkeiten bestimmen.
+3. Pflichtbeiträge der Agent-Seite und explizite Abhängigkeiten zu aktiven Systemdiensten bestimmen; Systembeiträge nicht als Agent-Tools übernehmen.
 4. Zulässigkeit optionaler Deaktivierungen prüfen.
 5. Runtime-Voraussetzungen gegen den gewählten Adapter und die Instanz prüfen.
 6. Konflikte mit User-Ressourcen, Tool-Namen und anderen Plugins ausweisen.
@@ -152,7 +193,7 @@ Plugin-Dateien sind innerhalb des Paketstands unveränderlich. Wer sie anpassen 
 
 ## PLG-RT-001: Runtime-Unterstützung und Generationen
 
-Pi, Codex Native und OMP bleiben getrennte Runtime-Adapter. Der Plugin-Resolver nutzt deren bestehenden Capability-Vertrag und Delivery Reports. Ein Plugin darf gemeinsame portable Beiträge sowie adaptergebundene Implementierungen enthalten. Erforderliche Pi-only-Beiträge werden unter Codex/OMP abgewiesen, bevor ihr Pi-Code importiert oder ausgeführt wird.
+Pi, Codex Native und OMP bleiben getrennte Runtime-Adapter. Der Plugin-Resolver nutzt deren bestehenden Capability-Vertrag und Delivery Reports. Ein Plugin darf gemeinsame portable Beiträge sowie adaptergebundene Implementierungen enthalten. Erforderliche Pi-only-Agent-Beiträge werden unter Codex/OMP abgewiesen, bevor ihr Pi-Code importiert oder ausgeführt wird; unabhängige Systembeiträge bleiben aktiv.
 
 Pibo-eigene Tools werden weiterhin direkt, über die Session-MCP-Bridge oder die OMP-Host-Bridge geliefert. Externe MCP-Server unter OMP bleiben ausdrücklich nicht unterstützt, solange der Adapter dies nicht implementiert. Die Migration darf diese Lücke nicht verschweigen oder zu einem stillen CLI-Fallback machen.
 
@@ -168,7 +209,7 @@ Pro Pibo Session wird ein versioniertes Tabset gespeichert: Instanz-IDs, Plugin-
 
 Beim Wechsel von A zu B wird A gesichert und ausschließlich Bs Tabset angezeigt. Beim Rückwechsel stehen As Tabs mit ausgewähltem Unterbereich, aktivem Tab und wiederherstellbarem View-Zustand bereit. Das gilt gleichermaßen für Plugin-Tabs, Context, Settings und übrige mitgelieferte Desktop-Views. Ein Tab mit appweiten Daten gehört trotzdem der Session, für die er geöffnet wurde. Ein Deep Link trägt die Session-ID und wählt zuerst diese Session; Back/Forward und Reload dürfen ihn nicht in die gerade zufällig ausgewählte Session umhängen.
 
-Das Öffnen-Menü und ausführbare Tabaktionen werden aus dem effektiven Plugin-/Beitragsplan **dieser Session** samt Runtime-Lieferstatus abgeleitet. Installiert allein bedeutet nicht für den Session-Agent aktiviert. Änderungen an einem Agent-Default überschreiben weder aktive Generationen noch die Tabs anderer Sessions. Als Infrastruktur deklarierte mitgelieferte Context-/Settings-/Verwaltungsviews können allen Sessions zur Verfügung stehen, ohne deren Agent-Tools zu aktivieren. Eine generische Plugin-Verwaltung darf Installationen erklären; sie ersetzt keine fehlende Session-Aktivierung durch heimliches Einschalten von Features.
+Das Öffnen-Menü und ausführbare Tabaktionen werden nach dem deklarierten Aktivierungsbereich aufgelöst: System-Views aus der aktiven App-Komposition, Agent-Views aus dem effektiven Plugin-/Beitragsplan **dieser Session** samt Runtime-Lieferstatus. Installiert allein bedeutet nicht für den Session-Agent aktiviert. Änderungen an einem Agent-Default überschreiben weder aktive Generationen noch die Tabs anderer Sessions. Als systemweit deklarierte Views jedes Plugins können allen Sessions zur Verfügung stehen, ohne deren Agent-Tools zu aktivieren; dies gilt auch für Context, Settings, Verwaltung und Goals. Eine generische Plugin-Verwaltung darf Installationen erklären; sie ersetzt keine fehlende Session-Aktivierung durch heimliches Einschalten von Features.
 
 Die Shell besitzt Fokus, Tastaturbedienung, Routing, Deduplizierung, Wiederherstellung und Ressourcenlimits. Deduplizierung umfasst die Session, qualifizierte View und deren deklarierte Instanzidentität; zwei Sessions dürfen unabhängig denselben Plugin-Tab öffnen. Fehlende/deaktivierte oder nicht mehr kompatible Beiträge behalten ihren gespeicherten Zustand als erklärten Platzhalter. Kontrolliertes Keep-alive behält stets die feste Sessionbindung und gewährt keine Ausführung, die der Session-Plan nicht mehr erlaubt.
 
@@ -365,6 +406,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP00.4 Bestehende Regressionstests den Fixtures zuordnen; fehlende Tests nach den Akzeptanzfällen dieses Plans ergänzen, nicht Implementierungsdetails spiegeln.
 - [ ] AP00.5 Sämtliche Context-/Settings-Flächen einschließlich MCP, Pibo Native, CLI-Tool-Snippets, Pi Packages und übriger Feature-Settings inventarisieren: alte Route, Daten-/Scope-Owner, effektiver Kontextbeitrag, Ziel-Plugin/Tab und Migrationsregel. Beide App-Renderzweige und globale Unterbereichsstates erfassen.
 - [ ] AP00.6 Build-Context-Stufen gegen echte Runtime-Lieferung abgleichen. Tab-v1-Fixtures für zwei Sessions desselben Agents, unterschiedliche Plugin-Auswahl, globale Alttabs, explizite Context-Sessionroute und unabhängige User-Ressourcen sichern.
+- [ ] AP00.7 Jeden Beitrag als systemweit oder agentbezogen inventarisieren; gemischte Plugins und deren bereichsübergreifende Dependencies erfassen. Goal-Systemverhalten getrennt von bisherigen Agent-Toolauswahlen als Migrationsfixture sichern.
 
 **Fertig wenn:** Es gibt keine bekannte direkt auswählbare Pibo-Toolfamilie ohne Zielbesitzer. Die Fixtures beschreiben den vor der Migration effektiven Beitragssatz. Unbekannte native Pi-Discovery-Pfade sind als konkrete Auditaufgabe für AP16 festgehalten.
 
@@ -377,6 +419,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP01.3 Unbekannte Pflicht-Schemaversionen, doppelte IDs, unauflösbare Einstiegspfade und widersprüchliche Dependencies mit strukturierten Diagnosen ablehnen.
 - [ ] AP01.4 Ein minimales lokales Plugin-Fixture mit Backend- und Client-Metadaten anlegen; noch keine Produktfunktion duplizieren.
 - [ ] AP01.5 PLG-UI-001/-003 und PLG-CTX-001 in gemeinsamen Verträgen verankern: feste Session-Tabbindung, Unteransichten/Settingsscopes, Kontextwirkung jedes Beitrags und versionierte Provenienz-/Delivery-Knoten. Keine separate Settings- oder Context-Pluginregistry einführen.
+- [ ] AP01.6 PLG-ACT-001 im Manifest/SDK durchgängig modellieren; System-only, Agent-only und gemischte Plugins ohne Sonderbehandlung für Built-ins prüfen.
 
 **Fertig wenn:** Ein Paket lässt sich ohne Codeimport inspizieren; zwei unabhängige Plugins können einen eigenen Dienstvertrag und dessen Nutzung ausdrücken. SDK-Verträge sind stabil genug für AP02/AP07. **Tests neu:** `test/plugin-system-manifest.test.mjs`.
 
@@ -388,6 +431,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP02.2 Registrierung und Cleanup von Tools, Services, Routen, Listenern und weiteren Domänenbeiträgen an eine Plugin-Instanz binden; Scope-Funktion für sessionbezogene Unterinstanzen schaffen.
 - [ ] AP02.3 Bestehende Registry als abgeleitete Fassade migrieren. Temporäre Adapter erhalten genau einen Owner und führen kein zweites Aktivierungsregister.
 - [ ] AP02.4 Fehler nach partiellem Setup, mehrfaches Stoppen, asynchrones Cleanup und Cleanup-Fehler prüfen; keine erfolgreiche Aktivierung oder Entfernung behaupten, solange der Zustand ungeklärt ist.
+- [ ] AP02.5 System-Lifecycle unabhängig von Agent-/Session-Scopes starten und stoppen; keine erneute Dienstregistrierung durch eine zweite Session, kein System-Cleanup beim Ende der letzten Session.
 
 **Fertig wenn:** Ein Plugin kann ohne verbleibende Registrierungen scheitern und neu aktiviert werden. Ein deklarierter Ersatzprovider ersetzt einen Built-in-Dienst deterministisch. **Tests:** bestehendes `test/plugin-registry.test.mjs`; neu `test/plugin-system-lifecycle.test.mjs`.
 
@@ -400,6 +444,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP03.3 Revisions-/CAS-Prüfung für konkurrierende Agent- und Plugin-Mutationen festlegen; Secrets ausschließlich referenzieren, nicht in Kataloge/Snapshots kopieren.
 - [ ] AP03.4 Mehrstore-Migration mit Journal, Fehlerzwischenständen und Restart-Recovery testen. Legacy-Snapshots explizit als ungeklärt markieren.
 - [ ] AP03.5 Session-Tabsets mit stabilen Instanz-IDs, aktivem Tab, Unteransicht, Zustandsschema und Revisionsprüfung persistieren. Getrennte Konfigurationsscopes sowie historische Kontextaufbau-/Delivery-Befunde mit vorhandener Payload-Persistenz verbinden; Uninstall löscht auch diese Daten nicht.
+- [ ] AP03.6 Systemweite Aktivierung samt Revision getrennt von Installation und Agent-Auswahl persistieren; Neustart und konkurrierende Änderungen beider Ebenen prüfen.
 
 **Fertig wenn:** Installationsmetadaten können entfernt/deaktiviert werden, ohne Sessiondaten zu löschen. Ein unterbrochener Migrationslauf ist wiederholbar. **Tests:** `test/agent-store.test.mjs`, `test/pibo-data-session-store.test.mjs`; neu `test/plugin-system-store.test.mjs`.
 
@@ -412,6 +457,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP04.3 Pflichtteile, optionale Deaktivierung, fehlende Runtime-Unterstützung und überlappende Tool-Namen prüfen. Fehlende Plugins bleiben als Referenz im Draft erhalten.
 - [ ] AP04.4 Defaults nur für neue Auswahl übernehmen; Updates verbreitern bestehende Agents nicht stillschweigend. Migration kann Konflikte ohne Datenverlust speichern.
 - [ ] AP04.5 Dieselbe Auflösung für Session-Tabverfügbarkeit und Build Context verfügbar machen. Ausgeschlossene Beiträge mit Grund und Herkunft erhalten; Inspector-Vorschau und tatsächlichen Generationsplan ausdrücklich trennen.
+- [ ] AP04.6 Agent-Auswahl gegen explizite Systemdienst-Abhängigkeiten prüfen, ohne Systemaktivierung oder Tool-Lieferung zu implizieren; System-Views unabhängig von Agent-Runtime-Grenzen auflösen.
 
 **Fertig wenn:** UI und Runtime erklären dieselbe effektive Auswahl; ein API-Client kann Pflichtteile nicht umgehen. **Tests:** `test/chat-custom-agent-profiles.test.mjs`, `test/agent-profiles.test.mjs`; neu `test/plugin-system-selection.test.mjs`.
 
@@ -423,6 +469,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP05.2 Stage, Prüfung, Commit und Fehler-Recovery als Operation implementieren. Plugin-Code erst im vorgesehenen Aktivierungsschritt importieren; fehlgeschlagene Downloads/Imports hinterlassen keine halbe aktive Installation.
 - [ ] AP05.3 Progressive CLI für Liste, Inspektion, Installation, Aktivierungsstatus und Diagnose schaffen. Maschinenlesbare strukturierte Ausgabe sowie Dry-run/Auswirkungsplan bereitstellen; genaue Syntax im Paket festhalten.
 - [ ] AP05.4 Die Deinstallationsoperation zunächst mit der späteren AP15-Policy verbinden beziehungsweise bis dahin geschlossen als noch nicht verfügbar behandeln. Kein provisorischer Löschpfad ohne Session-Auswirkungsschutz.
+- [ ] AP05.5 Installation, systemweiten Aktivierungsstatus und Agent-Verbraucher getrennt inspizierbar machen; systemweite Aktivierung/Deaktivierung mit explizitem Scope und Auswirkungsplan anbieten.
 
 **Fertig wenn:** Dasselbe Fixture lässt sich lokal und als Paket inspizieren/installieren; eine falsche SDK-Version ist erklärbar. Kein Marketplace ist erforderlich. **Tests neu:** `test/plugin-system-install.test.mjs`, `test/plugin-system-cli.test.mjs`.
 
@@ -485,6 +532,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP10.4 Unabhängige User-Skills, Kontextdateien und manuelle Subagent-Konfiguration erhalten; pluginbereitgestellte Ressourcen innerhalb des Plugin-Bereichs darstellen. Keine doppelte widersprüchliche Auswahloberfläche.
 - [ ] AP10.5 Fehlende Plugins und Migrationskonflikte im Draft sichtbar halten. Speichern anderer Felder darf ungelöste Referenzen nicht löschen.
 - [ ] AP10.6 Aus der Plugin-Auswahl zu dessen Settings-/Kontext-Tab für die ausgewählte Session navigieren. Bei Bearbeitung eines anderen Agents Zielprofil und Scope explizit anzeigen; weder Kontext noch ausstehende Saves an einen zufälligen Sessionwechsel binden. MCP-Auswahl als Plugin-Beiträge darstellen und Beschreibungs-/Kontexteditoren dorthin verlagern.
+- [ ] AP10.7 Designer-Schalter auf die Agent-Seite begrenzen; Systemstatus und fehlende System-Abhängigkeiten erklären. Reine System-Plugins erhalten keinen Agent-Aktivierungsschalter.
 
 **Fertig wenn:** Die vorherigen Designer-Szenarien bleiben nutzbar; Pflichtbeiträge sind sichtbar gesperrt und serverseitig geprüft. **Tests:** `test/chat-ui-agent-designer-autosave.test.mjs`, `test/chat-ui-agent-designer-runtime-switch.test.mjs`, `test/chat-ui-agent-designer-subagents.test.mjs`, `test/chat-ui-agent-designer-catalog-selection-accessibility.test.mjs`, `test/chat-ui-app-agent-catalog-mutations.test.mjs`; neue Verhaltensfälle für Plugin-Auswahl und User-Ressourcen.
 
@@ -498,6 +546,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP11.4 Fehlerhafte Aktivierung, fehlender Renderer und erneute Installation mit erhaltenen Daten prüfen; denselben Kandidaten auf Pibo2 abnehmen.
 - [ ] AP11.5 Plugin-eigene Einstellungen und Kontextoptionen im Annotations-Tab liefern; Build-Context-UI selbst als registrierten mitgelieferten Beitrag auf AP06 aufsetzen. Annotation-Beiträge, User-Ressource, optionale Ausschlüsse und Runtime-Grenzen vollständig erklären; keine neue statische Settings-/Context-Fallunterscheidung.
 - [ ] AP11.6 Mit zwei Sessions Tabset, Unteransicht, Aktivierungsunterschied und A→B→A-Restore belegen. Eine Einstellungsänderung in A erscheint in As separater Vorschau, verändert aber weder einen gespeicherten Build-Stand noch unbemerkt Bs laufende Generation.
+- [ ] AP11.7 Vor breiter Extraktion die drei Aktivierungsformen mit gewöhnlich installierten Fixtures durch Host, Designer/API, Runtime und Browser prüfen (A38–A41); Goal-Produktparität folgt in AP13.
 
 **Fertig wenn:** Das Feature benötigt keinen neuen Sonderfall im Katalog, Designer, Router, Terminal, Context oder Settings. Session-Tabs, Plugin-Konfiguration und Build Context sind gemeinsam belegt. Erst danach beginnen die breiten Feature-Extraktionen AP12–AP14. Ein nur funktionierender statischer Import erfüllt diesen Meilenstein nicht. **Tests zusätzlich:** `test/chat-ui-context-build-origin.test.mjs`, neue Plugin-Settings-/Build-Context-Fälle und headful Durchstich.
 
@@ -523,6 +572,8 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 **Fertig wenn:** Jede bisherige Toolfamilie besitzt einen Plugin-Eintrag, einen getesteten Runtime-Status und keine parallele direkte Designer-Auswahl. **Tests:** `test/codex-compat.test.mjs`, `test/codex-browser-interface.test.mjs`, `test/gateway-tool.test.mjs`, `test/pibo-tool-contract.test.mjs` und family-spezifische Tests aus AP00.
 
 ## AP13 — Run-/Goal-Control und Subagent-Integration
+
+**Verbindlicher Mischfall:** Goal als ein Plugin mit systemweiter, standardmäßig aktiver App-Funktion und getrenntem Agent-Tooling extrahieren. A38–A42 und PLG-ACT-001 belegen unabhängige Aktivierung, Neustart und erhaltene laufende Arbeit. Die Migration erhält die bisherige appweite Goal-Verfügbarkeit, auch wenn kein Profil Goal-Tools gewählt hatte.
 
 **Quellen:** S11, S02, S07.
 
@@ -605,6 +656,7 @@ Ein Agent übernimmt ein abgegrenztes Paket oder einen einzelnen nummerierten Un
 - [ ] AP19.4 Upgrade von AP00-Fixtures, unterbrochene Migration, Neustart, Wiederinstallation und Rollbackgrenzen dokumentieren.
 - [ ] AP19.5 Implementierte Verträge in aktuelle Domain-Spezifikationen übernehmen, Glossar/Guides aktualisieren, diesen Plan erst nach vollständigem Abschluss archivieren.
 - [ ] AP19.6 Session-Tabset-Persistenz, Plugin-Settings und vollständigen Build Context nach A29–A37 mit dem integrierten Kandidaten prüfen: zwei Sessions desselben Agents, unterschiedliche Plugin-/Runtime-Pläne, Reload/Neustart, Migration und erhaltene Befunde nach Uninstall.
+- [ ] AP19.7 Testdiff und Runner-/Discovery-Diff seit der ursprünglichen Baseline prüfen. Für jede geänderte/entfernte Bestandsprüfung Testname, Grund und erhaltenen/ersetzten Verhaltensnachweis dokumentieren; alle zwölf Handoff-Fehler einzeln klären und bestehenden plus neuen Gesamtumfang ausführen. Keine verdeckte Verringerung der Regressionserfassung.
 
 **Fertig wenn:** Die gesamte Abnahmematrix ist bestanden oder ein konkret verbleibender Punkt verhindert ausdrücklich die Gesamtfreigabe. Ein einzelner Feature-PR oder grüner Healthcheck zählt nicht als Abschluss dieses Plans.
 
@@ -617,7 +669,7 @@ Jeder Nachweis benennt Commit/Kandidat, Fixture oder Ausgangsdaten, beobachtetes
 | A01 | Ungültiges Manifest, doppelte Beitrags-ID, fehlende Pflichtabhängigkeit oder Zyklus: Aktivierung scheitert mit Herkunft und Dependency-Pfad, ohne halbfertige Registrierung. | AP01, AP02 |
 | A02 | Aktivierung scheitert nach mehreren Registrierungen: Listener, Tools, Timer und Dienste werden in umgekehrter Reihenfolge freigegeben; wiederholtes Dispose bleibt wirkungslos; ein Cleanup-Fehler verhindert übriges Cleanup nicht. | AP02 |
 | A03 | Zwei Provider beanspruchen denselben exklusiven Dienst: explizite Auswahl erforderlich; die konfigurierte Ersetzung funktioniert unabhängig von Importreihenfolge. | AP02, AP17 |
-| A04 | Agent deaktiviert Plugin oder optionalen Beitrag: der Beitrag fehlt in Ressourcen, Tool-Liste und tatsächlicher Ausführung; direkte API-Manipulation umgeht die Auswahl nicht. Pflichtbeitrag lässt sich nicht allein deaktivieren. | AP04, AP06, AP10 |
+| A04 | Agent deaktiviert die Agent-Seite eines Plugins oder einen optionalen Agent-Beitrag: der Beitrag fehlt in Ressourcen, Tool-Liste und tatsächlicher Ausführung; direkte API-Manipulation umgeht die Auswahl nicht. Pflichtbeitrag lässt sich nicht allein deaktivieren. | AP04, AP06, AP10 |
 | A05 | Plugin mit portablem Tool, optionalem Pi-Beitrag und erforderlichem Pi-Beitrag: optionaler Beitrag entfällt erklärt auf den anderen Runtimes; die erforderliche Variante blockiert dort die betreffende Aktivierung. Kein Import von Pi-Code im fremden Adapter. | AP04, AP06 |
 | A06 | Ein reales Modell ruft dasselbe harmlose portable Testtool unter allen drei Runtimes auf. Eingabe, Ergebnis, Fehler und Abbruch erreichen die vorhandenen Runtime-Verträge. Keine Simulation als Provider-Nachweis ausgeben. | AP06, AP19 |
 | A07 | User-Skill und Kontextdatei ohne Plugin bleiben auswählbar; gleichnamige Plugin-Ressource und User-Ressource haben erkennbare Herkunft, deterministische Reihenfolge und erklärte Konflikte. | AP04, AP10, AP16 |
@@ -651,12 +703,17 @@ Jeder Nachweis benennt Commit/Kandidat, Fixture oder Ausgangsdaten, beobachtetes
 | A35 | Nach Änderung von Plugin-Settings bleibt der gespeicherte Generations-/Build-Stand unverändert; separate Vorschau zeigt Revision/Differenz und spätere wirksame Lieferung. Öffnen, Refresh und Copy führen keine Tools/Schreib-Hooks aus. Nach Deinstallation bleiben Herkunft, Status, Fallback und gesicherter Kontextbefund lesbar. | AP06, AP09, AP11, AP15 |
 | A36 | Globale Tab-v1-Daten enthalten einen explizit an A gebundenen Context-Tab und ungebundene Settings-/Feature-Tabs. Migration übernimmt nur belegbare Ownership automatisch; bewusster Import ordnet den Rest einer Session zu. Wiederholung, zweiter Browser und Abbruch erzeugen keine Duplikate oder Überschreibung bestehender Tabsets. Entfernte Pi-Package-URL öffnet keine alte Verwaltung. | AP03, AP08, AP16 |
 | A37 | Der vollständige Context-/Settings-Inventarvergleich weist für jeden alten Editor, Kontextschalter, CLI-Snippet und Build-Schritt einen Besitzer, einen Erhaltungs-/Entfernungsnachweis und einen Session-Tabpfad aus. Standard- und Ersatz-Shell erfüllen das; Desktop- und schmale Ansicht, API, Copy/Export und installierter Kandidat enthalten keine statische Parallelwahrheit. | AP11, AP16, AP17, AP18, AP19 |
+| A38 | Nur systemweites Plugin wird ohne existierende Session gestartet und nach Neustart wiederhergestellt. Zwei Sessions und deren Ende verändern die Dienstinstanz nicht; der Designer liefert keine Agent-Tools und keinen wirkungslosen Aktivierungsschalter. | AP01, AP02, AP03, AP10, AP11, AP17 |
+| A39 | Nur agentbezogenes Plugin funktioniert ohne fachliche Systemaktivierung. A wählt es, B nicht: nur As neue Generation erhält Beiträge; B kann sie auch per manipuliertem Tool-API-Aufruf nicht ausführen. | AP01, AP04, AP06, AP10, AP11 |
+| A40 | Gemischtes Plugin ist systemweit aktiv, Agent-Tooling nur für A ausgewählt. System-View und reguläre App-Aktionen sind in A und B verfügbar, Tools/Kontext nur in A. A deaktiviert sein Tooling und beginnt eine neue Generation: der Dienst und Bs App-Nutzung bleiben aktiv. | AP04, AP06, AP08, AP10, AP11, AP13 |
+| A41 | Erforderlicher Systemdienst fehlt: Agent-Auswahl scheitert erklärt, ohne Systemaktivierung durch Designer/API. Ein nicht unterstützter Agent-Runtime-Beitrag lässt unabhängige System-Views und Dienste verfügbar. Ein globaler Aktivierungswechsel liefert keine zusätzlichen Agent-Tools. | AP01, AP04, AP06, AP11 |
+| A42 | Goal-Systemseite bleibt bei null ausgewählten Goal-Agent-Beiträgen aktiv; Migration und Neustart erhalten dies und getrennte Agent-Auswahlen. Explizite System-Deaktivierung/Update/Uninstall weist laufende Goals, Runs und abhängige Generationen aus, drainiert sicher oder meldet Konflikt; kein impliziter Abbruch oder Datenverlust. | AP03, AP13, AP15, AP16, AP19 |
 
 ## Validierungsstufen und ausführbare Einstiegspunkte
 
 Die folgenden Befehle beschreiben die spätere Implementierungsprüfung im Docker-Worker. Sie sind keine Behauptung, dass dieser Dokumentationsauftrag Code gebaut oder Runtime-Verhalten geprüft hat.
 
-1. Pro Paket: relevante bestehende Regressionen plus die oben benannten neuen verhaltensbezogenen Tests. Neue Tests prüfen Außenverträge und Fehlerszenarien, nicht bloß interne Registry-Arrays.
+1. Pro Paket: vorhandene Regressionen gemäß PLG-TEST-001 möglichst unverändert über die Plugin-Implementierung ausführen; die oben benannten neuen verhaltensbezogenen Tests ergänzen sie. Neue Tests prüfen Außenverträge und Fehlerszenarien, nicht bloß interne Registry-Arrays.
 2. Pro Code-PR: erforderlicher Build/Typecheck und relevante vollständige Tests nach den Pibo-Skills; anschließend passende Pibo2-Prüfung desselben Kandidaten. Ein reiner Backend-PR braucht keinen sachfremden UI-Parcours, aber seinen tatsächlichen integrierten API-/Runtime-Pfad.
 3. AP11: vollständiger erster Durchstich, bevor Toolfamilien breit migriert werden.
 4. AP19: gesamtes integriertes Produkt, Upgrade und installierter Paketinhalt. Frühere Einzel-PR-Nachweise ersetzen diese Prüfung nicht.
@@ -747,10 +804,14 @@ Falls Migration oder Aktivierung scheitert, bleiben vorheriger Installationsstan
 
 # Definition des abgeschlossenen Umbaus
 
-Der Umbau ist erst abgeschlossen, wenn alle AP00–AP19 abgenommen sind, A01–A37 belegt sind, keine produktive alte Erweiterungsfläche einschließlich Context/Settings im Inventar offen bleibt und die aktuelle Dokumentation das tatsächlich implementierte System beschreibt. Das Standardprodukt entsteht durch dieselben Plugin-Verträge wie Drittanbieterfunktionen. Alle Desktop-Tabs werden pro Session wiederhergestellt, Plugin-Settings/Kontextoptionen liegen im Besitzer-Tab und Build Context erklärt die gesamte Pibo-kontrollierte Zusammensetzung. Agent-Designer, unabhängige User-Ressourcen und manuelle Subagents bleiben nutzbar; Sessions bleiben nach Deinstallation erhalten.
+Der Umbau ist erst abgeschlossen, wenn alle AP00–AP19 abgenommen sind, A01–A42 belegt sind, keine produktive alte Erweiterungsfläche einschließlich Context/Settings im Inventar offen bleibt und die aktuelle Dokumentation das tatsächlich implementierte System beschreibt. Das Standardprodukt entsteht durch dieselben Plugin-Verträge wie Drittanbieterfunktionen. Alle Desktop-Tabs werden pro Session wiederhergestellt, Plugin-Settings/Kontextoptionen liegen im Besitzer-Tab und Build Context erklärt die gesamte Pibo-kontrollierte Zusammensetzung. Agent-Designer, unabhängige User-Ressourcen und manuelle Subagents bleiben nutzbar; Sessions bleiben nach Deinstallation erhalten.
 
 Dieser Plan selbst verändert keine Runtime und enthält keine bereits erfüllten Implementierungszusagen. Geschätzte Kalendertermine werden erst nach AP00/AP11 anhand des tatsächlichen Umfangs festgelegt; die Abhängigkeitsreihenfolge ist die Grundlage für die Agent-Zuteilung.
 
 [^owner-decisions]: Produktvorgaben im zugehörigen Gespräch bis 2026-09-11: Plugin-Komposition einschließlich Built-ins, vertrauensbasierte vollständige Austauschbarkeit, Designer-/Ressourcenerhalt, Runtime-Unterstützung pro Beitrag, Entfernung der alten Erweiterungssysteme, Sessionerhalt bei Deinstallation sowie die anschließende Präzisierung zu plugin-eigenen Settings/Kontextoptionen, vollständigem Build Context und persistierten Desktop-Tabsets pro Session.
 [^planning-direction]: Nachfolgende Architekturabwägung zum [ersten Bericht](/reports/cordis-plugin-architecture-feasibility-2026-09-11.md): eigenes Pibo-System entlang der benötigten Cordis-Prinzipien weiterentwickeln. Dies ist die technische Arbeitsgrundlage dieses angeforderten Plans, keine Behauptung einer bereits erfolgten Implementierung.
 [^code-baseline]: Bestehende Pfade und Testeinstiege wurden am [Pibo-Commit cac4dcd](https://github.com/Pascapone/pibo/tree/cac4dcd03945b9754db7be9ab2ab4324f10c335c) geprüft. Die Quellkarte benennt vorhandene Eingriffspunkte; neue SDK-/Testnamen im Plan sind ausdrücklich Zielentwürfe.
+
+[^activation-scopes]: Produktpräzisierung des Auftraggebers vom 2026-09-12: Plugins dürfen ausschließlich agentbezogen, ausschließlich systembezogen oder gemischt sein; beim Goal-/Goal-Loop-Beispiel bleibt die App-Funktion systemweit aktiv, während das Tooling pro Agent konfiguriert wird.
+
+[^test-preservation]: Der Auftraggeber präzisierte am 2026-09-12: vorhandene Tests möglichst unangetastet lassen und nach dem Plugin-Umbau nutzen, um gleiches Pibo-Verhalten nachzuweisen; neue Tests sind ergänzend und gelegentliche notwendige Anpassungen bestehender Tests begründungspflichtig.

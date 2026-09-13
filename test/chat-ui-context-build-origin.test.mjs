@@ -2,23 +2,28 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const viewPath = new URL("../src/apps/chat-ui/src/context/ContextBuildView.tsx", import.meta.url);
+const viewPath = new URL("../src/apps/chat-ui/src/plugins/build-context-view.tsx", import.meta.url);
 
 async function readViewSource() {
 	return await readFile(viewPath, "utf8");
 }
 
-test("Context Build labels generated tool origins as inspector-only header metadata", async () => {
+test("plugin Build Context distinguishes inspector metadata from model content", async () => {
 	const source = await readViewSource();
-	assert.match(source, /Origin: \{label\}/);
-	assert.match(source, /Inspector metadata/);
-	assert.match(source, /Not sent to model/);
-	assert.match(source, /key !== "inspectorOrigin"/);
+	assert.match(source, /Inspector metadata is not model prompt text/);
+	assert.match(source, /Content redacted/);
+	assert.match(source, /content\.visibility/);
 });
 
-test("Context Build copy output excludes inspector-only origin metadata", async () => {
+test("plugin Build Context copy output includes only visible unredacted model text", async () => {
 	const source = await readViewSource();
-	const copyFunction = source.slice(source.indexOf("function renderNodeForCopy"), source.indexOf("function indent"));
+	const copyFunction = source.slice(
+		source.indexOf("export function renderPluginNodeModelContentForCopy"),
+		source.indexOf("function BuildNode"),
+	);
 	assert.ok(copyFunction.length > 0);
-	assert.doesNotMatch(copyFunction, /metadata|inspectorOrigin/);
+	assert.match(copyFunction, /visibility !== "model"/);
+	assert.match(copyFunction, /content\.redacted/);
+	assert.match(copyFunction, /return node\.content\.text/);
+	assert.doesNotMatch(copyFunction, /metadata|origin|configurationRevisions|delivery|diagnostic/);
 });

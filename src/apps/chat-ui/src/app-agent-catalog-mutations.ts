@@ -1,17 +1,4 @@
-import type { AgentCatalog, BootstrapData, UserSkill } from "./types";
-
-type McpServerCatalogItem = AgentCatalog["mcpServers"][number];
-
-export function updateAgentCatalogMcpServer(data: BootstrapData, server: McpServerCatalogItem): BootstrapData {
-	if (!data.agentCatalog) return data;
-	return {
-		...data,
-		agentCatalog: {
-			...data.agentCatalog,
-			mcpServers: data.agentCatalog.mcpServers.map((candidate) => candidate.name === server.name ? server : candidate),
-		},
-	};
-}
+import type { BootstrapData, UserSkill } from "./types";
 
 export function upsertAgentCatalogUserSkill(data: BootstrapData, skill: UserSkill): BootstrapData {
 	if (!data.agentCatalog) return data;

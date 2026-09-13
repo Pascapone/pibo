@@ -5,11 +5,12 @@ description: "Defines the implemented Embedded VS Code Web Area contract, includ
 tags:
 - web
 - chat-web
-status: "stable"
+status: "deprecated"
 authority: "normative"
+superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-12T13:45:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -110,6 +111,8 @@ traceability:
         - "Compatibility boundary: VS Code extension internals require a separate owner and evidence set."
       confidence: "medium"
 ---
+> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+
 # Embedded VS Code Web Area
 
 ## Why

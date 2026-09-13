@@ -60,29 +60,32 @@ test("persistSession false uses an in-memory store and leaves the external Pibo 
 
 	try {
 		await withPiboHome(root, async () => {
+			const registry = createRegistry();
 			const server = new PiboGatewayServer({
 				host: "127.0.0.1",
 				port: 0,
 				startChannels: false,
 				persistSession: false,
-				pluginRegistry: createRegistry(),
+				pluginRegistry: registry,
 				loopStorePath: join(root, "isolated-loops.sqlite"),
 				resourceReaper: false,
 			});
-			await server.start();
-			const diagnostics = server.getDiagnostics();
-			assert.equal(diagnostics.authoritativeRuntime, false);
-			assert.match(diagnostics.runtimeInstanceId, /^gateway:/);
-			const routerWebApp = server.router?.compatibilityRuntimeRegistry?.getWebApps()
-				.find((app) => app.name === "web-annotations");
-			assert.ok(routerWebApp?.dispose);
-			const dispose = routerWebApp.dispose.bind(routerWebApp);
 			let disposeCalls = 0;
-			routerWebApp.dispose = async () => {
-				disposeCalls += 1;
-				await dispose();
-			};
-			await server.stop();
+			try {
+				await server.start();
+				const diagnostics = server.getDiagnostics();
+				assert.equal(diagnostics.authoritativeRuntime, false);
+				assert.match(diagnostics.runtimeInstanceId, /^gateway:/);
+				const routerWebApp = registry.getWebApps().find((app) => app.name === "web-annotations");
+				assert.ok(routerWebApp?.dispose);
+				const dispose = routerWebApp.dispose.bind(routerWebApp);
+				routerWebApp.dispose = async () => {
+					disposeCalls += 1;
+					await dispose();
+				};
+			} finally {
+				await server.stop();
+			}
 			assert.equal(disposeCalls, 1);
 		});
 

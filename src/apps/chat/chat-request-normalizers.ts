@@ -9,7 +9,6 @@ import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking
 import type { PiboSession, UpdatePiboSessionInput } from "../../sessions/store.js";
 import { PiboWebHttpError } from "../../web/http.js";
 import type { PiboWebAppContext } from "../../web/types.js";
-import { listPiPackages } from "../../pi-packages/store.js";
 import { withChatWebArchived, withChatWebSessionPinned } from "./session-metadata.js";
 import { isDefaultPiboRoom, withPiboRoomArchived, withPiboRoomPinned, withPiboRoomWorkspace, type PiboRoom } from "./types/rooms.js";
 import { isValidCustomAgentName, type CustomAgentSubagent, type UpdateCustomAgentInput } from "./agent-store.js";
@@ -51,12 +50,9 @@ export type ChatAgentBody = {
 	runtimeInstanceId?: unknown;
 	runtimeOptions?: unknown;
 	nativeSubagents?: unknown;
-	nativeTools?: unknown;
 	skills?: unknown;
 	contextFiles?: unknown;
 	subagents?: unknown;
-	mcpServers?: unknown;
-	piPackages?: unknown;
 	mainModel?: unknown;
 	mainModelFallbacks?: unknown;
 	subagentModel?: unknown;
@@ -69,8 +65,6 @@ export type ChatAgentBody = {
 	builtinTools?: unknown;
 	builtinToolNames?: unknown;
 	autoContextFiles?: unknown;
-	runControl?: unknown;
-	goalControl?: unknown;
 	archived?: unknown;
 	confirmName?: unknown;
 };
@@ -79,22 +73,9 @@ export type ChatAgentFolderBody = {
 	name?: unknown;
 };
 
-export type ChatMcpServerDescriptionBody = {
-	description?: unknown;
-};
-
 export type ChatBasePromptBody = {
 	mode?: unknown;
 	markdown?: unknown;
-};
-
-export type ChatPiPackageBody = {
-	source?: unknown;
-};
-
-export type ChatPiPackagePatchBody = {
-	enabled?: unknown;
-	source?: unknown;
 };
 
 export type ChatModelDefaultsBody = {
@@ -325,33 +306,6 @@ export function normalizeNameArray(value: unknown, label: string): string[] {
 	return [...new Set(names)];
 }
 
-export function normalizeRegisteredPiPackages(value: unknown): string[] {
-	const names = normalizeNameArray(value, "piPackages");
-	const packages = listPiPackages();
-	const registered = new Map(packages.flatMap((pkg) => [[pkg.id, pkg.id], [pkg.name, pkg.id]]));
-	for (const name of names) {
-		if (!registered.has(name)) throw new PiboWebHttpError(`Unknown Pi package "${name}"`, 400);
-	}
-	return [...new Set(names.map((name) => registered.get(name) ?? name))];
-}
-
-export function normalizePiPackageWebSource(value: unknown): string {
-	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new PiboWebHttpError("Pi package source is required", 400);
-	}
-	const source = value.trim();
-	let url: URL;
-	try {
-		url = new URL(source);
-	} catch {
-		throw new PiboWebHttpError("Pi package source must be a https://pi.dev/packages/... URL", 400);
-	}
-	if (url.origin !== "https://pi.dev" || !url.pathname.startsWith("/packages/") || url.pathname === "/packages/") {
-		throw new PiboWebHttpError("Pi package source must be a https://pi.dev/packages/... URL", 400);
-	}
-	return source;
-}
-
 export function normalizeBuiltinTools(value: unknown): "default" | "disabled" {
 	if (value === undefined) return "default";
 	if (value === "default" || value === "disabled") return value;
@@ -372,18 +326,6 @@ export function normalizeAutoContextFiles(value: unknown): boolean {
 export function normalizeNativeSubagents(value: unknown): boolean | undefined {
 	if (value === undefined || value === null) return undefined;
 	if (typeof value !== "boolean") throw new PiboWebHttpError("nativeSubagents must be a boolean", 400);
-	return value;
-}
-
-export function normalizeRunControl(value: unknown): boolean {
-	if (value === undefined) return false;
-	if (typeof value !== "boolean") throw new PiboWebHttpError("runControl must be a boolean", 400);
-	return value;
-}
-
-export function normalizeGoalControl(value: unknown): boolean {
-	if (value === undefined) return true;
-	if (typeof value !== "boolean") throw new PiboWebHttpError("goalControl must be a boolean", 400);
 	return value;
 }
 
@@ -789,12 +731,9 @@ export function createAgentInput(body: ChatAgentBody) {
 		runtimeInstanceId: normalizeAgentRuntimeInstanceId(body.runtimeInstanceId),
 		runtimeOptions: normalizeAgentRuntimeOptions(body.runtimeOptions),
 		nativeSubagents: normalizeNativeSubagents(body.nativeSubagents),
-		nativeTools: normalizeNameArray(body.nativeTools, "nativeTools"),
 		skills: normalizeNameArray(body.skills, "skills"),
 		contextFiles: normalizeNameArray(body.contextFiles, "contextFiles"),
 		subagents: normalizeAgentSubagents(body.subagents),
-		mcpServers: normalizeNameArray(body.mcpServers, "mcpServers"),
-		piPackages: normalizeRegisteredPiPackages(body.piPackages),
 		mainModel: normalizeModelProfile(body.mainModel, "mainModel"),
 		mainModelFallbacks: normalizeModelFallbacks(
 			body.mainModelFallbacks,
@@ -811,8 +750,6 @@ export function createAgentInput(body: ChatAgentBody) {
 		builtinTools: normalizeBuiltinTools(body.builtinTools),
 		builtinToolNames: normalizeBuiltinToolNames(body.builtinToolNames),
 		autoContextFiles: normalizeAutoContextFiles(body.autoContextFiles),
-		runControl: normalizeRunControl(body.runControl),
-		goalControl: normalizeGoalControl(body.goalControl),
 	};
 }
 
@@ -828,12 +765,9 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 			? null
 			: normalizeNativeSubagents(body.nativeSubagents);
 	}
-	if (body.nativeTools !== undefined) update.nativeTools = normalizeNameArray(body.nativeTools, "nativeTools");
 	if (body.skills !== undefined) update.skills = normalizeNameArray(body.skills, "skills");
 	if (body.contextFiles !== undefined) update.contextFiles = normalizeNameArray(body.contextFiles, "contextFiles");
 	if (body.subagents !== undefined) update.subagents = normalizeAgentSubagents(body.subagents);
-	if (body.mcpServers !== undefined) update.mcpServers = normalizeNameArray(body.mcpServers, "mcpServers");
-	if (body.piPackages !== undefined) update.piPackages = normalizeRegisteredPiPackages(body.piPackages);
 	if (body.mainModel !== undefined) {
 		update.mainModel = body.mainModel === null ? null : normalizeModelProfile(body.mainModel, "mainModel");
 	}
@@ -856,8 +790,6 @@ export function createAgentUpdate(body: ChatAgentBody): UpdateCustomAgentInput {
 	if (body.builtinTools !== undefined) update.builtinTools = normalizeBuiltinTools(body.builtinTools);
 	if (body.builtinToolNames !== undefined) update.builtinToolNames = normalizeBuiltinToolNames(body.builtinToolNames);
 	if (body.autoContextFiles !== undefined) update.autoContextFiles = normalizeAutoContextFiles(body.autoContextFiles);
-	if (body.runControl !== undefined) update.runControl = normalizeRunControl(body.runControl);
-	if (body.goalControl !== undefined) update.goalControl = normalizeGoalControl(body.goalControl);
 	if (Object.keys(update).length === 0 && body.archived === undefined) {
 		throw new PiboWebHttpError("No agent update fields provided", 400);
 	}

@@ -128,7 +128,7 @@ export function definePiboTool<
 /**
  * Structural shape of the pre-runtime-adapter Pi tool boundary.
  *
- * It deliberately does not import Pi packages. Registries normalize this shape
+ * It deliberately does not import harness SDK packages. Registries normalize this shape
  * into a non-portable Pibo definition so existing plugin registrations continue
  * to run through the Pi compiler during the compatibility period.
  */

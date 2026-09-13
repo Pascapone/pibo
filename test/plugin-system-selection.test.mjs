@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAgentPluginSelection, validateAgentPluginSelection } from '../dist/plugins/selection.js';
+import { createAgentPluginSelection, createAgentPluginSelectionForProfile, validateAgentPluginSelection } from '../dist/plugins/selection.js';
+import { InitialSessionContext } from '../dist/core/profiles.js';
 import { resolvePluginContributions, assertEffectivePluginPlan } from '../dist/plugins/resolution.js';
 
 const none = { kind: 'none', reason: 'No model context' };
@@ -13,6 +14,27 @@ function input(installations = [installation()], options = {}) {
 	return { catalog: { schemaVersion: 1, revision: 1, installations }, selection: createAgentPluginSelection(installations), selectionRevision: 2, runtime: { adapterId: 'pi', instanceId: 'pi-default', capabilities: { tools: { direct: true } } }, ...options };
 }
 const mutable = value => structuredClone(value);
+
+test('legacy profile migration pins extracted tool families without changing its effective choices', () => {
+	const installations = [
+		installation('pibo.code-runtime', [contribution('runtime', { name: 'runtime', defaultEnabled: false })]),
+		installation('pibo.run-control', [contribution('pibo_run_start', { defaultEnabled: false }), contribution('pibo_run_list', { defaultEnabled: false })]),
+		installation('pibo.goal-control', [contribution('get_goal'), contribution('create_goal')]),
+		installation('pibo.agent-delegation', [contribution('pibo_agents_send_message', { defaultEnabled: false }), contribution('pibo_agents_list_agents', { defaultEnabled: false })]),
+		installation('pibo.codex-compat', [contribution('apply_patch', { defaultEnabled: false }), { id: 'base-prompt', kind: 'context-file', name: 'Codex Base Prompt', scope: 'agent', required: false, defaultEnabled: false, schemaVersion: 1, context }]),
+	];
+	const profile = new InitialSessionContext({ profileName: 'legacy', tools: [{ name: 'runtime', description: 'legacy runtime' }], toolPackages: { runControl: true, goalControl: false, codexCompat: true }, subagents: [{ name: 'worker', targetProfile: 'base' }] });
+	const selection = createAgentPluginSelectionForProfile(installations, profile);
+	const byId = id => selection.plugins.find(entry => entry.pluginId === id);
+	assert.deepEqual(byId('pibo.code-runtime').contributions, { runtime: true });
+	assert.equal(byId('pibo.run-control').enabled, true);
+	assert.deepEqual(byId('pibo.run-control').contributions, { pibo_run_start: true, pibo_run_list: true });
+	assert.equal(byId('pibo.goal-control').enabled, false);
+	assert.deepEqual(byId('pibo.goal-control').contributions, { get_goal: false, create_goal: false });
+	assert.equal(byId('pibo.agent-delegation').enabled, true);
+	assert.equal(byId('pibo.codex-compat').enabled, true);
+	assert.equal(Object.isFrozen(selection), true);
+});
 
 test('selection is a pure explicit snapshot and defaults are not silently read on subsequent resolution', () => {
 	const request = input();
@@ -258,4 +280,35 @@ test('service replacements require the same explicit host choice and pin only it
   const missingOwner = resolvePluginContributions(input([a], { services: { database: '1.0.0' } }));
   assert.equal(missingOwner.valid, false);
   assert.ok(missingOwner.diagnostics.some(d => d.code === 'service-owner-unavailable'));
+});
+
+test('system-only plugins do not create agent selections and remain available without one', () => {
+	const system = installation('system', [contribution('view', { scope: 'app', kind: 'view', context: none })]);
+	const request = input([system]);
+	assert.deepEqual(request.selection.plugins, []);
+	const plan = resolvePluginContributions(request);
+	assert.equal(plan.valid, true);
+	assert.deepEqual(plan.contributions.map(c => c.id), ['system/view']);
+	assert.equal(plan.nodes[0].agentSelected, false);
+});
+
+test('mixed plugin app contribution survives agent deselection and agent runtime rejection', () => {
+	const mixed = installation('goal', [contribution('app', { scope: 'app', kind: 'view', required: true, context: none }), contribution('control', { required: true, runtime: { adapterIds: ['pi'] } })]);
+	const request = mutable(input([mixed]));
+	request.selection.plugins[0].enabled = false;
+	let plan = resolvePluginContributions(request);
+	assert.equal(plan.valid, true);
+	assert.deepEqual(plan.contributions.map(c => c.id), ['goal/app']);
+	request.selection.plugins[0].enabled = true;
+	request.runtime.adapterId = 'codex-native';
+	plan = resolvePluginContributions(request);
+	assert.equal(plan.valid, false);
+	assert.deepEqual(plan.contributions.map(c => c.id), ['goal/app']);
+});
+
+test('app contribution cannot acquire a dependency on a selected agent tool', () => {
+	const mixed = installation('mixed', [contribution('app', { scope: 'app', kind: 'view', required: true, context: none, dependsOn: ['mixed/tool'] }), contribution('tool')]);
+	const plan = resolvePluginContributions(input([mixed]));
+	assert.equal(plan.valid, false);
+	assert.equal(plan.contributions.some(c => c.id === 'mixed/app'), false);
 });

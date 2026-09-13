@@ -17,6 +17,7 @@ import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { CODEX_COMPAT_TOOL_NAMES } from "../tools/codex-compat.js";
 import {
 	isEnabledRuntimeToolProfile,
+	materializePiboProfileTools,
 } from "../tools/session-tool-set.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
@@ -44,7 +45,6 @@ export function profileWithRuntimeInstance(profile: InitialSessionContext, runti
 		tools: profile.tools,
 		subagents: profile.subagents,
 		mcpServers: profile.mcpServers,
-		piPackages: profile.piPackages,
 		contextFiles: profile.contextFiles,
 		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
@@ -86,11 +86,16 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	const addNode = (node: Omit<PiboContextBuildNode, "order">) => nodes.push({ ...node, order: nodes.length });
 	const availableAgents = listAvailableAgents(profile.subagents);
 	const delegatedSendAvailable = availableAgents.length > 0;
-	// Inspection must never invoke a dynamic tool factory.
-	const declaredProfileTools = profile.tools.filter((tool) => tool.enabled !== false);
+	const toolContext = {
+		piboSessionId: input.piboSessionId,
+		piboRoomId: input.piboRoomId,
+		profileName: profile.profileName,
+		cwd: input.cwd,
+	};
+	const materializedProfileTools = materializePiboProfileTools(profile, toolContext);
 	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
 	const callableProfileTools = [
-		...declaredProfileTools.map((tool) => ({ name: tool.name, yieldable: tool.yieldable })),
+		...materializedProfileTools.map((tool) => ({ name: tool.definition.name, yieldable: tool.profile.yieldable })),
 		...(runtimeProfileTool ? [{ name: "runtime", yieldable: runtimeProfileTool.yieldable }] : []),
 	];
 	const profileToolNames = callableProfileTools.map((tool) => tool.name);
@@ -231,18 +236,6 @@ export function buildPortableRuntimeContextSnapshot(input: {
 			...profile.contextFiles.filter((file) => file.enabled !== false).map((file) => file.key ?? file.path),
 		], input.runtime.capabilities.context);
 		addRuntimeContributionGroup(nodes, "mcp", "External MCP Servers", [...profile.mcpServers], input.runtime.capabilities.mcp.externalServers);
-	}
-	if (profile.piPackages.some((pkg) => pkg.enabled !== false)) {
-		addNode({
-			id: "adapter-packages",
-			kind: "runtime_extension",
-			title: "Adapter Packages",
-			source: "profile",
-			state: input.runtime.adapterId === "pi" ? "active" : "warning",
-			badges: ["PI PACKAGES"],
-			notes: input.runtime.adapterId === "pi" ? undefined : ["Pi packages are adapter-specific and require explicit support from the selected runtime."],
-			metadata: { packages: profile.piPackages.filter((pkg) => pkg.enabled !== false).map((pkg) => pkg.id) },
-		});
 	}
 	addNode({
 		id: "model-options",

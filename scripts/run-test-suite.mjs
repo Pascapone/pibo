@@ -17,10 +17,6 @@ function defaultTestFiles() {
 			.filter((name) => name.endsWith(".test.mjs"))
 			.sort()
 			.map((name) => join("test", name)),
-		...readdirSync(join("test", "chat-vscode"))
-			.filter((name) => name.endsWith(".test.mjs"))
-			.sort()
-			.map((name) => join("test", "chat-vscode", name)),
 	];
 }
 

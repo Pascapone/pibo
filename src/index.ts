@@ -262,7 +262,6 @@ export type {
 	PiboGatewayActionContext,
 	PiboGatewayActionInfo,
 	PiboCapabilityCatalog,
-	PiboCapabilityPackageInfo,
 	PiboContextFileInfo,
 	PiboNativeToolInfo,
 	PiboPlugin,
@@ -319,20 +318,6 @@ export { PiboGatewayServer, runGatewayServer } from "./gateway/server.js";
 export { createWebPiboPluginRegistry, resolveWebGatewayServerOptions, runWebGatewayServer } from "./gateway/web.js";
 export type { WebGatewayServerOptions } from "./gateway/web.js";
 export { runGatewayClient } from "./gateway/client.js";
-export {
-	LOCAL_TUI_CHANNEL_NAME,
-	LocalRoutedTuiClient,
-	createLocalRoutedTuiClient,
-	createLocalRoutedTuiExtension,
-	runLocalRoutedTui,
-} from "./local/tui.js";
-export type {
-	LocalRoutedTuiCapabilities,
-	LocalRoutedTuiClientLike,
-	LocalRoutedTuiEventListener,
-	LocalRoutedTuiExtensionOptions,
-	LocalRoutedTuiOptions,
-} from "./local/tui.js";
 export { createWebHostChannel, DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, WEB_CHANNEL_NAME } from "./web/channel.js";
 export type { WebHostChannel, WebHostChannelOptions } from "./web/channel.js";
 export type { PiboWebApp, PiboWebAppContext, PiboWebSession } from "./web/types.js";

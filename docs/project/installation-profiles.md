@@ -14,8 +14,8 @@ migration_lineage:
   source_sha256: "b0bc367fcf9fb515803da3f305b66467b1c1947c26ef755f1f8c019b5bfe7f82"
   source_body_sha256: "b0bc367fcf9fb515803da3f305b66467b1c1947c26ef755f1f8c019b5bfe7f82"
 generated:
-  by: "process:pibo-okf-p-current-project-plans"
-  at: "2026-08-31T22:47:46Z"
+  by: "openai/codex"
+  at: "2026-09-12T13:40:00Z"
 ---
 # Installation profiles
 
@@ -23,9 +23,9 @@ Pibo's package installation remains side-effect free. After `npm install -g @pas
 
 ## Supported hosts and resource budget
 
-Planning and staging work wherever the Pibo CLI runs. Host apply currently targets Linux with systemd and one of `apt-get`, `dnf`, or `pacman`. The pinned code-server download supports Linux amd64 and arm64. Containers and other service managers should use Vanilla plan JSON or a staged tree as the integration contract instead of `--apply`.
+Planning and staging work wherever the Pibo CLI runs. Host apply currently targets Linux with systemd and one of `apt-get`, `dnf`, or `pacman`. Containers and other service managers should use Vanilla plan JSON or a staged tree as the integration contract instead of `--apply`.
 
-Vanilla adds only the gateway service and Caddy beyond the installed npm package. Batteries Included also downloads a 235 MB code-server archive, installs Chromium and two isolated browser-tool runtimes, and installs isolated MCP packages. Exact extracted size and memory depend on the distribution and workload; budget several gigabytes of disk and at least 2 GiB of available memory for a practical BI workstation. Browser sessions and IDE extension hosts add workload-dependent processes.
+Vanilla adds only the gateway service and Caddy beyond the installed npm package. Batteries Included also installs Chromium, two isolated browser-tool runtimes, Web Annotations, and isolated MCP defaults. Exact size and memory depend on the distribution and workload; budget several gigabytes of disk and at least 2 GiB of available memory for a practical Batteries Included host. Browser sessions add workload-dependent processes.
 
 ## Choose a profile
 
@@ -34,14 +34,13 @@ Vanilla adds only the gateway service and Caddy beyond the installed npm package
 Use this for a complete self-hosted Pibo workstation. It adds:
 
 - the Pibo gateway and Chat Web;
-- embedded VS Code Web at `/apps/vscode/`;
 - Browser Use and Agent Browser from Pibo's pinned tool registry;
 - managed Chromium/CDP prerequisites;
 - Web Annotations from the installed Pibo package;
 - an allowlisted Chrome DevTools MCP default;
 - systemd, Caddy, status, doctor, upgrade, and rollback metadata.
 
-It consumes more disk, memory, network downloads, and background processes than Vanilla. VS Code Web binds only to `127.0.0.1:4790`, runs as `pibo-code`, and is exposed by Caddy only after the request passes Pibo's authenticated Chat bootstrap endpoint. The managed service can write its data directory and the configured workspace root, not arbitrary protected host paths.
+It consumes more disk, memory, network downloads, and background processes than Vanilla. Browser automation remains isolated under Pibo Home and is exposed only through the authenticated gateway and tool contracts.
 
 ```bash
 pibo setup plan --profile batteries-included --domain pibo.example.com
@@ -54,7 +53,7 @@ Configure Better Auth before applying a public domain. Setup refuses to expose l
 
 ### Vanilla
 
-Use this when you want only the Pibo gateway and Chat Web, or when another system owns the proxy and optional tooling. Vanilla does not install or start VS Code Web, Chromium, browser automation tools, or MCP integrations.
+Use this when you want only the Pibo gateway and Chat Web, or when another system owns the proxy and optional tooling. Vanilla does not install Chromium, browser automation tools, Web Annotations, or MCP defaults.
 
 ```bash
 pibo setup plan --profile vanilla --domain pibo.example.com
@@ -79,17 +78,11 @@ pibo setup install --profile batteries-included \
 pibo setup status --pibo-home /root/.pibo --root /tmp/pibo-install
 ```
 
-Real host mutation requires both `--apply` and `--yes`, requires root, validates pinned code-server downloads with SHA-256, and uses `pibo gateway web restart` instead of bypassing the gateway's active-session safety check.
+Real host mutation requires both `--apply` and `--yes`, requires root, and uses `pibo gateway web restart` instead of bypassing the gateway's active-session safety check.
 
 ## Components and migration
 
-Add an optional component to an installed profile with:
-
-```bash
-pibo setup component add vscode-web --apply --yes
-```
-
-The profile identity remains visible, while the manifest records the added component and pinned version. To move from Vanilla to the complete maintained set, apply the Batteries Included profile explicitly after reviewing its plan. To move from Batteries Included to Vanilla, uninstall setup-owned resources and install Vanilla; Pibo Home, workspaces, browser profiles, sessions, and user data remain in place.
+The manifest records the installed component set and pinned versions. To move from Vanilla to the complete maintained set, apply the Batteries Included profile explicitly after reviewing its plan. To move from Batteries Included to Vanilla, uninstall setup-owned resources and install Vanilla; Pibo Home, workspaces, browser profiles, sessions, and user data remain in place. Upgrades from historical manifests also stop and disable retired setup-owned services without reintroducing them as supported components.
 
 ## Upgrade, repair, and rollback
 
@@ -117,7 +110,7 @@ pibo setup install --profile batteries-included \
   --write-to /tmp/pibo-install
 ```
 
-Stop the manually managed code-server unit, archive its unit and Caddy configuration outside `/etc`, and then apply the profile. Setup deliberately refuses to overwrite an unmanaged or locally modified target file. This makes ownership transfer explicit instead of silently deleting unrelated proxy sites or service customizations. Reuse the existing workspace root with `--workspace-root`; the installer does not copy or delete workspace data. Existing browser templates under Pibo Home also remain in place.
+Stop any retired manually managed Pibo sidecar services, archive their units and Caddy configuration outside `/etc`, and then apply the profile. Setup deliberately refuses to overwrite an unmanaged or locally modified target file. This makes ownership transfer explicit instead of silently deleting unrelated proxy sites or service customizations. Reuse the existing workspace root with `--workspace-root`; the installer does not copy or delete workspace data. Existing browser templates under Pibo Home also remain in place.
 
 If the old reverse proxy serves unrelated sites, keep it under operator ownership and copy only the staged Pibo route into that configuration instead of applying setup ownership. In that case, use the generated plan as the supported routing contract and retain the external proxy in your own upgrade and rollback procedure.
 

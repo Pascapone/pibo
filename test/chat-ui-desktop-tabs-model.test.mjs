@@ -11,9 +11,9 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		const model = await import("./src/apps/chat-ui/src/desktop-tabs-model.ts");
 		let state = model.emptyDesktopTabState();
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "workflows" } }, { id: "workflows", now: 1 });
-		state = model.openDesktopTab(state, { kind: "route", route: { area: "vscode" } }, { id: "vscode", now: 2 });
+		state = model.openDesktopTab(state, { kind: "route", route: { area: "cron" } }, { id: "cron", now: 2 });
 		state = model.openDesktopTab(state, { kind: "session-tool", tool: "preview" }, { id: "preview", now: 3 });
-		assert.deepEqual(state.tabs.map((tab) => tab.id), ["workflows", "vscode", "preview"]);
+		assert.deepEqual(state.tabs.map((tab) => tab.id), ["workflows", "cron", "preview"]);
 		assert.equal(state.activeTabId, "preview");
 
 		let newTabs = model.openDesktopNewTab(model.emptyDesktopTabState(), { id: "new-one", now: 1 });
@@ -43,8 +43,8 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(state.tabs.filter((tab) => tab.target.kind === "route" && tab.target.route.area === "settings").length, 1);
 		assert.equal(model.activeDesktopTab(state).target.route.panel, "providers");
 
-		state = model.activateDesktopTab(state, "vscode", 8);
-		state = model.closeDesktopTab(state, "vscode");
+		state = model.activateDesktopTab(state, "cron", 8);
+		state = model.closeDesktopTab(state, "cron");
 		assert.equal(state.activeTabId, "preview", "close focuses the right neighbor");
 		state = model.moveDesktopTab(state, "preview", 1);
 		assert.equal(state.tabs.at(2).id, "preview");
@@ -91,7 +91,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(model.reconcileDesktopRoute(beforeSessions, { area: "sessions", piboSessionId: "ps_1" }), beforeSessions);
 		const routed = model.reconcileDesktopRoute(beforeSessions, { area: "agents" }, { id: "agents", now: 9 });
 		assert.equal(model.activeDesktopTab(routed).target.route.area, "agents");
-		for (const area of ["vscode", "workflows", "cron", "loops", "agents", "context", "settings"]) {
+		for (const area of ["workflows", "cron", "loops", "agents", "context", "settings"]) {
 			const next = model.reconcileDesktopRoute(model.emptyDesktopTabState(), { area }, { id: area, now: 10 });
 			assert.equal(model.activeDesktopTab(next).target.route.area, area);
 		}
@@ -146,13 +146,13 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 				duplicateRoute,
 				{ ...duplicateRoute, target: { kind: "route", route: { area: "settings" } } },
 				{ ...duplicateRoute, id: "workflow-alias", lastActivatedAt: 2 },
-				{ ...duplicateRoute, id: "vscode", target: { kind: "route", route: { area: "vscode" } } },
+				{ ...duplicateRoute, id: "cron", target: { kind: "route", route: { area: "cron" } } },
 			],
 			activeTabId: "workflow-alias",
 			width: 520,
 			collapsed: false,
 		}));
-		assert.deepEqual(recovered.tabs.map((tab) => tab.id), ["workflow-one", "vscode"]);
+		assert.deepEqual(recovered.tabs.map((tab) => tab.id), ["workflow-one", "cron"]);
 		assert.equal(recovered.activeTabId, "workflow-one", "duplicate target active id aliases to the retained tab");
 
 		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "preview", target: { kind: "session-tool", tool: "preview" } }), true);

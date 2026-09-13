@@ -6,18 +6,19 @@ import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { createChatWebApp } from "../dist/apps/chat/web-app.js";
+import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.js";
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { AsyncChatStorage } from "../dist/data/async-chat-storage.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
+import { PluginManager } from "../dist/plugins/manager.js";
 import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";
 import { PiboAuthError } from "../dist/auth/types.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
-import { upsertPiPackage } from "../dist/pi-packages/store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { configCommand } from "../dist/mcp/config-command.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
@@ -25,6 +26,15 @@ import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
+const emptyAgentPluginSelection = { schemaVersion: 1, plugins: [] };
+
+function agentCreateBody(body) {
+	return { schemaVersion: 2, pluginSelection: emptyAgentPluginSelection, ...body };
+}
+
+function agentUpdateBody(agent, body) {
+	return { schemaVersion: 2, expectedRevision: agent.revision, ...body };
+}
 
 function fakeRuntimeCapabilities() {
 	const unsupported = { support: "unsupported", reason: "Not supported by this fixture runtime." };
@@ -201,6 +211,13 @@ async function startWebHostChannel(options = {}) {
 	const dataPayloadRootDir = join(storageDir, "payloads");
 	const workflowStorePath = join(storageDir, "pibo-workflows.sqlite");
 	const reliabilityStorePath = join(storageDir, "pibo-events.sqlite");
+	const pluginDataStore = options.chat?.pluginManager ? undefined : new PiboDataStore(join(storageDir, "pibo-plugins.sqlite"), {
+		payloadRootDir: join(storageDir, "plugin-payloads"),
+	});
+	const pluginManager = options.chat?.pluginManager ?? new PluginManager({
+		store: pluginDataStore.plugins,
+		artifactRoot: join(storageDir, "plugin-artifacts"),
+	});
 	const webApps = [createChatWebApp({
 		agentStorePath,
 		dataStorePath,
@@ -208,6 +225,7 @@ async function startWebHostChannel(options = {}) {
 		workflowStorePath,
 		reliabilityStorePath,
 		...options.chat,
+		pluginManager,
 	})];
 	const channel = createWebHostChannel({ port: 0, announce: false, ...options.web });
 	await options.beforeStart?.({ reliabilityStorePath, dataStorePath });
@@ -307,9 +325,7 @@ async function startWebHostChannel(options = {}) {
 				mcpServers: [],
 			};
 		},
-		...(options.inspectAgentRuntimeInstances ? {
-			inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances,
-		} : {}),
+		inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances ?? (async () => [fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi", transport: "embedded", protocol: "pi-sdk" })]),
 		...(options.getAgentRuntimeAuthStatus ? {
 			getAgentRuntimeAuthStatus: options.getAgentRuntimeAuthStatus,
 		} : {}),
@@ -360,6 +376,7 @@ async function startWebHostChannel(options = {}) {
 	channel.stop = async () => {
 		await stopChannel();
 		await Promise.all(webApps.map((app) => app.dispose?.()));
+		pluginDataStore?.close();
 	};
 	return {
 		channel,
@@ -430,45 +447,18 @@ test("chat web app requires auth for localhost requests", async () => {
 	}
 });
 
-test("chat web app exposes authenticated VS Code Web integration metadata and a proxy auth check", async () => {
-	const { channel, baseURL } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		chat: {
-			vscodeWeb: {
-				url: "/apps/vscode/",
-				workspaceRoot: "/srv/pibo-workspaces",
-			},
-		},
-	});
+test("chat web app exposes the authenticated proxy auth check", async () => {
+	const { channel, baseURL } = await startWebHostChannel({ auth: createFakeAuthService() });
 
 	try {
 		const unauthenticated = await fetch(`${baseURL}/api/chat/auth-check`);
 		assert.equal(unauthenticated.status, 401);
 
-		const authenticated = await fetch(`${baseURL}/api/chat/auth-check`, { headers: { "x-test-user": "user-vscode" } });
+		const authenticated = await fetch(`${baseURL}/api/chat/auth-check`, { headers: { "x-test-user": "user-proxy" } });
 		assert.equal(authenticated.status, 204);
 		assert.equal(authenticated.headers.get("cache-control"), "no-store");
-
-		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap`, { headers: { "x-test-user": "user-vscode" } });
-		assert.equal(bootstrap.status, 200);
-		const payload = await bootstrap.json();
-		assert.deepEqual(payload.integrations, {
-			vscode: {
-				url: "/apps/vscode/",
-				workspaceRoot: "/srv/pibo-workspaces",
-			},
-		});
 	} finally {
 		await channel.stop?.();
-	}
-});
-
-test("chat web app rejects cross-origin and ambiguous VS Code Web URLs before opening stores", () => {
-	for (const url of ["https://code.example/", "//code.example/", "/\\code.example/", "apps/vscode/"]) {
-		assert.throws(
-			() => createChatWebApp({ vscodeWeb: { url } }),
-			/VS Code Web URL must be a same-origin absolute path beginning with \//,
-		);
 	}
 });
 
@@ -4535,19 +4525,19 @@ test("chat web app creates sessions with selected agent profiles", async () => {
 	}
 });
 
-test("chat web app creates custom agents from the native capability catalog", async () => {
+test("chat web app creates custom agents from the plugin capability catalog", async () => {
 	const { channel, baseURL } = await startWebHostChannel({
 		auth: createFakeAuthService(),
 		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
 	});
 
 	try {
-		const catalog = await fetch(`${baseURL}/api/chat/agent-catalog`, {
+		const catalog = await fetch(`${baseURL}/api/chat/agent-plugin-catalog`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(catalog.status, 200);
 		const catalogPayload = await catalog.json();
-		assert.deepEqual(catalogPayload.catalog.nativeTools.map((tool) => tool.name), []);
+		assert.deepEqual(catalogPayload.catalog.plugins, []);
 
 		const createdAgent = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
@@ -4556,14 +4546,12 @@ test("chat web app creates custom agents from the native capability catalog", as
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({
+			body: JSON.stringify(agentCreateBody({
 				displayName: "research-agent",
-				description: "Uses native catalog entries only.",
-				nativeTools: [],
+				description: "Uses plugin catalog entries only.",
 				skills: ["pi-agent-harness"],
 				builtinToolNames: ["read", "bash"],
 				autoContextFiles: false,
-				runControl: true,
 				mainModel: { provider: "openai", id: "gpt-5.6" },
 				mainModelFallbacks: [
 					{ provider: "anthropic", id: "claude-sonnet-5" },
@@ -4577,16 +4565,17 @@ test("chat web app creates custom agents from the native capability catalog", as
 					modelFallbacks: [{ provider: "anthropic", id: "claude-haiku-5" }],
 					thinkingLevel: "high",
 				}],
-			}),
+			})),
 		});
 		assert.equal(createdAgent.status, 201);
 		const agentPayload = await createdAgent.json();
 		assert.equal(agentPayload.agent.profileName, "research-agent");
 		assert.equal(agentPayload.agent.displayName, "research-agent");
-		assert.deepEqual(agentPayload.agent.nativeTools, []);
+		assert.deepEqual(agentPayload.agent.pluginSelection, emptyAgentPluginSelection);
+		assert.equal("nativeTools" in agentPayload.agent, false);
 		assert.deepEqual(agentPayload.agent.builtinToolNames, ["read", "bash"]);
 		assert.equal(agentPayload.agent.autoContextFiles, false);
-		assert.equal(agentPayload.agent.runControl, true);
+		assert.equal("runControl" in agentPayload.agent, false);
 		assert.deepEqual(agentPayload.agent.mainModel, { provider: "openai", id: "gpt-5.6" });
 		assert.deepEqual(agentPayload.agent.mainModelFallbacks, [
 			{ provider: "anthropic", id: "claude-sonnet-5" },
@@ -4664,14 +4653,14 @@ test("chat Agent Designer manages app-wide agent folders and folder assignments"
 		const missingFolderAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: mutationHeaders,
-			body: JSON.stringify({ displayName: "missing-folder-agent", folderId: "agent_folder_missing" }),
+			body: JSON.stringify(agentCreateBody({ displayName: "missing-folder-agent", folderId: "agent_folder_missing" })),
 		});
 		assert.equal(missingFolderAgentResponse.status, 404);
 
 		const createdAgentResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: mutationHeaders,
-			body: JSON.stringify({ displayName: "folder-agent", folderId: createdFolder.id }),
+			body: JSON.stringify(agentCreateBody({ displayName: "folder-agent", folderId: createdFolder.id })),
 		});
 		assert.equal(createdAgentResponse.status, 201);
 		const createdAgent = (await createdAgentResponse.json()).agent;
@@ -4695,7 +4684,7 @@ test("chat Agent Designer manages app-wide agent folders and folder assignments"
 		const unfiledAgentResponse = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdAgent.id)}`, {
 			method: "PATCH",
 			headers: mutationHeaders,
-			body: JSON.stringify({ folderId: null }),
+			body: JSON.stringify(agentUpdateBody(createdAgent, { folderId: null })),
 		});
 		assert.equal(unfiledAgentResponse.status, 200);
 		assert.equal((await unfiledAgentResponse.json()).agent.folderId, undefined);
@@ -4782,13 +4771,13 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const createdResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({
+			body: JSON.stringify(agentCreateBody({
 				displayName: "codex-native-agent",
 				runtimeInstanceId: "codex-native",
 				runtimeOptions: { mode: "isolated", reasoningEffort: "high" },
 				autoContextFiles: false,
 				nativeSubagents: false,
-			}),
+			})),
 		});
 		assert.equal(createdResponse.status, 201);
 		const created = await createdResponse.json();
@@ -4801,7 +4790,7 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const rejectedPatch = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ runtimeOptions: { mode: "shared" } }),
+			body: JSON.stringify(agentUpdateBody(created.agent, { runtimeOptions: { mode: "shared" } })),
 		});
 		assert.equal(rejectedPatch.status, 400);
 		assert.match((await rejectedPatch.json()).error, /Codex mode must be isolated/);
@@ -4809,15 +4798,16 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const clearedOverrideResponse = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ nativeSubagents: null }),
+			body: JSON.stringify(agentUpdateBody(created.agent, { nativeSubagents: null })),
 		});
 		assert.equal(clearedOverrideResponse.status, 200);
-		assert.equal((await clearedOverrideResponse.json()).agent.nativeSubagents, undefined, "an explicit null clears a runtime-specific native-subagent override");
+		const clearedOverride = await clearedOverrideResponse.json();
+		assert.equal(clearedOverride.agent.nativeSubagents, undefined, "an explicit null clears a runtime-specific native-subagent override");
 
 		const disabledResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ displayName: "offline-agent", runtimeInstanceId: "offline-runtime" }),
+			body: JSON.stringify(agentCreateBody({ displayName: "offline-agent", runtimeInstanceId: "offline-runtime" })),
 		});
 		assert.equal(disabledResponse.status, 400);
 		assert.match((await disabledResponse.json()).error, /Runtime is disabled/);
@@ -4825,7 +4815,7 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const unknownResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ displayName: "unknown-runtime-agent", runtimeInstanceId: "missing-runtime" }),
+			body: JSON.stringify(agentCreateBody({ displayName: "unknown-runtime-agent", runtimeInstanceId: "missing-runtime" })),
 		});
 		assert.equal(unknownResponse.status, 400);
 		assert.match((await unknownResponse.json()).error, /Unknown runtime missing-runtime/);
@@ -4833,7 +4823,7 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const malformedRuntimeResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ displayName: "malformed-runtime-agent", runtimeInstanceId: "Invalid Runtime", runtimeOptions: [] }),
+			body: JSON.stringify(agentCreateBody({ displayName: "malformed-runtime-agent", runtimeInstanceId: "Invalid Runtime", runtimeOptions: [] })),
 		});
 		assert.equal(malformedRuntimeResponse.status, 400);
 		assert.match((await malformedRuntimeResponse.json()).error, /runtimeInstanceId is invalid/);
@@ -4841,7 +4831,7 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const malformedOptionsResponse = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ displayName: "malformed-options-agent", runtimeInstanceId: "codex-native", runtimeOptions: [] }),
+			body: JSON.stringify(agentCreateBody({ displayName: "malformed-options-agent", runtimeInstanceId: "codex-native", runtimeOptions: [] })),
 		});
 		assert.equal(malformedOptionsResponse.status, 400);
 		assert.match((await malformedOptionsResponse.json()).error, /runtimeOptions must be a JSON object/);
@@ -4849,7 +4839,7 @@ test("chat Agent Designer exposes runtime diagnostics and rejects invalid runtim
 		const switchedResponse = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(created.agent.id)}`, {
 			method: "PATCH",
 			headers: { "content-type": "application/json", origin: baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ runtimeInstanceId: "pi", runtimeOptions: {}, autoContextFiles: false, nativeSubagents: false }),
+			body: JSON.stringify(agentUpdateBody(clearedOverride.agent, { runtimeInstanceId: "pi", runtimeOptions: {}, autoContextFiles: false, nativeSubagents: false })),
 		});
 		assert.equal(switchedResponse.status, 200);
 		const switched = await switchedResponse.json();
@@ -5012,11 +5002,11 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 				origin: baseURL,
 				"x-test-user": "account-a",
 			},
-			body: JSON.stringify({
+			body: JSON.stringify(agentCreateBody({
 				displayName: "cross-account-agent",
 				description: "Created by account A.",
 				skills: ["pi-agent-harness"],
-			}),
+			})),
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
@@ -5049,7 +5039,7 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 				origin: baseURL,
 				"x-test-user": "account-b",
 			},
-			body: JSON.stringify({ description: "Updated by account B." }),
+			body: JSON.stringify(agentUpdateBody(createdPayload.agent, { description: "Updated by account B." })),
 		});
 		assert.equal(updatedByAccountB.status, 200);
 		const updatedByAccountBPayload = await updatedByAccountB.json();
@@ -5062,10 +5052,11 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 				origin: baseURL,
 				"x-test-user": "account-b",
 			},
-			body: JSON.stringify({ archived: true }),
+			body: JSON.stringify(agentUpdateBody(updatedByAccountBPayload.agent, { archived: true })),
 		});
 		assert.equal(archivedByAccountB.status, 200);
-		assert.equal(typeof (await archivedByAccountB.json()).agent.archivedAt, "string");
+		const archivedByAccountBPayload = await archivedByAccountB.json();
+		assert.equal(typeof archivedByAccountBPayload.agent.archivedAt, "string");
 
 		const restoredByAccountA = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
 			method: "PATCH",
@@ -5074,10 +5065,11 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 				origin: baseURL,
 				"x-test-user": "account-a",
 			},
-			body: JSON.stringify({ archived: false }),
+			body: JSON.stringify(agentUpdateBody(archivedByAccountBPayload.agent, { archived: false })),
 		});
 		assert.equal(restoredByAccountA.status, 200);
-		assert.equal((await restoredByAccountA.json()).agent.archivedAt, undefined);
+		const restoredByAccountAPayload = await restoredByAccountA.json();
+		assert.equal(restoredByAccountAPayload.agent.archivedAt, undefined);
 
 		await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
 			method: "PATCH",
@@ -5086,7 +5078,7 @@ test("chat web app exposes custom agents across authenticated accounts", async (
 				origin: baseURL,
 				"x-test-user": "account-b",
 			},
-			body: JSON.stringify({ archived: true }),
+			body: JSON.stringify(agentUpdateBody(restoredByAccountAPayload.agent, { archived: true })),
 		});
 
 		const deletedByAccountB = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
@@ -5122,11 +5114,11 @@ test("chat web app deletes renamed custom agents with their session subtrees", a
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({
+			body: JSON.stringify(agentCreateBody({
 				displayName: "disposable-agent",
 				description: "Will be archived and deleted.",
 				skills: ["pi-agent-harness"],
-			}),
+			})),
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
@@ -5139,7 +5131,7 @@ test("chat web app deletes renamed custom agents with their session subtrees", a
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ displayName: "renamed-agent" }),
+			body: JSON.stringify(agentUpdateBody(createdPayload.agent, { displayName: "renamed-agent" })),
 		});
 		assert.equal(renamedAgent.status, 200);
 		const renamedPayload = await renamedAgent.json();
@@ -5189,7 +5181,7 @@ test("chat web app deletes renamed custom agents with their session subtrees", a
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ archived: true }),
+			body: JSON.stringify(agentUpdateBody(renamedPayload.agent, { archived: true })),
 		});
 		assert.equal(archivedAgent.status, 200);
 		const archivedPayload = await archivedAgent.json();
@@ -5238,12 +5230,11 @@ test("workflow profile picker excludes archived custom agents and reports archiv
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({
+			body: JSON.stringify(agentCreateBody({
 				displayName: "workflow-reviewer",
 				description: "Reviews workflow drafts.",
-				nativeTools: ["web_search"],
 				skills: ["pi-agent-harness"],
-			}),
+			})),
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
@@ -5255,7 +5246,7 @@ test("workflow profile picker excludes archived custom agents and reports archiv
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ archived: true }),
+			body: JSON.stringify(agentUpdateBody(createdPayload.agent, { archived: true })),
 		});
 		assert.equal(archivedAgent.status, 200);
 
@@ -7187,15 +7178,14 @@ test("chat web app surfaces broken custom agent context files and allows cleanup
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({
+			body: JSON.stringify(agentCreateBody({
 				displayName: "broken-context-agent",
-				nativeTools: ["retired-tool"],
 				contextFiles: ["ctx:git-projekt", "ctx:pibo-docker-development"],
-			}),
+			})),
 		});
 		assert.equal(createdAgent.status, 201);
 		const createdPayload = await createdAgent.json();
-		assert.deepEqual(createdPayload.agent.brokenNativeTools, ["retired-tool"]);
+		assert.equal("brokenNativeTools" in createdPayload.agent, false);
 		assert.deepEqual(createdPayload.agent.brokenContextFiles, ["ctx:pibo-docker-development"]);
 
 		const bootstrap = await fetch(`${baseURL}/api/chat/bootstrap`, {
@@ -7203,7 +7193,7 @@ test("chat web app surfaces broken custom agent context files and allows cleanup
 		});
 		assert.equal(bootstrap.status, 200);
 		const bootstrapPayload = await bootstrap.json();
-		assert.deepEqual(bootstrapPayload.customAgents[0].brokenNativeTools, ["retired-tool"]);
+		assert.equal("brokenNativeTools" in bootstrapPayload.customAgents[0], false);
 		assert.deepEqual(bootstrapPayload.customAgents[0].brokenContextFiles, ["ctx:pibo-docker-development"]);
 
 		const patchedAgent = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(createdPayload.agent.id)}`, {
@@ -7213,159 +7203,15 @@ test("chat web app surfaces broken custom agent context files and allows cleanup
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({
-				nativeTools: [],
+			body: JSON.stringify(agentUpdateBody(createdPayload.agent, {
 				contextFiles: ["ctx:git-projekt"],
-			}),
+			})),
 		});
 		assert.equal(patchedAgent.status, 200);
 		const patchedPayload = await patchedAgent.json();
-		assert.deepEqual(patchedPayload.agent.brokenNativeTools, []);
+		assert.equal("brokenNativeTools" in patchedPayload.agent, false);
 		assert.deepEqual(patchedPayload.agent.brokenContextFiles, []);
 		assert.deepEqual(patchedPayload.agent.contextFiles, ["ctx:git-projekt"]);
-	} finally {
-		await channel.stop?.();
-	}
-});
-
-test("chat web app manages Pi package registrations and custom agent selections", async () => {
-	const cwd = mkdtempSync(join(tmpdir(), "pibo-web-pi-packages-"));
-	const packageDir = join(cwd, "local-package");
-	mkdirSync(join(packageDir, "skills"), { recursive: true });
-	writeFileSync(join(packageDir, "skills", "demo.md"), "# Demo\n", "utf-8");
-	writeFileSync(join(packageDir, "package.json"), JSON.stringify({
-		name: "local-web-package",
-		pi: { skills: ["skills/*.md"] },
-	}), "utf-8");
-
-	await withCwd(cwd, async () => {
-		upsertPiPackage({
-			id: "local-web-package",
-			name: "local-web-package",
-			source: packageDir,
-			installSpec: packageDir,
-			resourceTypes: ["skill"],
-			skillNames: ["demo"],
-			installStatus: "installed",
-			installPath: packageDir,
-			enabled: true,
-			diagnostics: [],
-		}, cwd);
-		const { channel, baseURL } = await startWebHostChannel({
-			auth: createFakeAuthService(),
-			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
-			createProfile: (name) => new InitialSessionContextBuilder(name)
-				.withPiPackages([{ id: "local-web-package" }])
-				.createSession(),
-		});
-
-		try {
-			const catalog = await fetch(`${baseURL}/api/chat/agent-catalog`, {
-				headers: { "x-test-user": "user-1" },
-			});
-			assert.equal(catalog.status, 200);
-			const catalogPayload = await catalog.json();
-			assert.equal(catalogPayload.catalog.piPackages[0].id, "local-web-package");
-			assert.equal(catalogPayload.catalog.piPackages[0].enabled, true);
-
-			const disabled = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
-				method: "PATCH",
-				headers: {
-					"content-type": "application/json",
-					origin: baseURL,
-					"x-test-user": "user-1",
-				},
-				body: JSON.stringify({ enabled: false }),
-			});
-			assert.equal(disabled.status, 200);
-			const disabledPayload = await disabled.json();
-			assert.equal(disabledPayload.package.enabled, false);
-
-			const createdAgent = await fetch(`${baseURL}/api/chat/agents`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					origin: baseURL,
-					"x-test-user": "user-1",
-				},
-				body: JSON.stringify({
-					displayName: "package-agent",
-					piPackages: ["local-web-package"],
-				}),
-			});
-			assert.equal(createdAgent.status, 201);
-			const agentPayload = await createdAgent.json();
-			assert.deepEqual(agentPayload.agent.piPackages, ["local-web-package"]);
-
-			const enabled = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
-				method: "PATCH",
-				headers: {
-					"content-type": "application/json",
-					origin: baseURL,
-					"x-test-user": "user-1",
-				},
-				body: JSON.stringify({ enabled: true }),
-			});
-			assert.equal(enabled.status, 200);
-
-			const createdSession = await fetch(`${baseURL}/api/chat/sessions`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					origin: baseURL,
-					"x-test-user": "user-1",
-				},
-				body: JSON.stringify({ profile: agentPayload.agent.profileName }),
-			});
-			assert.equal(createdSession.status, 201);
-			const sessionPayload = await createdSession.json();
-			assert.notEqual(sessionPayload.session.workspace, cwd);
-
-			const contextBuild = await fetch(`${baseURL}/api/chat/context-build?piboSessionId=${encodeURIComponent(sessionPayload.session.id)}`, {
-				headers: { "x-test-user": "user-1" },
-			});
-			const contextPayload = await contextBuild.json();
-			assert.equal(contextBuild.status, 200, JSON.stringify(contextPayload));
-			assert.equal(contextPayload.snapshot.summary.errors, 0);
-			assert.ok(contextPayload.snapshot.diagnostics.some((diagnostic) => diagnostic.message === "Loaded Pi package local-web-package (skill)"));
-
-			const blockedDelete = await fetch(`${baseURL}/api/chat/pi-packages/${encodeURIComponent("local-web-package")}`, {
-				method: "DELETE",
-				headers: {
-					"content-type": "application/json",
-					origin: baseURL,
-					"x-test-user": "user-1",
-				},
-				body: "{}",
-			});
-			assert.equal(blockedDelete.status, 409);
-			assert.match((await blockedDelete.json()).error, /package-agent/);
-		} finally {
-			await channel.stop?.();
-		}
-	});
-});
-
-test("chat web app rejects non-pi.dev package sources from browser adds", async () => {
-	const { channel, baseURL } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
-	});
-
-	try {
-		const rejected = await fetch(`${baseURL}/api/chat/pi-packages`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({ source: "/tmp/local-package" }),
-		});
-		assert.equal(rejected.status, 400);
-		assert.deepEqual(await rejected.json(), {
-			error: "Pi package source must be a https://pi.dev/packages/... URL",
-		});
 	} finally {
 		await channel.stop?.();
 	}
@@ -7462,7 +7308,7 @@ test("chat web app manages user skill routes and syncs the capability catalog", 
 					origin: baseURL,
 					"x-test-user": "user-1",
 				},
-				body: JSON.stringify({ displayName: "skill-dependent-agent", skills: ["renamed-browser-skill"] }),
+				body: JSON.stringify(agentCreateBody({ displayName: "skill-dependent-agent", skills: ["renamed-browser-skill"] })),
 			});
 			assert.equal(dependentAgentResponse.status, 201);
 			const dependentAgent = (await dependentAgentResponse.json()).agent;
@@ -7491,7 +7337,7 @@ test("chat web app manages user skill routes and syncs the capability catalog", 
 					origin: baseURL,
 					"x-test-user": "user-1",
 				},
-				body: JSON.stringify({ skills: [] }),
+				body: JSON.stringify(agentUpdateBody(dependentAgent, { skills: [] })),
 			});
 			assert.equal(unlinkAgent.status, 200);
 
@@ -7606,41 +7452,27 @@ test("chat web app syncs workspace-local user skills into the capability catalog
 	});
 });
 
-test("chat web app exposes and updates MCP server descriptions", async () => {
+test("chat web app omits legacy global MCP catalog and mutation routes", async () => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-web-mcp-"));
 	const configPath = join(cwd, "mcp_servers.json");
-	writeFileSync(configPath, `${JSON.stringify({
+	const originalConfig = {
 		mcpServers: {
-			filesystem: {
-				command: "node",
-				args: ["server.js"],
-			},
+			filesystem: { command: "node", args: ["server.js"] },
 		},
-	}, null, 2)}\n`);
+	};
+	writeFileSync(configPath, `${JSON.stringify(originalConfig, null, 2)}\n`);
 	const previousConfigPath = process.env.MCP_CONFIG_PATH;
 	const previousHome = process.env.HOME;
 	process.env.MCP_CONFIG_PATH = configPath;
 	process.env.HOME = cwd;
 
-	const { channel, baseURL } = await startWebHostChannel({
-		auth: createFakeAuthService(),
-		profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
-	});
-
+	const { channel, baseURL } = await startWebHostChannel({ auth: createFakeAuthService() });
 	try {
 		const catalog = await fetch(`${baseURL}/api/chat/agent-catalog`, {
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(catalog.status, 200);
-		const catalogPayload = await catalog.json();
-		assert.deepEqual(catalogPayload.catalog.mcpServers, [
-			{
-				name: "filesystem",
-				transport: "stdio",
-				hasDescription: false,
-				editable: true,
-			},
-		]);
+		assert.equal("mcpServers" in (await catalog.json()).catalog, false);
 
 		const patched = await fetch(`${baseURL}/api/chat/mcp-servers/filesystem/description`, {
 			method: "PATCH",
@@ -7649,53 +7481,21 @@ test("chat web app exposes and updates MCP server descriptions", async () => {
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ description: "Access project files through MCP." }),
+			body: JSON.stringify({ description: "Must not be written through the retired route." }),
 		});
-		assert.equal(patched.status, 200);
-		const patchedPayload = await patched.json();
-		assert.equal(patchedPayload.server.descriptionSource, "user");
-
-		const config = JSON.parse(readFileSync(configPath, "utf-8"));
-		assert.deepEqual(config.mcpServers.filesystem, {
-			command: "node",
-			args: ["server.js"],
-			pibo: {
-				description: "Access project files through MCP.",
-				descriptionSource: "user",
-			},
-		});
-
-		const createdAgent = await fetch(`${baseURL}/api/chat/agents`, {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				origin: baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({
-				displayName: "mcp-agent",
-				mcpServers: ["filesystem"],
-			}),
-		});
-		assert.equal(createdAgent.status, 201);
-		const agentPayload = await createdAgent.json();
-		assert.deepEqual(agentPayload.agent.mcpServers, ["filesystem"]);
+		assert.equal(patched.status, 404);
+		assert.deepEqual(JSON.parse(readFileSync(configPath, "utf-8")), originalConfig);
 	} finally {
 		await channel.stop?.();
-		if (previousConfigPath === undefined) {
-			delete process.env.MCP_CONFIG_PATH;
-		} else {
-			process.env.MCP_CONFIG_PATH = previousConfigPath;
-		}
-		if (previousHome === undefined) {
-			delete process.env.HOME;
-		} else {
-			process.env.HOME = previousHome;
-		}
+		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
+		else process.env.MCP_CONFIG_PATH = previousConfigPath;
+		if (previousHome === undefined) delete process.env.HOME;
+		else process.env.HOME = previousHome;
+		rmSync(cwd, { recursive: true, force: true });
 	}
 });
 
-test("chat web app updates MCP descriptions in their merged config source", async () => {
+test("chat web app never mutates merged MCP config sources through retired routes", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-web-mcp-source-"));
 	const project = join(root, "project");
 	const home = join(root, "home");
@@ -7703,91 +7503,41 @@ test("chat web app updates MCP descriptions in their merged config source", asyn
 	mkdirSync(home, { recursive: true });
 	const projectPath = join(project, "mcp_servers.json");
 	const homePath = join(home, "mcp_servers.json");
-	writeFileSync(projectPath, `${JSON.stringify({
+	const projectConfig = {
 		mcpServers: {
 			local: { command: "node", args: ["local.js"] },
 			shared: { command: "node", args: ["project-shared.js"] },
 		},
-	}, null, 2)}\n`);
-	writeFileSync(homePath, `${JSON.stringify({
+	};
+	const homeConfig = {
 		mcpServers: {
 			inherited: { command: "node", args: ["home.js"], env: { FIXTURE: "preserved" } },
 			shared: { command: "node", args: ["home-shared.js"] },
 		},
-	}, null, 2)}\n`);
+	};
+	writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`);
+	writeFileSync(homePath, `${JSON.stringify(homeConfig, null, 2)}\n`);
 	const previousConfigPath = process.env.MCP_CONFIG_PATH;
 	const previousHome = process.env.HOME;
 	const previousUserProfile = process.env.USERPROFILE;
 	process.env.MCP_CONFIG_PATH = projectPath;
 	process.env.HOME = home;
 	process.env.USERPROFILE = home;
-	let first;
-	let restarted;
-
+	let fixture;
 	try {
-		first = await startWebHostChannel({
-			auth: createFakeAuthService(),
-			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
-		});
-		const headers = { "content-type": "application/json", origin: first.baseURL, "x-test-user": "user-1" };
-		const catalog = await fetch(`${first.baseURL}/api/chat/agent-catalog`, { headers: { "x-test-user": "user-1" } });
-		assert.equal(catalog.status, 200);
-		assert.deepEqual((await catalog.json()).catalog.mcpServers.map((server) => server.name), ["local", "shared", "inherited"]);
-
-		for (const [name, description] of [["inherited", "Home description."], ["shared", "Project description."], ["local", "Local description."]]) {
-			const response = await fetch(`${first.baseURL}/api/chat/mcp-servers/${name}/description`, {
+		fixture = await startWebHostChannel({ auth: createFakeAuthService() });
+		for (const name of ["inherited", "shared", "local"]) {
+			const response = await fetch(`${fixture.baseURL}/api/chat/mcp-servers/${name}/description`, {
 				method: "PATCH",
-				headers,
-				body: JSON.stringify({ description }),
+				headers: { "content-type": "application/json", origin: fixture.baseURL, "x-test-user": "user-1" },
+				body: JSON.stringify({ description: "Must remain unchanged." }),
 			});
-			assert.equal(response.status, 200, await response.text());
+			assert.equal(response.status, 404);
 		}
-		await first.channel.stop?.();
-		first = undefined;
-
-		restarted = await startWebHostChannel({
-			auth: createFakeAuthService(),
-			profiles: [{ name: "codex-compat-openai-web", aliases: ["codex"] }],
-		});
-		const restartedCatalog = await fetch(`${restarted.baseURL}/api/chat/agent-catalog`, { headers: { "x-test-user": "user-1" } });
-		assert.equal(restartedCatalog.status, 200);
-		const descriptions = new Map((await restartedCatalog.json()).catalog.mcpServers.map((server) => [server.name, server.description]));
-		assert.equal(descriptions.get("inherited"), "Home description.");
-		assert.equal(descriptions.get("shared"), "Project description.");
-
-		const projectConfig = JSON.parse(readFileSync(projectPath, "utf-8"));
-		const homeConfig = JSON.parse(readFileSync(homePath, "utf-8"));
-		assert.equal(projectConfig.mcpServers.shared.pibo.description, "Project description.");
-		assert.equal(homeConfig.mcpServers.shared.pibo, undefined);
-		assert.deepEqual(homeConfig.mcpServers.inherited, {
-			command: "node",
-			args: ["home.js"],
-			env: { FIXTURE: "preserved" },
-			pibo: { description: "Home description.", descriptionSource: "user" },
-		});
-
-		chmodSync(homePath, 0o444);
-		const readOnly = await fetch(`${restarted.baseURL}/api/chat/mcp-servers/inherited/description`, {
-			method: "PATCH",
-			headers: { "content-type": "application/json", origin: restarted.baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ description: "Must remain unchanged." }),
-		});
-		assert.notEqual(readOnly.status, 200);
-		assert.equal(JSON.parse(readFileSync(homePath, "utf-8")).mcpServers.inherited.pibo.description, "Home description.");
-		chmodSync(homePath, 0o644);
-
-		rmSync(homePath);
-		const missing = await fetch(`${restarted.baseURL}/api/chat/mcp-servers/inherited/description`, {
-			method: "PATCH",
-			headers: { "content-type": "application/json", origin: restarted.baseURL, "x-test-user": "user-1" },
-			body: JSON.stringify({ description: "Must not move." }),
-		});
-		assert.notEqual(missing.status, 200);
-		assert.equal(JSON.parse(readFileSync(projectPath, "utf-8")).mcpServers.inherited, undefined);
-		assert.equal(statSync(projectPath).isFile(), true);
+		assert.deepEqual(JSON.parse(readFileSync(projectPath, "utf-8")), projectConfig);
+		assert.deepEqual(JSON.parse(readFileSync(homePath, "utf-8")), homeConfig);
 	} finally {
-		await first?.channel.stop?.();
-		await restarted?.channel.stop?.();
+		await fixture?.channel.stop?.();
 		if (previousConfigPath === undefined) delete process.env.MCP_CONFIG_PATH;
 		else process.env.MCP_CONFIG_PATH = previousConfigPath;
 		if (previousHome === undefined) delete process.env.HOME;
@@ -7798,7 +7548,7 @@ test("chat web app updates MCP descriptions in their merged config source", asyn
 	}
 });
 
-test("chat agent API updates release MCP config removal guards and persist across restart", async () => {
+test("legacy agent MCP selections keep config removal guards across restart without public mutation", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pibo-web-mcp-remove-"));
 	const agentStorePath = join(root, "chat-agents.sqlite");
 	const configPath = join(root, "mcp_servers.json");
@@ -7812,35 +7562,30 @@ test("chat agent API updates release MCP config removal guards and persist acros
 	let firstChannel;
 	let restartedChannel;
 	try {
+		const seededStore = new CustomAgentStore(agentStorePath);
+		const agent = seededStore.create({ displayName: "api-selected", mcpServers: ["selected"] });
+		seededStore.close();
+
 		const first = await startWebHostChannel({
 			auth: createFakeAuthService(),
 			chat: { agentStorePath },
 		});
 		firstChannel = first.channel;
-		const headers = {
-			"content-type": "application/json",
-			origin: first.baseURL,
-			"x-test-user": "user-1",
-		};
-		const created = await fetch(`${first.baseURL}/api/chat/agents`, {
-			method: "POST",
-			headers,
-			body: JSON.stringify({ displayName: "api-selected", mcpServers: ["selected"] }),
+		const listedBefore = await fetch(`${first.baseURL}/api/chat/agents?includeArchived=true`, {
+			headers: { "x-test-user": "user-1" },
 		});
-		assert.equal(created.status, 201);
-		const agent = (await created.json()).agent;
+		assert.equal(listedBefore.status, 200);
+		const publicAgent = (await listedBefore.json()).agents.find((item) => item.id === agent.id);
+		assert.ok(publicAgent);
+		assert.equal("mcpServers" in publicAgent, false);
 
 		await assert.rejects(
 			configCommand({ action: "remove", name: "selected", configPath }),
 			/MCP_SERVER_IN_USE[\s\S]*api-selected/,
 		);
-		const updated = await fetch(`${first.baseURL}/api/chat/agents/${encodeURIComponent(agent.id)}`, {
-			method: "PATCH",
-			headers,
-			body: JSON.stringify({ mcpServers: [] }),
-		});
-		assert.equal(updated.status, 200);
-		assert.deepEqual((await updated.json()).agent.mcpServers, []);
+		const unlinkedStore = new CustomAgentStore(agentStorePath);
+		unlinkedStore.update(agent.id, { mcpServers: [] });
+		unlinkedStore.close();
 		await configCommand({ action: "remove", name: "selected", configPath });
 
 		await first.channel.stop?.();
@@ -7854,7 +7599,7 @@ test("chat agent API updates release MCP config removal guards and persist acros
 			headers: { "x-test-user": "user-1" },
 		});
 		assert.equal(listed.status, 200);
-		assert.deepEqual((await listed.json()).agents.find((item) => item.id === agent.id).mcpServers, []);
+		assert.equal("mcpServers" in (await listed.json()).agents.find((item) => item.id === agent.id), false);
 
 		await configCommand({
 			action: "add",
@@ -7862,16 +7607,9 @@ test("chat agent API updates release MCP config removal guards and persist acros
 			serverJson: JSON.stringify({ command: "node", args: ["restored.js"] }),
 			configPath,
 		});
-		const restoredSelection = await fetch(`${restarted.baseURL}/api/chat/agents/${encodeURIComponent(agent.id)}`, {
-			method: "PATCH",
-			headers: {
-				"content-type": "application/json",
-				origin: restarted.baseURL,
-				"x-test-user": "user-1",
-			},
-			body: JSON.stringify({ mcpServers: ["selected"] }),
-		});
-		assert.equal(restoredSelection.status, 200);
+		const relinkedStore = new CustomAgentStore(agentStorePath);
+		relinkedStore.update(agent.id, { mcpServers: ["selected"] });
+		relinkedStore.close();
 		await assert.rejects(
 			configCommand({ action: "remove", name: "selected", configPath }),
 			/MCP_SERVER_IN_USE[\s\S]*api-selected/,
@@ -7908,7 +7646,7 @@ test("chat web app archives and permanently deletes custom agents with their ses
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ displayName: "delete-agent" }),
+			body: JSON.stringify(agentCreateBody({ displayName: "delete-agent" })),
 		});
 		assert.equal(createdAgent.status, 201);
 		const agentPayload = await createdAgent.json();
@@ -7950,7 +7688,7 @@ test("chat web app archives and permanently deletes custom agents with their ses
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ archived: true }),
+			body: JSON.stringify(agentUpdateBody(agentPayload.agent, { archived: true })),
 		});
 		assert.equal(archived.status, 200);
 		const archivedPayload = await archived.json();
@@ -8026,20 +7764,27 @@ test("chat web app preserves subagent targets until all dependents update away",
 		origin: baseURL,
 		"x-test-user": "user-1",
 	};
+	const agentsById = new Map();
 	const createAgent = async (body) => {
 		const response = await fetch(`${baseURL}/api/chat/agents`, {
 			method: "POST",
 			headers,
-			body: JSON.stringify(body),
+			body: JSON.stringify(agentCreateBody(body)),
 		});
 		assert.equal(response.status, 201);
-		return (await response.json()).agent;
+		const agent = (await response.json()).agent;
+		agentsById.set(agent.id, agent);
+		return agent;
 	};
-	const patchAgent = (id, body) => fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
-		method: "PATCH",
-		headers,
-		body: JSON.stringify(body),
-	});
+	const patchAgent = async (id, body) => {
+		const response = await fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
+			method: "PATCH",
+			headers,
+			body: JSON.stringify(agentUpdateBody(agentsById.get(id), body)),
+		});
+		if (response.ok) agentsById.set(id, (await response.clone().json()).agent);
+		return response;
+	};
 	const deleteAgent = (id, confirmName) => fetch(`${baseURL}/api/chat/agents/${encodeURIComponent(id)}`, {
 		method: "DELETE",
 		headers,
@@ -8123,7 +7868,7 @@ test("chat web app validates custom agent profile names", async () => {
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ displayName: "Test Agent" }),
+			body: JSON.stringify(agentCreateBody({ displayName: "Test Agent" })),
 		});
 		assert.equal(invalid.status, 400);
 		assert.deepEqual(await invalid.json(), { error: "Agent name must be lowercase kebab-case, for example test-agent" });
@@ -8135,7 +7880,7 @@ test("chat web app validates custom agent profile names", async () => {
 				origin: baseURL,
 				"x-test-user": "user-1",
 			},
-			body: JSON.stringify({ displayName: "codex-compat-openai-web" }),
+			body: JSON.stringify(agentCreateBody({ displayName: "codex-compat-openai-web" })),
 		});
 		assert.equal(conflicting.status, 400);
 		assert.deepEqual(await conflicting.json(), { error: 'Agent name "codex-compat-openai-web" conflicts with an existing profile' });

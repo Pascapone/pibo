@@ -160,6 +160,8 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 		}
 		packageVisiting.delete(id); infrastructure.add(id);
 	}
+	// Pure system packages can own services without declaring an agent contribution.
+	for (const installation of installations.values()) if (usable(installation) && !installation.manifest.contributions.some((c) => c.scope === "agent")) visitPackage(installation.pluginId, []);
 	for (const entry of input.selection.plugins) if (entry.enabled) visitPackage(entry.pluginId, []);
 	for (const candidate of selected.values()) if (candidate.contribution.scope === "app") visitPackage(candidate.pluginId, []);
 	// Propagate requiredness through the selected dependency graph before testing runtime support.
@@ -186,7 +188,7 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 		visiting.add(id);
 		const candidate = candidates.get(id)!;
 		const reasons: string[] = [];
-		for (const dependency of contribution.contribution.dependsOn ?? []) if (!visit(dependency, [...path, id])) {
+		for (const dependency of contribution.contribution.dependsOn ?? []) if (contribution.contribution.scope === "app" && candidates.get(dependency)?.contribution.scope === "agent" || !visit(dependency, [...path, id])) {
 			reasons.push(`Dependency ${dependency} is unavailable or explicitly disabled`);
 			fail("contribution-dependency-unavailable", reasons.at(-1)!, [...path, id, dependency], contribution.required);
 		}

@@ -6,39 +6,38 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-test("Agent Designer preserves and exposes stale native tool diagnostics", async () => {
+test("Agent Designer preserves, exposes, and can remove missing plugin selections", async () => {
 	const script = `
 		import assert from "node:assert/strict";
-		const { agentToDraft } = await import("./src/apps/chat-ui/src/agents/agent-designer-model.ts");
+		const { agentToDraft, agentDraftToSaveInput } = await import("./src/apps/chat-ui/src/agents/agent-designer-model.ts");
+		const pluginSelection = { schemaVersion: 1, plugins: [{ pluginId: "retired.tools", revision: "old-hash", enabled: true, contributions: { retired_tool: true }, config: { retained: true } }] };
 		const draft = agentToDraft({
 			id: "agent-1",
+			revision: 3,
 			profileName: "stale-tool-agent",
 			displayName: "Stale Tool Agent",
 			runtimeInstanceId: "pi",
 			runtimeOptions: {},
-			nativeTools: ["retired-tool"],
+			pluginSelection,
 			skills: [],
 			contextFiles: [],
 			subagents: [],
-			mcpServers: [],
-			piPackages: [],
 			mainModelFallbacks: [],
 			builtinTools: "default",
 			builtinToolNames: [],
 			autoContextFiles: true,
-			runControl: false,
-			goalControl: true,
-			brokenNativeTools: ["retired-tool"],
 			createdAt: "2026-08-28T00:00:00.000Z",
 			updatedAt: "2026-08-28T00:00:00.000Z",
 		});
-		assert.deepEqual(draft.brokenNativeTools, ["retired-tool"]);
-		assert.deepEqual(draft.nativeTools, ["retired-tool"]);
+		assert.deepEqual(draft.pluginSelection, pluginSelection);
+		assert.notEqual(draft.pluginSelection, pluginSelection);
+		assert.deepEqual(agentDraftToSaveInput(draft).pluginSelection, pluginSelection);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 
-	const source = await readFile("src/apps/chat-ui/src/agents/AgentsView.tsx", "utf8");
-	assert.match(source, /This agent references tools that are no longer registered/);
-	assert.match(source, /nativeTools: current\.nativeTools\.filter\(\(item\) => item !== toolName\)/);
-	assert.match(source, /brokenNativeTools: \(current\.brokenNativeTools \?\? \[\]\)\.filter/);
+	const source = await readFile("src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx", "utf8");
+	assert.match(source, /missing from catalog\. Reference and configuration retained/);
+	assert.match(source, /Object\.entries\(entry\.contributions\)/);
+	assert.match(source, />Remove retained reference</);
+	assert.match(source, /plugins\.filter\(\(item\) => item\.pluginId !== entry\.pluginId\)/);
 });
