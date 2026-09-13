@@ -4817,14 +4817,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					getSessionPlan: async (piboSessionId) => {
 						const kind = url.searchParams.get("kind");
 						if (kind !== null && kind !== "actual" && kind !== "preview") throw new PiboWebHttpError("Invalid plugin plan kind", 400);
-						if (kind !== "preview") {
+						if (kind === "actual") {
 							const snapshot = manager.store.listGenerationSnapshots(piboSessionId).at(-1);
 							if (snapshot) return { plan: snapshot.plan, roomId: chatRoomIdFromMetadata(requireStoredSession(context, piboSessionId).metadata) };
-							if (kind === "actual") throw new PiboWebHttpError("No recorded plugin generation exists", 404);
+							throw new PiboWebHttpError("No recorded plugin generation exists", 404);
 						}
 						const readPlan = options.pluginSessionPlan ?? context.channelContext.getService?.<PluginSessionPlanReader>(PLUGIN_SESSION_PLAN_SERVICE);
 						if (!readPlan) throw new PiboWebHttpError("Plugin preview service is unavailable", 503);
-						return readPlan(piboSessionId, "preview");
+						return readPlan(piboSessionId, kind === "preview" ? "preview" : "current");
 					},
 				});
 			}

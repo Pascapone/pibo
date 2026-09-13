@@ -22,7 +22,7 @@ export function catalogPluginServices(host: PluginHost | undefined, installation
 }
 
 /** Read-only runtime projection. Preview must use the pure resolver and never open a runtime. */
-export type PluginSessionPlanReader = (piboSessionId: string, kind: "actual" | "preview") => Promise<{
+export type PluginSessionPlanReader = (piboSessionId: string, kind: "actual" | "current" | "preview") => Promise<{
 	plan: EffectivePluginPlan;
 	agentId?: string;
 	roomId?: string;

@@ -68,24 +68,33 @@ test('session tab writes use original URL session, CAS, and read without runtime
 });
 
 
-test('recorded generations and pure previews remain separate on the real authenticated route', async t => {
-  let previewCalls = 0;
+test('recorded generations, current session projection, and pure previews remain separate on the real authenticated route', async t => {
+  const reads = [];
   let preview;
+  let currentProjection;
   const f = await harness(t, { pluginSessionPlan: async (id, kind) => {
-    previewCalls++; assert.equal(id, 'ps_a'); assert.equal(kind, 'preview'); return { plan: preview };
+    reads.push(kind); assert.equal(id, 'ps_a'); return { plan: kind === 'current' ? currentProjection : preview };
   } });
   const installation = await f.active();
-  const recorded = plan(installation);
+  const oldSettings = { id: 'settings', kind: 'view', title: 'Settings', scope: 'app', required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'UI' }, view: { title: 'Settings', exportName: 'GlobalSettingsView', visibility: 'infrastructure', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, stateSchema: { type: 'object' }, subviews: [{ id: 'general', title: 'General', purpose: 'content' }] } };
+  const newSettings = { ...oldSettings, view: { ...oldSettings.view, subviews: [...oldSettings.view.subviews, { id: 'plugins', title: 'Plugins', purpose: 'content' }] } };
+  const recorded = { ...plan(installation), plugins: [{ pluginId: 'pibo.product-ui', revision: 'sha256:old', version: '1.0.0', contentHash: 'sha256:old' }], contributions: [{ id: 'pibo.product-ui/settings', pluginId: 'pibo.product-ui', pluginRevision: 'sha256:old', contribution: oldSettings, config: {}, required: true, selectionReason: 'infrastructure', dependencyPath: [] }] };
   preview = { ...recorded, kind: 'preview', generation: undefined, selectionRevision: 7 };
+  currentProjection = { ...preview, catalogRevision: 54, selectionRevision: 8, plugins: [{ pluginId: 'pibo.product-ui', revision: 'sha256:current', version: '1.0.0', contentHash: 'sha256:current' }], contributions: [{ ...recorded.contributions[0], pluginRevision: 'sha256:current', contribution: newSettings }] };
   await assert.rejects(f.request('/api/chat/sessions/ps_a/plugin-plan?kind=actual'), e => e.statusCode === 404);
-  assert.equal(previewCalls, 0);
+  assert.deepEqual(reads, []);
   f.store.putGenerationSnapshot({ piboSessionId: 'ps_a', generationId: 'g1', plan: recorded, createdAt: '2026-09-12T00:00:00Z' });
   const actual = await (await f.request('/api/chat/sessions/ps_a/plugin-plan?kind=actual')).json();
   const next = await (await f.request('/api/chat/sessions/ps_a/plugin-plan?kind=preview')).json();
   const current = await (await f.request('/api/chat/sessions/ps_a/plugin-plan')).json();
   assert.equal(actual.plan.kind, 'generation'); assert.equal(actual.plan.generation, 'g1');
+  assert.equal(actual.plan.contributions[0].pluginRevision, 'sha256:old');
+  assert.equal(actual.plan.contributions[0].contribution.view.subviews.some((subview) => subview.id === 'plugins'), false);
   assert.equal(next.plan.kind, 'preview'); assert.equal(next.plan.selectionRevision, 7);
-  assert.deepEqual(current.plan, actual.plan); assert.equal(previewCalls, 1);
+  assert.equal(current.plan.catalogRevision, 54); assert.equal(current.plan.selectionRevision, 8);
+  assert.equal(current.plan.contributions[0].pluginRevision, 'sha256:current');
+  assert.equal(current.plan.contributions[0].contribution.view.subviews.some((subview) => subview.id === 'plugins'), true);
+  assert.deepEqual(reads, ['preview', 'current']);
   assert.deepEqual(f.store.listGenerationSnapshots('ps_a')[0].plan, actual.plan);
   await assert.rejects(f.request('/api/chat/sessions/ps_a/plugin-plan?kind=unknown'), e => e.statusCode === 400);
 });

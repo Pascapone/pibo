@@ -1355,7 +1355,7 @@ export class PiboSessionRouter {
 		return consumers;
 	}
 
-	/** Actual reads are immutable snapshots; preview uses the same pure resolver as admission. */
+	/** Actual reads are immutable snapshots; current follows a live generation or the next pure preview. */
 	readPluginSessionPlan: PluginSessionPlanReader = async (piboSessionId, kind) => {
 		const piboSession = this.resolvePiboSession(piboSessionId);
 		const roomId = typeof piboSession.metadata?.chatRoomId === "string" ? piboSession.metadata.chatRoomId : undefined;
@@ -1363,6 +1363,10 @@ export class PiboSessionRouter {
 			const snapshot = this.options.pluginRuntime?.options.store.listGenerationSnapshots(piboSessionId).at(-1);
 			if (!snapshot) throw new Error(`No recorded plugin generation exists for ${piboSessionId}`);
 			return { plan: snapshot.plan, roomId };
+		}
+		if (kind === "current") {
+			const live = this.pluginGenerations.get(piboSessionId);
+			if (live) return { plan: live.plan, ...(live.profile.pluginAgentId ? { agentId: live.profile.pluginAgentId } : {}), ...(roomId ? { roomId } : {}) };
 		}
 		if (!this.options.pluginRuntime) throw new Error("Plugin runtime preview is unavailable");
 		const profile = this.getSessionRuntimeProfile(piboSessionId);
