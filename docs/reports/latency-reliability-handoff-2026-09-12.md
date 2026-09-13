@@ -5,7 +5,7 @@ description: "Verzeichnet den finalen Produktkandidaten, Prüfbelege, Evidenzgre
 tags: ["latency", "reliability", "handoff", "implementation"]
 status: "draft"
 authority: "informative"
-generated: { by: "openai/codex", at: "2026-09-12T22:20:00Z" }
+generated: { by: "openai/codex", at: "2026-09-13T00:53:25Z" }
 sources:
   - id: "plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -19,14 +19,14 @@ sources:
   - id: "continuation-evidence"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
     title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
-implementation_state: "implemented; physical-device and final-candidate soak acceptance open"
+implementation_state: "implemented; exact-candidate soak complete; physical-device acceptance external"
 ---
 
 # Aktueller Übergabestand
 
-Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` abgeschlossen; die Gesamtabnahme bleibt wegen des externen physischen Geräts und des nicht wiederholten Zwei-Stunden-Soaks teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Der Produktcode war vor den abschließenden Dokumentationsänderungen sauber. Es wurde nichts gepusht, als PR eröffnet, gemergt, veröffentlicht, released oder auf dem Controller-Gateway bereitgestellt.[^continuation-evidence]
+Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` last- und browsergeprüft abgeschlossen. Der exakte Zwei-Stunden-Soak ist bestanden; die Gesamtabnahme bleibt nur wegen des externen physischen Geräts teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Das aktuelle `upstream/dev` wurde am 2026-09-13 per Merge `d5f37fe2` integriert. Ein abschließender Gesamtdiff-Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Ungewissheitsfall. Ein fokussierter Topic-Push und Draft-PR sind autorisiert; Merge, Veröffentlichung, Release und Controller-Deployment bleiben ausgeschlossen.[^continuation-evidence]
 
-Der Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8a7bbb67`, `00a7d5ca`, `04ca34cc`, `082dfb6d`, `b87a00d5`, `beb89780`, `d52f0f95`, `717e9a85`, `09375bbb` und `722883c4`. Der letzte Commit ergänzt die inkrementelle, prozessübergreifende Session-Strukturreconciliation. Das checksumgebundene Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`.
+Der lastgeprüfte Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8a7bbb67`, `00a7d5ca`, `04ca34cc`, `082dfb6d`, `b87a00d5`, `beb89780`, `d52f0f95`, `717e9a85`, `09375bbb` und `722883c4`. Der letzte dieser Commits ergänzt die inkrementelle, prozessübergreifende Session-Strukturreconciliation. Das checksumgebundene Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Die spätere Ein-Zeilen-Korrektur `34cb7270` liegt nicht im Paket und wird nicht rückwirkend als Teil der Soak-Evidenz bezeichnet; sie betrifft ausschließlich die konservative Debug-Klassifikationsvollständigkeit und bestand den Kern-Compile sowie 10/10 fokussierte Audit-Tests.
 
 ## Was auf `722883c4` belegt ist
 
@@ -38,6 +38,7 @@ Der Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8
 - **Öffentliche headful Abnahme:** Better-Auth-Machine-Session auf dem exakten Paket; `/status`, `/session` und `/thinking` sichtbar in 16,69–19,33 ms, `/thinking` im zweiten begrenzten Versuch bereit, `runtimeActive=false`. Desktop 1.440×900 und 390×844 ohne horizontalen Overflow, Composer aktiv.
 - **Sichtbare Recovery:** 60,061 Sekunden hidden/frozen; Entwurf, Fokus und Composer erhalten; Trace- und Signal-Catch-up bei stabiler Epoche; Event-, Signal- und Trace-Timeline-Verbindungen nach Resume erneuert. Genau ein währenddessen angenommener Command blieb wegen `openai-codex` `disconnected/configured=false` im frischen Pi-Store `interrupted`, wurde nie wiederholt und nach Prüfung als fehlgeschlagen reconciliert. Queue danach gesund, scoped Dead-Letter-Traversierung leer.
 - **Testsuite:** Exakt 476/476 kanonische Dateipfade erfolgreich, keine fehlenden/zusätzlichen Pfade und keine Hashabweichung. Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c`. Abgebrochene Teilprotokolle wurden nicht gezählt.
+- **Zwei-Stunden-Soak:** 7.200,496 Sekunden echte Soakphase ohne Vorbereitung mit 6.484 kontinuierlichen Commands; insgesamt 7.504 eindeutige Admissions, Effekte und terminale `completed`-Commands, keine Lücken oder Mehrfachterminals, Queue vollständig drainiert. Admission-p95 15,22 ms, Status-p95 11,98 ms. Äußere Schutzschicht erfolgreich, kein OOM; Spitzen Memory-/I/O-Full-PSI 1,08/4,04 bei Grenzen 5/10.
 
 ## Grenzen, die nicht umetikettiert werden dürfen
 
@@ -50,9 +51,8 @@ Die Suite wurde nach Schutzstopps in kleinere geschützte Shards mit `--test-con
 ## Verbleibende externe oder zeitliche Gates
 
 1. Physisches Zielgerät: nicht verfügbar; Viewport-Emulation ersetzt es nicht.
-2. Neuer 7.200-Sekunden-Soak auf `722883c4`: nicht wiederholt; der vorhandene erfolgreiche Soak bleibt `09375bbb` zugeordnet.
-3. Der ältere Browserlauf hatte einen separaten `/api/previews/events`-503. Der neue Zielseiten-Monitor sah keinen Core-Network-/Runtime-Fehler, doch Containerlogs enthielten begrenzte Fehler für eine andere veraltete Session-ID; keinen vollständig fehlerfreien Hostlauf behaupten.
-4. Der frühere 10.000-Admission-Versuch bleibt ein dokumentierter Host-I/O-Schutzstopp. Nach ausdrücklicher Freigabe der Servereinstellung 3.250 ist er kein offenes Gate; kein weiterer Lastlauf wurde dafür gestartet.
+2. Der ältere Browserlauf hatte einen separaten `/api/previews/events`-503. Der neue Zielseiten-Monitor sah keinen Core-Network-/Runtime-Fehler, doch Containerlogs enthielten begrenzte Fehler für eine andere veraltete Session-ID; keinen vollständig fehlerfreien Hostlauf behaupten.
+3. Der frühere 10.000-Admission-Versuch bleibt ein dokumentierter Host-I/O-Schutzstopp. Nach ausdrücklicher Freigabe der Servereinstellung 3.250 ist er kein offenes Gate; kein weiterer Lastlauf wurde dafür gestartet.
 
 ## Betriebs- und Abschlusszustand
 
@@ -70,9 +70,12 @@ Private Kernartefakte liegen unter `/root/.pibo/investigations/latency-continuat
 - `headful-722883c4/headful-acceptance-summary-722883c4.json`;
 - `headful-722883c4/headful-slash-responsive.json` und `visible-recovery-60s.json`;
 - `headful-722883c4/message-queue-reconcile-applied.json` und `persistence-dead-letters-after.json`;
-- `headful-722883c4/pibo2-pool-release-final.json`.
+- `headful-722883c4/pibo2-pool-release-final.json`;
+- `soak-3250-722883c4-light-final/run.json`, `sessions-3250/summary.json`, `soak-audit.json` und `SHA256SUMS`.
 
-Operativ ist keine weitere Produktimplementierung erforderlich, bevor ein Maintainer die fokussierte Commitkette und die dokumentierten Evidenzgrenzen reviewt. Der Branch ist lokal PR-bereit; ein Push oder Upstream-PR wurde nicht ohne gesonderte Veröffentlichungsfreigabe ausgeführt. Ein späterer Push oder PR braucht ausdrückliche Freigabe und den normalen upstream-first GitHub-Flow. Die offenen externen Gates dürfen separat nachgeholt werden; sie rechtfertigen keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
+Der Soak-Ordner umfasst 7.520 erfolgreich geprüfte Hashzeilen. Die Kernhashes lauten: `run.json` `593560b13385ebaedfe4c8d17d0ac58d20f197e6064619cc8dd9dc80058ddcaf`, `summary.json` `fed89bd7ae7932a5d9d5e9af090c19ba84098b4dcbfac12403594c445a08379b`, `soak-audit.json` `14937ae978c437ad26fd2927ef4cc8e69b8b22f91e5b0fb71749a8a2f2819ed3` und `SHA256SUMS` `f7195c24e8dabb8218cf20ec76b5435698e3cc330e6b8a7ed856cf05acbf77d3`.
+
+Operativ ist keine weitere Produktimplementierung vorgesehen. Der vollständige Topic-Diff gegen das aktuelle `upstream/dev` wurde geprüft; der konkrete AP-08-Befund ist behoben und fokussiert getestet. Der autorisierte nächste Schritt ist der Push eines fokussierten Fork-Branches und ein Draft-PR gegen `upstream/dev`. Die externe Smartphone-Abnahme kann separat nachgeholt werden; sie rechtfertigt keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
 
 # Historischer Ersthandoff
 

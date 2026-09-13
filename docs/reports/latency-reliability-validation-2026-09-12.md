@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-12T22:20:00Z" }
+generated: { by: "openai/codex", at: "2026-09-13T00:53:25Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -19,18 +19,18 @@ sources:
   - id: "continuation-evidence"
     resource: "scope: private controller archive /root/.pibo/investigations/latency-continuation-2026-09-12; candidates 09375bbb8d702d1bc6817ffe1313429fc05e07b3 and 722883c43c8868caaf3c32511780191ff5422b34"
     title: "Fortsetzungs-, Last-, Pibo2- und Testsuite-Nachweise"
-implementation_state: "implemented; physical-device and final-candidate soak acceptance open"
+implementation_state: "implemented; exact-candidate soak complete; physical-device acceptance external"
 ---
 
 # Abnahmegrenze
 
 Der zentrale [Handoff zur Fortsetzung](/reports/latency-reliability-handoff-2026-09-12.md) verbindet diesen Prüfbericht mit Branches, privaten Artefakten, offenen Paketen und den erforderlichen Workflows.
 
-Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwischenstand; die später autorisierte Fortsetzung schloss die Produktimplementierung auf `722883c4` ab. Die Gesamtabnahme bleibt wegen des externen physischen Geräts und des nicht wiederholten Zwei-Stunden-Soaks teilweise offen. Dieser Bericht trennt Ausgangsstand, Zwischenkandidaten und exakte Kandidatenevidenz. Ein grüner Baseline-Test wird nicht als geschlossene neue Anforderung ausgegeben. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
+Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwischenstand; die später autorisierte Fortsetzung schloss die last- und browsergeprüfte Produktimplementierung auf `722883c4` ab. Der exakte Zwei-Stunden-Soak ist inzwischen bestanden. Die Gesamtabnahme bleibt nur wegen des externen physischen Zielgeräts teilweise offen. Dieser Bericht trennt Ausgangsstand, Zwischenkandidaten, exakte Kandidatenevidenz und die nachgelagerte Reviewkorrektur. Ein grüner Baseline-Test wird nicht als geschlossene neue Anforderung ausgegeben. Die Zielbudgets bleiben diejenigen des [beauftragten Plans](/plans/pibo-latency-reliability-remediation.md).[^remediation-plan]
 
 # Abschluss der Fortsetzung auf Kandidat `722883c4`
 
-Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der abschließende committed Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Kein Push, PR, Merge, Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
+Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der exakt last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Das aktuelle `upstream/dev` wurde danach per Merge `d5f37fe2` integriert. Der abschließende Gesamtdiff-Review fand und behob in `34cb7270` eine unabhängige AP-08-Ungewissheitsmarkierung; diese Nachkorrektur wird nicht als Bestandteil des `722883c4`-Soaks oder Pakets ausgegeben. Ein fokussierter Topic-Push und Draft-PR sind autorisiert. Kein Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
 
 ## Exakt dem finalen Kandidaten zugeordnete Ergebnisse
 
@@ -45,13 +45,16 @@ Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-late
 | Öffentliche headful Abnahme | Better-Auth-Machine-Session erfolgreich; `/status`, `/session` und `/thinking` sichtbar; CDP-Response 16,69–19,33 ms; `/thinking` im zweiten begrenzten Versuch bereit; `runtimeActive=false`; Desktop 1.440×900 und Mobile 390×844 ohne horizontalen Overflow, Composer aktiv | Exakter Kandidat und öffentlicher Slotpfad; Mobile ist Viewport-Emulation, kein physisches Gerät |
 | Sichtbare Lifecycle-Recovery | 60,061 s hidden/frozen; Entwurf erhalten; Traceversion und Signalversion 1→3 fortgeschritten; Signalepoche stabil; Event-, Signal- und Trace-Timeline-Verbindungen nach Resume erneuert; Zielseite ohne erfassten Core-Network-/Runtime-Fehler | Der absichtlich mitgesendete Modellturn war kein Erfolgsgate und blieb wegen eines nicht angemeldeten frischen Pi-Providerstores `interrupted`; genau ein Receipt, kein Replay, anschließend explizit als fehlgeschlagen reconciliert |
 | Kanonische Testsuite | 476 kanonische Dateien, 476 eindeutige erfolgreiche Dateipfade, 0 fehlende, 0 zusätzliche, 0 Hashabweichungen; Ledger SHA-256 `c9d52ebb11a52a18ae37c005c9e0a5adaaeb7defa42c9f1ffc3668f192f9490c` | Pfad-/Hash-Coverage aus disjunkten erfolgreichen Shards und einem fokussierten Wiederholungstest; abgebrochene Logs nicht gezählt |
+| Zwei-Stunden-Soak | Gemessene Soakphase 7.200,496 s ohne Vorbereitung; 6.484 kontinuierliche Soak-Commands; insgesamt 7.504 eindeutige Admissions, 7.504 eindeutige Effekte und 7.504 genau einmal abgeschlossene Commands; Admission-p95 15,22 ms; Status-p95 11,98 ms; 0 Failures, Incomplete oder nichtterminale Queuezeilen | Exakter `722883c4`-Run bei 3.250 gespeicherten Sessions, 20 Runtimes, `concurrency=1`, `burst=1`, Intervall 1.000 ms; äußere Schutzschicht erfolgreich, kein OOM, Spitzen Memory-/I/O-Full-PSI 1,08/4,04 bei Grenzen 5/10 |
 | Pibo2-Leases | `lease_0e34ee90319d825b87` für Provider-/Portfolioarbeit, freigegeben um 21:24:14 UTC; `lease_8b448039c94bde2e01` für die öffentliche headful Abnahme, freigegeben um 22:19:20 UTC | Beide verwendeten Slot 01 und das checksumgebundene Paket; danach `active: 0`, `free: 10` |
 
 ## AP-03-Vorher/Nachher und ressourcenbegrenzte Gates
 
 Der ältere Kandidat `09375bbb8d702d1bc6817ffe1313429fc05e07b3` scheiterte beim 10.000-Session-Foreign-Write-Profil mit p95 273,78 ms. Ursache war die globale `chat_navigation_clock`, die nach jeder fremden Strukturänderung eine vollständige Reprojektion auslöste. `722883c4` ergänzt ein dauerhaftes, auf 4.096 Einträge begrenztes Strukturänderungsjournal, wendet höchstens 1.024 Änderungen je Batch an, nutzt eine 1.025. Zeile als Overflow-Sentinel und fällt bei Migration, Rennen, Lücke oder Overflow konservativ auf einen Vollabgleich zurück. Der exakte Nachher-Lauf bestand mit p95 13,32 ms.
 
-Der geschützte 10.000-Admission-Lauf auf `722883c4` wurde bei Host-I/O-Full-PSI 11,12 an der unveränderten Grenze 10 nach 5.132 Admissions beendet. Er ist nicht gatefähig und wurde nicht identisch wiederholt. Der bestandene 3.250-Admission-Lauf senkte Last, Parallelität und Burstgröße, nicht die Schutzgrenzen. Der Nutzer hat 3.250 als verbindliche Servereinstellung und Abnahmegröße freigegeben; deshalb ist der 10.000-Admission-Versuch kein offenes Gate mehr. Ein weiterer Lastlauf hätte nur den bekannten Hostschutz erneut beansprucht und keine erforderliche Entscheidung ergänzt. Der 7.201,62-Sekunden-Soak mit 22.492 Soak-Commands, 23.512 akzeptierten/verfolgten Commands und null Integritätsfehlern gehört ausschließlich zu `09375bbb`; er wird nicht auf den finalen Kandidaten umetikettiert.
+Der geschützte 10.000-Admission-Lauf auf `722883c4` wurde bei Host-I/O-Full-PSI 11,12 an der unveränderten Grenze 10 nach 5.132 Admissions beendet. Er ist nicht gatefähig und wurde nicht identisch wiederholt. Der bestandene 3.250-Admission-Lauf senkte Last, Parallelität und Burstgröße, nicht die Schutzgrenzen. Der Nutzer hat 3.250 als verbindliche Servereinstellung und Abnahmegröße freigegeben; deshalb ist der 10.000-Admission-Versuch kein offenes Gate mehr. Ein weiterer solcher Lastlauf hätte nur den bekannten Hostschutz erneut beansprucht und keine erforderliche Entscheidung ergänzt.
+
+Der neue exakte `722883c4`-Soak startete am 2026-09-12 um 22:37:25 UTC und endete am 2026-09-13 um 00:39:04 UTC. Der Harness weist die eigentliche Soakphase getrennt von Seed, Warm-up, 1.000 gemessenen Admissions und Drain aus: angefordert 7.200 Sekunden, tatsächlich 7.200,496 Sekunden, 6.484 nicht gedeckelte Soak-Commands im 1.000-ms-Takt. Die 7.504 Admissions, Command-IDs, Event-IDs, Admission-Texte und Effekte sind jeweils vollständig eindeutig; es gibt weder fehlende noch zusätzliche Effekte. Alle 7.504 Integritätszeilen besitzen genau eine Admission, ein Terminal und einen Output im Zustand `completed`. Die SQLite-Queue enthält 0 nichtterminale, 0 fehlgeschlagene und 0 unterbrochene Commands; Workertelemetrie endet bei `queued=0`, `inFlight=0`, `pendingBytes=0`, `rejected=0`, `failed=0`, `expired=0`, `restarts=0`. Die äußere Schutzschicht meldete `success`, Exit 0, kein OOM, mindestens 12.299.251.712 verfügbare Hostbytes sowie Spitzen von 1,08 Memory-Full-PSI und 4,04 I/O-Full-PSI. Der 7.201,62-Sekunden-Vorläufersoak mit 22.492 Soak-Commands bleibt weiterhin ausschließlich `09375bbb` zugeordnet.
 
 ## Testsuite, OOM- und I/O-Einordnung
 
@@ -83,10 +86,15 @@ Der zusätzlich angebotene Luna/medium-Turn war bewusst kein erneuter Provider-L
 
 Folgende konkrete Läufe gehören weiterhin ausschließlich zu `09375bbb`: die erste 476/476-Suite, die `codex-native`-Kaltstartmatrix für gleichen Raum, verschiedene Räume und warmen Kontrollpfad, der Public-Core-Bootstrap mit 102.527 Bytes und p95 54,9 ms, der sechsfache echte `TelemetryCaptureWriter`-Capture-on/off-Vergleich, die damaligen headful Desktop-/390×844- und Lifecycle-Recovery-Artefakte sowie der 7.201,62-Sekunden-Soak. Sie bleiben relevant, werden aber nicht als exakte `722883c4`-Läufe ausgegeben. Die oben dokumentierte neue headful Abnahme ist ein eigenständiger Lauf auf `722883c4`.
 
+## Gesamtdiff-Review und Nachkorrektur
+
+Der vollständige Topic-Diff wurde gegen das am 2026-09-13 gefetchte `upstream/dev` geprüft. Die fünf neuen Upstream-Commits wurden per Merge `d5f37fe2` integriert, statt die evidenzgebundenen Kandidatencommits umzuschreiben. Zwei Testannahmen mussten an Upstreams neue Standardbeobachtung von `session_error` angepasst werden. Die betroffenen Router-/Subagent-Tests bestanden; der reale inner-Docker-Yielded-Run-Test verwendete wie zuvor ausschließlich innen `PIBO_YIELDED_RUN_ISOLATION=off`, während die äußere Schutzschicht unverändert aktiv blieb.
+
+Ein konkreter Reviewbefund betraf AP-08: Erschöpfte die begrenzte Beziehungssuche exakt ihren Scananteil, blieb `relatedIdentityCollision` zwar korrekt unbekannt, aber `classificationComplete` konnte wahr bleiben. `34cb7270` setzt in diesem Fall die Ungewissheit, bewahrt sie im Cursor und ergänzt eine Ablaufregression. Der Server-TypeScript-Compile mit dem projektierten 1.200-MiB-Heap bestand; `test/output-inspection-bounded.test.mjs` bestand mit 10/10 Tests. Zwei vorherige Compilerläufe mit künstlich reduzierten 768 beziehungsweise 1.024 MiB endeten erwartungsgemäß am V8-Heaplimit und zählen nicht als Produktfehler. Die 476-Dateien-Suite wurde nicht vollständig wiederholt: Vor dem Soak waren alle neun Kandidatenquellhashes unverändert; nach der isolierten Reviewkorrektur deckten Compile und die direkt betroffene Suite den geänderten Pfad ab.
+
 ## Verbleibende Abnahmegrenzen
 
 - Das physische Zielgerät bleibt extern; Desktop-/Mobile-Viewport-Emulation ersetzt es nicht.
-- Ein erneuter 7.200-Sekunden-Soak auf `722883c4` wurde nicht ausgeführt. Der erfolgreiche ältere Soak bleibt ausschließlich `09375bbb` zugeordnet.
 - `/api/previews/events` lieferte im älteren Browserlauf 503. Das ist ein separater Preview-SSE-Fehler und kein Befund des neuen Zielseiten-Monitors.
 - Der 10.000-Admission-Schutzstopp bleibt historische Ressourcenevidenz, aber nach Freigabe der Servereinstellung 3.250 kein offenes Abnahmegate.
 - GitHub-Issue #1013 ist alleiniger Langzeitort für Reminder-Read/Ack-Discovery; #1016 ist der getrennte Follow-up-Ort für allgemeine Pibo2-Providerauth. Beide liegen außerhalb dieses Produktpatches.
@@ -106,6 +114,10 @@ Folgende konkrete Läufe gehören weiterhin ausschließlich zu `09375bbb`: die e
 | `headful-722883c4/headful-slash-responsive.json` | `2d5ab3179300078aee3cdfe7b5b74994a1aa7d74fe7a288346f1355d923046a3` |
 | `headful-722883c4/visible-recovery-60s.json` | `423b90f137be50a6b25047e581803deb9a7028afc0c96bdf260b2d51c36e614b` |
 | `headful-722883c4/pibo2-pool-release-final.json` | `9947875e0039821e461b0db538a0a60bef8844156a4b26bca44c761bf89d666f` |
+| `soak-3250-722883c4-light-final/run.json` | `593560b13385ebaedfe4c8d17d0ac58d20f197e6064619cc8dd9dc80058ddcaf` |
+| `soak-3250-722883c4-light-final/sessions-3250/summary.json` | `fed89bd7ae7932a5d9d5e9af090c19ba84098b4dcbfac12403594c445a08379b` |
+| `soak-3250-722883c4-light-final/soak-audit.json` | `14937ae978c437ad26fd2927ef4cc8e69b8b22f91e5b0fb71749a8a2f2819ed3` |
+| `soak-3250-722883c4-light-final/SHA256SUMS` | `f7195c24e8dabb8218cf20ec76b5435698e3cc330e6b8a7ed856cf05acbf77d3` |
 
 # Historischer Ausführungsverlauf
 
