@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-13T00:53:25Z"
+  at: "2026-09-13T01:03:47Z"
 sources:
   - id: "pibo2-investigations"
     resource: "scope: Pibo2 investigations on 2026-09-11 and 2026-09-12, candidate 0fe71c72a1d3bcb3b0d06295d323317a452b367a, consolidated controller report /tmp/pibo2-multiagent-0912/REPORT.md"
@@ -52,7 +52,7 @@ Die Pibo2-Messbasis ist Commit `0fe71c72a1d3bcb3b0d06295d323317a452b367a`. Die n
 
 ## Abschlussstatus der autorisierten Fortsetzung
 
-Die spätere autorisierte Fortsetzung ersetzt den oben konservierten Stop-Snapshot. Der last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34` im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`; er enthält die fokussierten Produktcommits von `20be897f` bis `722883c4`. Am 2026-09-13 wurde das aktuelle `upstream/dev` per Merge `d5f37fe2` integriert, damit die evidenzgebundene Kandidatenidentität erhalten bleibt. Der abschließende Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Fall, in dem eine am Scanlimit unbekannte Kollisionsbeziehung fälschlich `classificationComplete=true` behalten konnte. Diese Nachkorrektur liegt außerhalb des Soakpfads und wurde durch Kern-Compile und zehn fokussierte Audit-Tests geprüft; sie wird nicht rückwirkend als Teil des `722883c4`-Soaks bezeichnet. Ein fokussierter Topic-Push und Draft-PR sind autorisiert; Merge, Release, Veröffentlichung und Controller-Deployment bleiben ausgeschlossen. Detaillierte Ergebnisse, Kandidatengrenzen und private Artefakthashes stehen im [Validierungsbericht](/reports/latency-reliability-validation-2026-09-12.md) und im [Fortsetzungshandoff](/reports/latency-reliability-handoff-2026-09-12.md).[^continuation-evidence]
+Die spätere autorisierte Fortsetzung ersetzt den oben konservierten Stop-Snapshot. Der last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34` im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`; er enthält die fokussierten Produktcommits von `20be897f` bis `722883c4`. Am 2026-09-13 wurde das aktuelle `upstream/dev` per Merge `d5f37fe2` integriert, damit die evidenzgebundene Kandidatenidentität erhalten bleibt. Der abschließende Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Fall, in dem eine am Scanlimit unbekannte Kollisionsbeziehung fälschlich `classificationComplete=true` behalten konnte. Diese Nachkorrektur liegt außerhalb des Soakpfads und wurde durch Kern-Compile und zehn fokussierte Audit-Tests geprüft; sie wird nicht rückwirkend als Teil des `722883c4`-Soaks bezeichnet. Der fokussierte Branch `feature/latency-reliability-remediation` wurde zum Fork gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet; Merge, Release, Veröffentlichung und Controller-Deployment bleiben ausgeschlossen. Detaillierte Ergebnisse, Kandidatengrenzen und private Artefakthashes stehen im [Validierungsbericht](/reports/latency-reliability-validation-2026-09-12.md) und im [Fortsetzungshandoff](/reports/latency-reliability-handoff-2026-09-12.md).[^continuation-evidence]
 
 | Paket | Abschlussstand und Evidenzgrenze |
 |---|---|

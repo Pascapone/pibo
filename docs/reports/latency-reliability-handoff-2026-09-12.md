@@ -5,7 +5,7 @@ description: "Verzeichnet den finalen Produktkandidaten, Prüfbelege, Evidenzgre
 tags: ["latency", "reliability", "handoff", "implementation"]
 status: "draft"
 authority: "informative"
-generated: { by: "openai/codex", at: "2026-09-13T00:53:25Z" }
+generated: { by: "openai/codex", at: "2026-09-13T01:03:47Z" }
 sources:
   - id: "plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -24,7 +24,7 @@ implementation_state: "implemented; exact-candidate soak complete; physical-devi
 
 # Aktueller Übergabestand
 
-Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` last- und browsergeprüft abgeschlossen. Der exakte Zwei-Stunden-Soak ist bestanden; die Gesamtabnahme bleibt nur wegen des externen physischen Geräts teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Das aktuelle `upstream/dev` wurde am 2026-09-13 per Merge `d5f37fe2` integriert. Ein abschließender Gesamtdiff-Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Ungewissheitsfall. Ein fokussierter Topic-Push und Draft-PR sind autorisiert; Merge, Veröffentlichung, Release und Controller-Deployment bleiben ausgeschlossen.[^continuation-evidence]
+Die autorisierte Produktumsetzung ist auf dem committed Kandidaten `722883c43c8868caaf3c32511780191ff5422b34` last- und browsergeprüft abgeschlossen. Der exakte Zwei-Stunden-Soak ist bestanden; die Gesamtabnahme bleibt nur wegen des externen physischen Geräts teilweise offen. Produktcode und Tests liegen im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a` auf Branch `latency-reliability-continuation-pscb044a`. Das aktuelle `upstream/dev` wurde am 2026-09-13 per Merge `d5f37fe2` integriert. Ein abschließender Gesamtdiff-Review korrigierte danach in `34cb7270` einen unabhängigen AP-08-Ungewissheitsfall. Der fokussierte Fork-Branch `feature/latency-reliability-remediation` wurde gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet; Merge, Veröffentlichung, Release und Controller-Deployment bleiben ausgeschlossen.[^continuation-evidence]
 
 Der lastgeprüfte Produktkandidat enthält die fokussierten Commits `20be897f`, `dee88a2d`, `8a7bbb67`, `00a7d5ca`, `04ca34cc`, `082dfb6d`, `b87a00d5`, `beb89780`, `d52f0f95`, `717e9a85`, `09375bbb` und `722883c4`. Der letzte dieser Commits ergänzt die inkrementelle, prozessübergreifende Session-Strukturreconciliation. Das checksumgebundene Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Die spätere Ein-Zeilen-Korrektur `34cb7270` liegt nicht im Paket und wird nicht rückwirkend als Teil der Soak-Evidenz bezeichnet; sie betrifft ausschließlich die konservative Debug-Klassifikationsvollständigkeit und bestand den Kern-Compile sowie 10/10 fokussierte Audit-Tests.
 
@@ -75,7 +75,7 @@ Private Kernartefakte liegen unter `/root/.pibo/investigations/latency-continuat
 
 Der Soak-Ordner umfasst 7.520 erfolgreich geprüfte Hashzeilen. Die Kernhashes lauten: `run.json` `593560b13385ebaedfe4c8d17d0ac58d20f197e6064619cc8dd9dc80058ddcaf`, `summary.json` `fed89bd7ae7932a5d9d5e9af090c19ba84098b4dcbfac12403594c445a08379b`, `soak-audit.json` `14937ae978c437ad26fd2927ef4cc8e69b8b22f91e5b0fb71749a8a2f2819ed3` und `SHA256SUMS` `f7195c24e8dabb8218cf20ec76b5435698e3cc330e6b8a7ed856cf05acbf77d3`.
 
-Operativ ist keine weitere Produktimplementierung vorgesehen. Der vollständige Topic-Diff gegen das aktuelle `upstream/dev` wurde geprüft; der konkrete AP-08-Befund ist behoben und fokussiert getestet. Der autorisierte nächste Schritt ist der Push eines fokussierten Fork-Branches und ein Draft-PR gegen `upstream/dev`. Die externe Smartphone-Abnahme kann separat nachgeholt werden; sie rechtfertigt keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
+Operativ ist keine weitere Produktimplementierung vorgesehen. Der vollständige Topic-Diff gegen das aktuelle `upstream/dev` wurde geprüft; der konkrete AP-08-Befund ist behoben und fokussiert getestet. Der fokussierte Fork-Branch ist gepusht und Draft-PR #1017 gegen `upstream/dev` offen; weitere Produktarbeit ist in diesem Handoff nicht vorgesehen. Die externe Smartphone-Abnahme kann separat nachgeholt werden; sie rechtfertigt keine Aufweichung von Schutzgrenzen oder Credential-Isolation.
 
 # Historischer Ersthandoff
 

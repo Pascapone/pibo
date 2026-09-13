@@ -5,7 +5,7 @@ description: "Dokumentiert Baseline, Paketintegration, Messbelege und verbleiben
 tags: ["latency", "reliability", "multi-agent", "validation"]
 status: "draft"
 authority: "evidentiary"
-generated: { by: "openai/codex", at: "2026-09-13T00:53:25Z" }
+generated: { by: "openai/codex", at: "2026-09-13T01:03:47Z" }
 sources:
   - id: "remediation-plan"
     resource: "/plans/pibo-latency-reliability-remediation.md"
@@ -30,7 +30,7 @@ Die ursprüngliche Ausführung endete auf Nutzerwunsch mit einem gesicherten Zwi
 
 # Abschluss der Fortsetzung auf Kandidat `722883c4`
 
-Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der exakt last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Das aktuelle `upstream/dev` wurde danach per Merge `d5f37fe2` integriert. Der abschließende Gesamtdiff-Review fand und behob in `34cb7270` eine unabhängige AP-08-Ungewissheitsmarkierung; diese Nachkorrektur wird nicht als Bestandteil des `722883c4`-Soaks oder Pakets ausgegeben. Ein fokussierter Topic-Push und Draft-PR sind autorisiert. Kein Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
+Die autorisierte Fortsetzung lief ausschließlich im Dockerworker `pibo-dev-latency-reliability-continuation-pscb044a` und im isolierten Worktree `/root/code/pibo/.worktrees/latency-reliability-continuation-pscb044a`. Der exakt last- und browsergeprüfte Produktkandidat ist `722883c43c8868caaf3c32511780191ff5422b34`; das unveränderte Paket `pasko70-pibo-1.7.2-722883c4.tgz` hat SHA-256 `c3a774d8455e76aec0ca814056b0bdddeb299a49a61738810a138e4039772ad9`. Das aktuelle `upstream/dev` wurde danach per Merge `d5f37fe2` integriert. Der abschließende Gesamtdiff-Review fand und behob in `34cb7270` eine unabhängige AP-08-Ungewissheitsmarkierung; diese Nachkorrektur wird nicht als Bestandteil des `722883c4`-Soaks oder Pakets ausgegeben. Der fokussierte Fork-Branch `feature/latency-reliability-remediation` wurde gepusht und Draft-PR #1017 gegen `upstream/dev` geöffnet. Kein Merge, Release, Controller-Deployment oder Controller-Gateway-Neustart wurde ausgeführt.[^continuation-evidence]
 
 ## Exakt dem finalen Kandidaten zugeordnete Ergebnisse
 
