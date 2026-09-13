@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-12T19:58:17Z"
+  at: "2026-09-13T06:39:21Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
@@ -144,3 +144,17 @@ The orchestrator's first source review does **not** confirm AP13/AP18 completion
 Consequently the ordinary installed Goal package does not yet own the real system service lifecycle required by PLG-ACT-001, AP13 and A42. Generic mixed-plugin fixtures and preserved Goal tool tests do not prove that disabling/updating/uninstalling the installed Goal package safely accounts for and controls its running system work. This is an implementation/review blocker, not only missing remote evidence. The worker's earlier local-completeness assessment must be read subject to this finding.
 
 Required resolution: establish explicit ordinary-plugin ownership of the real Goal system service and its API/action integration, retain independent per-agent tool selection, and prove startup/restart at zero selected agent tools plus dependency/impact/drain behavior with running Goals. Preserve existing behavioral tests and add the missing real-product integration case. Review the related Run service boundary at the same time. Do not treat an app-scoped settings view as evidence of system-service migration.
+
+# Owner-requested Pibo2 test deployment, 2026-09-13
+
+The owner explicitly requested deployment for manual testing. The orchestrator committed the candidate as `42f117bf2727f5957cd6b585b14e3b4e7e2ca990`, rebuilt/packed it in the isolated Docker worker through `npm pack` (including prepack build), and installed the same archive on canonical Pibo2 through the documented checksum-verified candidate workflow. Canonical Pibo2 was selected to preserve the existing human Google OAuth entrypoint. This is a test deployment, not final AP19 acceptance or release readiness.
+
+- Candidate: `plugin-system-rebuild-20260913`, package version `1.7.2`.
+- Archive SHA-256: `bc78979697fd49fcaf5faffc7e53258ca21bd7e62e26a89ed24351c3ad2b142a`.
+- Remote runtime: `/opt/pibo-candidates/plugin-system-rebuild-20260913/42f117bf2727f5957cd6b585b14e3b4e7e2ca990/runtime`.
+- Prior canonical start override preserved on Pibo2 under `/root/.pibo-candidate-backups/plugin-system-rebuild-20260913/`.
+- Activation reports the exact candidate and commit; canonical process PID `3076117`, no restart loop observed.
+- Public Chat response and authenticated bootstrap returned HTTP 200. Bootstrap reported Machine Auth, a usable session, 13 agents and 61 rooms; the plugin management API returned 17 active enabled ordinary installations.
+- Authenticated headful browser/CDP snapshot at `2026-09-13T06:38:35Z` found the Chat shell in `ready` state and an enabled composer on the canonical public Chat path.
+
+No real model turn, full remote lifecycle matrix, or independent full source review is claimed by this smoke check. The Goal system-ownership review finding above remains open. The controller gateway was not changed, restarted or deployed. No push, PR, merge, release or publication was performed.

@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-13
+
+- **Plugin candidate manual-test deployment**: Recorded the owner-requested canonical Pibo2 test deployment in the [execution ledger](/plans/unified-plugin-system-execution.md#owner-requested-pibo2-test-deployment-2026-09-13), including source commit, package checksum and authenticated API/headful readiness evidence. The Goal ownership finding and full remote acceptance remain open.
+
 ## 2026-09-12
 
 - **Plugin candidate orchestration handover**: Preserved the implementation report, individual test-diff audit, baseline inventory and monitoring notes as linked artifacts in the [execution ledger](/plans/unified-plugin-system-execution.md#orchestrator-handover-audit-2026-09-12). Distinguished worker-reported local completion from pending independent review and final acceptance, recorded the budget-limited loop termination without restarting it, and added the independently observed Goal system-service ownership gap as an open implementation blocker.
