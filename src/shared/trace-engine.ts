@@ -9,6 +9,7 @@ import {
 	markIncompletePersistedTurns,
 	mergeMessageTurnTimings,
 	messageTurnTimingsFromEvents,
+	reconcileAcceptedUserMessageMetadata,
 	reconcileTranscriptUserMessages,
 	type TraceMessageTurnTiming,
 	traceEventDedupeKey,
@@ -127,6 +128,7 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 			sessionStatus,
 		);
 	}
+	reconcileAcceptedUserMessageMetadata(nodes, events);
 	const hasIncompleteTurns = markIncompletePersistedTurns(nodes, byId, input.session.id, events, turnTimings, sessionStatus);
 
 	const nestedNodes = nestTraceNodes(nodes);
