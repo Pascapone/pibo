@@ -99,6 +99,7 @@ test('first UI upgrade automatically imports only explicitly session-bound brows
   const f = await fixture(t); const source = JSON.stringify({ version: 1, activeTabId: 'context-a', tabs: [
     { id: 'context-a', piboSessionId: 'ps_a', target: { kind: 'route', route: { area: 'context' } }, title: 'Context' },
     { id: 'plugin-a', target: { kind: 'plugin-view', piboSessionId: 'ps_a', viewId: 'test.notes/view', title: 'Notes' } },
+    { id: 'workflow-a', piboSessionId: 'ps_a', target: { kind: 'plugin-view', viewId: 'pibo.product-ui/workflows', title: 'Workflows' } },
     { id: 'unbound-settings', target: { kind: 'route', route: { area: 'settings' } }, title: 'Settings' },
   ] });
   const view = (id, title) => ({
@@ -106,14 +107,14 @@ test('first UI upgrade automatically imports only explicitly session-bound brows
     contribution: {
       id: id.split('/')[1], kind: 'view', title, scope: 'app', required: true, defaultEnabled: true, schemaVersion: 1,
       context: { kind: 'none', reason: 'test' },
-      view: { title, exportName: 'View', presentation: 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, stateSchema: { type: 'object', additionalProperties: true }, ...(id === 'pibo.product-ui/user-resources' ? { subviews: [{ id: 'context-files', title: 'Context Files', purpose: 'content' }] } : {}) },
+      view: { title, exportName: 'View', presentation: 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, stateSchema: { type: 'object', additionalProperties: true } },
     },
   });
-  const plan = { schemaVersion: 1, piboSessionId: 'ps_a', agentId: 'agent-a', runtime: { adapterId: 'pi', instanceId: 'pi', capabilities: {} }, selection: { schemaVersion: 1, plugins: [] }, contributions: [view('pibo.product-ui/user-resources', 'User Resources'), view('test.notes/view', 'Notes')], resources: [], configurations: [], pluginConfigurations: [], nodes: [], diagnostics: [] };
+  const plan = { schemaVersion: 1, piboSessionId: 'ps_a', agentId: 'agent-a', runtime: { adapterId: 'pi', instanceId: 'pi', capabilities: {} }, selection: { schemaVersion: 1, plugins: [] }, contributions: [view('test.notes/view', 'Notes'), view('pibo.workflows/view', 'Workflows')], resources: [], configurations: [], pluginConfigurations: [], nodes: [], diagnostics: [] };
   const input = { store: f.store, source, backupRoot: join(f.root, 'browser-backups'), assertSessionAccess(id) { assert.equal(id, 'ps_a'); }, async getSessionPlan() { return { plan }; } };
   const report = await migrateBrowserV1Tabs(input);
   assert.deepEqual(report.migratedSessions, ['ps_a']); assert.equal(report.unresolved.length, 1); assert.match(report.unresolved[0].reason, /No explicit Pibo Session identity/);
-  const stored = f.store.getTabset('ps_a'); assert.equal(stored.tabs.length, 2); assert.equal(stored.tabs[0].viewId, 'pibo.product-ui/user-resources'); assert.equal(stored.activeTabId, stored.tabs[0].instanceId); assert.equal(stored.tabs[0].state.legacyDesktopTab.id, 'context-a');
+  const stored = f.store.getTabset('ps_a'); assert.equal(stored.tabs.length, 3); assert.equal(stored.tabs[0].viewId, 'pibo.core/context'); assert.equal(stored.tabs[0].pluginId, 'pibo.core'); assert.equal(stored.tabs[2].viewId, 'pibo.workflows/view'); assert.equal(stored.tabs[2].pluginId, 'pibo.workflows'); assert.equal(stored.activeTabId, stored.tabs[0].instanceId); assert.equal(stored.tabs[0].state.legacyDesktopTab.id, 'context-a');
   const repeated = await migrateBrowserV1Tabs(input); assert.deepEqual(repeated.alreadyAppliedSessions, ['ps_a']); assert.equal(f.store.getTabset('ps_a').revision, 1);
   const sourceJournal = f.store.getJournal(`pibo4-browser-v1-source:${report.sourceHash}`); assert.equal(sourceJournal.state, 'complete'); assert.equal(await readFile(sourceJournal.backupPath, 'utf8'), source);
   const concurrentSource = JSON.stringify({ version: 1, activeTabId: 'same', tabs: [{ id: 'same', target: { kind: 'plugin-view', piboSessionId: 'ps_b', viewId: 'test.notes/view', title: 'Notes' } }] });

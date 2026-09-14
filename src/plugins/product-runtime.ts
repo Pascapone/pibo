@@ -10,6 +10,7 @@ import type { PluginConsumerCollector } from "./operations.js";
 import { PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation } from "./manifest.js";
 import { provideCoreUserResources } from "../core/user-resources.js";
+import { verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverPlan } from "./cutover.js";
 
 /** Product wiring exposes core services without manufacturing a plugin installation. */
 export async function startPluginProductRuntime(options: {
@@ -21,7 +22,17 @@ export async function startPluginProductRuntime(options: {
 	productOptions?: PiboPluginProductOptions;
 	installDefaultPlugins?: boolean;
 	includeWebProduct?: boolean;
+	requirePreparedCutover?: boolean;
+	cutoverPlanPath?: string;
+	currentCoreVersion?: string;
 }) {
+	let cutover: Pibo4CutoverPlan | undefined;
+	if (options.requirePreparedCutover || options.cutoverPlanPath) {
+		if (!options.cutoverPlanPath) throw new Error("Pibo 4 cutover is required. Run the cutover preparation tool against the retained old package and pass cutoverPlanPath before starting Minimal-Core");
+		cutover = await verifyPreparedPibo4Cutover(options.cutoverPlanPath);
+		if (!options.currentCoreVersion || options.currentCoreVersion !== cutover.targetCore.version) throw new Error(`Prepared cutover targets @pasko70/pibo@${cutover.targetCore.version}, but the starting Minimal-Core version is ${options.currentCoreVersion ?? "unknown"}; install the exact prepared core tarball`);
+		if (options.installDefaultPlugins !== false) throw new Error("Prepared cutover requires installDefaultPlugins=false so disabled or uninstalled legacy features cannot be re-enabled by defaults");
+	}
 	const ownsData = options.data === undefined;
 	const data = options.data ?? new PiboDataStore();
 	const artifactRoot = options.artifactRoot ?? piboHomePath("plugins", "artifacts");
@@ -68,6 +79,25 @@ export async function startPluginProductRuntime(options: {
 		// Packaged backends resolve against this product version. Upgrade their
 		// managed manifests before importing any persisted backend definition.
 		if (initialState.state === "idle") await host.start({ plugins: [] });
+		if (cutover) {
+			for (const target of cutover.targets.filter((entry) => entry.state !== "active")) {
+				const existing = data.plugins.getInstallation(target.pluginId);
+				if (existing?.enabled || (existing && !["installed", "uninstalled"].includes(existing.state))) throw new Error(`Prepared cutover preserves ${target.pluginId} as ${target.state}, but the target store already has it enabled in ${existing.state}; disable or uninstall that target explicitly before retrying`);
+			}
+			for (const target of cutover.targets.filter((entry) => entry.state === "active")) {
+				const source = { kind: "package" as const, path: target.path, name: target.package, version: target.version };
+				const inspected = await manager.inspect(source);
+				if (inspected.manifest.id !== target.pluginId || inspected.manifest.version !== target.version) throw new Error(`Prepared artifact ${target.package}@${target.version} resolved as ${inspected.manifest.id}@${inspected.manifest.version}; cutover refused`);
+				let installation = data.plugins.getInstallation(target.pluginId);
+				if (installation && installation.contentHash !== inspected.contentHash) throw new Error(`Target store already contains a different ${target.pluginId} artifact; retain both sources and reconcile before cutover`);
+				if (!installation || installation.state === "uninstalled") {
+					const installed = await manager.install(source, { expectedRevision: installation?.stateRevision ?? 0 });
+					installation = installed.installation;
+				}
+				if (!installation) throw new Error(`Cutover did not create installation ${target.pluginId}`);
+				if (["installed", "pending-activation", "failed"].includes(installation.state)) await manager.activate(target.pluginId, { expectedRevision: installation.stateRevision });
+			}
+		}
 		if (options.installDefaultPlugins !== false) {
 			const defaultPackagesModule = "./default-packages.js";
 			const { ensureDefaultPluginInstallations } = await import(defaultPackagesModule) as typeof import("./default-packages.js");
@@ -86,6 +116,7 @@ export async function startPluginProductRuntime(options: {
 			await host.add({ plugins: installations.map(createStagedPluginDefinition) });
 			for (const installation of installations) ownedPluginIds.add(installation.pluginId);
 		}
+		if (cutover && options.cutoverPlanPath) await writePibo4CutoverReceipt(options.cutoverPlanPath, cutover);
 	} catch (error) {
 		const cleanupErrors: unknown[] = [];
 		if (initialState.state === "idle") {

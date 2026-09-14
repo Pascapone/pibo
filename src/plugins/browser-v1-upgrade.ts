@@ -117,16 +117,18 @@ function mapSessionTabs(activeLegacyId: unknown, piboSessionId: string, tabs: Le
 			report.unresolved.push({ tabId: stringValue(tab.id), piboSessionId, reason: "The tab has explicit session ownership but no supported plugin-view mapping.", repair: `Open session ${piboSessionId}, choose the replacement view, and import the retained tab JSON through Plugin Recovery.` });
 			continue;
 		}
-		const entry = plan.contributions.find((candidate) => candidate.id === mapping.viewId && candidate.contribution.view && pluginViewPresentation(candidate.contribution.view) === "workspace");
-		if (!entry?.contribution.view) {
+		const coreView = mapping.viewId.startsWith("pibo.core/") ? coreMigrationView(mapping.viewId) : undefined;
+		const entry = coreView ? undefined : plan.contributions.find((candidate) => candidate.id === mapping.viewId && candidate.contribution.view && pluginViewPresentation(candidate.contribution.view) === "workspace");
+		const view = coreView ?? entry?.contribution.view;
+		if (!view) {
 			report.unresolved.push({ tabId: stringValue(tab.id), piboSessionId, reason: `Replacement view ${mapping.viewId} is not effective in this session's immutable/current plugin plan.`, repair: `Restore a compatible plugin revision or select another replacement in session ${piboSessionId}; the retained source is unchanged.` });
 			continue;
 		}
-		if (mapping.subviewId && !entry.contribution.view.subviews?.some((subview) => subview.id === mapping.subviewId)) {
+		if (mapping.subviewId && !view.subviews?.some((subview) => subview.id === mapping.subviewId)) {
 			report.unresolved.push({ tabId: stringValue(tab.id), piboSessionId, reason: `Replacement subview ${mapping.subviewId} is unavailable for ${mapping.viewId}.`, repair: `Choose an available subview in session ${piboSessionId}; the retained source is unchanged.` });
 			continue;
 		}
-		if (entry.contribution.view.instance === "singleton" && singletonViews.has(mapping.viewId)) {
+		if (view.instance === "singleton" && singletonViews.has(mapping.viewId)) {
 			report.unresolved.push({ tabId: stringValue(tab.id), piboSessionId, reason: `A duplicate legacy singleton tab for ${mapping.viewId} was retained but not duplicated.`, repair: `Compare the duplicate entries in Plugin Recovery and merge any required state into session ${piboSessionId}.` });
 			continue;
 		}
@@ -137,12 +139,12 @@ function mapSessionTabs(activeLegacyId: unknown, piboSessionId: string, tabs: Le
 		mapped.push({
 			instanceId,
 			piboSessionId,
-			pluginId: entry.pluginId,
+			pluginId: coreView ? "pibo.core" : entry!.pluginId,
 			viewId: mapping.viewId,
-			pluginRevision: entry.pluginRevision,
-			stateSchemaVersion: entry.contribution.view.stateSchemaVersion,
+			pluginRevision: coreView ? "core:1" : entry!.pluginRevision,
+			stateSchemaVersion: view.stateSchemaVersion,
 			state,
-			fallback: entry.contribution.view.title,
+			fallback: view.title,
 			...(mapping.subviewId ? { subviewId: mapping.subviewId } : {}),
 		});
 		if (legacyId === activeLegacyId) activeTabId = instanceId;
@@ -160,17 +162,42 @@ function legacyView(tab: LegacyTab): { viewId: PluginQualifiedId; subviewId?: st
 	const target = isRecord(tab.target) ? tab.target : undefined;
 	if (!target) return undefined;
 	if (target.kind === "plugin-view" && typeof target.viewId === "string" && /^[^/]+\/[^/]+$/.test(target.viewId)) {
-		return { viewId: target.viewId as PluginQualifiedId, ...(typeof target.subviewId === "string" ? { subviewId: target.subviewId } : {}), state: {} };
+		return { viewId: upgradedLegacyViewId(target.viewId) as PluginQualifiedId, ...(typeof target.subviewId === "string" ? { subviewId: target.subviewId } : {}), state: {} };
 	}
 	if (target.kind !== "route" || !isRecord(target.route)) return undefined;
 	const route = target.route;
-	if (route.area === "workflows") return { viewId: "pibo.product-ui/workflows", state: { ...(typeof route.draftId === "string" ? { draftId: route.draftId } : {}), ...(typeof route.viewWorkflowId === "string" ? { viewWorkflowId: route.viewWorkflowId } : {}), ...(typeof route.viewWorkflowVersion === "string" ? { viewWorkflowVersion: route.viewWorkflowVersion } : {}) } };
-	if (route.area === "agents") return { viewId: "pibo.product-ui/agent-designer", state: {} };
-	if (route.area === "cron") return { viewId: "pibo.product-ui/cron", state: {} };
-	if (route.area === "loops") return { viewId: "pibo.product-ui/loops", state: {} };
-	if (route.area === "context") return { viewId: "pibo.product-ui/user-resources", subviewId: "context-files", state: {} };
-	if (route.area === "settings") return { viewId: "pibo.product-ui/settings", subviewId: typeof route.panel === "string" ? route.panel : "general", state: {} };
+	if (route.area === "workflows") return { viewId: "pibo.workflows/view", state: { ...(typeof route.draftId === "string" ? { draftId: route.draftId } : {}), ...(typeof route.viewWorkflowId === "string" ? { viewWorkflowId: route.viewWorkflowId } : {}), ...(typeof route.viewWorkflowVersion === "string" ? { viewWorkflowVersion: route.viewWorkflowVersion } : {}) } };
+	if (route.area === "agents") return { viewId: "pibo.core/agent-designer", state: {} };
+	if (route.area === "cron") return { viewId: "pibo.cron/view", state: {} };
+	if (route.area === "loops") return { viewId: "pibo.goal-loops/loops", state: {} };
+	if (route.area === "context") return { viewId: "pibo.core/context", subviewId: "context-files", state: {} };
+	if (route.area === "settings") return { viewId: "pibo.core/settings", subviewId: typeof route.panel === "string" ? route.panel : "general", state: {} };
 	return undefined;
+}
+
+function upgradedLegacyViewId(viewId: string): string {
+	return ({
+		"pibo.product-ui/workflows": "pibo.workflows/view",
+		"pibo.product-ui/cron": "pibo.cron/view",
+		"pibo.product-ui/loops": "pibo.goal-loops/loops",
+		"pibo.product-ui/agent-designer": "pibo.core/agent-designer",
+		"pibo.product-ui/settings": "pibo.core/settings",
+		"pibo.product-ui/user-resources": "pibo.core/context",
+	} as Record<string, string>)[viewId] ?? viewId;
+}
+function coreMigrationView(viewId: string) {
+	const title = ({ "pibo.core/agent-designer": "Agent Designer", "pibo.core/settings": "Settings", "pibo.core/context": "Context" } as Record<string, string>)[viewId];
+	if (!title) return undefined;
+	return {
+		title,
+		presentation: "workspace" as const,
+		instance: "singleton" as const,
+		mount: "unmount" as const,
+		stateSchemaVersion: 1,
+		stateSchema: { type: "object" as const, additionalProperties: true },
+		...(viewId === "pibo.core/context" ? { subviews: [{ id: "context-files", title: "Context Files", purpose: "content" as const }] } : {}),
+		...(viewId === "pibo.core/settings" ? { subviews: ["general", "appearance", "sessions", "providers", "plugins", "transcription", "speech", "resources", "mcp", "preview", "telemetry"].map((id) => ({ id, title: id, purpose: "configuration" as const })) } : {}),
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

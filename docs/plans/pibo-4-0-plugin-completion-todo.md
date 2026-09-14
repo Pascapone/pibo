@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T20:30:00Z"
+  at: "2026-09-14T22:30:00Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -29,12 +29,12 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 |---|---|---|---|---|
 | F00 – Abhängigkeiten und Paketgrenzen festziehen | abgeschlossen | Quellen-/Importaudit abgeschlossen | offen bis F10 | F01-Verträge implementieren |
 | F01 – Öffentliche Host-Dienste und Tool-Verträge vervollständigen | abgeschlossen | Typecheck, SDK-Build und 42 fokussierte Tests | offen bis F10 | F02-Toolfamilien migrieren |
-| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen; physischer Delivery-Nachweis folgt in F06 | Root-Emit, SDK-Build, Chat-UI-Typecheck, 167 Provider-/Auswahltests plus 56 Controller-/Reminder-/Lifecycle-Tests | offen bis F10 | F06-07 am Minimalartefakt beweisen |
+| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen | Root-Emit, SDK-Build, Provider-/Auswahltests und physischer F06-07-Minimal-Core-Ausschluss | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
 | F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | offen bis F10 | F04-Featurepakete trennen |
-| F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen; physische unabhängige Artefakte folgen in F06 | Root-Emit, Chat-UI-Typecheck/-Build, 39 Feature-/UI-/Cachetests plus N-022-Nachweis | offen bis F10 | F05 Runtime Requests und Runtimepakete |
+| F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build, Feature-/UI-/Cachetests und 20 unabhängig packbare Artefakte | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
 | F05 – Runtimepakete und Runtime Requests abschließen | teilweise; Requests und Runtime-Setups getrennt | Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Tests | offen bis F10 | verbleibende Pi-Kompatibilitätsimports mit F06/F08 lösen |
-| F06 – Minimal- und Standarddistribution bauen | offen | offen | offen | gemäß Detailaufgaben |
-| F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | offen | offen | offen | gemäß Detailaufgaben |
+| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; gepackte Clean-Install- und Importclosure-Prüfung | offen bis F10 | F08-Paketaudit und F10-Gesamtabnahme |
+| F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | offen bis F10 | F08-Legacyentfernung und F10-Gesamtabnahme |
 | F08 – Legacy-Delivery vollständig entfernen | offen | offen | offen | gemäß Detailaufgaben |
 | F09 – Dokumentation und Entwicklerweg abschließen | offen | offen | offen | gemäß Detailaufgaben |
 | F10 – Integrierte Abschlussabnahme | offen | offen | offen | gemäß Detailaufgaben |
@@ -116,22 +116,22 @@ Nachweise: offen.
 - [x] F06-03: Paketinhalt, installierte Abhängigkeiten und Browser-Bundles prüfen, nicht nur einen Start mit Disabled-Flags.
 - [x] F06-04: Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
 - [x] F06-05: Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
-- [ ] F06-06: Gepackten 3.6.2-/Beta-Monolithen über einen versionierten Cutover-Plan auf gepackten Minimal-Core plus exakt benötigte Artefakte aktualisieren; unvorbereiteter Direktwechsel bleibt fail-closed.
+- [x] F06-06: Gepackten 3.6.2-/Beta-Monolithen über einen versionierten Cutover-Plan auf gepackten Minimal-Core plus exakt benötigte Artefakte aktualisieren; unvorbereiteter Direktwechsel bleibt fail-closed.
 - [x] F06-07: Gepackten Minimal-Core per Importgraph und Artefaktinhalt beweisen: keine Run-/Delegation-Featurecontroller, Toolnamen oder konkreten Reminder-/Metadatenimplementierungen in seiner Closure (N-022).
 
-Nachweise: `/tmp/pibo4-f06-package-boundaries.md`; `npm run pibo4:packages`; `test/pibo4-packed-distribution.test.mjs` (4/4); fokussierte Host-/SDK-/Provider-/Manager-/Product-Runtime-Suiten. F06-06 bleibt bewusst offen und wird gemeinsam mit F07 als tatsächlicher Alt-zu-Neu-Cutover belegt.
+Nachweise: `/tmp/pibo4-f06-package-boundaries.md`, `/tmp/pibo4-f07-cutover.md`; `npm run pibo4:packages`; `test/pibo4-packed-distribution.test.mjs`; tatsächlicher gepackter 3.6.2-zu-Minimal-Core-Cutover in `test/pibo4-cutover.test.mjs`; fokussierte Host-/SDK-/Provider-/Manager-/Product-Runtime-Suiten.
 
 ## F07 – Migration an neue Eigentümer und Paketgrenzen anpassen
 
-- [ ] F07-01: Bestehende versionierte Migration wiederverwenden und um neue Owner-/Paket-/Tab-Zuordnungen ergänzen.
-- [ ] F07-02: 3.6.2-Ausgangsdaten sowie aktuelle/teilmigrierte Beta-Daten abdecken.
-- [ ] F07-03: Konsistentes Backup, Wiederaufnahme, Konfliktpfade und Restore dokumentieren und gezielt prüfen.
-- [ ] F07-04: Effektive Tools und Kontext vor/nach Migration vergleichen; alle vorhandenen Benutzerressourcen und produktiven Daten erhalten.
-- [ ] F07-05: Alte Produkt-UI-Ziele zu Core- oder Plugin-Zielen übersetzen; fremde Sessiontabs nie übernehmen.
-- [ ] F07-06: Gesunde Profile bei isolierten Fehlern weiter migrieren; keine stillen neuen Defaults oder alte Ausführung aktivieren.
-- [ ] F07-07: Alte aktive, deaktivierte und deinstallierte Auswahlzustände verifiziert auf neue Paket-/Artefaktkoordinaten abbilden; Nachweis am gepackten Alt-zu-Neu-Installationsweg statt nur an DB-Fixtures mit vorinstallierten Zielpaketen.
+- [x] F07-01: Bestehende versionierte Migration wiederverwenden und um neue Owner-/Paket-/Tab-Zuordnungen ergänzen.
+- [x] F07-02: 3.6.2-Ausgangsdaten sowie aktuelle/teilmigrierte Beta-Daten abdecken.
+- [x] F07-03: Konsistentes Backup, Wiederaufnahme, Konfliktpfade und Restore dokumentieren und gezielt prüfen.
+- [x] F07-04: Effektive Tools und Kontext vor/nach Migration vergleichen; alle vorhandenen Benutzerressourcen und produktiven Daten erhalten.
+- [x] F07-05: Alte Produkt-UI-Ziele zu Core- oder Plugin-Zielen übersetzen; fremde Sessiontabs nie übernehmen.
+- [x] F07-06: Gesunde Profile bei isolierten Fehlern weiter migrieren; keine stillen neuen Defaults oder alte Ausführung aktivieren.
+- [x] F07-07: Alte aktive, deaktivierte und deinstallierte Auswahlzustände verifiziert auf neue Paket-/Artefaktkoordinaten abbilden; Nachweis am gepackten Alt-zu-Neu-Installationsweg statt nur an DB-Fixtures mit vorinstallierten Zielpaketen.
 
-Nachweise: offen.
+Nachweise: `/tmp/pibo4-f07-cutover.md`, `/tmp/pibo4-f07-tests.log`; tatsächlicher gepackter `@pasko70/pibo@3.6.2`-Ausgangspfad; 83/83 Cutover-, Migrations-, Auswahl-, Kontext- und Tabtests. Die Vorbereitung bewahrt Quell-Tarball, vollständigen Auswahl-Snapshot und alle Zielhashes; Wiederholung ist idempotent, Konflikte bleiben fail-closed.
 
 ## F08 – Legacy-Delivery vollständig entfernen
 
@@ -167,28 +167,28 @@ Nachweise: offen.
 
 | ID | Befund / Zusatzaufgabe | Paket | Status |
 |---|---|---|---|
-| N-001 | Management wird trotz deaktivierter Defaults als Paket gestartet; echten Core-Bootstrap herstellen. | F00/F03/F06 | offen, im Plan berücksichtigt |
-| N-002 | First-Party-Artefakte importieren `plugin-builtin/*` aus dem Hauptpaket; Implementierung in unabhängige Artefakte verschieben. | F00/F04/F06 | offen, im Plan berücksichtigt |
+| N-001 | Management wird trotz deaktivierter Defaults als Paket gestartet; echten Core-Bootstrap herstellen. | F00/F03/F06 | behoben; gepackter Minimal-Core startet mit null Installationen und Host-Diensten ohne Managementplugin |
+| N-002 | First-Party-Artefakte importieren `plugin-builtin/*` aus dem Hauptpaket; Implementierung in unabhängige Artefakte verschieben. | F00/F04/F06 | behoben; 20 self-contained Backends und getrennte Browserartefakte lassen sich unabhängig packen |
 | N-003 | Codex-Compat-Erkennung prüft falschen Toolnamen; durch deklarierte Beiträge ersetzen. | F02 | behoben; ausgewählter `system-prompt-transformer` ersetzt Core-/Pi-Sonderzweige |
 | N-004 | Runtime-Request-Antwortaktionen hängen am bisherigen Core-Sammelplugin. | F05 | behoben; Codex Native besitzt Aktionen, Viewmetadaten und Browserentry, Inlinepfad bleibt runtime-neutral |
 | N-005 | Root-Export `./*` und `plugin-builtin/*` machen interne Implementierung zur Delivery-Fläche. | F01/F06/F08 | offen; explizite Subpaths beschlossen |
 | N-006 | Session-Tool-Assembly und Context-Build wählen konkrete Pibo-Toolfamilien nach Namen/Präfix. | F01/F02 | behoben; Materialisierung, Ursprung, direkte/yielded Kataloge und Context Build sind provider-/plangetrieben |
 | N-007 | App, Desktop-Katalog und Browser-Host enthalten konkrete Feature-View-IDs beziehungsweise First-Party-Allowlist. | F03/F04/F07 | im normalen Laufzeitpfad behoben; alte IDs bleiben bis F07 nur als Migrationsinput |
 | N-008 | `pibo.web-product`, `pibo.user-resources` und `pibo.product-ui` besitzen noch ausdrücklich dem Core zugeordnete Flächen. | F03/F04/F06/F07 | normale Owner-Aufteilung behoben; alte Installationen/Module bleiben bis F07/F08 als Cutover-Eingang |
-| N-009 | Pi/Codex/OMP und Featureabhängigkeiten liegen weiterhin im Root-Build und Root-Dependencygraph. | F05/F06 | Setupmodule getrennt und Debug statisch entkoppelt; physischer Root-Dependency-/Paketcut bleibt F06/F08 offen |
+| N-009 | Pi/Codex/OMP und Featureabhängigkeiten liegen weiterhin im Root-Build und Root-Dependencygraph. | F05/F06 | ausgelieferter Minimal-Core ist physisch frei von Runtime-/Featureimplementierungen; monolithische Quell- und Legacy-Exportflächen bleiben F08 |
 | N-010 | Legacy-Manifesthinweise werden im normalen Schema-v1-Laufzeitpfad interpretiert. | F07/F08 | offen; Übersetzung am Migrationseingang beschlossen |
-| N-011 | Der sichere Plugin-Installer installiert keine npm-Abhängigkeiten; unabhängige Pakete brauchen self-contained Bundles und nur öffentliche SDK-Peers. | F01/F06 | offen; Bundle-Grenze beschlossen |
-| N-012 | Ein zentraler `pibo-builtin-plugin.js`-Browserchunk bindet Core- und Feature-UI samt großer transitiver Closure. | F03/F04/F06 | Browserentries getrennt und Cachepfade geprüft; gepackte Minimal-/Featureclosure bleibt F06 |
-| N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | offen; zweistufiger Cutover und fail-closed Direktwechsel beschlossen |
+| N-011 | Der sichere Plugin-Installer installiert keine npm-Abhängigkeiten; unabhängige Pakete brauchen self-contained Bundles und nur öffentliche SDK-Peers. | F01/F06 | behoben; jedes Artefakt besitzt ein self-contained Backend ohne npm-Laufzeitabhängigkeiten und completed independent `npm pack` |
+| N-012 | Ein zentraler `pibo-builtin-plugin.js`-Browserchunk bindet Core- und Feature-UI samt großer transitiver Closure. | F03/F04/F06 | behoben; getrennte Browserentries, verallgemeinerte Cachegrenze und gepackte Featureartefakte sind belegt |
+| N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | behoben; tatsächlicher gepackter 3.6.2-Ausgangspunkt, vorgeschaltetes Cutoverpaket, exakte Hashzuordnung und fail-closed Direktwechsel geprüft |
 | N-014 | Ein pauschal auswählbarer Session-Tool-Provider könnte mehrere nicht einzeln deklarierte oder abgewählte Tools freischalten. | F01 | behoben und fokussiert geprüft; appweiter Provider plus einzeln ausgewählte/runtimegefilterte Tool-Contributions |
 | N-015 | `dispose(): void` akzeptiert in TypeScript auch async Funktionen; Provider-Cleanup könnte dadurch unbemerkt weiterlaufen oder fehlschlagen. | F01 | behoben und fokussiert geprüft; Cleanup wird awaited, aggregiert und blockiert Zulassungsfreigabe |
-| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02/F04/F06 | Quellpfad behoben und fokussiert geprüft; physischer Minimalartefaktbeweis bleibt F06-07 |
-| N-017 | Das externe Fixture mit Repo-Symlink belegt F01-API-Nutzbarkeit, aber keine eigenständige Distribution. | F06 | offen; gepackter Minimal-Core-/Plugin-Nachweis ohne Symlink oder Source-Checkout bleibt Pflicht |
+| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02/F04/F06 | behoben; Quellpfad und gepackter Minimal-Core schließen fachliche Controller aus |
+| N-017 | Das externe Fixture mit Repo-Symlink belegt F01-API-Nutzbarkeit, aber keine eigenständige Distribution. | F06 | behoben; Clean-Consumer installiert Core- und Preview-Tarballs ohne Symlink oder Quellcheckout |
 | N-018 | Importfreie Installationsprüfung kannte echte Core-Service-Provider nicht und wies externe Pakete vor Aktivierung fälschlich als service-los ab. | F01 | behoben und fokussiert geprüft; Manager liest nur versionierte Core-Service-Metadaten |
 | N-019 | `yieldable` allein unterscheidet kein direkt sichtbares Tool von einem ausschließlich über Run erreichbaren Tool; Delegation würde sonst `pibo_agents_send_message` direkt freigeben. | F02 | behoben; `direct` und `yieldable` sind unabhängige Contribution-Eigenschaften und positiv über Run, Context und MCP geprüft |
 | N-020 | Eine Pi-seitige Legacy-Session-Assembly würde die entfernten First-Party-Namens-/Factory-Sonderfälle als ausführbaren Harnesspfad konservieren. | F02/F08 | Produktionshelper wieder entfernt; Altzustandsvergleich bleibt ausschließlich in `test/helpers/legacy-session-tool-names.mjs`, Delivery-Audit in F08 bleibt offen |
 | N-021 | Dependency-Expansion darf `globallyActive` nicht als Erlaubnis verwenden, um eine explizite Agent-Deaktivierung zu überstimmen; gespeicherte und effektive Nutzerwahl müssen übereinstimmen. | F02/F07 | behoben und fokussiert geprüft; aktuelle Snapshots trennen unentschiedene Defaults von expliziten Entscheidungen, Legacy-Snapshots fallen sicher auf explizite Booleans zurück, Plan-Diagnosen benennen Tool-, Agent-Plugin-, globale und Runtime-Blockaden |
-| N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Run-/Delegation-Controller konstruiert, den Delegation-Toolnamen importiert oder konkrete Reminder-/Metadaten formatiert. | F02/F04/F06 | Quell- und Verhaltenspfad behoben: Pakete besitzen Controller, Toolname, Metadaten, Observation-Projektion und Reminder; Importgraph-/Minimalartefaktbeweis bleibt F06-07 |
+| N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Run-/Delegation-Controller konstruiert, den Delegation-Toolnamen importiert oder konkrete Reminder-/Metadaten formatiert. | F02/F04/F06 | behoben; Pakete besitzen Fachlogik und der gepackte Minimal-Core-Audit schließt Controller, Toolnamen und Reminderimplementierungen physisch aus |
 | N-023 | Frischer Standardstart scheiterte, weil ein Pluginprofil ein provider-backed Tool noch als ausführbar registriertes Legacy-Tool auflösen wollte. | F03/F06 | behoben; Profile können deklarierte provider-backed Toolmetadaten generisch aus aktiven Manifesten projizieren, frischer isolierter Docker-Gatewaystart und Profilinventur bestanden |
 
 # Abnahmestand
@@ -208,4 +208,6 @@ A-C40-01 bis A-C40-16 aus dem Plan sind offen. Je Szenario werden Commit/Paket, 
 - F03 abgeschlossen: fünf Core-Ansichten rendern ohne Product-UI-Beiträge im bestehenden Sessiontab-Lifecycle; Auth, Basis-Web, Chat und Benutzerressourcen starten mit null Plugininstallationen. Übergangspakete besitzen nur noch Featureflächen. Root-Emit, Chat-UI-Typecheck/-Build, 34 fokussierte Tests und headful Desktop-/Mobile-Abnahme sind grün. N-023 behob dabei den frischen provider-backed Profilstart; F04 übernimmt die verbleibenden Sammelfeatures.
 - F04-07/N-022 abgeschlossen: Run- und Delegation-Pakete konstruieren ihre Controller selbst. Core besitzt nur generische Yielded-Run-/Child-Session-Orchestrierung; Delegationsname, Child-Metadaten, Agent-Observation-Projektion und Run-Reminderformat liegen im Paket. Alte Portable-Controller-Injection einschließlich `subagentRunner` wurde entfernt. Root-Emit und 56 fokussierte Tests sind grün; F06-07 muss die Grenze noch am gepackten Minimal-Core belegen.
 - F04 abgeschlossen: Preview, Cron und Workflows besitzen getrennte Backendpakete; alle Featureansichten liegen in getrennten Browserentries. Feature-Routen werden über `metadata.chatRoute` auf installierte Beiträge aufgelöst, interne Navigation über `subviewNavigation` statt Host-Allowlist gesteuert, Preview/Web Annotations sind keine Core-Sessiontools mehr. Root-Emit, Chat-UI-Typecheck/-Build und 39 Feature-/UI-/Cachetests sind grün; F06 übernimmt self-contained Paketartefakte und die physische Closure.
-- F05 teilweise umgesetzt: Pi, Codex Native und OMP verwenden getrennte Setupmodule. Codex Native besitzt Runtime-Request-Antwortaktionen, runtimegeeignete Workspace-View und Browserentry; der feste Core-Sessiontool-Eintrag ist entfernt, Inline-Chat/SSE bleiben auf derselben Pending-Queue. Debug lädt Adapter generisch aus dem aktiv installierten Runtimepaket. Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Tests sind grün. Alte Pi-Kompatibilitätsimports in Core-/Chat-/Root-Flächen halten F05-01/F05-05 bis F06/F08 offen.
+- F05 teilweise umgesetzt: Pi, Codex Native und OMP verwenden getrennte Setupmodule. Codex Native besitzt Runtime-Request-Antwortaktionen, runtimegeeignete Workspace-View und Browserentry; der feste Core-Sessiontool-Eintrag ist entfernt, Inline-Chat/SSE bleiben auf derselben Pending-Queue. Debug lädt Adapter generisch aus dem aktiv installierten Runtimepaket. Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Tests sind grün. Alte Pi-Kompatibilitätsimports in Core-/Chat-/Root-Flächen halten F05-01/F05-05 bis F08 offen.
+- F06 abgeschlossen: `npm run pibo4:packages` baut Minimal-Core, Standard, Cutover und 20 eigenständig packbare Feature-/Runtimeartefakte. Ein Clean-Consumer startete nur aus dem Core-Tarball mit null Plugins und aktivierte anschließend gepacktes Preview. Import- und Inhaltsaudit schließen konkrete Runtime-, Run- und Delegationsimplementierungen aus dem Core aus.
+- F07 abgeschlossen: Das tatsächliche gepackte `@pasko70/pibo@3.6.2` wurde erst nach einem separaten, content-hashgebundenen Vorbereitungsplan durch gepackten Minimal-Core ersetzt. Nur aktive Zielartefakte wurden installiert; deaktivierte/deinstallierte Ziele blieben aus. Wiederstart, unveränderte Benutzerdaten, Beta-Quelle, Journal-/Konfliktpfade sowie Core-/Plugin-Tabzuordnung sind mit 83/83 fokussierten Tests belegt.

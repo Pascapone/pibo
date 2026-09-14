@@ -21,6 +21,10 @@
       "types": "./dist/plugins/runtime.d.ts",
       "import": "./dist/plugins/runtime.js"
     },
+    "./plugin-cutover": {
+      "types": "./dist/plugins/cutover.d.ts",
+      "import": "./dist/plugins/cutover.js"
+    },
     "./plugin-builtin/core": {
       "types": "./dist/plugins/packaged-core.d.ts",
       "import": "./dist/plugins/packaged-core.js"

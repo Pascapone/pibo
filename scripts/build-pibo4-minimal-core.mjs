@@ -15,6 +15,7 @@ const entries = {
 	"plugin-sdk": ["src/plugins/sdk.ts"],
 	"plugin-host": ["src/plugins/host.ts"],
 	"plugin-runtime": ["src/plugins/runtime.ts"],
+	"plugin-cutover": ["src/plugins/cutover.ts"],
 	"product-runtime": ["src/plugins/product-runtime.ts"],
 };
 for (const [name, sources] of Object.entries(entries)) {
@@ -43,9 +44,9 @@ async function copyDeclaration(relativePath) {
 		if (!child.startsWith("../") && child.endsWith(".d.ts")) await copyDeclaration(child);
 	}
 }
-for (const entry of ["plugins/sdk.d.ts", "plugins/host.d.ts", "plugins/runtime.d.ts"]) await copyDeclaration(entry);
-await writeFile(join(declarationTarget, "product-runtime.d.ts"), `import type { PluginHost } from "./plugins/host.js";\nexport declare function startPluginProductRuntime(options: { host: PluginHost; artifactRoot?: string; collectConsumers?: (...args: any[]) => any; readSessionPlan?: (...args: any[]) => any; productOptions?: Record<string, unknown>; installDefaultPlugins?: boolean; includeWebProduct?: boolean }): Promise<{ manager: any; runtime: any; data: any; dispose(): Promise<void> }>;\n`);
-await writeFile(join(declarationTarget, "index.d.ts"), `export * from "./plugins/sdk.js";\nexport * from "./plugins/host.js";\nexport * from "./plugins/runtime.js";\nexport * from "./product-runtime.js";\n`);
+for (const entry of ["plugins/sdk.d.ts", "plugins/host.d.ts", "plugins/runtime.d.ts", "plugins/cutover.d.ts"]) await copyDeclaration(entry);
+await writeFile(join(declarationTarget, "product-runtime.d.ts"), `import type { PluginHost } from "./plugins/host.js";\nexport declare function startPluginProductRuntime(options: { host: PluginHost; artifactRoot?: string; collectConsumers?: (...args: any[]) => any; readSessionPlan?: (...args: any[]) => any; productOptions?: Record<string, unknown>; installDefaultPlugins?: boolean; includeWebProduct?: boolean; requirePreparedCutover?: boolean; cutoverPlanPath?: string; currentCoreVersion?: string }): Promise<{ manager: any; runtime: any; data: any; dispose(): Promise<void> }>;\n`);
+await writeFile(join(declarationTarget, "index.d.ts"), `export * from "./plugins/sdk.js";\nexport * from "./plugins/host.js";\nexport * from "./plugins/runtime.js";\nexport * from "./plugins/cutover.js";\nexport * from "./product-runtime.js";\n`);
 
 const pkg = {
 	name: "@pasko70/pibo",
@@ -58,6 +59,7 @@ const pkg = {
 		"./plugin-sdk": { types: "./types/plugins/sdk.d.ts", import: "./plugin-sdk.js" },
 		"./plugin-host": { types: "./types/plugins/host.d.ts", import: "./plugin-host.js" },
 		"./plugin-runtime": { types: "./types/plugins/runtime.d.ts", import: "./plugin-runtime.js" },
+		"./plugin-cutover": { types: "./types/plugins/cutover.d.ts", import: "./plugin-cutover.js" },
 		"./product-runtime": { types: "./types/product-runtime.d.ts", import: "./product-runtime.js" },
 		"./package.json": "./package.json",
 	},
@@ -65,6 +67,13 @@ const pkg = {
 	engines: { node: ">=24" },
 };
 await writeFile(join(packageRoot, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`);
+
+const cutoverRoot = resolve(root, "dist/pibo4-cutover-package");
+await rm(cutoverRoot, { recursive: true, force: true });
+await mkdir(join(cutoverRoot, "bin"), { recursive: true });
+await cp(join(packageRoot, "plugin-cutover.js"), join(cutoverRoot, "index.js"));
+await writeFile(join(cutoverRoot, "bin/pibo4-cutover.js"), `#!/usr/bin/env node\nimport { readFile } from "node:fs/promises";\nimport { resolve } from "node:path";\nimport { preparePibo4Cutover } from "../index.js";\nconst inputPath = process.argv[2];\nif (!inputPath) { console.error("Usage: pibo4-cutover <input.json>"); process.exit(2); }\nconst input = JSON.parse(await readFile(resolve(inputPath), "utf8"));\nconst plan = await preparePibo4Cutover(input);\nconsole.log(JSON.stringify({ id: plan.id, planHash: plan.planHash, outputPath: resolve(input.outputPath), targets: plan.targets.length }));\n`);
+await writeFile(join(cutoverRoot, "package.json"), `${JSON.stringify({ name: "@pasko70/pibo-cutover", version: "4.0.0-beta.1", type: "module", main: "./index.js", bin: { "pibo4-cutover": "./bin/pibo4-cutover.js" }, exports: { ".": "./index.js", "./package.json": "./package.json" }, files: ["index.js", "bin"] }, null, 2)}\n`);
 
 const executableFiles = Object.keys(entries).map((name) => `${name}.js`);
 const forbidden = ["pibo_agents_", "formatPiboRunReminderMessage", "createPiboDelegationController", "PI_AGENT_RUNTIME_DRIVER", "CODEX_NATIVE_AGENT_RUNTIME_DRIVER", "OMP_AGENT_RUNTIME_DRIVER", "CodexBrowserSessionController"];

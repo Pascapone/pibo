@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T20:30:00Z"
+  at: "2026-09-14T22:30:00Z"
 sources:
   - id: "owner-completion"
     resource: "scope:owner decisions 2026-09-14 in Pibo Session ps_c5596e29-e5db-47e8-a736-714f4a1c99cf; independent minimal core; all Pibo extension tools through public plugin contracts; explicit core views; Codex-owned Runtime Requests subject to dependency inspection; OMP maintenance only; remove executable legacy APIs; preserve data through migration; write a plan without implementation"
@@ -386,24 +386,26 @@ Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Runtime-/Request-/UI-/Deb
 - [x] Paketinhalt, installierte Abhängigkeiten und Browser-Bundles prüfen, nicht nur einen Start mit Disabled-Flags.
 - [x] Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
 - [x] Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
-- [ ] Einen gepackten alten Monolith-/Beta-Stand über den zweistufigen Cutover auf gepackten Minimal-Core plus exakt gemappte Artefakte aktualisieren; ein unvorbereiteter Direktwechsel muss fail-closed bleiben.
+- [x] Einen gepackten alten Monolith-/Beta-Stand über den zweistufigen Cutover auf gepackten Minimal-Core plus exakt gemappte Artefakte aktualisieren; ein unvorbereiteter Direktwechsel muss fail-closed bleiben.
 - [x] Den gepackten Minimal-Core per Importgraph und Artefaktinhalt darauf prüfen, dass Run-, Delegation- und andere Featurecontroller, Toolnamen sowie konkrete Reminder-/Metadatenimplementierungen nicht benötigt oder mitgeliefert werden.
 
-Zwischenstand 2026-09-14: `npm run pibo4:packages` erzeugt Minimal-Core, Standardkomposition und 20 separat packbare Artefakte. `test/pibo4-packed-distribution.test.mjs` startet Minimal-Core aus einem Tarball ohne Quellcheckout und ohne Plugins, installiert Preview aus einem zweiten Tarball und prüft den physischen Ausschluss konkreter Runtime-/Run-/Delegation-Symbole. `/tmp/pibo4-f06-package-boundaries.md` enthält Größen, Hashes und Paketnachweise. Der Alt-zu-Neu-Cutover bleibt gemeinsam mit F07 offen.
+Stand 2026-09-14: `npm run pibo4:packages` erzeugt Minimal-Core, Standardkomposition, das getrennte Cutover-Werkzeug und 20 separat packbare Artefakte. `test/pibo4-packed-distribution.test.mjs` startet Minimal-Core aus einem Tarball ohne Quellcheckout und ohne Plugins, installiert Preview aus einem zweiten Tarball und prüft den physischen Ausschluss konkreter Runtime-/Run-/Delegation-Symbole. `test/pibo4-cutover.test.mjs` beginnt zusätzlich beim tatsächlichen gepackten `@pasko70/pibo@3.6.2`, schreibt vor dem Ersatz einen inhaltshashgebundenen Plan und aktiviert anschließend nur die dort als aktiv abgebildeten Artefakte. `/tmp/pibo4-f06-package-boundaries.md` und `/tmp/pibo4-f07-cutover.md` enthalten Paket-, Hash- und Cutovernachweise.
 
 **Fertig, wenn:** Minimalbetrieb und nachträgliche externe Erweiterung sind aus echten gepackten Artefakten nachgewiesen. Abhängigkeiten: F02–F05; Migration von Bestand mit F07.
 
 ## F07 – Migration an neue Eigentümer und Paketgrenzen anpassen
 
-- [ ] Bestehende versionierte Migration wiederverwenden und um neue Owner-/Paket-/Tab-Zuordnungen ergänzen.
-- [ ] 3.6.2-Ausgangsdaten sowie aktuelle/teilmigrierte Beta-Daten abdecken.
-- [ ] Konsistentes Backup, Wiederaufnahme, Konfliktpfade und Restore dokumentieren und gezielt prüfen.
-- [ ] Effektive Tools und Kontext vor/nach Migration vergleichen; alle vorhandenen Benutzerressourcen und produktiven Daten erhalten.
-- [ ] Alte Produkt-UI-Ziele zu Core- oder Plugin-Zielen übersetzen; fremde Sessiontabs nie übernehmen.
-- [ ] Gesunde Profile bei isolierten Fehlern weiter migrieren; keine stillen neuen Defaults oder alte Ausführung aktivieren.
-- [ ] Alte Auswahlzustände samt aktiv/deaktiviert/deinstalliert in einen versionierten Cutover-Plan und verifizierte neue Paket-/Artefaktzuordnungen überführen; Nachweis am gepackten Alt-zu-Neu-Installationsweg statt nur an vorbereiteten DB-Fixtures.
+- [x] Bestehende versionierte Migration wiederverwenden und um neue Owner-/Paket-/Tab-Zuordnungen ergänzen.
+- [x] 3.6.2-Ausgangsdaten sowie aktuelle/teilmigrierte Beta-Daten abdecken.
+- [x] Konsistentes Backup, Wiederaufnahme, Konfliktpfade und Restore dokumentieren und gezielt prüfen.
+- [x] Effektive Tools und Kontext vor/nach Migration vergleichen; alle vorhandenen Benutzerressourcen und produktiven Daten erhalten.
+- [x] Alte Produkt-UI-Ziele zu Core- oder Plugin-Zielen übersetzen; fremde Sessiontabs nie übernehmen.
+- [x] Gesunde Profile bei isolierten Fehlern weiter migrieren; keine stillen neuen Defaults oder alte Ausführung aktivieren.
+- [x] Alte Auswahlzustände samt aktiv/deaktiviert/deinstalliert in einen versionierten Cutover-Plan und verifizierte neue Paket-/Artefaktzuordnungen überführen; Nachweis am gepackten Alt-zu-Neu-Installationsweg statt nur an vorbereiteten DB-Fixtures.
 
 Einstieg: `src/apps/chat/agent-store.ts`, `src/plugins/migration-journal.ts`, `src/plugins/product-state-migration.ts`, `src/plugins/browser-v1-upgrade.ts`, `src/gateway/server.ts` und Datenmigrationen.
+
+Stand 2026-09-14: Das getrennt packbare Cutover-Werkzeug bewahrt den vollständigen alten Auswahl-Snapshot sowie Quell-, Core- und Artefakthashes, bevor der Monolith ersetzt wird. Minimal-Core prüft Plan und Bytes vor dem Datenzugriff, installiert nur aktive Ziele, lässt negative Auswahl uninstalliert und schreibt nach vollständiger Aktivierung einen wiederholbaren Abschlussbeleg. Bestehende Agent-, Ressourcen-, Sitzungs- und Browsermigrationen behalten ihre Journal-/CAS-Grenzen; alte Product-UI-Ziele werden am Import zu Core- oder neuen Pluginzielen übersetzt. Der fokussierte Nachweis umfasst 83/83 Tests und den tatsächlichen gepackten 3.6.2-Ausgangspunkt; Details stehen in `/tmp/pibo4-f07-cutover.md`.
 
 **Fertig, wenn:** Wiederholter Start verändert bereits migrierte Daten nicht erneut; Unterbrechung und Konflikte führen weder zu Datenverlust noch Doppelaktivierung. OMP-Ausnahme bleibt explizit. Abhängigkeiten: endgültige Owner aus F00/F03–F05 und Artefakte aus F06.
 

@@ -51,7 +51,7 @@ test("packed Minimal-Core starts with zero plugins and installs one independentl
 	await runNode(project, script, { PIBO_HOME: home });
 
 	const corePackage = JSON.parse(await readFile(join(project, "node_modules/@pasko70/pibo/package.json"), "utf8"));
-	assert.deepEqual(Object.keys(corePackage.exports).sort(), [".", "./package.json", "./plugin-host", "./plugin-runtime", "./plugin-sdk", "./product-runtime"].sort());
+	assert.deepEqual(Object.keys(corePackage.exports).sort(), [".", "./package.json", "./plugin-cutover", "./plugin-host", "./plugin-runtime", "./plugin-sdk", "./product-runtime"].sort());
 	assert.equal(corePackage.dependencies, undefined);
 	const previewPackage = JSON.parse(await readFile(join("dist/pibo4-artifacts/preview/package.json"), "utf8"));
 	assert.equal(previewPackage.name, "@pasko70/pibo-plugin-preview");
@@ -59,7 +59,7 @@ test("packed Minimal-Core starts with zero plugins and installs one independentl
 });
 
 test("packed Minimal-Core executable files exclude first-party runtime, Run, and Delegation implementations", async () => {
-	const files = ["index.js", "plugin-host.js", "plugin-runtime.js", "plugin-sdk.js", "product-runtime.js"];
+	const files = ["index.js", "plugin-cutover.js", "plugin-host.js", "plugin-runtime.js", "plugin-sdk.js", "product-runtime.js"];
 	const forbidden = [
 		"PI_AGENT_RUNTIME_DRIVER",
 		"CODEX_NATIVE_AGENT_RUNTIME_DRIVER",

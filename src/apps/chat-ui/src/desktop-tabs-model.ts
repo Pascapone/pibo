@@ -363,27 +363,27 @@ export function writeDesktopTabState(state: DesktopTabState, storage: Pick<Stora
 
 function desktopTabDedupeKey(target: DesktopTabTarget): string {
 	if (target.kind !== "plugin-view") return desktopTabTargetKey(target);
-	if (target.viewId === "pibo.product-ui/agent-designer") return "route:agents";
-	if (target.viewId === "pibo.product-ui/settings") return "route:settings";
-	if (target.viewId === "pibo.product-ui/workflows") return "workflows";
-	if (target.viewId === "pibo.product-ui/cron") return "route:cron";
-	if (target.viewId === "pibo.product-ui/loops") return "route:loops";
-	if (target.viewId === "pibo.product-ui/user-resources") return "route:context";
+	if (["pibo.core/agent-designer", "pibo.product-ui/agent-designer"].includes(target.viewId)) return "route:agents";
+	if (["pibo.core/settings", "pibo.product-ui/settings"].includes(target.viewId)) return "route:settings";
+	if (["pibo.workflows/view", "pibo.product-ui/workflows"].includes(target.viewId)) return "workflows";
+	if (["pibo.cron/view", "pibo.product-ui/cron"].includes(target.viewId)) return "route:cron";
+	if (["pibo.goal-loops/loops", "pibo.product-ui/loops"].includes(target.viewId)) return "route:loops";
+	if (["pibo.core/context", "pibo.product-ui/user-resources"].includes(target.viewId)) return "route:context";
 	return desktopTabTargetKey(target);
 }
 
 function desktopTargetFromPluginTab(piboSessionId: string, tab: PluginSessionTabset["tabs"][number]): DesktopTabTarget {
-	if (tab.viewId === "pibo.product-ui/agent-designer") return { kind: "route", route: { area: "agents" } };
-	if (tab.viewId === "pibo.product-ui/settings") return { kind: "route", route: { area: "settings", ...(tab.subviewId ? { panel: tab.subviewId as Extract<ChatAppRoute, { area: "settings" }>["panel"] } : {}) } };
-	if (tab.viewId === "pibo.product-ui/workflows") return { kind: "route", route: {
+	if (["pibo.core/agent-designer", "pibo.product-ui/agent-designer"].includes(tab.viewId)) return { kind: "route", route: { area: "agents" } };
+	if (["pibo.core/settings", "pibo.product-ui/settings"].includes(tab.viewId)) return { kind: "route", route: { area: "settings", ...(tab.subviewId ? { panel: tab.subviewId as Extract<ChatAppRoute, { area: "settings" }>["panel"] } : {}) } };
+	if (["pibo.workflows/view", "pibo.product-ui/workflows"].includes(tab.viewId)) return { kind: "route", route: {
 		area: "workflows",
 		...(typeof tab.state.draftId === "string" ? { draftId: tab.state.draftId } : {}),
 		...(typeof tab.state.viewWorkflowId === "string" ? { viewWorkflowId: tab.state.viewWorkflowId } : {}),
 		...(typeof tab.state.viewWorkflowVersion === "string" ? { viewWorkflowVersion: tab.state.viewWorkflowVersion } : {}),
 	} };
-	if (tab.viewId === "pibo.product-ui/cron") return { kind: "route", route: { area: "cron" } };
-	if (tab.viewId === "pibo.product-ui/loops") return { kind: "route", route: { area: "loops" } };
-	if (tab.viewId === "pibo.product-ui/user-resources" && (!tab.subviewId || tab.subviewId === "context-files")) return { kind: "route", route: { area: "context", piboSessionId } };
+	if (["pibo.cron/view", "pibo.product-ui/cron"].includes(tab.viewId)) return { kind: "route", route: { area: "cron" } };
+	if (["pibo.goal-loops/loops", "pibo.product-ui/loops"].includes(tab.viewId)) return { kind: "route", route: { area: "loops" } };
+	if (["pibo.core/context", "pibo.product-ui/user-resources"].includes(tab.viewId) && (!tab.subviewId || tab.subviewId === "context-files")) return { kind: "route", route: { area: "context", piboSessionId } };
 	return { kind: "plugin-view", piboSessionId, viewId: tab.viewId, title: tab.fallback };
 }
 
