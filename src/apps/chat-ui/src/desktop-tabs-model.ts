@@ -9,7 +9,7 @@ export const DESKTOP_TAB_MAX_WIDTH = 3840;
 export const DESKTOP_TAB_DEFAULT_WIDTH = 520;
 export const DESKTOP_TAB_LIMIT = 24;
 
-export type DesktopSessionTool = "raw-events" | "runtime-requests" | "session-inspector";
+export type DesktopSessionTool = "raw-events" | "session-inspector";
 
 export type DesktopTabTarget =
 	| { kind: "route"; route: Exclude<ChatAppRoute, { area: "sessions" }> }
@@ -63,7 +63,6 @@ export function desktopTabTitle(target: DesktopTabTarget): string {
 	if (target.kind === "plugin-view") return target.title;
 	if (target.kind === "session-tool") {
 		if (target.tool === "raw-events") return "Raw Events";
-		if (target.tool === "runtime-requests") return "Runtime Requests";
 		return "Session Inspector";
 	}
 	const route = target.route;
@@ -409,7 +408,7 @@ function isDesktopTabTarget(value: unknown): value is DesktopTabTarget {
 }
 
 function isDesktopSessionTool(value: unknown): value is DesktopSessionTool {
-	return value === "raw-events" || value === "runtime-requests" || value === "session-inspector";
+	return value === "raw-events" || value === "session-inspector";
 }
 
 function isDesktopRoute(value: Record<string, unknown>): value is Exclude<ChatAppRoute, { area: "sessions" }> {

@@ -43,7 +43,7 @@ const WEB_ANNOTATION_TOOL_NAMES = [
 	"web_annotations_dismiss",
 ] as const;
 const CORE_SKILL_NAMES = ["pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json"] as const;
-const CORE_ACTION_NAMES = ["status", "compact", "runtime.approval.respond", "runtime.user_input.respond", "session_id", "clear_queue", "abort", "kill", "kill_all", "dispose", "thinking", "fast_mode", "session.current", "session.list", "session.fork_candidates", "session.fork", "session.clone", "session.tree", "session.tree_navigate", "session.switch", "login", "model", "login.start", "login.complete", "login.apikey", "login.cancel", "login.status", "logout"] as const;
+const CORE_ACTION_NAMES = ["status", "compact", "session_id", "clear_queue", "abort", "kill", "kill_all", "dispose", "thinking", "fast_mode", "session.current", "session.list", "session.fork_candidates", "session.fork", "session.clone", "session.tree", "session.tree_navigate", "session.switch", "login", "model", "login.start", "login.complete", "login.apikey", "login.cancel", "login.status", "logout"] as const;
 const BROWSER_TOOL_NAMES = [
 	"browser_use_open_tabs",
 	"browser_use_take_screenshot",
@@ -404,7 +404,25 @@ function runtimeAdapterManifest(id: string, name: string, contributions: PluginC
 	return { schemaVersion: 1, id, name, version: DEFAULT_PACKAGE_VERSION, sdk: "^1.0.0", entrypoints: { backend: "backend.mjs" }, contributions };
 }
 export const piRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(PI_RUNTIME_PLUGIN_ID, "Pibo Pi Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "pi"), systemContribution("instance", "agent-runtime-instance", "pi")]);
-export const codexNativeRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(CODEX_NATIVE_RUNTIME_PLUGIN_ID, "Pibo Native Codex Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "codex-native"), systemContribution("instance", "agent-runtime-instance", "codex-native"), systemContribution("speech", "speech-provider", "openai-codex"), systemContribution("profile", "profile", "codex-native")]);
+export const codexNativeRuntimePackageManifest = (): PluginManifest => ({
+	...runtimeAdapterManifest(CODEX_NATIVE_RUNTIME_PLUGIN_ID, "Pibo Native Codex Runtime Adapter", [
+		systemContribution("driver", "agent-runtime-driver", "codex-native"),
+		systemContribution("instance", "agent-runtime-instance", "codex-native"),
+		systemContribution("speech", "speech-provider", "openai-codex"),
+		systemContribution("profile", "profile", "codex-native"),
+		{ ...systemContribution("approval-response", "gateway-action", "runtime.approval.respond"), title: "Respond to runtime approval" },
+		{ ...systemContribution("user-input-response", "gateway-action", "runtime.user_input.respond"), title: "Respond to runtime input" },
+		{
+			...productView("runtime-requests", "Runtime Requests", "RuntimeRequestsView"),
+			scope: "agent",
+			required: false,
+			defaultEnabled: true,
+			runtime: { adapterIds: ["codex-native"], capabilities: ["approvals.supported"] },
+			metadata: { surface: "runtime-requests" },
+		},
+	]),
+	entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+});
 export const ompRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(OMP_RUNTIME_PLUGIN_ID, "Pibo OMP Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "omp"), systemContribution("instance", "agent-runtime-instance", "omp-native"), systemContribution("profile", "profile", "orp")]);
 export const builtinProfilesPackageManifest = (): PluginManifest => runtimeAdapterManifest(BUILTIN_PROFILES_PLUGIN_ID, "Pibo Built-in Profiles", [
 	systemContribution("base", "profile", "base"),
@@ -472,7 +490,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "core" | "user-resources" | "preview" | "cron" | "workflows" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
+	backendModule: "core" | "user-resources" | "preview" | "cron" | "workflows" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli" | "product-ui";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
@@ -495,9 +513,9 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: goalControlPackageManifest, backendExport: "setupGoalControl", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }, { exports: "LoopsView", asset: "pibo-plugin-loops.js" }] },
 	{ manifest: agentDelegationPackageManifest, backendExport: "setupAgentDelegation", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 	{ manifest: builtinProfilesPackageManifest, backendExport: "setupBuiltinProfiles", backendModule: "profiles" },
-	{ manifest: piRuntimePackageManifest, backendExport: "setupPiRuntime", backendModule: "runtime-adapters" },
-	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-adapters" },
-	{ manifest: ompRuntimePackageManifest, backendExport: "setupOmpRuntime", backendModule: "runtime-adapters" },
+	{ manifest: piRuntimePackageManifest, backendExport: "setupPiRuntime", backendModule: "runtime-pi" },
+	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-codex-native", browserModules: [{ exports: "RuntimeRequestsView", asset: "pibo-plugin-runtime-requests.js" }] },
+	{ manifest: ompRuntimePackageManifest, backendExport: "setupOmpRuntime", backendModule: "runtime-omp" },
 	{ manifest: mcpCliPackageManifest, backendExport: "setupMcpCli", backendModule: "mcp-cli", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 ];
 

@@ -38,10 +38,25 @@ test("Pibo 4 production source has no executable legacy plugin composition entry
 	assert.doesNotMatch(readFileSync("src/index.ts", "utf8"), /createLegacyPiRuntimeSessionBinding/);
 });
 
-test("debug adapter lookup uses packaged runtime definitions rather than a default registry", () => {
+test("Runtime Request ownership is supplied by Codex Native rather than Core", () => {
+	const core = readFileSync("src/plugins/builtin.ts", "utf8");
+	const defaults = readFileSync("src/plugins/default-packages.ts", "utf8");
+	const codex = readFileSync("src/agent-runtimes/codex-native/gateway-actions.ts", "utf8");
+	assert.doesNotMatch(core, /runtime\.approval\.respond|runtime\.user_input\.respond/);
+	assert.match(codex, /runtime\.approval\.respond/);
+	assert.match(codex, /runtime\.user_input\.respond/);
+	assert.match(defaults, /pibo\.runtime-codex-native/);
+	assert.match(defaults, /RuntimeRequestsView/);
+});
+
+test("debug adapter lookup resolves enabled installed runtime packages without static runtime imports", () => {
 	for (const path of ["src/debug/trace.ts", "src/debug/output-repair.ts"]) {
 		const text = readFileSync(path, "utf8");
-		assert.match(text, /createBuiltinRuntimeAdapter/);
-		assert.doesNotMatch(text, /PiboPluginRegistry|createDefaultPiboPluginRegistry/);
+		assert.match(text, /withInstalledRuntimeAdapter/);
+		assert.doesNotMatch(text, /packaged-runtime-adapters|agent-runtimes\/(?:pi|codex-native|omp)/);
 	}
+	const resolver = readFileSync("src/debug/installed-runtime-adapter.ts", "utf8");
+	assert.match(resolver, /candidate\.manifest\.contributions\.some/);
+	assert.match(resolver, /contribution\.kind === "agent-runtime-instance"/);
+	assert.doesNotMatch(resolver, /agent-runtimes\/(?:pi|codex-native|omp)|createBuiltinRuntimeAdapter/);
 });

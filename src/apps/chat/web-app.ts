@@ -17,10 +17,6 @@ import {
 	type OutputPersistenceRetryContext,
 	type OutputPersistenceRetryJob,
 } from "../../core/output-persistence-retry.js";
-import {
-	PI_AGENT_RUNTIME_CAPABILITIES,
-	PI_PROTOCOL_VERSION,
-} from "../../agent-runtimes/pi/adapter.js";
 import { AgentRuntimeBindingMissingError } from "../../agent-runtime/errors.js";
 import {
 	buildPortableRuntimeContextSnapshot,
@@ -3622,20 +3618,6 @@ async function resolveContextBuildRuntime(context: PiboWebAppContext, runtimeIns
 		if (runtime) return runtime;
 	}
 	const runtime = context.channelContext.getCapabilityCatalog?.().agentRuntimes?.find((candidate) => candidate.id === runtimeInstanceId);
-	if (!runtime && runtimeInstanceId === "pi") {
-		return {
-			id: "pi",
-			adapterId: "pi",
-			displayName: "Pi Coding Agent",
-			enabled: true,
-			available: true,
-			transport: "embedded",
-			capabilities: structuredClone(PI_AGENT_RUNTIME_CAPABILITIES),
-			configSchema: { type: "object", additionalProperties: false },
-			protocol: { name: "pi-sdk", supportedRange: PI_PROTOCOL_VERSION },
-			diagnostics: [],
-		};
-	}
 	if (!runtime) throw new PiboWebHttpError(`Unknown agent runtime instance "${runtimeInstanceId}"`, 400);
 	return {
 		...runtime,

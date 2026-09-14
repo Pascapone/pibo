@@ -9,7 +9,7 @@ import type {
 import type { PiboJsonObject } from "../core/events.js";
 import { storedPiboEventFromV2Row, type EventLogRow } from "../apps/chat/data/chat-data-mappers.js";
 import { PayloadStore } from "../data/payload-store.js";
-import { createBuiltinRuntimeAdapter } from "../plugins/packaged-runtime-adapters.js";
+import { withInstalledRuntimeAdapter } from "./installed-runtime-adapter.js";
 import type { RuntimeSessionBinding } from "../sessions/runtime-binding.js";
 import type { PiboSession } from "../sessions/store.js";
 import type { ChatWebStoredPiboEvent } from "../apps/chat/read-model.js";
@@ -545,17 +545,18 @@ async function readDebugNativeHistory(
 	issues: DebugTraceIssue[],
 ) {
 	if (!binding) return undefined;
-	const adapter = createBuiltinRuntimeAdapter(binding.runtimeInstanceId);
-	if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
+	try {
+		const history = await withInstalledRuntimeAdapter(binding.runtimeInstanceId, async (adapter) => {
+			if (!adapter.descriptor.capabilities.maintenance.history || !adapter.readHistory) return undefined;
+			return await adapter.readHistory({ binding, workspace, limit: 500 });
+		});
+		if (history) return history;
 		issues.push({
 			severity: "warning",
 			code: "runtime_history_provider_unavailable",
-			message: `Runtime instance "${binding.runtimeInstanceId}" has no locally registered history provider.`,
+			message: `Runtime instance "${binding.runtimeInstanceId}" has no enabled installed history provider.`,
 		});
 		return undefined;
-	}
-	try {
-		return await adapter.readHistory({ binding, workspace, limit: 500 });
 	} catch (error) {
 		issues.push({
 			severity: "warning",

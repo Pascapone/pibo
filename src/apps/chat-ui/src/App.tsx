@@ -423,7 +423,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 	const [desktopToolHosts, setDesktopToolHosts] = useState<Partial<Record<DesktopSessionTool, Element | null>>>({});
 	const desktopToolHostCallbacks = useMemo(() => {
-		const tools: DesktopSessionTool[] = ["raw-events", "runtime-requests", "session-inspector"];
+		const tools: DesktopSessionTool[] = ["raw-events", "session-inspector"];
 		return Object.fromEntries(tools.map((tool) => [tool, (node: HTMLDivElement | null) => {
 			setDesktopToolHosts((current) => current[tool] === node ? current : { ...current, [tool]: node });
 		}])) as Record<DesktopSessionTool, (node: HTMLDivElement | null) => void>;

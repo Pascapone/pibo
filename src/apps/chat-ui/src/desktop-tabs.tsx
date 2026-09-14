@@ -13,7 +13,6 @@ import {
 	RefreshCw,
 	Settings,
 	Sparkles,
-	TerminalSquare,
 	Workflow,
 	X,
 	type LucideIcon,
@@ -91,14 +90,6 @@ export function desktopTabInsertionIndex(
 	return overIndex + (position === "after" ? 1 : 0);
 }
 
-const RUNTIME_REQUEST_CATALOG: CatalogEntry = {
-	id: "runtime-requests",
-	label: "Runtime Requests",
-	description: "Approvals and runtime input",
-	icon: TerminalSquare,
-	target: { kind: "session-tool", tool: "runtime-requests" },
-};
-
 function coreSessionToolCatalogEntry(id: CoreSessionViewId, icon: LucideIcon): CatalogEntry {
 	const entry = CORE_SESSION_VIEW_CATALOG.find((candidate) => candidate.id === id)!;
 	return { id, label: entry.title, description: entry.description, icon, target: { kind: "session-tool", tool: id } };
@@ -122,7 +113,6 @@ export function desktopTabCatalog(): readonly CatalogEntry[] {
 		...coreRoutes,
 		...featureRoutes,
 		coreSessionToolCatalogEntry("raw-events", Braces),
-		RUNTIME_REQUEST_CATALOG,
 		coreSessionToolCatalogEntry("session-inspector", ListTree),
 	];
 }

@@ -365,13 +365,19 @@ Root-Emit, Chat-UI-Typecheck/-Build und 39 fokussierte Feature-/UI-/Cachetests s
 ## F05 – Runtimepakete und Runtime Requests abschließen
 
 - [ ] Pi-/Codex-/OMP-SDKs und Implementierungen aus statischen Core-Imports und Installationsabhängigkeiten entfernen.
-- [ ] Runtime Requests gemäß Abschnitt 5 zuordnen, inklusive Inline-Chat und Antwortweg; vorhandene andere Verbraucher erhalten.
-- [ ] Registrierung der Antwortaktionen aus `pibo.core` lösen; Plugin-Requests über öffentliche Actions/Controls anbinden, ohne Codex-Fallunterscheidung im Kern.
-- [ ] Session Inspector bleibt Kern und verwendet allgemeine Runtime-Inspektion.
+- [x] Runtime Requests gemäß Abschnitt 5 zuordnen, inklusive Inline-Chat und Antwortweg; vorhandene andere Verbraucher erhalten.
+- [x] Registrierung der Antwortaktionen aus `pibo.core` lösen; Plugin-Requests über öffentliche Actions/Controls anbinden, ohne Codex-Fallunterscheidung im Kern.
+- [x] Session Inspector bleibt Kern und verwendet allgemeine Runtime-Inspektion.
 - [ ] Pi-/Codex-Wiederaufnahme und vorhandene Reconstruction-/Binding-Verträge erhalten.
 - [ ] OMP nur soweit für Paketgrenzen nötig anpassen und normalen Betrieb prüfen; bekannte Recovery-Grenze dokumentieren.
 
 **Fertig, wenn:** Keine Runtime ist Voraussetzung für den Core-Start; eine installierte Runtime bringt ihre Angebote selbst mit. Request-Antworten bleiben funktionsfähig. Abhängigkeiten: F01, F03, gemeinsame UI-Verträge aus F04.
+
+### F05-Zwischenstand: Runtime Requests und getrennte Runtime-Setups
+
+Pi, Codex Native und OMP besitzen getrennte Backend-Setupmodule. Codex Native registriert die beiden Runtime-Request-Antwortaktionen, ihre Parameterprüfung, eine runtime-/capability-geeignete Workspace-View und einen eigenen Browserentry. Core registriert diese Action-Namen nicht mehr; Runtime Requests sind kein fester `DesktopSessionTool`. Der Inline-Chat bleibt als runtime-neutrale gemeinsame UI-/SSE-Hilfe bestehen und adressiert dieselben Request-IDs und dieselbe Pending-Queue wie die optionale View. Debug löst History-Adapter generisch aus dem aktiv installierten Runtimepaket statt über den statischen Sammeladapter auf.
+
+Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Runtime-/Request-/UI-/Debugtests sind grün; `/tmp/pibo4-f05-runtime-requests.md` enthält den Zwischenbericht. F05 bleibt offen, weil alte Pi-Kompatibilitätsimports und Root-Exports (`core/runtime`, `core/routed-session`, Chat-Modell-/Trace-Kompatibilität) noch keine physische runtimefreie Core-Closure erlauben. Deren Entfernung/Service-Inversion wird mit F06/F08 abgeschlossen; danach wird Pi-/Codex-Recovery erneut vollständig geprüft.
 
 ## F06 – Minimal- und Standarddistribution bauen
 

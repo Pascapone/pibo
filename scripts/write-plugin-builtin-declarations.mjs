@@ -25,6 +25,9 @@ const declarations = {
 		"setupGoalControl(context: PluginSetupContext): () => Promise<void>;",
 		"setupAgentDelegation(context: PluginSetupContext): void;",
 	],
+	"packaged-runtime-pi.d.ts": ["setupPiRuntime(context: PluginSetupContext): void;"],
+	"packaged-runtime-codex-native.d.ts": ["setupCodexNativeRuntime(context: PluginSetupContext): void;"],
+	"packaged-runtime-omp.d.ts": ["setupOmpRuntime(context: PluginSetupContext): void;"],
 	"packaged-runtime-adapters.d.ts": [
 		"setupPiRuntime(context: PluginSetupContext): void;",
 		"setupCodexNativeRuntime(context: PluginSetupContext): void;",

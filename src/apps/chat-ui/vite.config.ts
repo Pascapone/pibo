@@ -25,6 +25,7 @@ export default defineConfig({
 				"pibo-plugin-web-annotations": resolve(root, "src/plugins/web-annotations-view.tsx"),
 				"pibo-plugin-build-context": resolve(root, "src/plugins/build-context-view.tsx"),
 				"pibo-plugin-preview": resolve(root, "src/plugins/preview-view.tsx"),
+				"pibo-plugin-runtime-requests": resolve(root, "src/plugins/runtime-requests-view.tsx"),
 				"pibo-plugin-workflows": resolve(root, "src/plugins/workflows-view.tsx"),
 				"pibo-plugin-cron": resolve(root, "src/plugins/cron-view.tsx"),
 				"pibo-plugin-loops": resolve(root, "src/plugins/loops-view.tsx"),

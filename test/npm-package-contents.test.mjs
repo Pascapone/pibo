@@ -71,11 +71,11 @@ test("npm package includes runtime assets and closes installed documentation lin
 	const packagedFiles = new Set(files);
 	assert.equal(files.includes("dist/bin/pibo.js"), true);
 	assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
-	for (const module of ["web-annotations", "tool-families", "control-tools", "runtime-adapters", "profiles", "mcp-cli", "preview", "cron", "workflows"]) {
+	for (const module of ["web-annotations", "tool-families", "control-tools", "runtime-pi", "runtime-codex-native", "runtime-omp", "runtime-adapters", "profiles", "mcp-cli", "preview", "cron", "workflows"]) {
 		assert.equal(files.includes(`dist/plugins/packaged-${module}.js`), true, `npm package must include packaged-${module}.js`);
 		assert.equal(files.includes(`dist/plugins/packaged-${module}.d.ts`), true, `npm package must include packaged-${module}.d.ts`);
 	}
-	for (const entry of ["build-context", "cron", "loops", "preview", "tool-family", "web-annotations", "workflows"]) {
+	for (const entry of ["build-context", "cron", "loops", "preview", "runtime-requests", "tool-family", "web-annotations", "workflows"]) {
 		assert.equal(files.includes(`dist/apps/chat-ui/assets/pibo-plugin-${entry}.js`), true, `npm package must include ${entry} browser entry`);
 	}
 	assert.equal(files.some((path) => /(?:^|\/)(?:chat-vscode(?:-web)?|cli-ui|cli-session|local|pi-packages|vscode)(?:\/|\.|-)/.test(path) || path.includes("vscode-artifacts")), false);

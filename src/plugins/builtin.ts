@@ -1,14 +1,12 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
-	PiboApprovalResponseParams,
 	PiboExecutionEvent,
 	PiboJsonObject,
 	PiboSessionForkParams,
 	PiboSessionSwitchParams,
 	PiboSessionTreeNavigateParams,
 	PiboThinkingParams,
-	PiboUserInputResponseParams,
 } from "../core/events.js";
 import { InitialSessionContext, type SkillProfile } from "../core/profiles.js";
 import { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/default-profile.js";
@@ -72,28 +70,6 @@ function getThinkingParams(event: PiboExecutionEvent): PiboThinkingParams {
 	if (!raw || raw.level === undefined) return {};
 	if (typeof raw.level !== "string") throw new Error("thinking requires params.level to be a string");
 	return { level: parsePiboThinkingLevel(raw.level) };
-}
-
-function requireApprovalResponseParams(event: PiboExecutionEvent): PiboApprovalResponseParams {
-	const params = getObjectParams(event);
-	if (!params || typeof params.requestId !== "string" || !params.requestId.trim()) {
-		throw new Error("runtime.approval.respond requires params.requestId");
-	}
-	if (typeof params.decision !== "string" || !params.decision.trim()) {
-		throw new Error("runtime.approval.respond requires params.decision");
-	}
-	return { requestId: params.requestId, decision: params.decision };
-}
-
-function requireUserInputResponseParams(event: PiboExecutionEvent): PiboUserInputResponseParams {
-	const params = getObjectParams(event);
-	if (!params || typeof params.requestId !== "string" || !params.requestId.trim()) {
-		throw new Error("runtime.user_input.respond requires params.requestId");
-	}
-	if (!params.answers || typeof params.answers !== "object" || Array.isArray(params.answers)) {
-		throw new Error("runtime.user_input.respond requires params.answers");
-	}
-	return { requestId: params.requestId, answers: params.answers as PiboJsonObject };
 }
 
 function requireLoginStartParams(event: PiboExecutionEvent): {
@@ -232,26 +208,6 @@ export function definePiboCoreContributions(sink: PiboCoreContributionSink): voi
 				const params = getObjectParams(event);
 				const customInstructions = typeof params?.customInstructions === "string" ? params.customInstructions : undefined;
 				return await context.compact(customInstructions);
-			},
-		});
-		sink.addGatewayAction({
-			name: "runtime.approval.respond",
-			description: "Respond to a pending runtime approval request.",
-			hidden: true,
-			async execute(context, event) {
-				const params = requireApprovalResponseParams(event);
-				await context.respondToApproval(params.requestId, params.decision);
-				return { requestId: params.requestId, responded: true };
-			},
-		});
-		sink.addGatewayAction({
-			name: "runtime.user_input.respond",
-			description: "Respond to a pending structured runtime user-input request.",
-			hidden: true,
-			async execute(context, event) {
-				const params = requireUserInputResponseParams(event);
-				await context.respondToUserInput(params.requestId, params.answers);
-				return { requestId: params.requestId, responded: true };
 			},
 		});
 		sink.addGatewayAction({

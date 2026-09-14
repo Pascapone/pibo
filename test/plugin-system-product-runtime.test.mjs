@@ -77,6 +77,8 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.deepEqual(projection.getProfileNames(), ['base', 'pibo-gateway-producer', 'codex-native', 'orp']);
   assert.ok(projection.getWebApps().some((app) => app.name === 'web-annotations'));
   assert.equal(host.services.owners()[PIBO_LOOP_SERVICE], 'pibo.goal-control');
+  assert.equal(host.contributions.list('contribution').find((entry) => entry.key === 'pibo.runtime-codex-native/approval-response')?.owner, 'pibo.runtime-codex-native');
+  assert.equal(host.contributions.list('contribution').find((entry) => entry.key === 'pibo.runtime-codex-native/user-input-response')?.owner, 'pibo.runtime-codex-native');
   assert.equal(host.services.get(PIBO_LOOP_SERVICE).get(), undefined);
   assert.ok(projection.getChannels().some((channel) => channel.name === 'pibo.loop'));
   assert.ok(projection.getGatewayAction('goal'));
@@ -84,6 +86,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.equal(host.contributions.get('contribution', 'pibo.workflows/view').contribution.view.exportName, 'WorkflowsView');
   assert.equal(host.contributions.get('contribution', 'pibo.cron/view').contribution.view.exportName, 'CronView');
   assert.equal(host.contributions.get('contribution', 'pibo.goal-control/loops').contribution.view.exportName, 'LoopsView');
+  assert.equal(host.contributions.get('contribution', 'pibo.runtime-codex-native/runtime-requests').contribution.view.exportName, 'RuntimeRequestsView');
   assert.equal(host.contributions.get('contribution', 'pibo.product-ui/agent-designer'), undefined);
   assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings'), undefined);
   assert.equal(data.plugins.getInstallation('pibo.standard-shell'), undefined);
@@ -92,9 +95,16 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.equal(plan.valid, true);
   assert.ok(plan.contributions.some((entry) => entry.id === 'pibo.web-annotations/annotations'));
   assert.ok(plan.contributions.some((entry) => entry.id === 'pibo.workflows/view'));
+  assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.runtime-codex-native/runtime-requests'), false, 'Pi sessions do not receive the Codex Runtime Requests view');
   assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.product-ui/agent-designer'), false);
   assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.product-ui/settings'), false);
   assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.standard-shell/shell'), false);
+  const codexAdapter = projection.getAgentRuntimeAdapter('codex-native');
+  const codexInstallation = data.plugins.getInstallation('pibo.runtime-codex-native');
+  const codexProfile = new InitialSessionContext({ profileName: 'codex-requests', runtimeInstanceId: 'codex-native', pluginSelection: createAgentPluginSelection([codexInstallation]) });
+  const codexPlan = product.runtime.preview(codexProfile, { adapterId: 'codex-native', instanceId: 'codex-native', capabilities: codexAdapter.descriptor.capabilities }, 'ps_codex_requests');
+  assert.equal(codexPlan.valid, true);
+  assert.ok(codexPlan.contributions.some((entry) => entry.id === 'pibo.runtime-codex-native/runtime-requests'));
   assert.deepEqual(profileFromPluginPlan(profile, plan, host).tools.map((tool) => tool.name).filter((name) => name.startsWith('web_annotations_')).sort(), ['web_annotations_acknowledge', 'web_annotations_dismiss', 'web_annotations_get', 'web_annotations_list', 'web_annotations_resolve', 'web_annotations_watch']);
   assert.equal(product.manager.diagnose().consumerCollectorAvailable, true);
   await product.dispose();

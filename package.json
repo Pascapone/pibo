@@ -57,6 +57,18 @@
       "types": "./dist/plugins/packaged-control-tools.d.ts",
       "import": "./dist/plugins/packaged-control-tools.js"
     },
+    "./plugin-builtin/runtime-pi": {
+      "types": "./dist/plugins/packaged-runtime-pi.d.ts",
+      "import": "./dist/plugins/packaged-runtime-pi.js"
+    },
+    "./plugin-builtin/runtime-codex-native": {
+      "types": "./dist/plugins/packaged-runtime-codex-native.d.ts",
+      "import": "./dist/plugins/packaged-runtime-codex-native.js"
+    },
+    "./plugin-builtin/runtime-omp": {
+      "types": "./dist/plugins/packaged-runtime-omp.d.ts",
+      "import": "./dist/plugins/packaged-runtime-omp.js"
+    },
     "./plugin-builtin/runtime-adapters": {
       "types": "./dist/plugins/packaged-runtime-adapters.d.ts",
       "import": "./dist/plugins/packaged-runtime-adapters.js"

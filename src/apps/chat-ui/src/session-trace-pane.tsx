@@ -776,21 +776,6 @@ export function SessionTracePane({
     />
   ) : undefined;
 
-  const desktopRuntimeRequestsPanel = selectedBackendPiboSessionId ? (
-    <div className="h-full overflow-auto bg-[#101d22]">
-      {runtimeApprovals.length || runtimeUserInputs.length ? (
-        <RuntimeRequestPanel
-          piboSessionId={selectedBackendPiboSessionId}
-          approvals={runtimeApprovals}
-          userInputs={runtimeUserInputs}
-          onResolved={removeRuntimeRequest}
-          onError={onError}
-        />
-      ) : (
-        <div className="grid h-full place-items-center p-6 text-center text-sm text-slate-500" data-pibo-debug="desktop-runtime-requests-empty">No pending runtime requests for this Pibo Session.</div>
-      )}
-    </div>
-  ) : <DesktopSessionToolEmpty label="Select a Pibo Session to inspect runtime requests." />;
   const desktopInspectorPanel = selectedPiboSessionId ? (
     <div className="h-full overflow-auto bg-[#0e1116] p-3" data-pibo-debug="desktop-session-inspector">
       <div className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#11a4d4]">Selected Pibo Session</div>
@@ -815,7 +800,6 @@ export function SessionTracePane({
         onLoadOlder={loadMoreRawEvents}
       />
     ),
-    "runtime-requests": desktopRuntimeRequestsPanel,
     "session-inspector": desktopInspectorPanel,
   };
 
@@ -914,7 +898,7 @@ export function SessionTracePane({
       auxiliaryPanel={livePreviewPanel}
       currentSessionView={currentSessionView}
       sessionViewProps={sessionViewProps}
-      runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected && desktopActiveTool !== "runtime-requests" ? (
+      runtimeRequestPanel={selectedBackendPiboSessionId && !livePreviewSelected ? (
         <RuntimeRequestPanel
           piboSessionId={selectedBackendPiboSessionId}
           approvals={runtimeApprovals}

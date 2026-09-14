@@ -4,7 +4,7 @@ import { isPiboOutputEvent } from "../apps/chat/output-event-policy.js";
 import type { PiboEventSource, PiboJsonObject, PiboJsonValue, PiboOutputEvent } from "../core/events.js";
 import { ChatDataIngestService } from "../data/ingest-service.js";
 import { PiboDataStore } from "../data/pibo-store.js";
-import { createBuiltinRuntimeAdapter } from "../plugins/packaged-runtime-adapters.js";
+import { withInstalledRuntimeAdapter } from "./installed-runtime-adapter.js";
 import type { RuntimeSessionBinding } from "../sessions/runtime-binding.js";
 import { PiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import type { ResolvedPiboDebugStore } from "./stores.js";
@@ -291,13 +291,12 @@ export async function readOutputRepairAdapterEvidence(input: {
 		if (!session) return { available: false, entries: [] };
 		const binding = readRuntimeBinding(db, input.piboSessionId, session);
 		if (!binding) return { available: false, entries: [] };
-		const adapter = createBuiltinRuntimeAdapter(binding.runtimeInstanceId);
-		if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
-			return { available: false, entries: [] };
-		}
 		try {
-			const page = await adapter.readHistory({ binding, workspace: session.workspace ?? process.cwd(), limit: 500 });
-			return { available: true, entries: page.entries };
+			const entries = await withInstalledRuntimeAdapter(binding.runtimeInstanceId, async (adapter) => {
+				if (!adapter.descriptor.capabilities.maintenance.history || !adapter.readHistory) return undefined;
+				return (await adapter.readHistory({ binding, workspace: session.workspace ?? process.cwd(), limit: 500 })).entries;
+			});
+			return entries ? { available: true, entries } : { available: false, entries: [] };
 		} catch (error) {
 			return { available: false, entries: [], error: redactError(error) };
 		}

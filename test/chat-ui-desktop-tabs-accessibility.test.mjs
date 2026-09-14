@@ -27,9 +27,14 @@ test("desktop workspace tabs expose New Tab catalog, ARIA tabs, keyboard and poi
 		'aria-label="Collapse workspace tabs"',
 		'aria-label="Reopen workspace tabs"',
 	]) assert.match(source, new RegExp(contract.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-	for (const label of ["Sessions", "Workflows", "Cron", "Loops", "Agent Designer", "Context", "Settings", "Preview", "Raw Events", "Web Annotations", "Runtime Requests", "Session Inspector"]) {
+	for (const label of ["Workflows", "Cron", "Loops"]) {
 		assert.match(source, new RegExp(`label: "${label}"`));
 	}
+	assert.match(source, /CORE_WORKSPACE_CATALOG\.map/);
+	assert.match(source, /coreSessionToolCatalogEntry\("raw-events"/);
+	assert.match(source, /coreSessionToolCatalogEntry\("session-inspector"/);
+	assert.match(source, /pluginViews\.filter\(\(view\) => view\.chatRoutes\.length === 0\)/);
+	assert.doesNotMatch(source, /label: "Preview"|label: "Web Annotations"|label: "Runtime Requests"/);
 	assert.doesNotMatch(source, /label: "VS Code"|area: "vscode"/);
 	assert.doesNotMatch(source, /aria-haspopup="menu"|role="menu"|pointerdown.*closeFromOutside/);
 	assert.doesNotMatch(source, /event\.key === "Escape"/);
@@ -92,6 +97,6 @@ test("App keeps the three-region desktop workspace and exposes narrow-screen hea
 	assert.doesNotMatch(app, /desktopTabMode=/);
 	assert.doesNotMatch(chrome, /desktopTabMode/);
 	assert.match(pane, /createPortal\(desktopToolPanels\[tool\]/);
-	assert.match(pane, /forcePanelVisible: Boolean\(desktopToolHosts\?\.\["web-annotations"\]\)/);
+	assert.doesNotMatch(pane, /desktopToolHosts\?\.\["web-annotations"\]|desktopRuntimeRequestsPanel/);
 	assert.doesNotMatch(app, /sessionViewId="terminal"[\s\S]*desktopTerminalOnly/);
 });

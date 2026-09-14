@@ -12,6 +12,7 @@ import {
 	getCodexNativeClient,
 } from "../dist/agent-runtimes/codex-native/adapter.js";
 import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-native/config.js";
+import { codexRuntimeRequestActions } from "../dist/agent-runtimes/codex-native/gateway-actions.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
@@ -331,6 +332,7 @@ test("Codex approval and structured-input requests flow through generic routed s
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
 				api.registerAgentRuntimeInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config });
+				for (const action of codexRuntimeRequestActions()) api.registerGatewayAction(action);
 				api.registerProfile({
 					name: profileName,
 					create() {
