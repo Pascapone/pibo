@@ -7,7 +7,8 @@ import { Value } from "typebox/value";
 import { mcpAdapterFromPluginPlan } from "../dist/agent-runtime/plugin-plan.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
-import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { PI_AGENT_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/pi/adapter.js";
+import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
@@ -36,14 +37,20 @@ import {
 	piboAgentObservationToolSummary,
 } from "../dist/subagents/observations.js";
 import { definePiboPlugin } from "../dist/plugins/registry.js";
+import { PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE } from "../dist/plugins/runtime.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { findCliToolEntry, getInstalledCliToolContextFile } from "../dist/tools/registry.js";
-import { isGeneratedPiboTool } from "../dist/tools/session-tool-set.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
+import { PiboPortableToolService } from "../dist/tools/session-service.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 const pluginProduct = await startTestPluginProduct("pibo-subagents-product-");
 const pluginRegistry = pluginProduct.createDefaultRegistry();
+const createUnmaterializedProfile = pluginRegistry.createProfile.bind(pluginRegistry);
+pluginRegistry.createProfile = (name, context) => {
+	const profile = createUnmaterializedProfile(name, context);
+	return profile.pluginSelection ? profile : pluginProduct.materializeProfile(pluginRegistry, profile);
+};
 after(async () => {
 	await pluginRegistry.disposePlugins();
 	await pluginProduct.dispose();
@@ -106,6 +113,48 @@ const noopRunToolController = {
 		throw new Error("not used");
 	},
 };
+
+async function createSelectedRunControlRuntime(profile, runToolController) {
+	const piboSessionId = `ps_run_${Math.random().toString(36).slice(2)}`;
+	const selected = pluginProduct.materializeProfile(pluginRegistry, profile, piboSessionId);
+	const generation = pluginProduct.runtime.reserve(selected, {
+		adapterId: "pi",
+		instanceId: "pi",
+		capabilities: PI_AGENT_RUNTIME_CAPABILITIES,
+	}, piboSessionId, `gen_${Math.random().toString(36).slice(2)}`);
+	const portableService = new PiboPortableToolService();
+	const portableTools = portableService.createSession({
+		piboSessionId,
+		runtimeInstanceId: "pi",
+		adapterId: "pi",
+		sessionGeneration: generation.plan.generation,
+		profile: generation.profile,
+		cwd: process.cwd(),
+		sessionToolProviders: generation.sessionToolProviders,
+		sessionServices: { [PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE]: { create: () => runToolController } },
+	});
+	const resourceService = new PiboRuntimeResourceService();
+	const resources = await resourceService.createSession({
+		piboSessionId,
+		runtimeInstanceId: "pi",
+		adapterId: "pi",
+		sessionGeneration: generation.plan.generation,
+		profile: generation.profile,
+		cwd: process.cwd(),
+		timezone: "UTC",
+		capabilities: PI_AGENT_RUNTIME_CAPABILITIES,
+	});
+	const runtime = await createPiboRuntime({ profile: generation.profile, persistSession: false, portableTools, resources });
+	return {
+		runtime,
+		async dispose() {
+			await runtime.dispose();
+			await portableService.dispose();
+			await resourceService.dispose();
+			pluginProduct.runtime.release(generation);
+		},
+	};
+}
 
 async function waitFor(predicate, timeoutMs = 2_000) {
 	const deadline = Date.now() + timeoutMs;
@@ -456,10 +505,8 @@ test("agent observation tool summaries bound oversized and malformed values", ()
 	assert.match(malformed, /"isError":true/);
 });
 
-test("legacy subagent tool exports remain available, stay outside runtime assembly, and require session names", async () => {
+test("legacy subagent tool exports remain available outside generic runtime assembly and require session names", async () => {
 	assert.equal(createSubagentToolName("Research Helper"), "pibo_subagent_research_helper");
-	assert.equal(isGeneratedPiboTool("pibo_subagent_research_helper"), true);
-	assert.equal(isGeneratedPiboTool("pibo_agents_send_message"), true);
 	const calls = [];
 	const [tool] = createSubagentToolDefinitions(
 		[{ name: "Research Helper", description: "Legacy integration helper.", targetProfile: "helper-profile" }],
@@ -549,18 +596,15 @@ test("shared send tool normalizes the legacy agents-controller result shape", as
 	assert.match(result.content[0].text, /legacy reply text/);
 });
 
-test("legacy runtime subagentRunner callers receive an explicit migration error", async () => {
-	const profile = new InitialSessionContextBuilder("legacy-runtime")
-		.withAutoContextFiles(false)
-		.addSubagent({ name: "helper", targetProfile: "base" })
-		.createSession();
+test("provider-backed plugin generations fail closed without a host-owned portable tool session", async () => {
+	const profile = new InitialSessionContext({
+		profileName: "provider-backed-runtime",
+		effectivePluginPlan: { schemaVersion: 1 },
+		tools: [{ name: "external_tool", providerBacked: true }],
+	});
 	await assert.rejects(
-		createPiboRuntime({
-			profile,
-			persistSession: false,
-			subagentRunner: { async runSubagent() { throw new Error("not used"); } },
-		}),
-		/PiboRuntimeOptions\.subagentRunner is retired\. Provide agentsController/,
+		createPiboRuntime({ profile, persistSession: false, resources: {} }),
+		/require a host-owned PortableToolSession/,
 	);
 });
 
@@ -866,7 +910,7 @@ test("profiles can expose subagents as active router tools", async () => {
 						return new InitialSessionContextBuilder("parent-profile")
 							.withBuiltinTools("disabled")
 							.withAutoContextFiles(false)
-							.withToolPackages({ goalControl: false, runControl: false })
+							.withToolPackages({ goalControl: false })
 							.addTool({
 								name: "ordinary",
 								definition: {
@@ -2006,7 +2050,7 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 		const childAdapter = registry.requireAgentRuntimeAdapter("subagent-abort-child");
 		const deadline = Date.now() + 2_000;
 		while (!childAdapter.sessions.some((session) => session.getStatus().streaming)) {
-			if (Date.now() >= deadline) throw new Error("Timed out waiting for active subagent child");
+			if (Date.now() >= deadline) throw new Error(`Timed out waiting for active subagent child: ${JSON.stringify(router.createRunToolController("ps_abort_parent").readRun(started.details.runId))}`);
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "abort" });
@@ -2476,12 +2520,8 @@ test("run-control package exposes Pi bash as a yieldable tool", async () => {
 		.withBuiltinToolNames(["read", "bash", "edit", "write"])
 		.withToolPackages({ runControl: true })
 		.createSession();
-	const runtime = await createPiboRuntime({
-		profile,
-		persistSession: false,
-		agentsController: noopAgentsController,
-		runToolController: noopRunToolController,
-	});
+	const fixture = await createSelectedRunControlRuntime(profile, noopRunToolController);
+	const runtime = fixture.runtime;
 
 	try {
 		const activeTools = new Set(runtime.session.getActiveToolNames());
@@ -2495,7 +2535,7 @@ test("run-control package exposes Pi bash as a yieldable tool", async () => {
 		assert.equal(toolNameSchema.enum.includes("bash"), true);
 		assert.equal(toolNameSchema.enum.includes("pibo_exec"), false);
 	} finally {
-		await runtime.dispose();
+		await fixture.dispose();
 	}
 });
 
@@ -2525,7 +2565,8 @@ test("real yielded Pi bash timeout preserves startup output classification", asy
 		.withBuiltinToolNames(["bash"])
 		.withToolPackages({ runControl: true })
 		.createSession();
-	const runtime = await createPiboRuntime({ profile, persistSession: false, agentsController: noopAgentsController, runToolController: controller });
+	const fixture = await createSelectedRunControlRuntime(profile, controller);
+	const runtime = fixture.runtime;
 	try {
 		const startTool = runtime.session.getToolDefinition("pibo_run_start");
 		await startTool.execute(
@@ -2542,7 +2583,7 @@ test("real yielded Pi bash timeout preserves startup output classification", asy
 		assert.equal(started.timeoutMs, 1000);
 		await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "lifetime");
 	} finally {
-		await runtime.dispose();
+		await fixture.dispose();
 		if (previousIsolation === undefined) delete process.env.PIBO_YIELDED_RUN_ISOLATION;
 		else process.env.PIBO_YIELDED_RUN_ISOLATION = previousIsolation;
 	}

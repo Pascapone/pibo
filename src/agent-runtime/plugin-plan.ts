@@ -7,7 +7,7 @@ import type { EffectivePluginPlan, IndependentPluginResource, PluginResolutionIn
 import { assertEffectivePluginPlan, resolvePluginContributions } from "../plugins/resolution.js";
 import { catalogPluginServices } from "../plugins/product-services.js";
 import type { PiboMcpAdapter } from "../plugins/mcp-adapter.js";
-import type { PluginRuntimeHook, PluginSessionToolProvider, PluginSessionToolProviderBinding } from "../plugins/runtime.js";
+import type { PluginRuntimeHook, PluginSessionToolProvider, PluginSessionToolProviderBinding, PluginSystemPromptTransformer, PluginSystemPromptTransformerBinding } from "../plugins/runtime.js";
 
 /** Independent resources are not executable plugin selections, including manual child profiles. */
 export function independentProfileResources(profile: InitialSessionContext): IndependentPluginResource[] {
@@ -30,14 +30,28 @@ export function profileFromPluginPlan(profile: InitialSessionContext, plan: Effe
 	const skills: SkillProfile[] = profile.skills.filter((item) => item.kind !== "plugin");
 	const contextFiles: ContextFileProfile[] = profile.contextFiles.filter((item) => item.source !== "plugin");
 	const subagents: SubagentProfile[] = [...profile.subagents];
+	const systemPromptTransformers: PluginSystemPromptTransformerBinding[] = [];
 	const mcpServers: string[] = [];
 	for (const entry of plan.contributions) {
 		// App registrations are usable by the product, never implicit model capabilities.
 		if (entry.contribution.scope !== "agent") continue;
 		const registration = host.contributions.get<{ installation: PluginInstallation; value: unknown }>("contribution", entry.id);
 		const kind = entry.contribution.kind;
-		if (!["tool", "skill", "context-file", "subagent", "mcp-server", "mcp-adapter"].includes(kind)) continue;
-		if (kind === "tool" && entry.contribution.sessionToolProvider) continue;
+		if (!["tool", "skill", "context-file", "subagent", "mcp-server", "mcp-adapter", "system-prompt-transformer"].includes(kind)) continue;
+		if (kind === "tool" && entry.contribution.sessionToolProvider) {
+			const replacesBuiltinTools = entry.contribution.metadata?.replacesBuiltinTools;
+			tools.push({
+				name: entry.contribution.name!,
+				description: entry.contribution.context.kind === "context" ? entry.contribution.context.description : entry.contribution.title,
+				enabled: true,
+				direct: entry.contribution.direct !== false,
+				yieldable: entry.contribution.yieldable !== false,
+				providerBacked: true,
+				pluginId: entry.pluginId,
+				...(Array.isArray(replacesBuiltinTools) && replacesBuiltinTools.every((name) => typeof name === "string") ? { replacesBuiltinTools: replacesBuiltinTools as string[] } : {}),
+			});
+			continue;
+		}
 		if (!registration || registration.installation.revision !== entry.pluginRevision) throw new Error(`Selected contribution ${entry.id} is not loaded at revision ${entry.pluginRevision}`);
 		const value = registration.value;
 		if (kind === "tool") {
@@ -49,6 +63,11 @@ export function profileFromPluginPlan(profile: InitialSessionContext, plan: Effe
 		if (kind === "skill") skills.push({ ...(value as SkillProfile), kind: "plugin", pluginId: entry.pluginId, pluginContributionId: entry.id, required: entry.required, enabled: true });
 		if (kind === "context-file") contextFiles.push({ ...(value as ContextFileProfile), source: "plugin", pluginId: entry.pluginId, pluginContributionId: entry.id, required: entry.required, enabled: true });
 		if (kind === "subagent") subagents.push({ ...(value as SubagentProfile), enabled: true });
+		if (kind === "system-prompt-transformer") {
+			const transformer = value as PluginSystemPromptTransformer;
+			if (!transformer || typeof transformer.transform !== "function") throw new Error(`Selected system prompt transformer ${entry.id} is invalid`);
+			systemPromptTransformers.push({ contributionId: entry.id, pluginId: entry.pluginId, transformer });
+		}
 		if (kind === "mcp-adapter") {
 			const selectedServers = entry.config.selectedServers;
 			if (!Array.isArray(selectedServers) || selectedServers.some((name) => typeof name !== "string" || !name.trim())) throw new Error(`Selected MCP adapter ${entry.id} is missing its migrated selectedServers configuration`);
@@ -57,12 +76,7 @@ export function profileFromPluginPlan(profile: InitialSessionContext, plan: Effe
 		// External server configuration/secret resolution stays in the selected adapter and existing resource service.
 		if (kind === "mcp-server") mcpServers.push(typeof value === "string" ? value : (value as { name: string }).name);
 	}
-	const names = new Set(tools.map((tool) => tool.name));
-	return new InitialSessionContext({ ...profile, effectivePluginPlan: plan, tools, skills, contextFiles, subagents, mcpServers, toolPackages: {
-		runControl: names.has("pibo_run_start"),
-		goalControl: names.has("get_goal") || names.has("create_goal") || names.has("update_goal"),
-		codexCompat: names.has("codex"),
-	} });
+	return new InitialSessionContext({ ...profile, effectivePluginPlan: plan, tools, skills, contextFiles, subagents, mcpServers, systemPromptTransformers, toolPackages: {} });
 }
 
 export function sessionToolProvidersFromPluginPlan(plan: EffectivePluginPlan, host: PluginHost): PluginSessionToolProviderBinding[] {
@@ -87,6 +101,10 @@ export function sessionToolProvidersFromPluginPlan(plan: EffectivePluginPlan, ho
 			selectedTools: selectedTools.map((entry) => ({
 				contributionId: entry.id,
 				name: entry.contribution.name!,
+				direct: entry.contribution.direct !== false,
+				yieldable: entry.contribution.yieldable !== false,
+				selectionReason: entry.selectionReason,
+				dependencyPath: [...entry.dependencyPath],
 				configuration: Object.freeze(structuredClone(plan.pluginConfigurations[entry.pluginId] ?? {})),
 				contributionConfiguration: Object.freeze(structuredClone(entry.config)),
 			})),

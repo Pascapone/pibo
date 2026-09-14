@@ -50,6 +50,12 @@ function profileWithSessionIds(
 ): InitialSessionContext {
 	return new InitialSessionContext({
 		profileName: profile.profileName,
+		pluginSelection: profile.pluginSelection,
+		pluginSelectionRevision: profile.pluginSelectionRevision,
+		pluginAgentId: profile.pluginAgentId,
+		effectivePluginPlan: profile.effectivePluginPlan,
+		runtimeInstanceId: profile.runtimeInstanceId,
+		runtimeOptions: profile.runtimeOptions,
 		sessionId: piSessionId,
 		parentSessionId: parentPiSessionId,
 		model: profile.model,
@@ -67,6 +73,7 @@ function profileWithSessionIds(
 		subagents: profile.subagents,
 		mcpServers: profile.mcpServers,
 		contextFiles: profile.contextFiles,
+		systemPromptTransformers: profile.systemPromptTransformers,
 		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,

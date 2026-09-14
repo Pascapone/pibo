@@ -29,17 +29,10 @@ import {
 } from "../../core/profiles.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "../../core/model-defaults.js";
 import { createDefaultPiboProfile } from "../../core/default-profile.js";
-import {
-	PIBO_AGENT_TOOL_NAMES,
-	type PiboAgentsController,
-	type PiboSubagentRunner,
-} from "../../subagents/tool.js";
 import { getDelegatedAgentContextFile } from "../../subagents/context.js";
 import { resolvePiboSubagentRuntimeSelections } from "../../subagents/runtime-selection.js";
-import type { PiboRunToolController } from "../../runs/tools.js";
 import type { PiboThinkingLevel } from "../../core/thinking.js";
 import { getInstalledCliToolContextFile } from "../../tools/registry.js";
-import { createCodexCompatExtension } from "../../core/codex-compat.js";
 import { createWebSearchProviderExtension, isWebSearchProviderTool } from "../../tools/web-search.js";
 import { getMcpAgentContextFile } from "../../mcp/agent-context.js";
 import { createPiboSystemPromptTemplateExtension } from "../../core/system-prompt-template.js";
@@ -61,9 +54,6 @@ import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
 import { registerOpenAiSupplementalModels, type OpenAiSupplementalModelRegistryLike } from "../../providers/openai-gpt56.js";
 import { PIBO_APP_CONTEXT } from "../../app-context.js";
-import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
-import { RuntimeSessionRegistry } from "../../tools/runtime/registry.js";
-import { CodexBrowserSessionController } from "../../tools/codex-browser.js";
 import { compactValidationToolResultForContext } from "../../core/test-output-compaction.js";
 import { installPiboTranscriptIntegrity } from "../../core/transcript-integrity.js";
 import {
@@ -79,13 +69,7 @@ import type {
 	AgentRuntimeExternalMcpServerInspection,
 	PiboRuntimeResourceSession,
 } from "../../agent-runtime/resources.js";
-import {
-	createPiboSessionToolDefinitions,
-	isCodexBrowserToolProfile as isCodexBrowserTool,
-	isEnabledCodexBrowserToolProfile as isEnabledCodexBrowserTool,
-	isEnabledRuntimeToolProfile as isEnabledRuntimeTool,
-	isRuntimeToolProfile as isRuntimeTool,
-} from "../../tools/session-tool-set.js";
+import { createPiboSessionToolDefinitions } from "../../tools/session-tool-set.js";
 
 export type PiboRuntimeRetryDefaults = Readonly<Pick<RetrySettings, "enabled" | "maxRetries" | "baseDelayMs">>;
 
@@ -124,11 +108,6 @@ export type PiboRuntimeOptions = {
 	/** Optional Pi model runtime override for embedded callers and deterministic tests. */
 	modelRuntime?: ModelRuntime;
 	extensionFactories?: ExtensionFactory[];
-	agentsController?: PiboAgentsController;
-	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
-	subagentRunner?: PiboSubagentRunner;
-	runToolController?: PiboRunToolController;
-	runtimeToolController?: PiboRuntimeToolController;
 	/** Router-owned portable tool scope shared with external-harness MCP delivery. */
 	portableTools?: PiboPortableToolSession;
 	/** Router-owned selected skills, context, and external MCP generation scope. */
@@ -298,22 +277,22 @@ function getProfileExtensionFactories(
 		.filter((tool) => tool.enabled !== false)
 		.filter(isWebSearchProviderTool)
 		.map((tool) => createWebSearchProviderExtension(tool.providerTool));
-	if (profile.toolPackages.codexCompat !== true) {
-		return [
-			piboPromptTemplateExtension,
-			piboCompactionPromptExtension,
-			piboContextGuardExtension,
-			...providerToolExtensions,
-			...(extensionFactories ?? []),
-		];
-	}
+	const systemPromptTransformerExtension: ExtensionFactory | undefined = profile.systemPromptTransformers.length > 0
+		? (pi) => {
+			pi.on("before_agent_start", (event, context) => ({
+				systemPrompt: profile.systemPromptTransformers.reduce((prompt, binding) => binding.transformer.transform(prompt, {
+					cwd: context.cwd,
+					shell: process.env.SHELL ?? "bash",
+					isChildSession: profile.parentSessionId !== undefined,
+				}), event.systemPrompt),
+			}));
+		}
+		: undefined;
 	return [
 		piboPromptTemplateExtension,
 		piboCompactionPromptExtension,
 		piboContextGuardExtension,
-		createCodexCompatExtension({
-			isChildSession: profile.parentSessionId !== undefined,
-		}),
+		...(systemPromptTransformerExtension ? [systemPromptTransformerExtension] : []),
 		...providerToolExtensions,
 		...(extensionFactories ?? []),
 	];
@@ -342,8 +321,8 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 	const cwd = options.cwd ?? getDefaultPiboWorkspace();
 	const profile = options.profile ?? createDefaultPiboProfile();
 	if (profile.effectivePluginPlan && !options.resources) throw new Error("Plugin generations require a host-owned RuntimeResourceSession; legacy Pi resource discovery is not a fallback");
-	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController && !options.portableTools) {
-		throw new Error("PiboRuntimeOptions.subagentRunner is retired. Provide agentsController so the runtime can expose the four pibo_agents_* management tools. The deprecated createSubagentToolDefinitions export remains available only for external legacy tool assembly.");
+	if (profile.effectivePluginPlan && profile.tools.some((tool) => tool.enabled !== false && tool.providerBacked === true) && !options.portableTools) {
+		throw new Error("Plugin generations with provider-backed tools require a host-owned PortableToolSession; legacy Pi tool assembly is not a fallback");
 	}
 	const agentDir = getAgentDir();
 	const sessionManager = await createSessionManager(cwd, profile, options.persistSession !== false);
@@ -366,7 +345,9 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			: createSessionContextFile({ piboSessionId: profile.sessionId, ...options.sessionContext });
 		const installedToolContextFile = options.resources ? undefined : getInstalledCliToolContextFile();
 		const mcpAgentContextFile = options.resources ? undefined : await getMcpAgentContextFile(profile.mcpServers);
-		const delegatedAgentContextFile = options.resources ? undefined : getDelegatedAgentContextFile(profile.subagents);
+		const delegatedAgentContextFile = options.resources || !profile.effectivePluginPlan?.contributions.some((entry) => entry.contribution.context.kind === "context" && entry.contribution.context.stage === "subagents")
+			? undefined
+			: getDelegatedAgentContextFile(profile.subagents);
 		const skillPaths = options.resources
 			? [...options.resources.getSkillPaths("source")]
 			: getEnabledSkillPaths(runtimeCwd, profile);
@@ -410,16 +391,6 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		registerMiniMaxProvider(modelRegistry as MiniMaxModelRegistryLike);
 		registerGlmProvider(modelRegistry as GlmModelRegistryLike);
 		registerQwenTokenPlanProvider(modelRegistry as QwenTokenPlanModelRegistryLike);
-		const ownsLocalRuntimeRegistry = options.runtimeToolController === undefined && profile.tools.some(isEnabledRuntimeTool);
-		const localRuntimeRegistry = ownsLocalRuntimeRegistry ? new RuntimeSessionRegistry({ cwd: runtimeCwd }) : undefined;
-		const runtimeToolController = options.runtimeToolController
-			?? localRuntimeRegistry?.createController(profile.sessionId ?? "local");
-		const codexBrowserController = profile.tools.some(isEnabledCodexBrowserTool)
-			? new CodexBrowserSessionController({
-				cwd: runtimeCwd,
-				piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId ?? runtimeSessionManager.getSessionId(),
-			})
-			: undefined;
 		const toolContext: ToolDefinitionContext = {
 			piboSessionId: options.sessionContext?.piboSessionId ?? profile.sessionId,
 			piboRoomId: options.sessionContext?.piboRoomId,
@@ -431,9 +402,8 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		const adapterEnvironment = options.resources?.getAdapterEnvironment() ?? {};
 		const hasAdapterEnvironment = Object.keys(adapterEnvironment).length > 0;
 		const profileEnablesBash = profile.builtinTools !== "disabled" && profile.builtinToolNames.includes("bash");
-		const needsPiBashOverride = (
-			profile.toolPackages.runControl === true && options.runToolController !== undefined
-		) || (hasAdapterEnvironment && profileEnablesBash);
+		const needsPiBashOverride = options.portableTools?.includeNativeTools === true
+			|| (hasAdapterEnvironment && profileEnablesBash);
 		const piNativeYieldableTools = needsPiBashOverride
 			? [normalizePiboToolDefinition(createBashToolDefinition(runtimeCwd, {
 				commandPrefix: services.settingsManager.getShellCommandPrefix(),
@@ -448,17 +418,12 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 					: {}),
 			}) as unknown as LegacyPiToolDefinitionLike)]
 			: [];
-		options.portableTools?.configureControllers({ codexBrowserController });
 		options.portableTools?.setConversationEntriesProvider(() => runtimeSessionManager.getBranch());
 		const piboToolDefinitions = options.portableTools
 			? options.portableTools.createDefinitions({ nativeYieldableTools: piNativeYieldableTools })
 			: createPiboSessionToolDefinitions({
 				profile,
 				toolContext,
-				agentsController: options.agentsController,
-				runToolController: options.runToolController,
-				runtimeToolController,
-				codexBrowserController,
 				nativeYieldableTools: piNativeYieldableTools,
 			});
 		const customTools = piboToolDefinitions.map((definition) => compilePiboToolForPi(definition, {
@@ -507,10 +472,6 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 				created.session,
 				new Error("Context guard recovery cancelled because the Pi session was disposed"),
 			);
-			if (localRuntimeRegistry) {
-				void localRuntimeRegistry.closeControllerSessions(profile.sessionId ?? "local", { force: true });
-			}
-			void codexBrowserController?.dispose();
 			originalDispose();
 		};
 
@@ -619,9 +580,9 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 			skills: profile.skills.filter((skill) => skill.enabled !== false).map((skill) => ({ name: skill.name, path: skill.path })),
 			tools: profile.tools.map((tool) => ({
 				name: tool.name,
-				hasDefinition: Boolean(tool.definition) || Boolean(tool.createDefinition) || isRuntimeTool(tool) || isCodexBrowserTool(tool),
-				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || isRuntimeTool(tool) || isCodexBrowserTool(tool),
-				active: tool.name !== "pibo_agents_send_message"
+				hasDefinition: Boolean(tool.definition) || Boolean(tool.createDefinition) || tool.providerBacked === true,
+				registered: registeredToolNames.has(tool.name) || tool.providerTool !== undefined || tool.providerBacked === true,
+				active: tool.direct !== false
 					&& (activeToolNames.has(tool.name) || selectedToolNames.has(tool.name) || tool.providerTool !== undefined),
 			})).concat(generatedTools),
 			subagents: resolvePiboSubagentRuntimeSelections(
@@ -630,11 +591,11 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				inspectionModelDefaults,
 			).map(({ enabled, ...subagent }) => ({
 				...subagent,
-				active: enabled && (
-					activeToolNames.has("pibo_run_start")
-					|| selectedToolNames.has("pibo_run_start")
-					|| selectedToolNames.has("pibo_agents_list_agents")
-				),
+				active: enabled && profile.effectivePluginPlan?.contributions.some((entry) =>
+					entry.contribution.kind === "tool"
+					&& entry.contribution.context.kind === "context"
+					&& entry.contribution.context.stage === "subagents"
+				) === true,
 			})),
 			mcpServers: [...profile.mcpServers],
 			mcpStatus: options.resources?.getInspection().mcpServers.map((server) => structuredClone(server)) ?? [],
@@ -694,16 +655,6 @@ function installPiboContextGuardTuiQueueOrdering(session: AgentSessionRuntime["s
 
 export async function runPiboTui(options: PiboRuntimeOptions = {}): Promise<void> {
 	const profile = options.profile ?? createDefaultPiboProfile();
-	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
-	if (hasEnabledSubagents && (!options.agentsController || !options.runToolController)) {
-		console.error(
-			`Error: Profile "${profile.profileName}" uses subagents and requires the routed pibo runtime. ` +
-				`Use the Chat Web session flow with profile "${profile.profileName}" for local runtime QA.`,
-		);
-		process.exitCode = 1;
-		return;
-	}
-
 	const runtime = await createPiboRuntime({ ...options, profile, contextGuardTuiQueueOrdering: true });
 
 	try {

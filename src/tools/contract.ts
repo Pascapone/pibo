@@ -103,6 +103,8 @@ export interface PiboToolDefinition<
 	parameters?: TInputSchema;
 	executionMode?: "sequential" | "parallel";
 	annotations?: PiboToolAnnotations;
+	/** Declarative target catalog exposed by meta-tools without requiring core tool-name knowledge. */
+	augmentation?: { targetToolNames: readonly string[] };
 	/** False only for legacy harness-private compatibility definitions. Defaults to true. */
 	portable?: boolean;
 	prepareInput?: (input: unknown) => Static<TInputSchema>;

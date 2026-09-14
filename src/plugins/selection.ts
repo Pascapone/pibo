@@ -13,6 +13,8 @@ export function validateAgentPluginSelection(value: unknown): PluginDiagnostic[]
 		if (!isPluginRecord(entry) || typeof entry.pluginId !== "string" || !entry.pluginId || typeof entry.enabled !== "boolean" || typeof entry.revision !== "string" || !entry.revision || !isPluginRecord(entry.config) || !isPluginRecord(entry.contributions) || Object.values(entry.contributions).some((value) => typeof value !== "boolean")) { fail("Plugin selection requires pluginId, enabled, revision, contributions and config", path); continue; }
 		if (ids.has(entry.pluginId)) fail(`Duplicate plugin selection ${entry.pluginId}`, path);
 		ids.add(entry.pluginId);
+		if (entry.explicitContributions !== undefined && (!isPluginRecord(entry.explicitContributions) || Object.values(entry.explicitContributions).some((decision) => typeof decision !== "boolean"))) fail("explicitContributions must map local IDs to booleans", path);
+		if (entry.dependencyPolicy !== undefined && entry.dependencyPolicy !== "allow-defaults" && entry.dependencyPolicy !== "deny") fail("dependencyPolicy must be allow-defaults or deny", path);
 		if (entry.contributionConfig !== undefined && (!isPluginRecord(entry.contributionConfig) || Object.values(entry.contributionConfig).some((config) => !isPluginRecord(config)))) fail("contributionConfig must map local IDs to JSON objects", path);
 	}
 	return diagnostics;
@@ -28,27 +30,10 @@ export function createAgentPluginSelection(installations: readonly PluginInstall
 			if (!Object.hasOwn(config, key) && isPluginRecord(property) && Object.hasOwn(property, "default")) config[key] = structuredClone(property.default) as PluginJsonObject[string];
 		}
 		const contributions = Object.fromEntries(manifest.contributions.filter((c) => c.scope === "agent").map((c) => [c.id, c.required || c.defaultEnabled]));
-		return { pluginId: installation.pluginId, revision: installation.revision, enabled: Object.values(contributions).some(Boolean), contributions, config };
+		return { pluginId: installation.pluginId, revision: installation.revision, enabled: Object.values(contributions).some(Boolean), contributions, explicitContributions: {}, dependencyPolicy: "allow-defaults" as const, config };
 	}) };
 	const diagnostics = validateAgentPluginSelection(selection);
 	if (diagnostics.length) throw new PluginValidationError(diagnostics);
-	// New selections can adopt dependencies. Existing selections are never run through this helper.
-	const entries = new Map(selection.plugins.map((entry) => [entry.pluginId, entry]));
-	const seen = new Set<string>();
-	function include(pluginId: string, localId: string): void {
-		const id = `${pluginId}/${localId}`;
-		if (seen.has(id)) return;
-		seen.add(id);
-		const installation = installations.find((item) => item.pluginId === pluginId);
-		const contribution = installation?.manifest.contributions.find((item) => item.id === localId);
-		if (!contribution) return;
-		for (const dependency of contribution.dependsOn ?? []) {
-			const [owner, local] = dependency.split("/");
-			const entry = entries.get(owner);
-			if (entry && Object.hasOwn(entry.contributions, local)) { entry.contributions[local] = true; include(owner, local); }
-		}
-	}
-	for (const entry of selection.plugins) for (const [id, selected] of Object.entries(entry.contributions)) if (selected) include(entry.pluginId, id);
 	return freezePluginValue(selection);
 }
 
@@ -69,13 +54,19 @@ export function createAgentPluginSelectionForProfile(installations: readonly Plu
 		const entry = entries.get(pluginId);
 		if (!entry || !Object.hasOwn(entry.contributions, contributionId)) return;
 		entry.enabled = true;
+		entry.dependencyPolicy = "allow-defaults";
 		entry.contributions[contributionId] = true;
+		(entry.explicitContributions ??= {})[contributionId] = true;
 	};
 	const setFamily = (pluginId: string, enabled: boolean): void => {
 		const entry = entries.get(pluginId);
 		if (!entry) return;
-		for (const id of Object.keys(entry.contributions)) entry.contributions[id] = enabled;
+		for (const id of Object.keys(entry.contributions)) {
+			entry.contributions[id] = enabled;
+			(entry.explicitContributions ??= {})[id] = enabled;
+		}
 		entry.enabled = enabled;
+		entry.dependencyPolicy = enabled ? "allow-defaults" : "deny";
 	};
 	for (const tool of profile.tools) {
 		if (tool.enabled === false) continue;
@@ -91,29 +82,10 @@ export function createAgentPluginSelectionForProfile(installations: readonly Plu
 		const entry = entries.get("pibo.mcp-cli");
 		if (entry) (entry.contributionConfig ??= {}).adapter = { selectedServers: [...profile.mcpServers] };
 	}
-	setFamily("pibo.run-control", profile.toolPackages.runControl === true);
-	setFamily("pibo.goal-control", profile.toolPackages.goalControl !== false);
+	if (profile.toolPackages.runControl !== undefined) setFamily("pibo.run-control", profile.toolPackages.runControl);
+	if (profile.toolPackages.goalControl !== undefined) setFamily("pibo.goal-control", profile.toolPackages.goalControl);
 	setFamily("pibo.agent-delegation", profile.subagents.some((subagent) => subagent.enabled !== false));
 	if (profile.toolPackages.codexCompat === true) setFamily("pibo.codex-compat", true);
-	const seen = new Set<string>();
-	const includeDependencies = (pluginId: string, contributionId: string): void => {
-		const key = `${pluginId}/${contributionId}`;
-		if (seen.has(key)) return;
-		seen.add(key);
-		const installation = installations.find((item) => item.pluginId === pluginId);
-		const contribution = installation?.manifest.contributions.find((item) => item.id === contributionId);
-		if (!contribution) return;
-		for (const dependency of contribution.dependsOn ?? []) {
-			const [owner, localId] = dependency.split("/");
-			enableContribution(owner!, localId!);
-			includeDependencies(owner!, localId!);
-		}
-	};
-	for (const entry of selection.plugins) {
-		for (const [contributionId, enabled] of Object.entries(entry.contributions)) {
-			if (enabled) includeDependencies(entry.pluginId, contributionId);
-		}
-	}
 	const diagnostics = validateAgentPluginSelection(selection);
 	if (diagnostics.length) throw new PluginValidationError(diagnostics);
 	return freezePluginValue(selection);

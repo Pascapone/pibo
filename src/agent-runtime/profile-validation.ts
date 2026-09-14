@@ -13,8 +13,7 @@ export function validateAgentRuntimeProfileCapabilities(
 	const enabledSubagents = profile.subagents.filter((subagent) => subagent.enabled !== false);
 	const usesPiboManagedTools = enabledTools.length > 0
 		|| enabledSubagents.length > 0
-		|| profile.toolPackages.runControl === true
-		|| profile.toolPackages.goalControl !== false;
+		|| (!profile.effectivePluginPlan && (profile.toolPackages.runControl === true || profile.toolPackages.goalControl !== false));
 
 	if (usesPiboManagedTools) {
 		pushUnsupportedDeliveryDiagnostic(
@@ -47,7 +46,10 @@ export function validateAgentRuntimeProfileCapabilities(
 			}
 		}
 	}
-	if (profile.toolPackages.runControl === true && capabilities.tools.nativeToolYielding.support === "unsupported") {
+	const requestsNativeToolYielding = profile.effectivePluginPlan
+		? profile.effectivePluginPlan.contributions.some((entry) => entry.contribution.kind === "session-tool-provider" && entry.contribution.metadata?.includeNativeTools === true)
+		: profile.toolPackages.runControl === true;
+	if (requestsNativeToolYielding && capabilities.tools.nativeToolYielding.support === "unsupported") {
 		diagnostics.push({
 			severity: "warning",
 			code: "runtime_native_tool_yielding_unsupported",

@@ -19,9 +19,6 @@ import type {
 	PiboSessionOperationResult,
 	PiboSessionTreeResult,
 } from "../../core/events.js";
-import type { PiboAgentsController } from "../../subagents/tool.js";
-import type { PiboRunToolController } from "../../runs/tools.js";
-import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
 import {
 	unsupportedAgentRuntimeCapability,
 	type AgentRuntimeCapabilities,
@@ -239,6 +236,7 @@ function cloneProfileForPiSession(input: OpenAgentRuntimeSessionInput): InitialS
 		subagents: profile.subagents,
 		mcpServers: profile.mcpServers,
 		contextFiles: profile.contextFiles,
+		systemPromptTransformers: profile.systemPromptTransformers,
 		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
@@ -730,7 +728,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				path: "runtimeOptions.intentTracing",
 			});
 		}
-		const profileProvidesBash = input.profile.toolPackages.runControl === true
+		const profileProvidesBash = input.profile.effectivePluginPlan?.contributions.some((entry) => entry.contribution.kind === "session-tool-provider" && entry.contribution.metadata?.includeNativeTools === true) === true
 			|| (input.profile.builtinTools !== "disabled" && input.profile.builtinToolNames.includes("bash"));
 		if (input.profile.mcpServers.length > 0 && !profileProvidesBash) {
 			diagnostics.push({
@@ -796,9 +794,6 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			thinkingLevel: compatibility?.thinkingLevel,
 			retryDefaults: compatibility?.retryDefaults,
 			extensionFactories: compatibility?.extensionFactories,
-			agentsController: input.services?.agentsController as PiboAgentsController | undefined,
-			runToolController: input.services?.runToolController as PiboRunToolController | undefined,
-			runtimeToolController: input.services?.codeRuntimeToolController as PiboRuntimeToolController | undefined,
 			portableTools: input.services?.portableTools,
 			resources: input.services?.resources,
 			modelDefaults: compatibility?.modelDefaults,

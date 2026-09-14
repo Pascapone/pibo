@@ -510,8 +510,10 @@ export function buildPluginBuiltinToolReplacementMap(plan: EffectivePluginPlan |
 export function setAgentPluginEnabled(selection: AgentPluginSelection, plugin: AgentPluginCatalog["plugins"][number], enabled: boolean): AgentPluginSelection {
 	const next = structuredClone(selection);
 	let entry = next.plugins.find((item) => item.pluginId === plugin.pluginId);
-	if (entry) entry.enabled = enabled;
-	else {
+	if (entry) {
+		entry.enabled = enabled;
+		entry.dependencyPolicy = enabled ? "allow-defaults" : "deny";
+	} else {
 		if (!plugin.initialSelection) throw new Error("System-only plugins have no agent selection");
 		entry = { ...structuredClone(plugin.initialSelection), enabled };
 		next.plugins.push(entry);
@@ -525,7 +527,10 @@ export function setAgentPluginContribution(selection: AgentPluginSelection, plug
 	if (contribution.required || contribution.scope !== "agent") return selection;
 	const next = structuredClone(selection);
 	const entry = next.plugins.find((item) => item.pluginId === pluginId);
-	if (entry?.enabled) entry.contributions[contribution.id] = enabled;
+	if (entry?.enabled) {
+		entry.contributions[contribution.id] = enabled;
+		(entry.explicitContributions ??= {})[contribution.id] = enabled;
+	}
 	return next;
 }
 /** Explicit user acceptance only; new OPTIONAL contributions remain off on revision upgrades. */
@@ -535,5 +540,6 @@ export function acceptAgentPluginRevision(selection: AgentPluginSelection, plugi
 	if (!entry) return next;
 	entry.revision = plugin.revision;
 	entry.contributions = Object.fromEntries(plugin.contributions.filter((item) => item.scope === "agent").map((item) => [item.id, item.required || entry.contributions[item.id] === true]));
+	if (entry.explicitContributions) entry.explicitContributions = Object.fromEntries(Object.entries(entry.explicitContributions).filter(([id]) => Object.hasOwn(entry.contributions, id)));
 	return next;
 }

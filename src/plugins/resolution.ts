@@ -171,20 +171,65 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 	for (const installation of installations.values()) if (usable(installation) && !installation.manifest.contributions.some((c) => c.scope === "agent")) visitPackage(installation.pluginId, []);
 	for (const entry of input.selection.plugins) if (entry.enabled) visitPackage(entry.pluginId, []);
 	for (const candidate of selected.values()) if (candidate.contribution.scope === "app") visitPackage(candidate.pluginId, []);
-	// Propagate requiredness through the selected dependency graph before testing runtime support.
+	// Expand only dependencies whose accepted snapshot left the target undecided.
+	// Explicit tool or plugin disablement always wins and remains visible in diagnostics.
+	const explicitlySelected = new Set(selected.keys());
+	const blockedDependencies = new Map<string, { code: string; reason: string }>();
+	function dependencyActivationBlock(candidate: NonNullable<ReturnType<typeof candidates.get>>): { code: string; reason: string } | undefined {
+		if (!candidate.node.globallyActive) {
+			return { code: "contribution-dependency-plugin-unavailable", reason: `Dependency plugin ${candidate.installation.pluginId} is unavailable or globally disabled` };
+		}
+		const entry = candidate.entry;
+		if (!entry) return { code: "contribution-dependency-unaccepted", reason: `Dependency ${candidate.node.id} is absent from the accepted agent selection` };
+		if (entry.dependencyPolicy === "deny" || entry.dependencyPolicy === undefined && entry.enabled === false) {
+			return { code: "contribution-dependency-plugin-disabled", reason: `Dependency plugin ${entry.pluginId} is explicitly disabled for this agent` };
+		}
+		const explicit = entry.explicitContributions;
+		const explicitlyDecided = explicit ? Object.hasOwn(explicit, candidate.contribution.id) : Object.hasOwn(entry.contributions, candidate.contribution.id);
+		const explicitlyEnabled = explicit ? explicit[candidate.contribution.id] === true : entry.contributions[candidate.contribution.id] === true;
+		if (explicitlyDecided && !explicitlyEnabled) {
+			return { code: "contribution-dependency-disabled", reason: `Dependency ${candidate.node.id} is explicitly disabled for this agent` };
+		}
+		return undefined;
+	}
 	function requireDependencies(id: string, path: string[]): void {
 		const contribution = selected.get(id);
 		if (!contribution || path.includes(id)) return;
 		for (const dependency of contribution.contribution.dependsOn ?? []) {
-			const target = selected.get(dependency);
+			let target = selected.get(dependency);
+			const candidate = candidates.get(dependency);
+			const activationBlock = candidate ? dependencyActivationBlock(candidate) : undefined;
+			if (!target && activationBlock) blockedDependencies.set(`${id}\u0000${dependency}`, activationBlock);
+			if (!target && candidate?.node.globallyActive && !activationBlock) {
+				const config = candidate.entry?.contributionConfig?.[candidate.contribution.id] ?? {};
+				if (candidate.contribution.configSchema) diagnostics.push(...validatePluginConfig(candidate.contribution.configSchema, config, [dependency, "config"]));
+				target = {
+					id: dependency,
+					pluginId: candidate.installation.pluginId,
+					pluginRevision: candidate.installation.revision,
+					contribution: candidate.contribution,
+					config,
+					required: true,
+					selectionReason: "dependency",
+					dependencyPath: [...path, id, dependency],
+				};
+				selected.set(dependency, target);
+				candidate.node.selected = true;
+				candidate.node.status = candidate.contribution.context.kind === "none" ? "no-context" : "selected";
+				candidate.node.selectionReason = "dependency";
+			}
 			if (target) {
-				if (!target.required) { target.required = true; target.selectionReason = "dependency"; target.dependencyPath = [...path, id, dependency]; }
-				candidates.get(dependency)!.node.required = true;
+				if (contribution.required && !target.required) {
+					target.required = true;
+					target.selectionReason = "dependency";
+					target.dependencyPath = [...path, id, dependency];
+				}
+				if ((contribution.required || !explicitlySelected.has(dependency)) && candidate) candidate.node.required = true;
 				requireDependencies(dependency, [...path, id]);
 			}
 		}
 	}
-	for (const [id, contribution] of selected) if (contribution.required) requireDependencies(id, []);
+	for (const id of [...selected.keys()]) requireDependencies(id, []);
 	const ordered: EffectivePluginContribution[] = [];
 	const visited = new Set<string>(); const visiting = new Set<string>(); const unavailable = new Set<string>();
 	function visit(id: string, path: string[]): boolean {
@@ -196,8 +241,9 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 		const candidate = candidates.get(id)!;
 		const reasons: string[] = [];
 		for (const dependency of contribution.contribution.dependsOn ?? []) if (contribution.contribution.scope === "app" && candidates.get(dependency)?.contribution.scope === "agent" || !visit(dependency, [...path, id])) {
-			reasons.push(`Dependency ${dependency} is unavailable or explicitly disabled`);
-			fail("contribution-dependency-unavailable", reasons.at(-1)!, [...path, id, dependency], contribution.required);
+			const blocked = blockedDependencies.get(`${id}\u0000${dependency}`);
+			reasons.push(blocked?.reason ?? `Dependency ${dependency} is unavailable`);
+			fail(blocked?.code ?? "contribution-dependency-unavailable", reasons.at(-1)!, [...path, id, dependency], contribution.required);
 		}
 		for (const dependency of candidate.installation.manifest.dependencies ?? []) {
 			const target = installations.get(dependency.id);

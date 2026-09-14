@@ -5,14 +5,14 @@ import type { PiboRunToolController } from "../runs/tools.js";
 import type { PiboAgentsController, PiboSubagentRunner } from "../subagents/tool.js";
 import type { CodexBrowserToolController } from "./codex-browser.js";
 import type { PiboToolDefinition, PiboToolDefinitionContext } from "./contract.js";
-import type { PluginSessionToolProviderBinding, PluginSessionToolSet } from "../plugins/runtime.js";
+import type { PluginSessionAvailableTool, PluginSessionToolProviderBinding, PluginSessionToolSet } from "../plugins/runtime.js";
 import {
 	PiboToolMcpBridge,
 	type PiboToolMcpBridgeAddress,
 	type PiboToolPayloadWriter,
 } from "./mcp-bridge.js";
 import type { PiboRuntimeToolController } from "./runtime/tool.js";
-import { createPiboSessionToolDefinitions } from "./session-tool-set.js";
+import { createPiboSessionToolDefinitions, type SessionToolDefinitionRegistration } from "./session-tool-set.js";
 
 export type PiboPortableToolSessionControllers = {
 	agentsController?: PiboAgentsController;
@@ -62,6 +62,8 @@ export interface PiboPortableToolSession {
 	readonly runtimeInstanceId: string;
 	readonly adapterId: string;
 	readonly sessionGeneration: string;
+	/** Selected augment providers request adapter-native yieldable definitions without naming them. */
+	readonly includeNativeTools: boolean;
 	createDefinitions(options?: PiboPortableToolDefinitionOptions): PiboToolDefinition[];
 	/** Already materialized inventory only; never executes a factory. */
 	getDefinitions(): readonly PiboToolDefinition[];
@@ -84,8 +86,10 @@ type SessionRecord = {
 	active: boolean;
 	definitions?: PiboToolDefinition[];
 	nativeYieldableTools?: readonly PiboToolDefinition[];
+	nativeToolNames?: ReadonlySet<string>;
 	providerToolSets?: PluginSessionToolSet[];
-	providerTools?: PiboToolDefinition[];
+	baseProviderTools?: SessionToolDefinitionRegistration[];
+	augmentProviderTools?: SessionToolDefinitionRegistration[];
 	providerCleanupPromises?: Promise<void>[];
 	providerCleanupErrors?: unknown[];
 	disposePromise?: Promise<void>;
@@ -173,14 +177,18 @@ export class PiboPortableToolService {
 
 	private createDefinitions(record: SessionRecord, options: PiboPortableToolDefinitionOptions = {}): PiboToolDefinition[] {
 		if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
-		if (record.definitions && record.nativeYieldableTools === options.nativeYieldableTools) return record.definitions;
+		if (record.definitions) {
+			if (options.nativeYieldableTools !== undefined && record.nativeYieldableTools !== options.nativeYieldableTools) throw new Error("Adapter-native tool inventory changed after session tool materialization");
+			return record.definitions;
+		}
 		record.nativeYieldableTools = options.nativeYieldableTools;
-		const providerTools = this.createProviderTools(record);
+		record.nativeToolNames = new Set(options.nativeYieldableTools?.map((tool) => tool.name) ?? []);
+		const baseProviderTools = this.createProviderTools(record, "base", []);
+		const baseContributionByName = new Map(baseProviderTools.map((tool) => [tool.definition.name, tool.contributionId] as const));
 		const definitions = createPiboSessionToolDefinitions({
 			profile: record.input.profile,
 			pluginHooks: record.input.pluginHooks,
 			pluginHookScope: record.input.recordPluginHook ? { piboSessionId: record.input.piboSessionId, generation: record.sessionGeneration, record: record.input.recordPluginHook } : undefined,
-			goalStorePath: record.input.goalStorePath,
 			toolContext: {
 				piboSessionId: record.input.piboSessionId,
 				piboRoomId: record.input.piboRoomId,
@@ -189,9 +197,12 @@ export class PiboPortableToolService {
 				getActiveMessage: record.input.getActiveMessage,
 				getConversationEntries: record.getConversationEntries,
 			},
-			...record.controllers,
 			nativeYieldableTools: options.nativeYieldableTools,
-			sessionToolDefinitions: providerTools,
+			sessionToolDefinitions: baseProviderTools,
+			createAugmentedSessionToolDefinitions: (availableTools) => this.createProviderTools(record, "augment", availableTools.map((definition) => {
+				const contributionId = baseContributionByName.get(definition.name);
+				return contributionId ? { contributionId, definition } : { definition };
+			})),
 		});
 		const duplicates = definitions.map((tool) => tool.name).filter((name, index, names) => names.indexOf(name) !== index);
 		if (duplicates.length > 0) throw new Error(`Session tool name conflict: ${[...new Set(duplicates)].sort().join(", ")}`);
@@ -199,12 +210,14 @@ export class PiboPortableToolService {
 		return definitions;
 	}
 
-	private createProviderTools(record: SessionRecord): PiboToolDefinition[] {
-		if (record.providerTools) return record.providerTools;
+	private createProviderTools(record: SessionRecord, phase: "base" | "augment", availableTools: readonly PluginSessionAvailableTool[]): SessionToolDefinitionRegistration[] {
+		const cached = phase === "base" ? record.baseProviderTools : record.augmentProviderTools;
+		if (cached) return cached;
 		const sets: PluginSessionToolSet[] = [];
-		const tools: PiboToolDefinition[] = [];
+		const tools: SessionToolDefinitionRegistration[] = [];
 		try {
 			for (const binding of record.input.sessionToolProviders ?? []) {
+				if ((binding.provider.phase ?? "base") !== phase) continue;
 				const providerPlugin = Object.freeze({
 					id: binding.pluginId,
 					contributionId: binding.providerContributionId,
@@ -215,11 +228,20 @@ export class PiboPortableToolService {
 				const selectedTools = binding.selectedTools.map((selected) => Object.freeze({
 					contributionId: selected.contributionId,
 					name: selected.name,
+					direct: selected.direct,
+					yieldable: selected.yieldable,
+					selectionReason: selected.selectionReason ?? "explicit",
+					dependencyPath: Object.freeze([...(selected.dependencyPath ?? [selected.contributionId])]),
 					configuration: Object.freeze(structuredClone(selected.configuration)),
 					contributionConfiguration: Object.freeze(structuredClone(selected.contributionConfiguration)),
 				}));
 				const selectedById = new Map(selectedTools.map((selected) => [selected.contributionId, selected]));
 				const sessionServices = record.input.sessionServices ?? {};
+				const dependencyOnly = phase === "augment" && selectedTools.every((selected) => selected.selectionReason === "dependency");
+				const dependencySources = dependencyOnly ? new Set(selectedTools.flatMap((selected) => selected.dependencyPath)) : undefined;
+				const providerAvailableTools = dependencySources
+					? availableTools.filter((tool) => tool.contributionId !== undefined && dependencySources.has(tool.contributionId))
+					: availableTools;
 				const toolSet = binding.provider.createSession(Object.freeze({
 					piboSessionId: record.input.piboSessionId,
 					piboRoomId: record.input.piboRoomId,
@@ -232,6 +254,7 @@ export class PiboPortableToolService {
 					sessionGeneration: record.sessionGeneration,
 					plugin: providerPlugin,
 					selectedTools,
+					availableTools: Object.freeze(providerAvailableTools.map((tool) => Object.freeze({ ...tool }))),
 					services: Object.freeze({
 						get: <T>(id: string) => sessionServices[id] as T | undefined,
 						require: <T>(id: string) => {
@@ -252,11 +275,11 @@ export class PiboPortableToolService {
 					if (!definition || definition.name !== selected.name || !definition.inputSchema || typeof definition.inputSchema !== "object" || typeof definition.execute !== "function") throw new Error(`Session tool ${selected.contributionId} does not match its declared name/schema contract`);
 					returned.add(selected.contributionId);
 					const plugin = Object.freeze({ id: binding.pluginId, contributionId: selected.contributionId, revision: binding.pluginRevision, configuration: selected.configuration, contributionConfiguration: selected.contributionConfiguration });
-					tools.push({ ...definition, inputSchema: structuredClone(definition.inputSchema), execute: (callId, input, signal, onUpdate, context) => {
+					tools.push({ contributionId: selected.contributionId, direct: selected.direct, yieldable: selected.yieldable, definition: { ...definition, inputSchema: structuredClone(definition.inputSchema), execute: (callId, input, signal, onUpdate, context) => {
 						if (!record.active || this.sessions.get(record.key) !== record) throw new Error(`Session tool provider generation ${record.sessionGeneration} is no longer active`);
 						if (context.sessionGeneration && context.sessionGeneration !== record.sessionGeneration) throw new Error("Session tool execution generation does not match its provider binding");
 						return definition.execute(callId, input, signal, onUpdate, { ...context, plugin });
-					} });
+					} } });
 				}
 				const missing = selectedTools.filter((selected) => !returned.has(selected.contributionId));
 				if (missing.length > 0) throw new Error(`Session tool provider ${binding.providerContributionId} omitted selected tools: ${missing.map((entry) => entry.contributionId).join(", ")}`);
@@ -265,14 +288,16 @@ export class PiboPortableToolService {
 			this.queueProviderCleanup(record, sets);
 			throw error;
 		}
-		record.providerToolSets = sets;
-		record.providerTools = tools;
+		record.providerToolSets = [...(record.providerToolSets ?? []), ...sets];
+		if (phase === "base") record.baseProviderTools = tools;
+		else record.augmentProviderTools = tools;
 		return tools;
 	}
 
 	private queueProviderCleanup(record: SessionRecord, sets = record.providerToolSets ?? []): void {
 		record.providerToolSets = undefined;
-		record.providerTools = undefined;
+		record.baseProviderTools = undefined;
+		record.augmentProviderTools = undefined;
 		record.providerCleanupPromises ??= [];
 		record.providerCleanupErrors ??= [];
 		for (const set of [...sets].reverse()) {
@@ -303,7 +328,7 @@ export class PiboPortableToolService {
 	private resolveTools(piboSessionId: string, generation: string): PiboToolDefinition[] {
 		const record = this.sessions.get(sessionKey(piboSessionId, generation));
 		if (!record?.active) return [];
-		return this.createDefinitions(record).filter((tool) => tool.portable !== false);
+		return this.createDefinitions(record).filter((tool) => tool.portable !== false && !record.nativeToolNames?.has(tool.name));
 	}
 
 	private createSessionHandle(record: SessionRecord): PiboPortableToolSession {
@@ -312,6 +337,7 @@ export class PiboPortableToolService {
 			runtimeInstanceId: record.input.runtimeInstanceId,
 			adapterId: record.input.adapterId,
 			sessionGeneration: record.sessionGeneration,
+			includeNativeTools: record.input.sessionToolProviders?.some((binding) => binding.provider.includeNativeTools === true) ?? false,
 			createDefinitions: (options) => this.createDefinitions(record, options),
 			getDefinitions: () => [...(record.definitions ?? [])],
 			configureControllers: (controllers) => {
@@ -326,7 +352,7 @@ export class PiboPortableToolService {
 			issueMcpAccess: async (options = {}) => {
 				if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
 				const availableToolNames = this.createDefinitions(record)
-					.filter((tool) => tool.portable !== false)
+					.filter((tool) => tool.portable !== false && !record.nativeToolNames?.has(tool.name))
 					.map((tool) => tool.name);
 				const requested = options.allowedToolNames
 					? [...new Set(options.allowedToolNames)]

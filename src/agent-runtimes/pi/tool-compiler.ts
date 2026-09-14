@@ -63,7 +63,7 @@ export function compilePiboToolForPi(
 	definition: PiboToolDefinition,
 	options: CompilePiboToolForPiOptions = {},
 ): ToolDefinition {
-	return defineTool({
+	const compiled = defineTool({
 		name: definition.name,
 		label: definition.title,
 		description: definition.description,
@@ -90,4 +90,5 @@ export function compilePiboToolForPi(
 			return piboToolResultToPi(result);
 		},
 	});
+	return Object.assign(compiled, definition.augmentation ? { piboAugmentation: { targetToolNames: [...definition.augmentation.targetToolNames] } } : {});
 }

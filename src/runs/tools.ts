@@ -122,6 +122,7 @@ export function createRunToolDefinitions(
 			promptSnippet:
 				"Use pibo_run_start to run a yieldable tool in the background. Provide arguments matching the selected toolName schema; invalid arguments create no run. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
 			executionMode: "parallel",
+			augmentation: { targetToolNames: toolNames },
 			inputSchema: Type.Object({
 				toolName: piboStringEnum(toolNames, { description: "Yieldable tool name to start" }),
 				arguments: argumentsSchema,

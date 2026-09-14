@@ -1,4 +1,5 @@
 import type { AgentPluginSelection, EffectivePluginPlan } from "../plugins/contributions.js";
+import type { PluginSystemPromptTransformerBinding } from "../plugins/runtime.js";
 import type { PiboJsonObject } from "./events.js";
 import type { PiboThinkingLevel } from "./thinking.js";
 import {
@@ -15,7 +16,9 @@ export type ToolProfile = {
 	name: string;
 	description?: string;
 	enabled?: boolean;
+	direct?: boolean;
 	yieldable?: boolean;
+	providerBacked?: boolean;
 	pluginId?: string;
 	replacesBuiltinTools?: readonly string[];
 	definition?: PiboToolDefinition;
@@ -173,6 +176,7 @@ export type InitialSessionContextOptions = {
 	subagents?: readonly SubagentProfile[];
 	mcpServers?: readonly string[];
 	contextFiles?: readonly ContextFileProfile[];
+	systemPromptTransformers?: readonly PluginSystemPromptTransformerBinding[];
 	diagnostics?: readonly PiboProfileDiagnostic[];
 	builtinTools?: BuiltinToolsMode;
 	builtinToolNames?: readonly string[];
@@ -206,6 +210,7 @@ export class InitialSessionContext {
 	readonly subagents: readonly SubagentProfile[];
 	readonly mcpServers: readonly string[];
 	readonly contextFiles: readonly ContextFileProfile[];
+	readonly systemPromptTransformers: readonly PluginSystemPromptTransformerBinding[];
 	readonly diagnostics: readonly PiboProfileDiagnostic[];
 	readonly builtinTools: BuiltinToolsMode;
 	readonly builtinToolNames: readonly string[];
@@ -238,6 +243,7 @@ export class InitialSessionContext {
 		this.subagents = (options.subagents ?? []).map(cloneSubagentProfile);
 		this.mcpServers = [...(options.mcpServers ?? [])];
 		this.contextFiles = [...(options.contextFiles ?? [])];
+		this.systemPromptTransformers = [...(options.systemPromptTransformers ?? [])];
 		this.diagnostics = (options.diagnostics ?? []).map((diagnostic) => ({ ...diagnostic }));
 		this.builtinTools = options.builtinTools ?? "default";
 		this.builtinToolNames = [...(options.builtinToolNames ?? DEFAULT_BUILTIN_TOOL_NAMES)];

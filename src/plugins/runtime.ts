@@ -4,13 +4,43 @@ import type { PiboToolDefinition, PiboToolDefinitionContext } from "../tools/con
 
 /** Public session services supplied by the core without naming plugin implementations. */
 export const PIBO_SESSION_CONTEXT_SERVICE = "pibo.session.context";
-export const PIBO_SESSION_RUN_CONTROL_SERVICE = "pibo.session.run-control";
-export const PIBO_SESSION_DELEGATION_SERVICE = "pibo.session.delegation";
-export const PIBO_SESSION_CODE_RUNTIME_SERVICE = "pibo.session.code-runtime";
+export const PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE = "pibo.session.run-control-factory";
+export const PIBO_SESSION_DELEGATION_FACTORY_SERVICE = "pibo.session.delegation-factory";
+export const PIBO_SESSION_AGENT_TARGETS_SERVICE = "pibo.session.agent-targets";
+export const PIBO_SESSION_GOAL_STORE_SERVICE = "pibo.session.goal-store";
+
+export type PluginSessionServiceFactory<T> = {
+	create(): T;
+};
+
+export type PluginSystemPromptTransformContext = {
+	cwd: string;
+	shell: string;
+	isChildSession: boolean;
+};
+
+export type PluginSystemPromptTransformer = {
+	transform(baseSystemPrompt: string, context: PluginSystemPromptTransformContext): string;
+};
+
+export type PluginSystemPromptTransformerBinding = {
+	contributionId: PluginQualifiedId;
+	pluginId: string;
+	transformer: PluginSystemPromptTransformer;
+};
+
+export function definePluginSystemPromptTransformer(transformer: PluginSystemPromptTransformer): PluginSystemPromptTransformer {
+	return transformer;
+}
 
 export type PluginSessionServiceAccessor = {
 	get<T = unknown>(id: string): T | undefined;
 	require<T = unknown>(id: string): T;
+};
+
+export type PluginSessionAvailableTool = {
+	contributionId?: PluginQualifiedId;
+	definition: PiboToolDefinition;
 };
 
 /** Immutable generation-pinned context passed to a selected session tool provider. */
@@ -31,9 +61,15 @@ export type PluginSessionToolProviderContext = PiboToolDefinitionContext & {
 	selectedTools: readonly {
 		contributionId: PluginQualifiedId;
 		name: string;
+		direct: boolean;
+		yieldable: boolean;
+		selectionReason: "required" | "explicit" | "dependency" | "infrastructure";
+		dependencyPath: readonly string[];
 		configuration: Readonly<PluginJsonObject>;
 		contributionConfiguration: Readonly<PluginJsonObject>;
 	}[];
+	/** Yieldable definitions already materialized by base providers; populated only for augment providers. */
+	availableTools: readonly PluginSessionAvailableTool[];
 	services: PluginSessionServiceAccessor;
 };
 
@@ -51,6 +87,10 @@ export type PluginSessionToolSet = {
 
 /** One provider may materialize many tools, but every tool remains an independently selected contribution. */
 export type PluginSessionToolProvider = {
+	/** Base providers run first. Augment providers may create meta-tools from availableTools. */
+	phase?: "base" | "augment";
+	/** Requests adapter-native yieldable definitions in the augment catalog without naming them. */
+	includeNativeTools?: boolean;
 	createSession(context: PluginSessionToolProviderContext): PluginSessionToolSet;
 };
 
@@ -68,6 +108,10 @@ export type PluginSessionToolProviderBinding = {
 	selectedTools: readonly {
 		contributionId: PluginQualifiedId;
 		name: string;
+		direct: boolean;
+		yieldable: boolean;
+		selectionReason: "required" | "explicit" | "dependency" | "infrastructure";
+		dependencyPath: readonly string[];
 		configuration: Readonly<PluginJsonObject>;
 		contributionConfiguration: Readonly<PluginJsonObject>;
 	}[];

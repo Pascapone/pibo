@@ -146,9 +146,6 @@ export type AgentRuntimeBindingPersistence = {
 };
 
 export type AgentRuntimeOpenServices = {
-	agentsController?: unknown;
-	runToolController?: unknown;
-	codeRuntimeToolController?: unknown;
 	portableTools?: PiboPortableToolSession;
 	resources?: PiboRuntimeResourceSession;
 	/** Read-through projection over the one product PluginHost; adapters must not create their own registry. */

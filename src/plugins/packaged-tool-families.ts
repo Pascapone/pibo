@@ -1,58 +1,94 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { PluginSetupContext } from "./host.js";
-import { createRuntimeToolProfile } from "../tools/runtime/tool.js";
-import { createHashlineToolProfile } from "../tools/hashline.js";
-import { createPiboGatewayToolProfiles } from "../gateway/tool.js";
+import {
+	definePluginSessionToolProvider,
+	definePluginSystemPromptTransformer,
+	type PluginSessionToolProviderContext,
+	type PluginSessionToolRegistration,
+} from "./runtime.js";
+import { buildCodexCompatSystemPrompt } from "../core/codex-compat.js";
+import { createRuntimeToolDefinition } from "../tools/runtime/tool.js";
+import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
+import { createHashlineToolDefinition } from "../tools/hashline.js";
+import { createPiboGatewaySendTool } from "../gateway/tool.js";
+import {
+	CodexBrowserSessionController,
+	createCodexBrowserToolDefinitions,
+	type CodexBrowserToolName,
+} from "../tools/codex-browser.js";
+import { createCodexCompatToolDefinitions } from "../tools/codex-compat.js";
+import { createCodexImageGenerationToolDefinition } from "../tools/codex-image-generation.js";
 import { createWebSearchToolProfile } from "../tools/web-search.js";
-import { createCodexBrowserToolProfiles } from "../tools/codex-browser.js";
-import { createCodexImageGenerationToolProfile } from "../tools/codex-image-generation.js";
+import { normalizePiboToolDefinition, type PiboToolDefinition } from "../tools/contract.js";
 
-const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const SESSION_TOOL_PROVIDER_CONTRIBUTION_ID = "session-tools";
 
-function register(context: PluginSetupContext, profiles: readonly { name: string }[]): void {
-	for (const profile of profiles) context.register(profile.name, profile);
+type SessionDefinitionFactory = (context: PluginSessionToolProviderContext) => readonly PiboToolDefinition[];
+
+function registrationsForSelectedTools(context: PluginSessionToolProviderContext, definitions: readonly PiboToolDefinition[]): PluginSessionToolRegistration[] {
+	const definitionsByName = new Map(definitions.map((definition) => [definition.name, definition] as const));
+	return context.selectedTools.map((selected) => {
+		const definition = definitionsByName.get(selected.name);
+		if (!definition) throw new Error(`First-party provider ${context.plugin.contributionId} cannot materialize selected tool ${selected.contributionId}`);
+		return { contributionId: selected.contributionId, definition };
+	});
+}
+
+function registerSessionTools(context: PluginSetupContext, createDefinitions: SessionDefinitionFactory): void {
+	context.register(SESSION_TOOL_PROVIDER_CONTRIBUTION_ID, definePluginSessionToolProvider({
+		createSession(providerContext) {
+			return { tools: registrationsForSelectedTools(providerContext, createDefinitions(providerContext)) };
+		},
+	}));
+	context.register("settings", {});
 }
 
 export function setupCodeRuntime(context: PluginSetupContext): void {
-	register(context, [createRuntimeToolProfile()]);
+	context.register(SESSION_TOOL_PROVIDER_CONTRIBUTION_ID, definePluginSessionToolProvider({
+		createSession(providerContext) {
+			const registry = new RuntimeSessionRegistry({ cwd: providerContext.cwd });
+			return {
+				tools: registrationsForSelectedTools(providerContext, [createRuntimeToolDefinition(registry.createController(providerContext.piboSessionId))]),
+				dispose: () => registry.closeAll({ force: true }),
+			};
+		},
+	}));
 	context.register("settings", {});
 }
 
 export function setupFileEditing(context: PluginSetupContext): void {
-	register(context, [createHashlineToolProfile()]);
-	context.register("settings", {});
+	registerSessionTools(context, (providerContext) => [normalizePiboToolDefinition(createHashlineToolDefinition(providerContext.cwd))]);
 }
 
 export function setupWebSearch(context: PluginSetupContext): void {
-	register(context, [createWebSearchToolProfile()]);
+	context.register("web_search", createWebSearchToolProfile());
 	context.register("settings", {});
 }
 
 export function setupBrowserTools(context: PluginSetupContext): void {
-	register(context, createCodexBrowserToolProfiles());
+	context.register(SESSION_TOOL_PROVIDER_CONTRIBUTION_ID, definePluginSessionToolProvider({
+		createSession(providerContext) {
+			const controller = new CodexBrowserSessionController({ cwd: providerContext.cwd, piboSessionId: providerContext.piboSessionId });
+			return {
+				tools: registrationsForSelectedTools(providerContext, createCodexBrowserToolDefinitions(controller, providerContext.selectedTools.map((tool) => tool.name as CodexBrowserToolName))),
+				dispose: () => controller.dispose(),
+			};
+		},
+	}));
 	context.register("settings", {});
-	context.register("native-tooling-context", {
-		key: "Pibo Native Tooling",
-		label: "Pibo Native Tooling",
-		path: resolve(PACKAGE_ROOT, "context", "pibo-native-tooling.md"),
-	});
 }
 
 export function setupGatewayTools(context: PluginSetupContext): void {
-	register(context, createPiboGatewayToolProfiles());
-	context.register("settings", {});
+	registerSessionTools(context, () => [createPiboGatewaySendTool()]);
 }
 
 export function setupCodexCompat(context: PluginSetupContext): void {
-	context.register("apply_patch", { name: "apply_patch", description: "Applies a Codex-style patch to workspace files." });
-	context.register("view_image", { name: "view_image", description: "Reads a local image path and returns it for visual inspection." });
-	const imageGeneration = createCodexImageGenerationToolProfile();
-	context.register(imageGeneration.name, imageGeneration);
-	context.register("settings", {});
-	context.register("base-prompt", {
-		key: "Codex Base Prompt",
-		label: "Codex Base Prompt",
-		path: resolve(PACKAGE_ROOT, "context", "codex-base-prompt.md"),
-	});
+	registerSessionTools(context, (providerContext) => [
+		...createCodexCompatToolDefinitions(),
+		createCodexImageGenerationToolDefinition(providerContext),
+	]);
+	context.register("base-prompt", definePluginSystemPromptTransformer({
+		transform(baseSystemPrompt, transformContext) {
+			return buildCodexCompatSystemPrompt({ baseSystemPrompt, ...transformContext });
+		},
+	}));
 }

@@ -3,7 +3,7 @@ import type {
 	PluginInstallation, PluginJsonObject, PluginJsonValue, PluginQualifiedId,
 } from "./manifest.js";
 
-/** Explicit selection snapshot. Missing keys NEVER pick up later manifest defaults. */
+/** Revision-pinned selection snapshot. Explicit decisions are separate from accepted manifest defaults. */
 export type AgentPluginSelection = {
 	schemaVersion: 1;
 	plugins: AgentPluginSelectionEntry[];
@@ -13,8 +13,12 @@ export type AgentPluginSelectionEntry = {
 	enabled: boolean;
 	/** The revision whose semantics the agent explicitly accepted. */
 	revision: string;
-	/** All known agent contribution IDs, including required ones; local IDs. */
+	/** Accepted values for all known agent contribution IDs at this revision; local IDs. */
 	contributions: Record<string, boolean>;
+	/** Present for current snapshots. Missing means a legacy snapshot whose stored booleans are all explicit. */
+	explicitContributions?: Record<string, boolean>;
+	/** Controls dependency activation for contributions without an explicit decision. Missing legacy entries allow it only while the plugin is enabled. */
+	dependencyPolicy?: "allow-defaults" | "deny";
 	config: PluginJsonObject;
 	contributionConfig?: Record<string, PluginJsonObject>;
 };

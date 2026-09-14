@@ -4,9 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
-import { createDefaultPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
+import { PluginHost } from "../dist/plugins/host.js";
+import { PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import { createAgentPluginSelection } from "../dist/plugins/selection.js";
@@ -30,8 +31,9 @@ function fakeToolContext(cwd) {
 async function productRegistry(t) {
 	const root = await mkdtemp(join(tmpdir(), "codex-browser-plugin-"));
 	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
-	const registry = createDefaultPiboPluginRegistry();
-	const product = await startPluginProductRuntime({ host: registry.getPluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [] });
+	const host = new PluginHost();
+	const registry = PiboPluginRegistry.create({ host });
+	const product = await startPluginProductRuntime({ host, data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [] });
 	t.after(async () => { await product.dispose(); await registry.disposePlugins(); data.close(); await rm(root, { recursive: true, force: true }); });
 	return { registry, product, data };
 }
@@ -39,30 +41,19 @@ async function productRegistry(t) {
 test("Codex browser interface is delivered by its ordinary installed plugin", async (t) => {
 	const { registry, product, data } = await productRegistry(t);
 	const catalog = registry.getCapabilityCatalog();
-	const tools = new Map(catalog.nativeTools.map((tool) => [tool.name, tool]));
-	for (const name of CODEX_BROWSER_TOOL_NAMES) {
-		assert.equal(tools.get(name)?.pluginId, "pibo.browser-tools");
-		assert.equal(tools.get(name)?.hasDefinition, false, `${name} is generated with its session controller at runtime`);
-	}
 	assert.equal(Object.hasOwn(catalog, "packages"), false, "the retired capability-package catalog must not return");
-
-	registry.upsertProfile({
-		name: "codex-browser-test",
-		create(context) {
-			return new InitialSessionContextBuilder("codex-browser-test")
-				.addTools(context.getTools(CODEX_BROWSER_TOOL_NAMES))
-				.createSession();
-		},
-	});
-	const profile = registry.createProfile("codex-browser-test");
-	assert.ok(profile.tools.every((tool) => tool.builtInPiboTool === "codex_browser"));
 	const installation = data.plugins.getInstallation("pibo.browser-tools");
+	const toolContributions = new Set(installation.manifest.contributions
+		.filter((contribution) => contribution.kind === "tool")
+		.map((contribution) => contribution.name));
+	for (const name of CODEX_BROWSER_TOOL_NAMES) assert.ok(toolContributions.has(name), `${name} belongs to the installed browser plugin`);
 	const selection = structuredClone(createAgentPluginSelection([installation]));
 	selection.plugins[0].enabled = true;
 	for (const name of CODEX_BROWSER_TOOL_NAMES) selection.plugins[0].contributions[name] = true;
-	const selected = new InitialSessionContext({ ...profile, pluginSelection: selection });
+	const selected = new InitialSessionContext({ profileName: "codex-browser-test", pluginSelection: selection });
 	const plan = product.runtime.preview(selected, { adapterId: "pi", instanceId: "pi", capabilities: {} }, "ps_browser");
 	const effective = profileFromPluginPlan(selected, plan, registry.getPluginHost());
+	assert.ok(effective.tools.every((tool) => tool.providerBacked === true));
 	const inspection = await inspectPiboProfile({ profile: effective, persistSession: false });
 	for (const name of CODEX_BROWSER_TOOL_NAMES) {
 		const tool = inspection.tools.find((candidate) => candidate.name === name);

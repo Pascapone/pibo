@@ -28,20 +28,17 @@ function findNode(nodes, predicate) {
 	return undefined;
 }
 
-test("default base context build does not select Pibo native tooling context", async () => {
+test("plugin-free base context build does not invent feature tools or select Pibo native tooling context", async () => {
 	const snapshot = await inspectPiboContextBuild({ profile: createDefaultPiboProfile() });
 	const nativeTooling = findNode(snapshot.nodes, (node) => node.path?.endsWith("context/pibo-native-tooling.md"));
 	const goalTool = findNode(snapshot.nodes, (node) => node.id === "tools/get_goal");
-	const goalSchema = findNode([goalTool], (node) => node.id === "tools/get_goal/definition");
 
 	assert.equal(snapshot.profileName, "base");
 	assert.equal(nativeTooling, undefined);
-	assert.equal(goalTool.source, "generated");
-	assert.ok(goalTool.badges.includes("PIBO"));
-	assert.ok(goalSchema.schemaJson.inputSchema);
+	assert.equal(goalTool, undefined);
 });
 
-test("generated tool origins remain inspector-only parent metadata", async () => {
+test("legacy tool-package flags do not recreate removed generated plugin tools", async () => {
 	const profile = new InitialSessionContextBuilder("generated-tool-origin-test")
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(false)
@@ -62,14 +59,8 @@ test("generated tool origins remain inspector-only parent metadata", async () =>
 		["apply_patch", "codex-compat"],
 	]);
 
-	for (const [toolName, label] of expectedOrigins) {
-		const tool = findNode(snapshot.nodes, (node) => node.id === `tools/${toolName}`);
-		assert.ok(tool, `expected generated tool ${toolName}`);
-		assert.deepEqual(tool.metadata.inspectorOrigin, { label, modelVisible: false });
-		assert.equal(tool.children.some((child) => child.id.endsWith("/generated-origin") || child.title === "Generated Origin"), false);
-		assert.equal(tool.estimatedTokens, undefined, "inspector metadata must not receive a direct token estimate");
-		const childTokens = tool.children.reduce((total, child) => total + (child.estimatedSubtreeTokens ?? child.estimatedTokens ?? 0), 0);
-		assert.equal(tool.estimatedSubtreeTokens ?? 0, childTokens, "tool totals must include only model-visible children");
+	for (const [toolName] of expectedOrigins) {
+		assert.equal(findNode(snapshot.nodes, (node) => node.id === `tools/${toolName}`), undefined, `legacy flags must not synthesize ${toolName}`);
 	}
 
 	const allNodes = [];
@@ -170,17 +161,9 @@ test("portable runtime manifest uses materialized callable names for fixed and f
 	assert.equal(factoryCalls, 1, "inspection materializes each profile factory once");
 	assert.deepEqual(factoryContext, toolContext);
 	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
-	const definitions = createPiboSessionToolDefinitions({
-		profile,
-		toolContext,
-		runToolController: {},
-	});
+	const definitions = createPiboSessionToolDefinitions({ profile, toolContext });
 	assert.equal(factoryCalls, 2, "session assembly materializes each profile factory once");
 	assert.deepEqual(manifest.payloadJson.activeToolNames, definitions.map((definition) => definition.name));
-	assert.deepEqual(
-		manifest.payloadJson.yieldableToolNames,
-		definitions.find((definition) => definition.name === "pibo_run_start").inputSchema.properties.toolName.enum,
-	);
 	assert.deepEqual(manifest.payloadJson.yieldableToolNames, ["factory_callable"]);
 	assert.equal(manifest.payloadJson.activeToolNames.includes("fixed_registration"), false);
 	assert.equal(manifest.payloadJson.activeToolNames.includes("factory_registration"), false);
@@ -215,18 +198,14 @@ test("portable runtime manifest excludes controller-backed Codex browser tools w
 		},
 	});
 	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
-	const definitions = createPiboSessionToolDefinitions({
-		profile,
-		toolContext,
-		runToolController: {},
-	});
+	const definitions = createPiboSessionToolDefinitions({ profile, toolContext });
 	assert.deepEqual(definitions, []);
 	assert.deepEqual(manifest.payloadJson.activeToolNames, []);
 	assert.deepEqual(manifest.payloadJson.yieldableToolNames, []);
 	assert.deepEqual(manifest.payloadJson.activeToolPackages, []);
 });
 
-test("portable runtime context build exposes selected Pibo subagents through MCP delivery", () => {
+test("portable runtime context build does not invent delegation tools without selected plugin contributions", () => {
 	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
 	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
 	const profile = new InitialSessionContextBuilder("codex-subagent-context")
@@ -261,30 +240,15 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
 	assert.equal(tools.state, "active");
 	assert.ok(tools.badges.includes("MCP:STREAMABLE-HTTP"));
-	assert.equal(tools.children.some((node) => node.title === "pibo_agents_send_message"), false);
-	assert.ok(tools.children.some((node) => node.title === "yielded-target:pibo_agents_send_message"));
-	assert.ok(tools.children.some((node) => node.title === "pibo_agents_observe"));
-	assert.ok(tools.children.some((node) => node.title === "pibo_run_start"));
-	assert.ok(tools.children.some((node) => node.title === "pibo_run_read"));
+	assert.equal(tools.children.some((node) => node.title.startsWith("pibo_agents_")), false);
+	assert.equal(tools.children.some((node) => node.title.startsWith("pibo_run_")), false);
 	assert.ok(tools.children.some((node) => node.title === "agent:reviewer (pi-reviewer) — Review the proposed implementation."));
-	assert.ok(tools.children.some((node) => node.title === "package:pibo-run-control (automatic for delegation)"));
 	assert.equal(manifest.kind, "runtime_manifest");
 	assert.equal(manifest.estimatedTokens, undefined, "the read-only manifest must not count as prompt context");
 	assert.equal(manifest.payloadJson.toolSurface, "pibo-managed-only");
-	assert.deepEqual(manifest.payloadJson.activeToolNames, [
-		"pibo_agents_list_agents",
-		"pibo_agents_observe",
-		"pibo_agents_kill",
-		"pibo_run_start",
-		"pibo_run_list",
-		"pibo_run_status",
-		"pibo_run_wait",
-		"pibo_run_read",
-		"pibo_run_cancel",
-		"pibo_run_ack",
-	]);
-	assert.deepEqual(manifest.payloadJson.yieldableToolNames, ["pibo_agents_send_message"]);
-	assert.deepEqual(manifest.payloadJson.activeToolPackages, ["pibo-run-control"]);
+	assert.deepEqual(manifest.payloadJson.activeToolNames, []);
+	assert.deepEqual(manifest.payloadJson.yieldableToolNames, []);
+	assert.deepEqual(manifest.payloadJson.activeToolPackages, []);
 	assert.equal(manifest.payloadJson.activeToolNames.some((name) => name.startsWith("agent:") || name.startsWith("package:") || name.startsWith("yielded-target:")), false);
 	assert.deepEqual(manifest.payloadJson.effectiveModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
 	assert.equal(manifest.payloadJson.effectiveThinkingLevel, "max");
@@ -298,85 +262,17 @@ test("portable runtime context build exposes selected Pibo subagents through MCP
 	}]);
 });
 
-test("context build exposes one shared agent surface and the available name-description catalog", async () => {
-	const targetProfile = new InitialSessionContextBuilder("delegated-target")
-		.withSubagentModel({ provider: "fallback-provider", id: "fallback-model" })
-		.withSubagentThinkingLevel("medium")
-		.createSession();
-	const profile = new InitialSessionContextBuilder("agent-context")
+test("Pi inspection does not synthesize delegation or Run tools from legacy profile flags", async () => {
+	const profile = new InitialSessionContextBuilder("agent-context-without-plugins")
 		.withAutoContextFiles(false)
 		.withBuiltinTools("disabled")
 		.withToolPackages({ goalControl: false, runControl: true })
-		.addSubagents([
-			{ name: "explorer", description: "Inspect the repository and report findings.", targetProfile: "explorer-profile" },
-			{ name: "worker", description: "Implement focused changes and verify them.", targetProfile: "worker-profile" },
-		])
+		.addSubagent({ name: "explorer", description: "Inspect the repository and report findings.", targetProfile: "explorer-profile" })
 		.createSession();
-	const snapshot = await inspectPiboContextBuild({
-		profile,
-		persistSession: false,
-		subagentProfileResolver: () => targetProfile,
-	});
-	const runStartDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_run_start/definition");
-	const observeDefinition = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_observe/definition");
-	const delegatedContext = findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md");
-	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
-	const toolIds = [];
-	const collect = (nodes) => {
-		for (const node of nodes) {
-			if (node.kind === "tool") toolIds.push(node.id);
-			collect(node.children ?? []);
-		}
-	};
-	collect(snapshot.nodes);
-
-	assert.ok(runStartDefinition.schemaJson.inputSchema.properties.toolName.enum.includes("pibo_agents_send_message"));
-	assert.equal(observeDefinition.schemaJson.inputSchema.properties.order.default, "desc");
-	assert.equal(observeDefinition.schemaJson.inputSchema.properties.limit.default, 20);
-	assert.equal(observeDefinition.schemaJson.inputSchema.properties.includeTools.default, false);
-	assert.equal(observeDefinition.schemaJson.inputSchema.properties.toolDetail.default, "summary");
-	assert.match(observeDefinition.schemaJson.inputSchema.properties.eventTypes.items.description, /Explicit filters can retrieve progress events/);
-	assert.match(delegatedContext.hydratedText, /`explorer`.*Inspect the repository and report findings\./s);
-	assert.match(delegatedContext.hydratedText, /`worker`.*Implement focused changes and verify them\./s);
-	assert.match(delegatedContext.hydratedText, /pibo_run_wait/);
-	assert.match(delegatedContext.hydratedText, /pibo_agents_observe/);
-	assert.match(delegatedContext.hydratedText, /first equivalent query returns the newest completed assistant messages/);
-	assert.match(delegatedContext.hydratedText, /includeTools: true/);
-	assert.match(delegatedContext.hydratedText, /afterSequence/);
-	assert.equal(toolIds.filter((id) => id.startsWith("tools/pibo_agents_")).length, 3);
-	assert.equal(toolIds.includes("tools/pibo_agents_send_message"), false);
-	assert.equal(toolIds.some((id) => id.includes("pibo_subagent_")), false);
-	assert.equal(manifest.payloadJson.toolSurface, "complete");
-	assert.deepEqual(manifest.payloadJson.activeToolNames, [
-		"bash",
-		"pibo_agents_kill",
-		"pibo_agents_list_agents",
-		"pibo_agents_observe",
-		"pibo_run_ack",
-		"pibo_run_cancel",
-		"pibo_run_list",
-		"pibo_run_read",
-		"pibo_run_start",
-		"pibo_run_status",
-		"pibo_run_wait",
-	]);
-	assert.deepEqual(manifest.payloadJson.yieldableToolNames, [
-		"bash",
-		"pibo_agents_send_message",
-		"pibo_agents_list_agents",
-		"pibo_agents_observe",
-		"pibo_agents_kill",
-	]);
-	assert.deepEqual(manifest.payloadJson.activeToolPackages, ["pibo-run-control"]);
-	assert.equal(manifest.payloadJson.contextFilePaths.includes("pibo://runtime/delegated-agents.md"), true);
-	assert.deepEqual(manifest.payloadJson.delegatedAgents.map((agent) => ({
-		name: agent.name,
-		effectiveModel: agent.effectiveModel,
-		effectiveThinkingLevel: agent.effectiveThinkingLevel,
-	})), [
-		{ name: "explorer", effectiveModel: { provider: "fallback-provider", id: "fallback-model" }, effectiveThinkingLevel: "medium" },
-		{ name: "worker", effectiveModel: { provider: "fallback-provider", id: "fallback-model" }, effectiveThinkingLevel: "medium" },
-	]);
+	const snapshot = await inspectPiboContextBuild({ profile, persistSession: false });
+	assert.equal(findNode(snapshot.nodes, (node) => node.id === "tools/pibo_run_start"), undefined);
+	assert.equal(findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_observe"), undefined);
+	assert.equal(findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md"), undefined);
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

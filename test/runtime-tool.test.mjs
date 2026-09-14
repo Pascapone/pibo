@@ -4,8 +4,10 @@ import { chmodSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
+import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
+import { profileFromPluginPlan } from "../dist/agent-runtime/plugin-plan.js";
+import { createAgentPluginSelection } from "../dist/plugins/selection.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 import { RuntimeSessionRegistry } from "../dist/tools/runtime/registry.js";
 import { createRuntimeToolDefinition } from "../dist/tools/runtime/tool.js";
@@ -297,17 +299,16 @@ test("runtime can be selected by a registered profile and inspection", async (t)
 		await registry.disposePlugins();
 		await product.dispose();
 	});
-	registry.upsertProfile({
-		name: "runtime-agent",
-		create(context) {
-			return new InitialSessionContextBuilder("runtime-agent")
-				.addTool(context.getTool("runtime"))
-				.createSession();
-		},
-	});
-	const profile = registry.createProfile("runtime-agent");
-	assert.ok(profile.tools.some((tool) => tool.name === "runtime" && tool.builtInPiboTool === "runtime"));
-	assert.ok(registry.getCapabilityCatalog().nativeTools.some((tool) => tool.name === "runtime" && tool.pluginId === "pibo.code-runtime"));
+	const installation = product.host.inspect().plugins.find((candidate) => candidate.manifest.id === "pibo.code-runtime");
+	assert.ok(installation);
+	const selection = structuredClone(createAgentPluginSelection([installation]));
+	selection.plugins[0].enabled = true;
+	selection.plugins[0].contributions.runtime = true;
+	const selected = new InitialSessionContext({ profileName: "runtime-agent", pluginSelection: selection });
+	const plan = product.runtime.preview(selected, { adapterId: "pi", instanceId: "pi", capabilities: {} }, "ps_runtime");
+	const profile = profileFromPluginPlan(selected, plan, product.host);
+	assert.ok(profile.tools.some((tool) => tool.name === "runtime" && tool.providerBacked === true));
+	assert.ok(plan.contributions.some((entry) => entry.pluginId === "pibo.code-runtime" && entry.contribution.kind === "tool" && entry.contribution.name === "runtime"));
 
 	const inspection = await inspectPiboProfile({ profile, persistSession: false });
 	const runtimeTool = inspection.tools.find((tool) => tool.name === "runtime");

@@ -1,81 +1,26 @@
 import { wrapPluginToolHooks, type RuntimePluginHook, type PluginHookScope } from "../agent-runtime/plugin-hooks.js";
+import type { PluginQualifiedId } from "../plugins/manifest.js";
 import type {
 	InitialSessionContext,
 	ToolDefinitionContext,
 	ToolProfile,
 } from "../core/profiles.js";
-import { createPiboGoalToolDefinitions, PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
-import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
-import { createAgentToolDefinitions, type PiboAgentsController, type PiboSubagentRunner } from "../subagents/tool.js";
-import {
-	CODEX_BROWSER_TOOL_NAMES,
-	createCodexBrowserToolDefinitions,
-	type CodexBrowserToolController,
-	type CodexBrowserToolName,
-} from "./codex-browser.js";
-import { createCodexCompatToolDefinitions } from "./codex-compat.js";
 import type { PiboToolDefinition } from "./contract.js";
-import { createRuntimeToolDefinition, type PiboRuntimeToolController } from "./runtime/tool.js";
+
+export type SessionToolDefinitionRegistration = { contributionId?: PluginQualifiedId; definition: PiboToolDefinition; direct?: boolean; yieldable?: boolean };
 
 export type CreatePiboSessionToolDefinitionsOptions = {
 	profile: InitialSessionContext;
 	pluginHooks?: readonly RuntimePluginHook[];
 	pluginHookScope?: Omit<PluginHookScope, "toolName" | "toolCallId" | "signal">;
 	toolContext?: ToolDefinitionContext;
-	goalStorePath?: string;
-	agentsController?: PiboAgentsController;
-	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
-	subagentRunner?: PiboSubagentRunner;
-	runToolController?: PiboRunToolController;
-	runtimeToolController?: PiboRuntimeToolController;
-	codexBrowserController?: CodexBrowserToolController;
-	/** Adapter-private tools exposed only when the adapter explicitly supports native-tool yielding. */
+	/** Adapter-private tools may be targeted by augment providers but are never exposed directly. */
 	nativeYieldableTools?: readonly PiboToolDefinition[];
 	/** Generation-pinned tools supplied by selected public session tool providers. */
-	sessionToolDefinitions?: readonly PiboToolDefinition[];
+	sessionToolDefinitions?: readonly SessionToolDefinitionRegistration[];
+	/** Later provider phase for meta-tools built from the already wrapped yieldable catalog. */
+	createAugmentedSessionToolDefinitions?: (availableTools: readonly PiboToolDefinition[]) => readonly SessionToolDefinitionRegistration[];
 };
-
-export function isRuntimeToolProfile(tool: ToolProfile): boolean {
-	return tool.builtInPiboTool === "runtime" || tool.name === "runtime";
-}
-
-export function isEnabledRuntimeToolProfile(tool: ToolProfile): boolean {
-	return tool.enabled !== false && isRuntimeToolProfile(tool);
-}
-
-export function isCodexBrowserToolProfile(tool: ToolProfile): boolean {
-	return tool.builtInPiboTool === "codex_browser" || CODEX_BROWSER_TOOL_NAMES.includes(tool.name as CodexBrowserToolName);
-}
-
-export function isEnabledCodexBrowserToolProfile(tool: ToolProfile): boolean {
-	return tool.enabled !== false && isCodexBrowserToolProfile(tool);
-}
-
-export function isGeneratedPiboTool(name: string): boolean {
-	return name === "runtime"
-		|| name.startsWith("pibo_agents_")
-		|| name.startsWith("pibo_subagent_")
-		|| name.startsWith("pibo_run_")
-		|| PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number]);
-}
-
-function hasEnabledToolDefinition(tool: ToolProfile): tool is ToolProfile & (
-	{ definition: PiboToolDefinition }
-	| { createDefinition: (context: ToolDefinitionContext) => PiboToolDefinition }
-) {
-	return tool.enabled !== false && (tool.definition !== undefined || tool.createDefinition !== undefined);
-}
-
-function getToolDefinition(
-	tool: ToolProfile & (
-		{ definition: PiboToolDefinition }
-		| { createDefinition: (context: ToolDefinitionContext) => PiboToolDefinition }
-	),
-	context: ToolDefinitionContext = {},
-): PiboToolDefinition {
-	if (tool.definition) return tool.definition;
-	return tool.createDefinition!(context);
-}
 
 export type MaterializedPiboProfileTool = {
 	profile: ToolProfile;
@@ -83,84 +28,48 @@ export type MaterializedPiboProfileTool = {
 };
 
 export function materializePiboProfileTools(
-	profile: InitialSessionContext,
+	profile: Pick<InitialSessionContext, "tools">,
 	context: ToolDefinitionContext = {},
 ): MaterializedPiboProfileTool[] {
 	return profile.tools
-		.filter((tool) => !isRuntimeToolProfile(tool) && !isCodexBrowserToolProfile(tool))
-		.filter(hasEnabledToolDefinition)
-		.map((tool) => ({ profile: tool, definition: getToolDefinition(tool, context) }));
+		.filter((tool) => tool.enabled !== false)
+		.flatMap((tool): MaterializedPiboProfileTool[] => {
+			if (tool.createDefinition) return [{ profile: tool, definition: tool.createDefinition(context) }];
+			if (tool.definition) return [{ profile: tool, definition: tool.definition }];
+			return [];
+		});
 }
 
-/** Assemble the selected Pibo-managed tool set without importing any harness package. */
+function uniqueDefinitions(definitions: readonly PiboToolDefinition[]): PiboToolDefinition[] {
+	const names = new Set<string>();
+	for (const definition of definitions) {
+		if (names.has(definition.name)) throw new Error(`Session tool name conflict: ${definition.name}`);
+		names.add(definition.name);
+	}
+	return [...definitions];
+}
+
 export function createPiboSessionToolDefinitions(
 	options: CreatePiboSessionToolDefinitionsOptions,
 ): PiboToolDefinition[] {
-	const { profile } = options;
-	if (profile.subagents.some((subagent) => subagent.enabled !== false) && options.subagentRunner && !options.agentsController) {
-		throw new Error("CreatePiboSessionToolDefinitionsOptions.subagentRunner is retired. Provide agentsController so the session can expose the four pibo_agents_* management tools.");
-	}
-	const runtimeProfileTool = profile.tools.find(isEnabledRuntimeToolProfile);
-	const runtimeTool = runtimeProfileTool && options.runtimeToolController
-		? createRuntimeToolDefinition(options.runtimeToolController)
-		: undefined;
-	const selectedCodexBrowserToolNames = profile.tools
-		.filter(isEnabledCodexBrowserToolProfile)
-		.map((tool) => tool.name as CodexBrowserToolName);
-	const codexBrowserTools = options.codexBrowserController
-		? createCodexBrowserToolDefinitions(options.codexBrowserController, selectedCodexBrowserToolNames)
-		: [];
-	const materializedProfileTools = materializePiboProfileTools(profile, options.toolContext);
-	const profileToolDefinitions = materializedProfileTools.map((tool) => tool.definition);
-	const codexCompatTools = profile.toolPackages.codexCompat === true
-		? createCodexCompatToolDefinitions()
-		: [];
-	const goalTools = profile.toolPackages.goalControl !== false
-		? createPiboGoalToolDefinitions(options.toolContext ?? {}, { storePath: options.goalStorePath })
-		: [];
-	const agentTools = options.agentsController
-		? createAgentToolDefinitions(profile.subagents, options.agentsController)
-		: [];
-	const delegatedSendTool = agentTools.find((tool) => tool.name === "pibo_agents_send_message");
-	const directAgentTools = agentTools.filter((tool) => tool !== delegatedSendTool);
-	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
-	const sessionToolDefinitions = [...(options.sessionToolDefinitions ?? [])];
-	const selectedNames = profile.effectivePluginPlan ? new Set(profile.tools.map((tool) => tool.name)) : undefined;
-	const isSelected = (tool: PiboToolDefinition) => !selectedNames || selectedNames.has(tool.name)
-		|| (profile.toolPackages.runControl === true && nativeYieldableTools.includes(tool));
-	const wrap = (tool: PiboToolDefinition) => options.pluginHookScope && options.pluginHooks?.length
-		? wrapPluginToolHooks(tool, options.pluginHooks, options.pluginHookScope) : tool;
+	const wrap = (tool: PiboToolDefinition): PiboToolDefinition => options.pluginHooks && options.pluginHookScope
+		? wrapPluginToolHooks(tool, options.pluginHooks, options.pluginHookScope)
+		: tool;
+	const materializedProfileTools = materializePiboProfileTools(options.profile, options.toolContext);
+	const sessionTools = [...(options.sessionToolDefinitions ?? [])];
+	const wrappedDirectDefinitions = [
+		...(options.nativeYieldableTools ?? []),
+		...materializedProfileTools.filter((tool) => tool.profile.direct !== false).map((tool) => tool.definition).map(wrap),
+		...sessionTools.filter((tool) => tool.direct !== false).map((tool) => tool.definition).map(wrap),
+	];
 	const yieldableTools = [
-		...nativeYieldableTools,
-		...[
-		...materializedProfileTools
-			.filter((tool) => tool.profile.yieldable !== false)
-			.map((tool) => tool.definition),
-		...(runtimeTool && runtimeProfileTool?.yieldable !== false ? [runtimeTool] : []),
-		...codexBrowserTools.filter((definition) => profile.tools.find((tool) => tool.name === definition.name)?.yieldable !== false),
-		...agentTools,
-		...codexCompatTools,
-		].filter(isSelected).map(wrap),
-		...sessionToolDefinitions.map(wrap),
+		...(options.nativeYieldableTools ?? []),
+		...materializedProfileTools.filter((tool) => tool.profile.yieldable !== false).map((tool) => tool.definition).map(wrap),
+		...sessionTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.definition).map(wrap),
 	];
-	const runControlYieldableTools = profile.toolPackages.runControl === true
-		? yieldableTools
-		: delegatedSendTool ? [delegatedSendTool] : [];
-	const runTools = options.runToolController && runControlYieldableTools.length > 0
-		? createRunToolDefinitions(runControlYieldableTools, options.runToolController)
-		: [];
-
-	return [
-		...nativeYieldableTools,
-		...[
-		...profileToolDefinitions,
-		...(runtimeTool ? [runtimeTool] : []),
-		...codexBrowserTools,
-		...directAgentTools,
-		...codexCompatTools,
-		...goalTools,
-		].filter(isSelected).map(wrap),
-		...sessionToolDefinitions.map(wrap),
-		...runTools.filter((tool) => !selectedNames || selectedNames.has(tool.name) || Boolean(delegatedSendTool)).map(wrap),
-	];
+	const augmentedSessionTools = [...(options.createAugmentedSessionToolDefinitions?.(uniqueDefinitions(yieldableTools)) ?? [])];
+	return uniqueDefinitions([
+		...wrappedDirectDefinitions,
+		...augmentedSessionTools.map((tool) => tool.definition).map(wrap),
+	]);
 }

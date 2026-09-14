@@ -116,7 +116,7 @@ export function corePackageManifest(): PluginManifest {
 	};
 }
 
-function toolContribution(name: string, options: { title?: string; defaultEnabled?: boolean; runtime?: PluginRuntimeRequirement; context?: PluginContribution["context"]; metadata?: PluginContribution["metadata"] } = {}): PluginContribution {
+function toolContribution(name: string, options: { title?: string; defaultEnabled?: boolean; runtime?: PluginRuntimeRequirement; context?: PluginContribution["context"]; metadata?: PluginContribution["metadata"]; direct?: boolean; yieldable?: boolean } = {}): PluginContribution {
 	return {
 		id: name,
 		kind: "tool",
@@ -128,6 +128,8 @@ function toolContribution(name: string, options: { title?: string; defaultEnable
 		schemaVersion: 1,
 		...(options.runtime ? { runtime: options.runtime } : {}),
 		...(options.metadata ? { metadata: options.metadata } : {}),
+		...(options.direct !== undefined ? { direct: options.direct } : {}),
+		...(options.yieldable !== undefined ? { yieldable: options.yieldable } : {}),
 		context: options.context ?? { kind: "none", reason: "Tool schema and bounded results are delivered at runtime." },
 	};
 }
@@ -155,7 +157,11 @@ function settingsView(title: string): PluginContribution {
 	};
 }
 
-function toolFamilyManifest(input: { id: string; name: string; tools: PluginContribution[]; extra?: PluginContribution[] }): PluginManifest {
+function toolFamilyManifest(input: { id: string; name: string; tools: PluginContribution[]; extra?: PluginContribution[]; sessionTools?: boolean; includeNativeTools?: boolean }): PluginManifest {
+	const providerId = `${input.id}/session-tools` as const;
+	const tools = input.sessionTools
+		? input.tools.map((tool) => ({ ...tool, sessionToolProvider: providerId, dependsOn: [...(tool.dependsOn ?? []), providerId] }))
+		: input.tools;
 	return {
 		schemaVersion: 1,
 		id: input.id,
@@ -164,7 +170,12 @@ function toolFamilyManifest(input: { id: string; name: string; tools: PluginCont
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		config: { schemaVersion: 1, scopes: ["app", "agent", "session"], schema: { type: "object", additionalProperties: true } },
-		contributions: [...input.tools, ...(input.extra ?? []), settingsView(`${input.name} settings`)],
+		contributions: [
+			...(input.sessionTools ? [{ ...systemContribution("session-tools", "session-tool-provider", `${input.id}-session-tools`), ...(input.includeNativeTools ? { metadata: { includeNativeTools: true } } : {}) }] : []),
+			...tools,
+			...(input.extra ?? []),
+			settingsView(`${input.name} settings`),
+		],
 	};
 }
 
@@ -264,26 +275,27 @@ export function webAnnotationsPackageManifest(): PluginManifest {
 }
 
 export function codeRuntimePackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: CODE_RUNTIME_PLUGIN_ID, name: "Pibo Code Runtime", tools: [toolContribution("runtime", { context: { kind: "context", stage: "tools", description: "Persistent Python/Node runtime tool schema.", loading: "runtime" } })] });
+	return toolFamilyManifest({ id: CODE_RUNTIME_PLUGIN_ID, name: "Pibo Code Runtime", sessionTools: true, tools: [toolContribution("runtime", { context: { kind: "context", stage: "tools", description: "Persistent Python/Node runtime tool schema.", loading: "runtime" } })] });
 }
 
 export function fileEditingPackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: FILE_EDITING_PLUGIN_ID, name: "Pibo File Editing", tools: [toolContribution("hashline", { runtime: { adapterIds: ["pi"] }, metadata: { replacesBuiltinTools: ["read"] }, context: { kind: "context", stage: "tools", description: "Pi read replacement with content-hash anchors.", loading: "runtime" } })] });
+	return toolFamilyManifest({ id: FILE_EDITING_PLUGIN_ID, name: "Pibo File Editing", sessionTools: true, tools: [toolContribution("hashline", { yieldable: false, runtime: { adapterIds: ["pi"] }, metadata: { replacesBuiltinTools: ["read"] }, context: { kind: "context", stage: "tools", description: "Pi read replacement with content-hash anchors.", loading: "runtime" } })] });
 }
 
 export function webSearchPackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: WEB_SEARCH_PLUGIN_ID, name: "Pibo Web Search", tools: [toolContribution("web_search", { runtime: { adapterIds: ["pi"] }, context: { kind: "context", stage: "provider-tools", description: "OpenAI provider web-search declaration and result contract.", loading: "runtime" } })] });
+	return toolFamilyManifest({ id: WEB_SEARCH_PLUGIN_ID, name: "Pibo Web Search", tools: [toolContribution("web_search", { yieldable: false, runtime: { adapterIds: ["pi"] }, context: { kind: "context", stage: "provider-tools", description: "OpenAI provider web-search declaration and result contract.", loading: "runtime" } })] });
 }
 
 export function gatewayToolsPackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: GATEWAY_TOOLS_PLUGIN_ID, name: "Pibo Gateway Tools", tools: [toolContribution("pibo_gateway_send", { context: { kind: "context", stage: "tools", description: "Send a message through the local Pibo gateway.", loading: "runtime" } })] });
+	return toolFamilyManifest({ id: GATEWAY_TOOLS_PLUGIN_ID, name: "Pibo Gateway Tools", sessionTools: true, tools: [toolContribution("pibo_gateway_send", { context: { kind: "context", stage: "tools", description: "Send a message through the local Pibo gateway.", loading: "runtime" } })] });
 }
 
 export function browserToolsPackageManifest(): PluginManifest {
 	return toolFamilyManifest({
 		id: BROWSER_TOOLS_PLUGIN_ID,
 		name: "Pibo Browser Tools",
-		tools: BROWSER_TOOL_NAMES.map((name) => toolContribution(name, { context: { kind: "context", stage: "tools", description: "Browser Use and persistent browser-bound Node REPL tool schema.", loading: "runtime" } })),
+		sessionTools: true,
+		tools: BROWSER_TOOL_NAMES.map((name) => toolContribution(name, { yieldable: name === "browser_use_browser_use", context: { kind: "context", stage: "tools", description: "Browser Use and persistent browser-bound Node REPL tool schema.", loading: "runtime" } })),
 		extra: [{ id: "native-tooling-context", kind: "context-file", name: "Pibo Native Tooling", title: "Pibo Native Tooling", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "context", description: "Agent-facing native tooling workflow context.", loading: "eager" } }],
 	});
 }
@@ -292,13 +304,14 @@ export function codexCompatPackageManifest(): PluginManifest {
 	return toolFamilyManifest({
 		id: CODEX_COMPAT_PLUGIN_ID,
 		name: "Pibo Codex Compatibility",
+		sessionTools: true,
 		tools: ["apply_patch", "view_image", "codex_image_generation"].map((name) => toolContribution(name, { runtime: { adapterIds: ["pi"] }, context: { kind: "context", stage: "tools", description: "Pi-backed Codex compatibility contribution.", loading: "runtime" } })),
-		extra: [{ id: "base-prompt", kind: "context-file", name: "Codex Base Prompt", title: "Codex Base Prompt", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "base-prompt", description: "Codex compatibility base prompt for the Pi adapter only.", loading: "eager" } }],
+		extra: [{ id: "base-prompt", kind: "system-prompt-transformer", name: "Codex Base Prompt", title: "Codex Base Prompt", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "base-prompt", description: "Codex compatibility system-prompt transformation for compatible adapters.", loading: "eager" } }],
 	});
 }
 
 export function runControlPackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: RUN_CONTROL_PLUGIN_ID, name: "Pibo Run Control", tools: PIBO_RUN_TOOL_NAMES.map((name) => toolContribution(name, { context: { kind: "context", stage: "tools", description: "Session-owned yielded-run lifecycle tool.", loading: "runtime" } })) });
+	return toolFamilyManifest({ id: RUN_CONTROL_PLUGIN_ID, name: "Pibo Run Control", sessionTools: true, includeNativeTools: true, tools: PIBO_RUN_TOOL_NAMES.map((name) => toolContribution(name, { yieldable: false, context: { kind: "context", stage: "tools", description: "Session-owned yielded-run lifecycle tool.", loading: "runtime" } })) });
 }
 
 export function goalControlPackageManifest(): PluginManifest {
@@ -315,7 +328,8 @@ export function goalControlPackageManifest(): PluginManifest {
 			requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }],
 		},
 		contributions: [
-			...PIBO_GOAL_TOOL_NAMES.map((name) => toolContribution(name, { defaultEnabled: true, context: { kind: "context", stage: "tools", description: "Persisted session-goal lifecycle tool.", loading: "runtime" } })),
+			systemContribution("session-tools", "session-tool-provider", `${GOAL_CONTROL_PLUGIN_ID}-session-tools`),
+			...PIBO_GOAL_TOOL_NAMES.map((name) => ({ ...toolContribution(name, { defaultEnabled: true, context: { kind: "context", stage: "tools", description: "Persisted session-goal lifecycle tool.", loading: "runtime" } }), sessionToolProvider: `${GOAL_CONTROL_PLUGIN_ID}/session-tools` as const, dependsOn: [`${GOAL_CONTROL_PLUGIN_ID}/session-tools` as const] })),
 			settingsView("Pibo Goal Control settings"),
 			systemContribution("service", "system-service", PIBO_LOOP_SERVICE),
 			systemContribution("channel", "channel", "pibo.loop"),
@@ -326,7 +340,15 @@ export function goalControlPackageManifest(): PluginManifest {
 }
 
 export function agentDelegationPackageManifest(): PluginManifest {
-	return toolFamilyManifest({ id: AGENT_DELEGATION_PLUGIN_ID, name: "Pibo Agent Delegation", tools: PIBO_AGENT_TOOL_NAMES.map((name) => toolContribution(name, { context: { kind: "context", stage: "subagents", description: "Session-owned delegated-agent management tool.", loading: "runtime" } })) });
+	return toolFamilyManifest({
+		id: AGENT_DELEGATION_PLUGIN_ID,
+		name: "Pibo Agent Delegation",
+		sessionTools: true,
+		tools: PIBO_AGENT_TOOL_NAMES.map((name) => ({
+			...toolContribution(name, { direct: name !== "pibo_agents_send_message", context: { kind: "context", stage: "subagents", description: "Session-owned delegated-agent management tool.", loading: "runtime" } }),
+			...(name === "pibo_agents_send_message" ? { dependsOn: PIBO_RUN_TOOL_NAMES.map((runTool) => `${RUN_CONTROL_PLUGIN_ID}/${runTool}` as const) } : {}),
+		})),
+	});
 }
 
 function systemContribution(id: string, kind: string, name: string): PluginContribution {

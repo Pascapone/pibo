@@ -238,6 +238,8 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 			if (c.kind !== "tool" || c.scope !== "agent" || typeof c.name !== "string" || !c.name.trim() || typeof c.sessionToolProvider !== "string" || !qualifiedPattern.test(c.sessionToolProvider)) fail("invalid-session-tool-binding", "A session tool binding requires an agent-scoped named tool and a qualified provider contribution", at);
 			if (!Array.isArray(c.dependsOn) || !(c.dependsOn as unknown[]).includes(c.sessionToolProvider)) fail("missing-session-tool-provider-dependency", "A session tool must depend on its declared provider contribution", at);
 		}
+		if (c.direct !== undefined && (c.kind !== "tool" || typeof c.direct !== "boolean")) fail("invalid-tool-delivery", "direct is valid only as a boolean tool property", at);
+		if (c.yieldable !== undefined && (c.kind !== "tool" || typeof c.yieldable !== "boolean")) fail("invalid-tool-yieldability", "yieldable is valid only as a boolean tool property", at);
 		if (c.metadata !== undefined && !isPluginRecord(c.metadata)) fail("invalid-contribution-metadata", "Contribution metadata must be an object", at);
 		if (c.order !== undefined && (typeof c.order !== "number" || !Number.isFinite(c.order))) fail("invalid-order", "order must be finite", at);
 		if (!isPluginRecord(c.context) || (c.context.kind === "none" ? typeof c.context.reason !== "string" || !c.context.reason.trim() : c.context.kind !== "context" || typeof c.context.stage !== "string" || !c.context.stage || typeof c.context.description !== "string" || !c.context.description || !["eager", "progressive", "runtime"].includes(String(c.context.loading)))) fail("missing-context-effect", "Every contribution needs explicit context effect or no-context reason", at);

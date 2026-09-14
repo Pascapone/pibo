@@ -5,9 +5,6 @@ import { createDefaultPiboProfile } from "./default-profile.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "./model-defaults.js";
 import { redactSensitiveText, redactSensitiveValue } from "./sensitive-data-redaction.js";
 import { getMcpAgentContextFile } from "../mcp/agent-context.js";
-import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
-import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
-import { type PiboAgentsController } from "../subagents/tool.js";
 import { getInstalledCliToolContextFile } from "../tools/registry.js";
 import {
 	WEB_SEARCH_PROMPT_CONTRIBUTION,
@@ -19,7 +16,6 @@ import {
 	buildPiboGuidelines,
 	hasPiboSystemPromptTemplateMarkers,
 } from "./system-prompt-template.js";
-import { buildCodexCompatSystemPrompt } from "./codex-compat.js";
 import { readPiboBasePrompt } from "./base-prompt.js";
 import { DEFAULT_BUILTIN_TOOL_NAMES, InitialSessionContext, type ModelProfile } from "./profiles.js";
 import type { PiboThinkingLevel } from "./thinking.js";
@@ -309,41 +305,15 @@ function countNodes(nodes: readonly PiboContextBuildNode[]): number {
 	return nodes.reduce((count, node) => count + 1 + countNodes(node.children ?? []), 0);
 }
 
-function inspectionAgentsController(): PiboAgentsController {
-	const fail = () => {
-		throw new Error("Context build inspection cannot execute delegated-agent tools");
-	};
-	return {
-		sendMessage: fail,
-		listAgents: () => [],
-		observe: (input) => ({
-			filters: input,
-			observations: [],
-			nextAfterSequence: input.afterSequence ?? 0,
-			truncated: false,
-		}),
-		killAgent: fail,
-	};
-}
-
-function inspectionRunToolController(): PiboRunToolController {
-	const fail = () => {
-		throw new Error("Context build inspection cannot execute run-control tools");
-	};
-	return {
-		startToolRun: fail,
-		listRuns: () => [],
-		getRunStatus: fail,
-		waitForRun: fail,
-		readRun: fail,
-		cancelRun: fail,
-		ackRun: fail,
-	};
-}
-
 function withoutRequestedModels(profile: InitialSessionContext): InitialSessionContext {
 	return new InitialSessionContext({
 		profileName: profile.profileName,
+		pluginSelection: profile.pluginSelection,
+		pluginSelectionRevision: profile.pluginSelectionRevision,
+		pluginAgentId: profile.pluginAgentId,
+		effectivePluginPlan: profile.effectivePluginPlan,
+		runtimeInstanceId: profile.runtimeInstanceId,
+		runtimeOptions: profile.runtimeOptions,
 		sessionId: profile.sessionId,
 		parentSessionId: profile.parentSessionId,
 		thinkingLevel: profile.thinkingLevel,
@@ -357,6 +327,7 @@ function withoutRequestedModels(profile: InitialSessionContext): InitialSessionC
 		subagents: profile.subagents,
 		mcpServers: profile.mcpServers,
 		contextFiles: profile.contextFiles,
+		systemPromptTransformers: profile.systemPromptTransformers,
 		diagnostics: profile.diagnostics,
 		builtinTools: profile.builtinTools,
 		builtinToolNames: profile.builtinToolNames,
@@ -375,13 +346,7 @@ function toolDefinitionSchema(definition: ToolDefinition | undefined, toolInfo: 
 }
 
 function generatedOriginForTool(name: string, profile: InitialSessionContext): string | undefined {
-	if (name === "runtime") return "pibo-runtime";
-	if (name.startsWith("pibo_agents_")) return "pibo-subagents";
-	if (name.startsWith("pibo_run_")) return "pibo-run-control";
-	if (PIBO_GOAL_TOOL_NAMES.includes(name as (typeof PIBO_GOAL_TOOL_NAMES)[number])) return "pibo-goal-control";
-	if (name === "apply_patch" || name === "view_image") return "codex-compat";
-	if (profile.builtinToolNames.includes(name) || (DEFAULT_BUILTIN_TOOL_NAMES as readonly string[]).includes(name)) return undefined;
-	return undefined;
+	return profile.effectivePluginPlan?.contributions.find((entry) => entry.contribution.kind === "tool" && entry.contribution.name === name)?.pluginId;
 }
 
 function sourceForContextFile(path: string, profile: InitialSessionContext, cwd: string): PiboContextBuildNodeSource {
@@ -489,19 +454,12 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 	const cwd = options.cwd ?? getDefaultPiboWorkspace();
 	const profile = options.profile ?? createDefaultPiboProfile();
 	const inspectionProfile = withoutRequestedModels(profile);
-	const hasEnabledSubagents = profile.subagents.some((subagent) => subagent.enabled !== false);
-	const hasYieldableTools =
-		profile.toolPackages.runControl === true ||
-		hasEnabledSubagents ||
-		profile.tools.some((tool) => tool.enabled !== false && tool.definition !== undefined && tool.yieldable !== false);
 	const runtime = await createPiboRuntime({
 		...options,
 		cwd,
 		profile: inspectionProfile,
 		activeModel: undefined,
 		persistSession: false,
-		agentsController: options.agentsController ?? (hasEnabledSubagents ? inspectionAgentsController() : undefined),
-		runToolController: options.runToolController ?? (hasYieldableTools ? inspectionRunToolController() : undefined),
 	});
 
 	try {
@@ -590,24 +548,23 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			}
 		}
 
-		if (profile.toolPackages.codexCompat === true) {
-			const marker = "\n\n[base prompt continues here]";
-			const wrapper = buildCodexCompatSystemPrompt({
-				baseSystemPrompt: marker.trimStart(),
+		for (const binding of [...profile.systemPromptTransformers].reverse()) {
+			const marker = "[base prompt continues here]";
+			const transformed = binding.transformer.transform(marker, {
 				cwd,
 				shell: process.env.SHELL ?? "bash",
 				isChildSession: profile.parentSessionId !== undefined,
-			}).replace(marker.trimStart(), "[base prompt continues here]");
+			});
 			promptChildren.unshift({
-				id: "prompt/codex-compat-wrapper",
+				id: `prompt/transformer/${binding.contributionId}`,
 				kind: "runtime_extension",
-				title: "Codex Compatibility Wrapper",
-				source: "generated",
+				title: binding.contributionId,
+				source: "plugin",
 				state: "active",
-				badges: ["GENERATED", "APPROX"],
-				hydratedText: wrapper,
+				badges: ["PLUGIN", "APPROX"],
+				hydratedText: transformed,
 				approximate: true,
-				notes: ["Shows deterministic wrapper text with a placeholder instead of duplicating the full base prompt."],
+				notes: ["Shows the selected plugin transformation with a placeholder instead of duplicating the full base prompt."],
 			});
 		}
 
@@ -875,29 +832,26 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 				hydratedText: tool.providerTool.kind === "web_search" ? WEB_SEARCH_PROMPT_CONTRIBUTION : undefined,
 			})));
 		}
-		if (profile.toolPackages.codexCompat === true) {
-			extensionChildren.push({
-				id: "runtime-extensions/codex-compat",
-				kind: "runtime_extension",
-				title: "Codex Compatibility",
-				source: "generated",
-				state: "active",
-				badges: ["GENERATED"],
-				hydratedText: "Codex compatibility wraps the base system prompt and adds apply_patch/view_image tools when enabled.",
-			});
-		}
+		extensionChildren.push(...profile.systemPromptTransformers.map((binding) => ({
+			id: `runtime-extensions/${binding.contributionId}`,
+			kind: "runtime_extension" as const,
+			title: binding.contributionId,
+			source: "plugin" as const,
+			state: "active" as const,
+			badges: ["PLUGIN"],
+			metadata: { pluginId: binding.pluginId, contributionId: binding.contributionId },
+		})));
 
-		const runStartSchema = runtime.session.getToolDefinition("pibo_run_start")?.parameters as {
-			properties?: { toolName?: { enum?: unknown } };
-		} | undefined;
-		const yieldableToolNames = Array.isArray(runStartSchema?.properties?.toolName?.enum)
-			? runStartSchema.properties.toolName.enum.filter((name): name is string => typeof name === "string")
-			: [];
-		const activeToolPackages = [
-			...(PIBO_GOAL_TOOL_NAMES.some((name) => activeToolNames.has(name)) ? ["pibo-goal-control"] : []),
-			...(activeToolNames.has("apply_patch") || activeToolNames.has("view_image") ? ["codex-compat"] : []),
-			...(activeToolNames.has("pibo_run_start") ? ["pibo-run-control"] : []),
-		];
+		const yieldableToolNames = [...new Set(allTools.flatMap((tool) => {
+			const definition = runtime.session.getToolDefinition(tool.name) as unknown as ToolDefinition & { piboAugmentation?: { targetToolNames?: unknown } } | undefined;
+			const augmentation = definition?.piboAugmentation;
+			return Array.isArray(augmentation?.targetToolNames)
+				? augmentation.targetToolNames.filter((name): name is string => typeof name === "string")
+				: [];
+		}))];
+		const activeToolPackages = [...new Set(profile.effectivePluginPlan?.contributions
+			.filter((entry) => entry.contribution.kind === "tool")
+			.map((entry) => entry.pluginId) ?? [])];
 		const runtimeManifest = createPiboRuntimeResolutionManifest({
 			profile,
 			cwd,

@@ -11,7 +11,7 @@ import { PluginStore } from "../dist/plugins/store.js";
 import { PLUGIN_STORE_SCHEMA } from "../dist/plugins/store-schema.js";
 import { resolvePluginContributions } from "../dist/plugins/resolution.js";
 import { validatePluginAgentMutation, normalizePluginAgentCreate, normalizePluginAgentUpdate, validateAgentPluginPlanMutation, resolveAgentPluginPreview, buildAgentPluginCatalog, handleAgentPluginRoute } from "../dist/apps/chat/chat-capability-routes.js";
-import { createPiboSessionToolDefinitions } from "../dist/tools/session-tool-set.js";
+import { legacySessionToolNames } from "./helpers/legacy-session-tool-names.mjs";
 const { agentDraftToSaveInput, agentToDraft, createBlankAgentDraft, compatibleModelSelectionsForRuntime, setAgentPluginEnabled, setAgentPluginContribution, acceptAgentPluginRevision } = await tsImport("../src/apps/chat-ui/src/agents/agent-designer-model.ts", import.meta.url);
 
 const baseline = JSON.parse(readFileSync(new URL("./fixtures/plugin-system/legacy-builtin-catalog.json", import.meta.url)));
@@ -237,9 +237,8 @@ test("fixture tool names match actual legacy session-tool assembler (Goal defaul
 	for (const id of ["standard", "subset", "manual", "run", "resources"]) {
 		const fixture = fixtures.cases.find((item) => item.id === id);
 		const agent = previewCustomAgentCreate(fixture.input);
-		const tools = agent.nativeTools.map((name) => ({ name, yieldable: baseline.catalog.nativeTools.find((item) => item.name === name)?.yieldable, definition: { name, description: name, inputSchema: { type: "object" }, execute: async () => ({ content: [] }) } }));
-		const definitions = createPiboSessionToolDefinitions({ profile: { tools, subagents: agent.subagents, toolPackages: { goalControl: agent.goalControl, runControl: agent.runControl } }, agentsController: {}, runToolController: {} });
-		assert.deepEqual(definitions.map((item) => item.name).sort(), fixture.expectedTools, id);
+		const names = legacySessionToolNames({ nativeToolNames: agent.nativeTools, subagents: agent.subagents, goalControl: agent.goalControl, runControl: agent.runControl });
+		assert.deepEqual(names, fixture.expectedTools, id);
 	}
 });
 
@@ -373,11 +372,15 @@ test("Designer snapshots preserve missing selections, optional exclusions and re
 	const plugin = catalog.plugins[0];
 	let selection = setAgentPluginEnabled(emptySelection, plugin, true);
 	selection = setAgentPluginContribution(selection, plugin.pluginId, plugin.contributions[1], false);
+	assert.equal(selection.plugins[0].explicitContributions.write, false);
 	assert.equal(setAgentPluginContribution(selection, plugin.pluginId, plugin.contributions[0], false).plugins[0].contributions.read, true);
 	const changed = { ...plugin, revision: "new-revision", contributions: [...plugin.contributions, contribution("new_optional")] };
-	assert.equal(setAgentPluginEnabled(selection, changed, false).plugins[0].revision, plugin.revision);
+	const disabled = setAgentPluginEnabled(selection, changed, false);
+	assert.equal(disabled.plugins[0].revision, plugin.revision);
+	assert.equal(disabled.plugins[0].dependencyPolicy, "deny");
 	const accepted = acceptAgentPluginRevision(selection, changed);
 	assert.equal(accepted.plugins[0].contributions.new_optional, false);
+	assert.equal(Object.hasOwn(accepted.plugins[0].explicitContributions, "new_optional"), false);
 	assert.equal(accepted.plugins[0].contributions.write, false);
 	const agent = previewCustomAgentCreate({ schemaVersion: 2, displayName: "designer-agent", pluginSelection: selection, mainModel: { provider: "old", id: "model" } });
 	const draft = agentToDraft(agent);

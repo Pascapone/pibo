@@ -94,11 +94,72 @@ test('required dependency propagation blocks an optional unsupported prerequisit
 test('explicit optional dependency disabling is honored, not switched back on', () => {
 	const request = mutable(input([installation('a', [contribution('entry', { dependsOn: ['a/dependency'] }), contribution('dependency')])]));
 	request.selection.plugins[0].contributions.dependency = false;
+	request.selection.plugins[0].explicitContributions.dependency = false;
+	const before = structuredClone(request.selection);
 	const plan = resolvePluginContributions(request);
 	assert.deepEqual(plan.contributions, []);
 	assert.equal(plan.valid, true);
-	assert.ok(plan.diagnostics.some(d => d.code === 'contribution-dependency-unavailable'));
-	assert.equal(plan.selection.plugins[0].contributions.dependency, false);
+	assert.ok(plan.diagnostics.some(d => d.code === 'contribution-dependency-disabled' && d.path.join(' -> ') === 'a/entry -> a/dependency'));
+	assert.deepEqual(plan.selection, before);
+});
+
+test('cross-plugin dependency expansion distinguishes default absence from explicit tool and plugin disablement', () => {
+	const installs = [
+		installation('a', [contribution('entry', { dependsOn: ['b/dependency'] })]),
+		installation('b', [contribution('dependency', { defaultEnabled: false })]),
+	];
+	const allowed = mutable(input(installs));
+	const allowedBefore = structuredClone(allowed.selection);
+	const allowedPlan = resolvePluginContributions(allowed);
+	assert.deepEqual(allowedPlan.contributions.map((entry) => [entry.id, entry.selectionReason]), [['b/dependency', 'dependency'], ['a/entry', 'explicit']]);
+	assert.deepEqual(allowedPlan.selection, allowedBefore, 'effective dependency expansion must not mutate persisted selection');
+
+	const toolOff = mutable(input(installs));
+	const dependencyEntry = toolOff.selection.plugins.find((entry) => entry.pluginId === 'b');
+	dependencyEntry.explicitContributions.dependency = false;
+	const toolOffPlan = resolvePluginContributions(toolOff);
+	assert.deepEqual(toolOffPlan.contributions, []);
+	assert.ok(toolOffPlan.diagnostics.some((diagnostic) => diagnostic.code === 'contribution-dependency-disabled' && diagnostic.path.join(' -> ') === 'a/entry -> b/dependency'));
+
+	const pluginOff = mutable(input(installs));
+	const pluginEntry = pluginOff.selection.plugins.find((entry) => entry.pluginId === 'b');
+	pluginEntry.enabled = false;
+	pluginEntry.dependencyPolicy = 'deny';
+	const pluginOffPlan = resolvePluginContributions(pluginOff);
+	assert.deepEqual(pluginOffPlan.contributions, []);
+	assert.ok(pluginOffPlan.diagnostics.some((diagnostic) => diagnostic.code === 'contribution-dependency-plugin-disabled' && diagnostic.path.join(' -> ') === 'a/entry -> b/dependency'));
+
+	for (const unavailable of [
+		{ ...installs[1], enabled: false },
+		{ ...installs[1], state: 'uninstalled', enabled: false },
+	]) {
+		const unavailablePlan = resolvePluginContributions(input([installs[0], unavailable]));
+		assert.deepEqual(unavailablePlan.contributions, []);
+		assert.ok(unavailablePlan.diagnostics.some((diagnostic) => diagnostic.code === 'contribution-dependency-plugin-unavailable' && diagnostic.path.join(' -> ') === 'a/entry -> b/dependency'));
+	}
+});
+
+test('transitive default dependencies expand generically and runtime-incompatible dependencies report the full path', () => {
+	const transitive = input([
+		installation('a', [contribution('entry', { dependsOn: ['b/middle'] })]),
+		installation('b', [contribution('middle', { defaultEnabled: false, dependsOn: ['c/leaf'] })]),
+		installation('c', [contribution('leaf', { defaultEnabled: false })]),
+	]);
+	const transitivePlan = resolvePluginContributions(transitive);
+	assert.deepEqual(transitivePlan.contributions.map((entry) => [entry.id, entry.selectionReason]), [
+		['c/leaf', 'dependency'],
+		['b/middle', 'dependency'],
+		['a/entry', 'explicit'],
+	]);
+
+	const incompatible = input([
+		installation('a', [contribution('entry', { required: true, dependsOn: ['b/private'] })]),
+		installation('b', [contribution('private', { defaultEnabled: false, runtime: { adapterIds: ['pi'] } })]),
+	], { runtime: { adapterId: 'omp', instanceId: 'omp', capabilities: {} } });
+	const incompatiblePlan = resolvePluginContributions(incompatible);
+	assert.equal(incompatiblePlan.valid, false);
+	assert.deepEqual(incompatiblePlan.contributions, []);
+	assert.ok(incompatiblePlan.diagnostics.some((diagnostic) => diagnostic.code === 'runtime-unsupported' && diagnostic.path.join(' -> ') === 'a/entry -> b/private'));
 });
 
 test('selected dependency cycles fail with the dependency path', () => {

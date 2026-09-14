@@ -92,6 +92,10 @@ export type PluginContribution = {
 	name?: string;
 	/** App-scoped provider that materializes this individually selectable tool for one session generation. */
 	sessionToolProvider?: PluginQualifiedId;
+	/** Whether this tool appears on the direct model tool surface. False means yielded-only. */
+	direct?: boolean;
+	/** Whether this tool may be targeted by a later tool-augmentation provider such as run control. */
+	yieldable?: boolean;
 	replaces?: PluginQualifiedId[];
 	order?: number;
 	configSchema?: PluginJsonSchema;

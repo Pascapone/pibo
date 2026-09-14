@@ -13,10 +13,11 @@ import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegis
 import { PiboPluginRegistry } from "../plugins/registry.js";
 import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
 import {
-	PIBO_SESSION_CODE_RUNTIME_SERVICE,
+	PIBO_SESSION_AGENT_TARGETS_SERVICE,
 	PIBO_SESSION_CONTEXT_SERVICE,
-	PIBO_SESSION_DELEGATION_SERVICE,
-	PIBO_SESSION_RUN_CONTROL_SERVICE,
+	PIBO_SESSION_DELEGATION_FACTORY_SERVICE,
+	PIBO_SESSION_GOAL_STORE_SERVICE,
+	PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE,
 } from "../plugins/runtime.js";
 import { capturePluginContextBuild, persistPluginContextBuild, persistPluginHookEvidence } from "../agent-runtime/plugin-context-build.js";
 import type { PluginJsonObject } from "../plugins/manifest.js";
@@ -46,12 +47,17 @@ import type {
 } from "./events.js";
 import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
 import {
-	normalizePiboAgentSessionName,
 	type PiboAgentObservation,
 	type PiboAgentObserveInput,
 	type PiboAgentsController,
 	type PiboManagedAgent,
 } from "../subagents/tool.js";
+import {
+	createPiboDelegationController,
+	PIBO_DELEGATION_SEND_TOOL_NAME,
+	type PiboActiveDelegationRequest as ActiveSubagentRequest,
+	type PiboActiveDelegationSettlement as ActiveSubagentRequestSettlement,
+} from "../subagents/controller.js";
 import {
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
@@ -65,11 +71,11 @@ import {
 	selectPiboAgentObservationPage,
 } from "../subagents/observation-query.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
-import { PiboRunCancellationError, PiboRunCancelledError, PiboRunExecutionTimeoutError, waitForRunCancellationSettlement } from "../runs/lifecycle.js";
-import { PiboRunResourceLimitError } from "../runs/resource-isolation.js";
+import { PiboRunCancellationError, PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
+import { PiboRunControllerManager } from "../runs/controller.js";
+import { formatPiboRunReminderMessage, isPiboRunReminderServiceMessage } from "../runs/reminders.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
 import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
-import type { PiboRunToolController } from "../runs/tools.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
 import {
 	PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES,
@@ -113,7 +119,6 @@ import {
 	withPiboSessionModelFallbacksMetadata,
 } from "./session-model.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "./thinking.js";
-import { RuntimeSessionRegistry } from "../tools/runtime/registry.js";
 import { GatewayWorkAdmissionController } from "./gateway-resource-guard.js";
 import { withWorkflowSessionKind } from "../sessions/workflow-session-kind.js";
 import { PiboRuntimeTelemetryRecorder, type ProviderEventTelemetryMode } from "./runtime-telemetry.js";
@@ -291,6 +296,7 @@ function profileForSession(
 		subagents: baseProfile.subagents.filter((subagent) => !hasReachedSubagentMaxDepth(subagent, subagentDepth)),
 		mcpServers: baseProfile.mcpServers,
 		contextFiles: baseProfile.contextFiles,
+		systemPromptTransformers: baseProfile.systemPromptTransformers,
 		builtinTools: baseProfile.builtinTools,
 		builtinToolNames: baseProfile.builtinToolNames,
 		autoContextFiles: baseProfile.autoContextFiles,
@@ -299,63 +305,6 @@ function profileForSession(
 	};
 
 	return new InitialSessionContext(options);
-}
-
-function formatRunReminderMessage(notification: PiboRunNotification): string {
-	return [
-		"<pibo_run_notification>",
-		JSON.stringify({
-			completed: notification.completed.map((run) => ({
-				runId: run.runId,
-				kind: run.kind,
-				status: run.status,
-				toolName: run.toolName,
-				summary: run.summary,
-			})),
-			failed: notification.failed.map((run) => ({
-				runId: run.runId,
-				kind: run.kind,
-				status: run.status,
-				toolName: run.toolName,
-				summary: run.summary,
-				resourceLimitReason: run.resources?.limitReason,
-				resourceUnit: run.resources?.unitName,
-			})),
-			timedOut: notification.timedOut.map((run) => ({
-				runId: run.runId,
-				kind: run.kind,
-				status: run.status,
-				toolName: run.toolName,
-				summary: run.summary,
-				timeoutMs: run.timeoutMs,
-				timeoutPhase: run.timeoutPhase,
-			})),
-			cancelled: notification.cancelled.map((run) => ({
-				runId: run.runId,
-				kind: run.kind,
-				status: run.status,
-				toolName: run.toolName,
-				summary: run.summary,
-			})),
-			running: notification.running.map((run) => ({
-				runId: run.runId,
-				kind: run.kind,
-				status: run.status,
-				toolName: run.toolName,
-				summary: run.summary,
-			})),
-			instruction: [
-				`This autonomous run-reminder turn stops after ${RUN_REMINDER_MAX_DURATION_MS / 60_000} minutes of wall-clock time.`,
-				"Handle the listed runs promptly, then finish the turn. Do not start new subagents, yielded runs, or other long-running work from this reminder; leave larger follow-up work for a separate user-initiated or Goal continuation turn.",
-				"Use pibo_run_read for completed, failed, or timed_out runs. Use pibo_run_wait, pibo_run_status, pibo_run_cancel, or pibo_run_ack for runs you still need to manage.",
-			].join(" "),
-		}),
-		"</pibo_run_notification>",
-	].join("\n");
-}
-
-function isRunReminderServiceMessage(event: PiboMessageEvent): boolean {
-	return event.source === "service" && event.text.startsWith("<pibo_run_notification>");
 }
 
 const RUNTIME_QUEUE_CAPACITY_DIMENSIONS = new Set<RuntimeQueueCapacityDimension>([
@@ -583,17 +532,6 @@ type StoredAgentObservation = PiboAgentObservation & {
 	managingParentId: string;
 };
 
-type ActiveSubagentRequestSettlement =
-	| { status: "fulfilled" }
-	| { status: "rejected"; reason: unknown };
-
-type ActiveSubagentRequest = {
-	agentId: string;
-	requestId: string;
-	abortController: AbortController;
-	settled: Promise<ActiveSubagentRequestSettlement>;
-};
-
 class PiboSessionDisposalTimeoutError extends Error {
 	constructor(readonly piboSessionId: string, readonly timeoutMs: number) {
 		super(`Timed out disposing Pibo session "${piboSessionId}" after ${timeoutMs}ms`);
@@ -631,7 +569,6 @@ export class PiboSessionRouter {
 	private readonly runRegistry: PiboRunRegistry;
 	private readonly gatewayWorkAdmission = new GatewayWorkAdmissionController();
 	private readonly signalRegistry: PiboSignalRegistry;
-	private readonly runtimeRegistry: RuntimeSessionRegistry;
 	private readonly portableToolService: PiboPortableToolService;
 	private readonly portableToolSessions = new Map<string, PiboPortableToolSession>();
 	private readonly runtimeResourceService: PiboRuntimeResourceService;
@@ -651,8 +588,7 @@ export class PiboSessionRouter {
 	private readonly runReminderRecoveries = new Map<string, RunReminderRecoveryState>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly runReminderAdmissionWarnings = new Map<string, number>();
-	private readonly runCancellationHandlers = new Map<string, () => Promise<void>>();
-	private readonly activeRunExecutions = new Set<string>();
+	private readonly runControllers: PiboRunControllerManager;
 	private readonly quiescingSessions = new Set<string>();
 	private readonly unresolvedDerivedSessionTransitions = new Map<string, UnresolvedDerivedSessionTransition>();
 	private readonly disposingSessions = new Map<string, Promise<void>>();
@@ -699,7 +635,6 @@ export class PiboSessionRouter {
 		this.baseProfile = options.profile ?? createPiboProfileFromRegistryOrDefault(this.pluginRegistry, defaultProfileName);
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
 		this.signalRegistry = options.signalRegistry ?? createPiboSignalRegistry();
-		this.runtimeRegistry = new RuntimeSessionRegistry({ cwd: options.cwd ?? getDefaultPiboWorkspace() });
 		const payloadStore = payloadStoreFromSessionStore(this.sessionStore);
 		this.portableToolService = new PiboPortableToolService({
 			...(payloadStore ? { payloadWriter: createPiboToolPayloadWriter(payloadStore) } : {}),
@@ -707,6 +642,17 @@ export class PiboSessionRouter {
 		this.runtimeResourceService = options.runtimeResourceService ?? new PiboRuntimeResourceService();
 		this.portableHistoryProvider = options.portableHistoryProvider ?? portableHistoryProviderFromSessionStore(this.sessionStore);
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
+		this.runControllers = new PiboRunControllerManager({
+			registry: this.runRegistry,
+			reserve: (parentPiboSessionId, toolName) => this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`, {
+				sessionId: parentPiboSessionId,
+				gatewaySettings: loadPiboGatewaySettings(),
+			}),
+			origin: (parentPiboSessionId) => yieldedRunOrigin(this.sessions.get(parentPiboSessionId)?.getActiveMessage?.()),
+			reminderGeneration: (parentPiboSessionId) => this.runReminderGeneration(parentPiboSessionId),
+			handleTerminalRun: (parentPiboSessionId, runId, generation) => this.handleTerminalRunReminder(parentPiboSessionId, runId, generation),
+			refreshReminders: (parentPiboSessionId) => this.refreshQueuedRunReminders(parentPiboSessionId),
+		});
 		this.runRegistry.subscribe((event) => this.projectRunRegistryEvent(event));
 		const recoveredRuntimeState = options.recoverInterruptedRuntimeState
 			? (this.sessionStore as RuntimeRecoverySessionStore).recoverInterruptedRuntimeState?.({
@@ -904,7 +850,7 @@ export class PiboSessionRouter {
 		if (options?.includeRuns) {
 			const runs = ids.flatMap((id) => this.runRegistry.listActiveControllerRuns(id));
 			try {
-				const cancelled = await this.cancelRunsAfterSettlement(runs, "Pibo session subtree was killed.");
+				const cancelled = await this.runControllers.cancelRunsAfterSettlement(runs, "Pibo session subtree was killed.");
 				cancelledRuns.push(...cancelled.map((run) => run.runId));
 			} catch (error) {
 				failures.push(error);
@@ -973,7 +919,7 @@ export class PiboSessionRouter {
 			await startGate;
 			const runCancellationResults = options.cancelRuns
 				? await Promise.allSettled([
-					this.cancelRunsAfterSettlement(
+					this.runControllers.cancelRunsAfterSettlement(
 						ids.flatMap((id) => this.runRegistry.listActiveControllerRuns(id)),
 						reason,
 					),
@@ -986,10 +932,6 @@ export class PiboSessionRouter {
 				return session ? [{ id, session }] : [];
 			});
 			const failures: unknown[] = runCancellationResults.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-			const closeResults = await Promise.allSettled(ids.map((id) => this.runtimeRegistry.closeControllerSessions(id, { force: true })));
-			for (const result of closeResults) {
-				if (result.status === "rejected") failures.push(result.reason);
-			}
 			const disposeResults = await Promise.allSettled(sessions.map(({ id, session }) => this.disposeRoutedSession(id, session, reason)));
 			for (const result of disposeResults) {
 				if (result.status === "rejected") failures.push(result.reason);
@@ -1045,7 +987,7 @@ export class PiboSessionRouter {
 			if (childSession) killed.push(await childSession.kill());
 			if (!options?.includeRuns) continue;
 			const runs = this.runRegistry.listActiveControllerRuns(id);
-			const cancelled = await this.cancelRunsAfterSettlement(runs, `Child Pibo session "${id}" was killed.`);
+			const cancelled = await this.runControllers.cancelRunsAfterSettlement(runs, `Child Pibo session "${id}" was killed.`);
 			cancelledRuns.push(...cancelled.map((run) => run.runId));
 		}
 		return { killed, cancelledRuns };
@@ -1533,10 +1475,9 @@ export class PiboSessionRouter {
 			for (const timer of this.idleSessionTimers.values()) clearTimeout(timer);
 			this.idleSessionTimers.clear();
 			const runCancellationResult = await Promise.allSettled([
-				this.cancelRunsAfterSettlement(this.runRegistry.listActiveRuns(), "Pibo session router was disposed."),
+				this.runControllers.cancelRunsAfterSettlement(this.runRegistry.listActiveRuns(), "Pibo session router was disposed."),
 			]);
 			this.scheduledRunReminders.clear();
-			const closeResult = await Promise.allSettled([this.runtimeRegistry.closeAll({ force: true })]);
 			const disposeResults = await Promise.allSettled(sessions.map(([id, session]) => this.disposeRoutedSession(id, session, "router disposed")));
 			for (const [id, session] of sessions) {
 				if (this.sessions.get(id) === session) this.sessions.delete(id);
@@ -1544,7 +1485,6 @@ export class PiboSessionRouter {
 			}
 			const failures = [
 				...runCancellationResult.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason),
-				...closeResult.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason),
 				...disposeResults.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason),
 			];
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
@@ -1861,9 +1801,6 @@ export class PiboSessionRouter {
 		}
 		phases.portableHistoryMs=performance.now()-phaseStarted;phaseStarted=performance.now();
 		const initialFastMode = resolvePiboSessionInitialFastMode(piboSession) ?? selectRequestedFastMode(sessionProfile, modelDefaults) ?? false;
-		const agentsController = this.createAgentsController(piboSession.id);
-		const runToolController = this.createRunToolController(piboSession.id);
-		const codeRuntimeToolController = this.runtimeRegistry.createController(piboSession.id);
 		const sessionGeneration = pluginGeneration?.plan.generation ?? randomUUID();
 		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
 		if (previousResources) await previousResources.dispose();
@@ -1880,9 +1817,6 @@ export class PiboSessionRouter {
 			recordPluginHook: pluginGeneration ? (evidence) => persistPluginHookEvidence(this.options.pluginRuntime!.options.store, evidence) : undefined,
 			cwd: workspace,
 			getActiveMessage: () => session?.getActiveMessage(),
-			agentsController,
-			runToolController,
-			runtimeToolController: codeRuntimeToolController,
 			sessionToolProviders: pluginGeneration?.sessionToolProviders,
 			sessionServices: {
 				[PIBO_SESSION_CONTEXT_SERVICE]: Object.freeze({
@@ -1894,9 +1828,10 @@ export class PiboSessionRouter {
 					profileName: sessionProfile.profileName,
 					cwd: workspace,
 				}),
-				[PIBO_SESSION_RUN_CONTROL_SERVICE]: runToolController,
-				[PIBO_SESSION_DELEGATION_SERVICE]: agentsController,
-				[PIBO_SESSION_CODE_RUNTIME_SERVICE]: codeRuntimeToolController,
+				[PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE]: Object.freeze({ create: () => this.runControllers.create(piboSession.id) }),
+				[PIBO_SESSION_DELEGATION_FACTORY_SERVICE]: Object.freeze({ create: () => this.createAgentsController(piboSession.id) }),
+				[PIBO_SESSION_AGENT_TARGETS_SERVICE]: sessionProfile.subagents,
+				[PIBO_SESSION_GOAL_STORE_SERVICE]: this.options.goalStorePath,
 			},
 		});
 		this.portableToolSessions.set(piboSession.id, portableTools);
@@ -1952,9 +1887,6 @@ export class PiboSessionRouter {
 					getActiveMessage: () => session?.getActiveMessage(),
 				},
 				services: {
-					agentsController,
-					runToolController,
-					codeRuntimeToolController,
 					portableTools,
 					resources,
 					pluginRegistry: this.pluginRegistry,
@@ -2524,8 +2456,6 @@ export class PiboSessionRouter {
 			if (pending) await Promise.allSettled([pending]);
 			const cached = this.sessions.get(piboSessionId);
 			const failures: unknown[] = [];
-			const closeResult = await Promise.allSettled([this.runtimeRegistry.closeControllerSessions(piboSessionId, { force: true })]);
-			if (closeResult[0]?.status === "rejected") failures.push(closeResult[0].reason);
 			if (cached) {
 				const disposeResult = await Promise.allSettled([this.disposeRoutedSession(piboSessionId, cached, reason ?? "session reset")]);
 				if (disposeResult[0]?.status === "rejected") failures.push(disposeResult[0].reason);
@@ -2587,94 +2517,18 @@ export class PiboSessionRouter {
 	}
 
 	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
-		return {
-			sendMessage: async ({ subagent, sessionName, message, threadKey, toolCallId, requestId, parentProvenance, signal }) => {
-				if (signal?.aborted) throw subagentAbortError();
-				if (typeof requestId !== "string" || !requestId.trim()) throw new Error("Delegated agent requestId is required.");
-				this.assertSubagentDepth(parentPiboSessionId, subagent);
-				const normalizedSessionName = normalizePiboAgentSessionName(sessionName);
-				const child = this.resolveSubagentSession(parentPiboSessionId, subagent, normalizedSessionName, threadKey);
-				const resolvedThreadKey = typeof child.metadata?.threadKey === "string" ? child.metadata.threadKey : "";
-				const loopJobId = parentProvenance?.kind === "loop-run"
-					? parentProvenance.jobId
-					: parentProvenance?.kind === "subagent-request"
-						? parentProvenance.loopJobId
-						: undefined;
-				const loopRunId = parentProvenance?.kind === "loop-run"
-					? parentProvenance.runId
-					: parentProvenance?.kind === "subagent-request"
-						? parentProvenance.loopRunId
-						: undefined;
-				const event: PiboMessageEvent = {
-					type: "message",
-					piboSessionId: child.id,
-					text: message,
-					source: "actor",
-					id: randomUUID(),
-					provenance: {
-						kind: "subagent-request",
-						requestId,
-						controllerPiboSessionId: parentPiboSessionId,
-						...(loopJobId ? { loopJobId } : {}),
-						...(loopRunId ? { loopRunId } : {}),
-					},
-				};
-				this.subagentRequestIdsByEvent.set(subagentRequestEventKey(child.id, event.id!), requestId);
-
-				this.emitOutput({
-					type: "subagent_session",
-					piboSessionId: parentPiboSessionId,
-					requestId,
-					toolCallId,
-					toolName: "pibo_agents_send_message",
-					subagentName: subagent.name,
-					childPiboSessionId: child.id,
-					threadKey: resolvedThreadKey,
-				});
-
-				const parentAbortController = new AbortController();
-				const requestSignal = signal
-					? AbortSignal.any([signal, parentAbortController.signal])
-					: parentAbortController.signal;
-				let resolveSettled: ((settlement: ActiveSubagentRequestSettlement) => void) | undefined;
-				const settled = new Promise<ActiveSubagentRequestSettlement>((resolve) => {
-					resolveSettled = resolve;
-				});
-				const untrack = this.trackActiveSubagent(parentPiboSessionId, {
-					agentId: child.id,
-					requestId,
-					abortController: parentAbortController,
-					settled,
-				});
-				let settlement: ActiveSubagentRequestSettlement = { status: "fulfilled" };
-				try {
-					const reply = await this.emitMessageAndWaitForReply(event, undefined, requestSignal);
-					return {
-						requestId,
-						agentId: child.id,
-						name: subagent.name,
-						profile: child.profile,
-						threadKey: resolvedThreadKey,
-						eventId: event.id!,
-						finalMessage: reply.text,
-						reply,
-					};
-				} catch (error) {
-					const confirmedParentCancellation = parentAbortController.signal.aborted
-						&& error instanceof Error
-						&& error.name === "AbortError";
-					if (!confirmedParentCancellation) settlement = { status: "rejected", reason: error };
-					throw error;
-				} finally {
-					this.subagentRequestIdsByEvent.delete(subagentRequestEventKey(child.id, event.id!));
-					untrack();
-					resolveSettled?.(settlement);
-				}
-			},
-			listAgents: () => this.listManagedAgents(parentPiboSessionId),
-			observe: (input) => this.observeManagedAgents(parentPiboSessionId, input),
-			killAgent: async (agentId) => await this.killManagedAgent(parentPiboSessionId, agentId),
-		};
+		return createPiboDelegationController({
+			assertDepth: (parentId, subagent) => this.assertSubagentDepth(parentId, subagent),
+			resolveSession: (parentId, subagent, sessionName, threadKey) => this.resolveSubagentSession(parentId, subagent, sessionName, threadKey),
+			associateRequest: (childId, eventId, requestId) => this.subagentRequestIdsByEvent.set(subagentRequestEventKey(childId, eventId), requestId),
+			dissociateRequest: (childId, eventId) => { this.subagentRequestIdsByEvent.delete(subagentRequestEventKey(childId, eventId)); },
+			emitOutput: (event) => this.emitOutput(event),
+			emitMessageAndWaitForReply: (event, signal) => this.emitMessageAndWaitForReply(event, undefined, signal),
+			trackActive: (parentId, request) => this.trackActiveSubagent(parentId, request),
+			listAgents: (parentId) => this.listManagedAgents(parentId),
+			observeAgents: (parentId, input) => this.observeManagedAgents(parentId, input),
+			killAgent: (parentId, agentId) => this.killManagedAgent(parentId, agentId),
+		}, parentPiboSessionId);
 	}
 
 	private listManagedAgents(parentPiboSessionId: string): PiboManagedAgent[] {
@@ -2801,7 +2655,7 @@ export class PiboSessionRouter {
 				|| (run.controllerPiboSessionId === parentPiboSessionId && activeParentRunIds.has(run.runId))
 			));
 		const reason = `killed by parent ${parentPiboSessionId}`;
-		await this.cancelRunsAfterSettlement(
+		await this.runControllers.cancelRunsAfterSettlement(
 			cancellableRuns.filter((run) => run.controllerPiboSessionId === parentPiboSessionId),
 			reason,
 		);
@@ -2825,145 +2679,9 @@ export class PiboSessionRouter {
 		return { agentId, killed: ids, cancelledRuns };
 	}
 
-	private async invokeRunCancellationHandler(run: PiboRunSnapshot): Promise<void> {
-		const cancel = this.runCancellationHandlers.get(run.runId);
-		if (!cancel) {
-			const current = this.runRegistry.status(run.controllerPiboSessionId, run.runId);
-			if (isTerminalRunStatus(current.status) || !this.activeRunExecutions.has(run.runId)) return;
-			throw new PiboRunCancellationError(`Yielded run "${run.runId}" has active execution but does not expose a cancellation handler.`);
-		}
-		await cancel();
-		if (this.runCancellationHandlers.get(run.runId) === cancel) this.runCancellationHandlers.delete(run.runId);
-	}
-
-	private async invokeRunCancellationHandlers(runs: readonly PiboRunSnapshot[]): Promise<void> {
-		const results = await Promise.allSettled(runs.map((run) => this.invokeRunCancellationHandler(run)));
-		const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-		if (failures.length > 0) throw new AggregateError(failures, "Failed to terminate yielded runs.");
-	}
-
-	private async cancelRunsAfterSettlement(runs: readonly PiboRunSnapshot[], reason: string): Promise<PiboRunSnapshot[]> {
-		const results = await Promise.allSettled(runs.map(async (run) => {
-			await this.invokeRunCancellationHandler(run);
-			const current = this.runRegistry.status(run.controllerPiboSessionId, run.runId);
-			return isTerminalRunStatus(current.status)
-				? current
-				: this.runRegistry.cancel(run.controllerPiboSessionId, run.runId, reason);
-		}));
-		const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-		if (failures.length > 0) throw new AggregateError(failures, "Failed to terminate yielded runs before cancellation settlement.");
-		return results.flatMap((result) => result.status === "fulfilled" && result.value.status === "cancelled" ? [result.value] : []);
-	}
-
-	private createRunToolController(parentPiboSessionId: string): PiboRunToolController {
-		return {
-			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, resources, execute, cancel }) => {
-				const admission = this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`, {
-					sessionId: parentPiboSessionId,
-					gatewaySettings: loadPiboGatewaySettings(),
-				});
-				if (resources) resources.admission = admission.admission;
-				const reminderGeneration = this.runReminderGeneration(parentPiboSessionId);
-				let run: PiboRunSnapshot;
-				try {
-					run = this.runRegistry.startToolRun({
-						controllerPiboSessionId: parentPiboSessionId,
-						toolName,
-						params,
-						completionPolicy,
-						retryable,
-						maxAttempts,
-						timeoutMs,
-						serviceWarning,
-						resources,
-						origin: yieldedRunOrigin(this.sessions.get(parentPiboSessionId)?.getActiveMessage?.()),
-					});
-				} catch (error) {
-					admission.release();
-					throw error;
-				}
-				this.activeRunExecutions.add(run.runId);
-				const cancellation: {
-					state: "none" | "pending" | "confirmed" | "failed";
-					decision?: Promise<void>;
-				} = { state: "none" };
-				let resolveRunTaskSettled: (() => void) | undefined;
-				const runTaskSettled = new Promise<void>((resolve) => { resolveRunTaskSettled = resolve; });
-				if (cancel) {
-					let cancellationAttempt: Promise<void> | undefined;
-					this.runCancellationHandlers.set(run.runId, () => {
-						cancellationAttempt ??= (async () => {
-							cancellation.state = "pending";
-							let resolveDecision: (() => void) | undefined;
-							cancellation.decision = new Promise<void>((resolve) => { resolveDecision = resolve; });
-							try {
-								await waitForRunCancellationSettlement(Promise.resolve().then(cancel));
-								cancellation.state = "confirmed";
-								resolveDecision?.();
-								await waitForRunCancellationSettlement(runTaskSettled);
-							} catch (error) {
-								cancellation.state = "failed";
-								throw error;
-							} finally {
-								resolveDecision?.();
-							}
-						})();
-						return cancellationAttempt;
-					});
-				}
-
-				void (async () => {
-					try {
-						const result = await execute(run.runId);
-						if (resources) this.runRegistry.updateResources(run.runId, resources);
-						const completed = this.runRegistry.complete(run.runId, result);
-						if (completed) this.handleTerminalRunReminder(parentPiboSessionId, completed.runId, reminderGeneration);
-					} catch (error) {
-						if (error instanceof PiboRunCancelledError) {
-							if (cancellation.state === "pending") await cancellation.decision;
-							if (cancellation.state === "confirmed") return;
-						}
-						const message = error instanceof Error ? error.message : String(error);
-						if (resources) this.runRegistry.updateResources(run.runId, resources);
-						const terminalRun = error instanceof PiboRunExecutionTimeoutError
-							? this.runRegistry.timeOut(run.runId, message, error.timeoutPhase)
-							: error instanceof PiboRunResourceLimitError
-								? this.runRegistry.resourceLimit(run.runId, message, error.resources)
-								: this.runRegistry.fail(run.runId, message);
-						if (terminalRun) this.handleTerminalRunReminder(parentPiboSessionId, terminalRun.runId, reminderGeneration);
-					} finally {
-						this.runCancellationHandlers.delete(run.runId);
-						this.activeRunExecutions.delete(run.runId);
-						admission.release();
-						resolveRunTaskSettled?.();
-					}
-				})();
-
-				return run;
-			},
-			listRuns: (options) => this.runRegistry.list(parentPiboSessionId, options),
-			getRunStatus: (runId) => this.runRegistry.status(parentPiboSessionId, runId),
-			waitForRun: (runId, timeoutMs) => this.runRegistry.wait(parentPiboSessionId, runId, timeoutMs),
-			readRun: (runId) => {
-				const run = this.runRegistry.read(parentPiboSessionId, runId);
-				if (run.consumed && isTerminalRunStatus(run.status)) this.refreshQueuedRunReminders(parentPiboSessionId);
-				return run;
-			},
-			cancelRun: async (runId) => {
-				const current = this.runRegistry.status(parentPiboSessionId, runId);
-				try {
-					if (!isTerminalRunStatus(current.status)) await this.invokeRunCancellationHandlers([current]);
-					return this.runRegistry.cancel(parentPiboSessionId, runId);
-				} finally {
-					this.refreshQueuedRunReminders(parentPiboSessionId);
-				}
-			},
-			ackRun: (runId) => {
-				const run = this.runRegistry.ack(parentPiboSessionId, runId);
-				this.refreshQueuedRunReminders(parentPiboSessionId);
-				return run;
-			},
-		};
+	/** Internal test seam; production controller creation is invoked by the selected package provider. */
+	private createRunToolController(parentPiboSessionId: string) {
+		return this.runControllers.create(parentPiboSessionId);
 	}
 
 	private assertSubagentDepth(parentPiboSessionId: string, subagent: SubagentProfile): void {
@@ -3003,7 +2721,7 @@ export class PiboSessionRouter {
 		};
 		const metadata: PiboJsonObject = withWorkflowSessionKind({
 			...identityMetadata,
-			subagentToolName: "pibo_agents_send_message",
+			subagentToolName: PIBO_DELEGATION_SEND_TOOL_NAME,
 			agentStatus: "active",
 		}, "subagent");
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
@@ -3026,7 +2744,7 @@ export class PiboSessionRouter {
 			const updatedMetadata = withWorkflowSessionKind(
 				{
 					...(existing.metadata ?? {}),
-					subagentToolName: "pibo_agents_send_message",
+					subagentToolName: PIBO_DELEGATION_SEND_TOOL_NAME,
 					agentStatus: "active",
 					...(parentChatRoomId ? { chatRoomId: parentChatRoomId } : {}),
 				},
@@ -3174,7 +2892,7 @@ export class PiboSessionRouter {
 			this.recordRunReminderRecovery(delivery);
 			const alreadyDeferred = this.deferredRunReminders.get(delivery.piboSessionId) === delivery.generation;
 			this.deferredRunReminders.set(delivery.piboSessionId, delivery.generation);
-			this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+			this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage);
 			if (!alreadyDeferred) this.queueRunReminderRecoveryCompaction(delivery.piboSessionId, delivery.generation);
 			return;
 		}
@@ -3193,7 +2911,7 @@ export class PiboSessionRouter {
 		this.clearRunReminderRecovery(delivery);
 		this.deferredRunReminders.delete(delivery.piboSessionId);
 		this.clearRunReminderAdmissionWarning(delivery.piboSessionId, delivery.generation);
-		this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+		this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage);
 		this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
 	}
 
@@ -3247,7 +2965,7 @@ export class PiboSessionRouter {
 
 	private handleInterruptedRunReminders(messages: readonly PiboMessageEvent[]): void {
 		for (const message of messages) {
-			if (!isRunReminderServiceMessage(message) || !message.id) continue;
+			if (!isPiboRunReminderServiceMessage(message) || !message.id) continue;
 			const delivery = this.runReminderDeliveries.get(message.id);
 			if (!delivery) continue;
 			this.runReminderDeliveries.delete(message.id);
@@ -3289,7 +3007,7 @@ export class PiboSessionRouter {
 				if (delivery.piboSessionId === piboSessionId) this.runReminderDeliveries.delete(eventId);
 			}
 			try {
-				this.sessions.get(piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage);
+				this.sessions.get(piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage);
 			} catch {
 				// A concurrently disposed RoutedSession is already quiescent.
 			}
@@ -3348,7 +3066,7 @@ export class PiboSessionRouter {
 	}
 
 	private refreshQueuedRunReminders(piboSessionId: string): void {
-		const removed = this.sessions.get(piboSessionId)?.removeQueuedMessages(isRunReminderServiceMessage) ?? 0;
+		const removed = this.sessions.get(piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage) ?? 0;
 		if (removed > 0) {
 			this.scheduleRunReminder(piboSessionId, true);
 		} else if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified: true })) {
@@ -3391,7 +3109,7 @@ export class PiboSessionRouter {
 			// Release the queued snapshot before reserving its replacement. The
 			// interruption callback restores every unconsumed run to pending state.
 			const replaced = session.removeQueuedMessages?.((event) => {
-				if (!isRunReminderServiceMessage(event) || !event.id) return false;
+				if (!isPiboRunReminderServiceMessage(event) || !event.id) return false;
 				const delivery = this.runReminderDeliveries.get(event.id);
 				return delivery?.piboSessionId === piboSessionId && delivery.generation === expectedGeneration;
 			}) ?? 0;
@@ -3407,7 +3125,7 @@ export class PiboSessionRouter {
 			session.enqueueMessage({
 				type: "message",
 				piboSessionId,
-				text: formatRunReminderMessage(notification),
+				text: formatPiboRunReminderMessage(notification, RUN_REMINDER_MAX_DURATION_MS),
 				source: "service",
 				id: eventId,
 				provenance: runReminderProvenance(notification),

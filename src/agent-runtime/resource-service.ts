@@ -661,7 +661,9 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				this.diagnostics.push({ severity: "error", code: "runtime_context_file_failed", message, contributionId: id });
 			}
 		}
-		const delegatedAgents = getDelegatedAgentContextFile(this.input.profile.subagents);
+		const delegatedAgents = this.input.profile.effectivePluginPlan?.contributions.some((entry) => entry.contribution.context.kind === "context" && entry.contribution.context.stage === "subagents")
+			? getDelegatedAgentContextFile(this.input.profile.subagents)
+			: undefined;
 		if (delegatedAgents) {
 			this.requiredContributionIds.add("context:delegated-agents");
 			this.context.push({

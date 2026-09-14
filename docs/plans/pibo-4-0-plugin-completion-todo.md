@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T16:57:00Z"
+  at: "2026-09-14T19:10:00Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -29,7 +29,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 |---|---|---|---|---|
 | F00 – Abhängigkeiten und Paketgrenzen festziehen | abgeschlossen | Quellen-/Importaudit abgeschlossen | offen bis F10 | F01-Verträge implementieren |
 | F01 – Öffentliche Host-Dienste und Tool-Verträge vervollständigen | abgeschlossen | Typecheck, SDK-Build und 42 fokussierte Tests | offen bis F10 | F02-Toolfamilien migrieren |
-| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | offen | offen | offen | Providervertrag auf First-Party-Tools anwenden |
+| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen | Root-Emit, SDK-Build, Chat-UI-Typecheck und 167 fokussierte Tests | offen bis F10 | F03-Kernansichten lösen |
 | F03 – Kernansichten aus Sammelplugins lösen | offen | offen | offen | gemäß Detailaufgaben |
 | F04 – Featurepakete einschließlich ihrer Oberflächen trennen | offen | offen | offen | gemäß Detailaufgaben |
 | F05 – Runtimepakete und Runtime Requests abschließen | offen | offen | offen | gemäß Detailaufgaben |
@@ -70,12 +70,12 @@ Nachweise: Implementierungsbericht `/tmp/pibo4-f01-public-runtime.md`; vollstän
 
 ## F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen
 
-- [ ] F02-01: Goals, Runs, Delegation, Code Runtime, Codex Compat, File Editing, Browser Tools und weitere inventarisierte Familien über F01 anbinden.
-- [ ] F02-02: Toolnamenslisten und konkrete Factory-Auswahl aus Core/Router/Context-Build entfernen.
-- [ ] F02-03: Kontext-/Prompt-Erzeugung aus dem Plugin-Plan ableiten und Codex-Compat-Inkonsistenz ohne neue Namenssonderliste beheben.
-- [ ] F02-04: Run-Abbruch, Fortschritt, Ergebnisabholung, Parent-/Child-Korrelation und Ressourcencleanup in den bestehenden Verhaltensprüfungen erhalten.
+- [x] F02-01: Goals, Runs, Delegation, Code Runtime, Codex Compat, File Editing, Browser Tools und weitere inventarisierte Familien über F01 anbinden.
+- [x] F02-02: Toolnamenslisten und konkrete Factory-Auswahl aus Core/Router/Context-Build entfernen.
+- [x] F02-03: Kontext-/Prompt-Erzeugung aus dem Plugin-Plan ableiten und Codex-Compat-Inkonsistenz ohne neue Namenssonderliste beheben.
+- [x] F02-04: Run-Abbruch, Fortschritt, Ergebnisabholung, Parent-/Child-Korrelation und Ressourcencleanup in den bestehenden Verhaltensprüfungen erhalten.
 
-Nachweise: offen.
+Nachweise: Abschlussbericht `/tmp/pibo4-f02-completion.md`; Root-Typecheck und Root-Emit, SDK-Build, Chat-UI-Typecheck sowie **167/167** fokussierte Tests. `test/plugin-system-first-party-tools.test.mjs` belegt direkte und ausschließlich yieldbare Tools, Run-Enum-/Context-Parität, MCP-Ausgabe, native Adapterziele, Prompt-Transformation und Cleanup. `test/plugin-system-selection.test.mjs` trennt nicht entschiedene Defaults von explizitem Tool-/Plugin-Off, prüft fremde und transitive Dependencies, globale Nichtverfügbarkeit sowie Runtime-Inkompatibilität und hält die gespeicherte Auswahl unverändert. `test/subagents.test.mjs` behält 44 Prüfungen einschließlich Parent-Abort, abgelehnter Child-Cancellation, Queue-Settlement, Kill, Timeout und echtem Pi-Bash-Yielding. Der negative Portable-Fall bleibt separat in `test/context-build-inspector.test.mjs`.
 
 ## F03 – Kernansichten aus Sammelplugins lösen
 
@@ -167,10 +167,10 @@ Nachweise: offen.
 |---|---|---|---|
 | N-001 | Management wird trotz deaktivierter Defaults als Paket gestartet; echten Core-Bootstrap herstellen. | F00/F03/F06 | offen, im Plan berücksichtigt |
 | N-002 | First-Party-Artefakte importieren `plugin-builtin/*` aus dem Hauptpaket; Implementierung in unabhängige Artefakte verschieben. | F00/F04/F06 | offen, im Plan berücksichtigt |
-| N-003 | Codex-Compat-Erkennung prüft falschen Toolnamen; durch deklarierte Beiträge ersetzen. | F02 | offen, im Plan berücksichtigt |
+| N-003 | Codex-Compat-Erkennung prüft falschen Toolnamen; durch deklarierte Beiträge ersetzen. | F02 | behoben; ausgewählter `system-prompt-transformer` ersetzt Core-/Pi-Sonderzweige |
 | N-004 | Runtime-Request-Antwortaktionen hängen am bisherigen Core-Sammelplugin. | F05 | offen, im Plan berücksichtigt |
 | N-005 | Root-Export `./*` und `plugin-builtin/*` machen interne Implementierung zur Delivery-Fläche. | F01/F06/F08 | offen; explizite Subpaths beschlossen |
-| N-006 | Session-Tool-Assembly und Context-Build wählen konkrete Pibo-Toolfamilien nach Namen/Präfix. | F01/F02 | offen; sessiongebundener Providervertrag beschlossen |
+| N-006 | Session-Tool-Assembly und Context-Build wählen konkrete Pibo-Toolfamilien nach Namen/Präfix. | F01/F02 | behoben; Materialisierung, Ursprung, direkte/yielded Kataloge und Context Build sind provider-/plangetrieben |
 | N-007 | App, Desktop-Katalog und Browser-Host enthalten konkrete Feature-View-IDs beziehungsweise First-Party-Allowlist. | F03/F04/F07 | offen; Core-Ziele plus deklarative View-Metadaten beschlossen |
 | N-008 | `pibo.web-product`, `pibo.user-resources` und `pibo.product-ui` besitzen noch ausdrücklich dem Core zugeordnete Flächen. | F03/F04/F06/F07 | offen; Owner-Aufteilung beschlossen |
 | N-009 | Pi/Codex/OMP und Featureabhängigkeiten liegen weiterhin im Root-Build und Root-Dependencygraph. | F05/F06 | offen; getrennte Runtimepakete beschlossen |
@@ -180,9 +180,12 @@ Nachweise: offen.
 | N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | offen; zweistufiger Cutover und fail-closed Direktwechsel beschlossen |
 | N-014 | Ein pauschal auswählbarer Session-Tool-Provider könnte mehrere nicht einzeln deklarierte oder abgewählte Tools freischalten. | F01 | behoben und fokussiert geprüft; appweiter Provider plus einzeln ausgewählte/runtimegefilterte Tool-Contributions |
 | N-015 | `dispose(): void` akzeptiert in TypeScript auch async Funktionen; Provider-Cleanup könnte dadurch unbemerkt weiterlaufen oder fehlschlagen. | F01 | behoben und fokussiert geprüft; Cleanup wird awaited, aggregiert und blockiert Zulassungsfreigabe |
-| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02 | offen; Services werden bei Extraktion vom jeweiligen Plugin geliefert bzw. auf generische Execution-Primitiven reduziert |
+| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02 | behoben; Code Runtime/Browser besitzen ihren Controller-Lifecycle, Run-Manager und Reminder liegen im Run-Modul, Delegation konstruiert ihren Controller im Delegation-Modul; ausgewählte Pakete fordern nur sessiongebundene Factory-Dienste an |
 | N-017 | Das externe Fixture mit Repo-Symlink belegt F01-API-Nutzbarkeit, aber keine eigenständige Distribution. | F06 | offen; gepackter Minimal-Core-/Plugin-Nachweis ohne Symlink oder Source-Checkout bleibt Pflicht |
 | N-018 | Importfreie Installationsprüfung kannte echte Core-Service-Provider nicht und wies externe Pakete vor Aktivierung fälschlich als service-los ab. | F01 | behoben und fokussiert geprüft; Manager liest nur versionierte Core-Service-Metadaten |
+| N-019 | `yieldable` allein unterscheidet kein direkt sichtbares Tool von einem ausschließlich über Run erreichbaren Tool; Delegation würde sonst `pibo_agents_send_message` direkt freigeben. | F02 | behoben; `direct` und `yieldable` sind unabhängige Contribution-Eigenschaften und positiv über Run, Context und MCP geprüft |
+| N-020 | Eine Pi-seitige Legacy-Session-Assembly würde die entfernten First-Party-Namens-/Factory-Sonderfälle als ausführbaren Harnesspfad konservieren. | F02/F08 | Produktionshelper wieder entfernt; Altzustandsvergleich bleibt ausschließlich in `test/helpers/legacy-session-tool-names.mjs`, Delivery-Audit in F08 bleibt offen |
+| N-021 | Dependency-Expansion darf `globallyActive` nicht als Erlaubnis verwenden, um eine explizite Agent-Deaktivierung zu überstimmen; gespeicherte und effektive Nutzerwahl müssen übereinstimmen. | F02/F07 | behoben und fokussiert geprüft; aktuelle Snapshots trennen unentschiedene Defaults von expliziten Entscheidungen, Legacy-Snapshots fallen sicher auf explizite Booleans zurück, Plan-Diagnosen benennen Tool-, Agent-Plugin-, globale und Runtime-Blockaden |
 
 # Abnahmestand
 
@@ -195,3 +198,6 @@ A-C40-01 bis A-C40-16 aus dem Plan sind offen. Je Szenario werden Commit/Paket, 
 - Umsetzung beauftragt; Plan/Todo behalten die Beta-Arbeitsbasis. Bestehende Recherche wird wiederverwendet, Worker übernimmt die Implementierung. Noch keine neue Codeänderung oder Laufzeitabnahme behauptet.
 - F00 abgeschlossen: aktuelle Paket-/Import-/Owner-/Sonderfallinventur einschließlich externer Quellenkarte geprüft, konkrete Core-/Standard-/Plugin-Koordinaten, self-contained Backend-/Browser-Bundles und öffentliche Export-/Servicegrenzen im Plan festgelegt.
 - F01 abgeschlossen und fokussiert geprüft: echter Core-Service-Bootstrap ohne Management-Installation, öffentliche Backend-/Browser-/Runtime-Verträge, einzeln ausgewählte sessiongebundene Provider-Tools, generation-sicherer Kontext und Promise-fähiges Drain/Cleanup. F02 migriert nun die First-Party-Toolfamilien und entfernt ihre Namens-/Controller-Sonderfälle aus Core.
+- F02 in Arbeit: Core-Session-Assembly ist generisch; First-Party-Pakete registrieren einzeln ausgewählte Provider-Tools. `direct` trennt direkte von ausschließlich yieldbaren Tools. Der kurzzeitig angelegte Pi-Legacy-Assemblypfad wurde vor Abschluss wieder entfernt; positive installierte Delegation-/Run-/MCP-Parität wird separat zum negativen pluginfreien Portable-Fall geprüft.
+- F02-Review N-021 geschlossen: Dependency-Expansion aktiviert nur unentschiedene, im akzeptierten Snapshot bekannte Defaults. Explizites Tool-Off, explizites Agent-Plugin-Off, global deaktivierte/deinstallierte Pakete und Runtime-Inkompatibilität erzeugen pfadgenaue Diagnosen; transitive Expansion bleibt generisch und enthält keinen Run-Control-Sonderfall.
+- F02 abgeschlossen: Root-Emit, SDK-Build und Chat-UI-Typecheck sind grün; 167 fokussierte Tests laufen aus dem emittierten `dist` erfolgreich. Der finale all-in-one Build-Rerun wurde vom Host-PSI-Guard beendet, während die betroffenen Stufen einzeln bestanden; integrierte Gesamtabnahme bleibt F10.
