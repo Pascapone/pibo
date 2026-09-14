@@ -17,6 +17,7 @@ import { createRunToolDefinitions } from "../dist/runs/tools.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { getDelegatedAgentContextFile } from "../dist/subagents/context.js";
+import { createPiboDelegationController } from "../dist/subagents/controller.js";
 import {
 	preparePiboAgentObservationQuery,
 	selectPiboAgentObservationPage,
@@ -37,7 +38,7 @@ import {
 	piboAgentObservationToolSummary,
 } from "../dist/subagents/observations.js";
 import { definePiboPlugin } from "../dist/plugins/registry.js";
-import { PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE } from "../dist/plugins/runtime.js";
+import { PIBO_SESSION_YIELDED_RUNS_SERVICE } from "../dist/plugins/runtime.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { findCliToolEntry, getInstalledCliToolContextFile } from "../dist/tools/registry.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
@@ -55,6 +56,14 @@ after(async () => {
 	await pluginRegistry.disposePlugins();
 	await pluginProduct.dispose();
 });
+
+function createRouterAgentsController(router, parentPiboSessionId) {
+	const service = router.createChildOrchestrationService();
+	return createPiboDelegationController({
+		get: () => service,
+		require: () => service,
+	}, parentPiboSessionId);
+}
 
 const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
@@ -131,7 +140,7 @@ async function createSelectedRunControlRuntime(profile, runToolController) {
 		profile: generation.profile,
 		cwd: process.cwd(),
 		sessionToolProviders: generation.sessionToolProviders,
-		sessionServices: { [PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE]: { create: () => runToolController } },
+		sessionServices: { [PIBO_SESSION_YIELDED_RUNS_SERVICE]: runToolController },
 	});
 	const resourceService = new PiboRuntimeResourceService();
 	const resources = await resourceService.createSession({
@@ -1135,7 +1144,7 @@ test("router omits subagent tools that have reached their max depth", async () =
 		assert.equal(childYieldableToolNames.includes("pibo_agents_send_message"), true);
 
 		await assert.rejects(
-			router.createAgentsController("ps_child").sendMessage({
+			createRouterAgentsController(router, "ps_child").sendMessage({
 				subagent: { name: "defaulted", targetProfile: "recursive-profile" },
 				sessionName: "Depth rejection",
 				message: "must not create another child",
@@ -1170,7 +1179,7 @@ test("agents controller emits a parent link event before waiting for the child r
 	});
 
 	try {
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		const result = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "  Inspect delegation  ",
@@ -1226,7 +1235,7 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 	});
 
 	try {
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		const first = await controller.sendMessage({
 			subagent: {
 				name: "researcher",
@@ -1306,7 +1315,7 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 	});
 	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		await assert.rejects(controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "Missing request ID",
@@ -1365,7 +1374,7 @@ test("agents controller requires bounded Unicode names and updates reused titles
 		text: "child reply",
 	});
 	try {
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		const first = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: fortyCombiningCodePoints,
@@ -1422,7 +1431,7 @@ test("named sends reuse and upgrade existing legacy child sessions", async () =>
 		text: "legacy child reply",
 	});
 	try {
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		const result = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "Continue legacy research",
@@ -1454,7 +1463,7 @@ test("named child titles survive PiboDataSessionStore reopen and remain reusable
 		text: "first persisted reply",
 	});
 	try {
-		const first = await firstRouter.createAgentsController("ps_parent").sendMessage({
+		const first = await createRouterAgentsController(firstRouter, "ps_parent").sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "  Persisted research  ",
 			message: "start",
@@ -1478,7 +1487,7 @@ test("named child titles survive PiboDataSessionStore reopen and remain reusable
 	});
 	try {
 		assert.equal(reopenedStore.get(childId).title, "Persisted research");
-		const reused = await reopenedRouter.createAgentsController("ps_parent").sendMessage({
+		const reused = await createRouterAgentsController(reopenedRouter, "ps_parent").sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "Reopened research",
 			message: "continue",
@@ -1487,7 +1496,7 @@ test("named child titles survive PiboDataSessionStore reopen and remain reusable
 		});
 		assert.equal(reused.agentId, childId);
 		assert.equal(reopenedStore.get(childId).title, "Reopened research");
-		assert.equal(reopenedRouter.createAgentsController("ps_parent").listAgents()[0].sessionName, "Reopened research");
+		assert.equal(createRouterAgentsController(reopenedRouter, "ps_parent").listAgents()[0].sessionName, "Reopened research");
 	} finally {
 		await reopenedRouter.disposeAll();
 		reopenedStore.close();
@@ -1513,7 +1522,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 	});
 
 	try {
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		const explorer = await controller.sendMessage({
 			subagent: { name: "explorer", targetProfile: "base" },
 			sessionName: "Explore alpha",
@@ -1762,7 +1771,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 		});
 		assert.notEqual(replacement.agentId, worker.agentId);
 		await assert.rejects(
-			router.createAgentsController(explorer.agentId).killAgent(replacement.agentId),
+			createRouterAgentsController(router, explorer.agentId).killAgent(replacement.agentId),
 			/is not owned/,
 		);
 	} finally {
@@ -1798,7 +1807,7 @@ test("agent observation auto cursors return messages once and history rereads wi
 			args: { command: "npm test" },
 			argsComplete: true,
 		});
-		const controller = router.createAgentsController("ps_auto_parent");
+		const controller = createRouterAgentsController(router, "ps_auto_parent");
 
 		const first = controller.observe({ limit: 1 });
 		assert.equal(first.filters.cursorMode, "auto");
@@ -1871,13 +1880,13 @@ test("agent observation fallback cursors remain bounded for compatibility stores
 	store.advanceAgentObservationAutoCursor = undefined;
 	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
-		router.recordAgentObservation({
+		router.recordChildOutput({
 			type: "assistant_message",
 			piboSessionId: "ps_agent_fallback_cursor",
 			eventId: "evt_fallback_cursor",
 			text: "hello fallback",
 		}, store.get("ps_agent_fallback_cursor"));
-		const controller = router.createAgentsController("ps_parent_fallback_cursor");
+		const controller = createRouterAgentsController(router, "ps_parent_fallback_cursor");
 		assert.equal(controller.observe({ textContains: "hello" }).observations.length, 1);
 		for (let index = 0; index < 128; index += 1) {
 			assert.deepEqual(controller.observe({ textContains: `missing-${index}` }).observations, []);
@@ -1909,7 +1918,7 @@ test("agent observation polling is cursor-safe in descending order and reports r
 				text: `observation ${index}`,
 			});
 		}
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		const first = controller.observe({ afterSequence: 0, order: "desc", limit: 2 });
 		assert.deepEqual(first.observations.map((observation) => observation.sequence), [4, 3]);
 		assert.equal(first.nextAfterSequence, 4);
@@ -1965,7 +1974,7 @@ test("agent kill retries subtree cleanup after a partial failure", async () => {
 			if (attempts === 1) throw new Error("injected cleanup failure");
 			return originalDispose(...args);
 		};
-		const controller = router.createAgentsController("ps_parent");
+		const controller = createRouterAgentsController(router, "ps_parent");
 		await assert.rejects(controller.killAgent("ps_child"), /injected cleanup failure/);
 		assert.equal(controller.listAgents()[0].status, "killed");
 		const retried = await controller.killAgent("ps_child");
@@ -2385,7 +2394,7 @@ test("yielded delegated run read returns the complete final message and request 
 	try {
 		const subagent = { name: "worker", targetProfile: "base" };
 		const runTools = Object.fromEntries(createRunToolDefinitions(
-			createAgentToolDefinitions([subagent], router.createAgentsController("ps_parent")),
+			createAgentToolDefinitions([subagent], createRouterAgentsController(router, "ps_parent")),
 			router.createRunToolController("ps_parent"),
 		).map((tool) => [tool.name, tool]));
 		const started = await runTools.pibo_run_start.execute("start-agent-complete", {
@@ -2428,7 +2437,7 @@ test("bounded run waits do not cancel delegated agents and explicit cancellation
 
 	try {
 		const subagent = { name: "worker", targetProfile: "base", timeoutMs: 10 };
-		const agentsController = router.createAgentsController("ps_parent");
+		const agentsController = createRouterAgentsController(router, "ps_parent");
 		const agentTools = createAgentToolDefinitions([subagent], agentsController);
 		const runTools = Object.fromEntries(createRunToolDefinitions(
 			agentTools,

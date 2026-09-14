@@ -224,7 +224,6 @@ export type {
 	PiboPortableToolDefinitionOptions,
 	PiboPortableToolServiceOptions,
 	PiboPortableToolSession,
-	PiboPortableToolSessionControllers,
 	PiboToolMcpAccess,
 } from "./tools/session-service.js";
 export type {

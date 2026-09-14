@@ -14,10 +14,16 @@ import { PiboPluginRegistry } from "../plugins/registry.js";
 import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
 import {
 	PIBO_SESSION_AGENT_TARGETS_SERVICE,
+	PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE,
 	PIBO_SESSION_CONTEXT_SERVICE,
-	PIBO_SESSION_DELEGATION_FACTORY_SERVICE,
 	PIBO_SESSION_GOAL_STORE_SERVICE,
-	PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE,
+	PIBO_SESSION_YIELDED_RUNS_SERVICE,
+	PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
+	type PluginActiveChildRequest,
+	type PluginChildOutputRecord,
+	type PluginChildSessionOrchestration,
+	type PluginChildSessionQuery,
+	type PluginResolveChildSessionInput,
 } from "../plugins/runtime.js";
 import { capturePluginContextBuild, persistPluginContextBuild, persistPluginHookEvidence } from "../agent-runtime/plugin-context-build.js";
 import type { PluginJsonObject } from "../plugins/manifest.js";
@@ -46,34 +52,9 @@ import type {
 	PiboSessionStatus,
 } from "./events.js";
 import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
-import {
-	type PiboAgentObservation,
-	type PiboAgentObserveInput,
-	type PiboAgentsController,
-	type PiboManagedAgent,
-} from "../subagents/tool.js";
-import {
-	createPiboDelegationController,
-	PIBO_DELEGATION_SEND_TOOL_NAME,
-	type PiboActiveDelegationRequest as ActiveSubagentRequest,
-	type PiboActiveDelegationSettlement as ActiveSubagentRequestSettlement,
-} from "../subagents/controller.js";
-import {
-	piboAgentObservationDetails,
-	piboAgentObservationKind,
-	piboAgentObservationRole,
-	piboAgentObservationSourceFromEvent,
-	piboAgentObservationText,
-} from "../subagents/observations.js";
-import {
-	piboAgentObservationCursorScopeKey,
-	preparePiboAgentObservationQuery,
-	selectPiboAgentObservationPage,
-} from "../subagents/observation-query.js";
 import { PiboRunRegistry, type PiboRunNotification, type PiboRunRegistryEvent, type PiboRunSnapshot } from "../runs/registry.js";
 import { PiboRunCancellationError, PiboRunExecutionTimeoutError } from "../runs/lifecycle.js";
-import { PiboRunControllerManager } from "../runs/controller.js";
-import { formatPiboRunReminderMessage, isPiboRunReminderServiceMessage } from "../runs/reminders.js";
+import { PiboYieldedRunScheduler } from "./yielded-run-scheduler.js";
 import { createPiboSignalRegistry } from "../signals/registry.js";
 import type { PiboSignalPatch, PiboSignalRegistry, PiboSignalSnapshot, PiboSignalStatusSnapshot } from "../signals/types.js";
 import { createDefaultPiboReliabilityStore, type PiboReliabilityStore } from "../reliability/store.js";
@@ -162,10 +143,7 @@ export type {
 
 export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
 
-export type PiboSessionRouterOptions = Omit<
-	PiboRuntimeOptions,
-	"profile" | "agentsController" | "runToolController" | "resources"
-> & {
+export type PiboSessionRouterOptions = Omit<PiboRuntimeOptions, "profile" | "resources"> & {
 	profile?: InitialSessionContext;
 	pluginRegistry?: PiboPluginRegistry;
 	/** Same host + persisted manager used by product plugin management. Required for migrated profiles. */
@@ -200,7 +178,6 @@ export type PiboSessionRouterOptions = Omit<
 };
 
 const DEFAULT_SUBAGENT_MAX_DEPTH = 1;
-const MAX_SUBAGENT_THREAD_KEY_BYTES = 512;
 const MAX_AGENT_OBSERVATIONS = 5_000;
 const DEFAULT_ROUTED_SESSION_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS = 30 * 1000;
@@ -239,15 +216,6 @@ export function resolvePiboSessionInitialRuntimeOptions(session: Pick<PiboSessio
 
 function hasReachedSubagentMaxDepth(subagent: SubagentProfile, depth: number): boolean {
 	return depth >= (subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH);
-}
-
-function resolveSubagentThreadKey(threadKey: string | undefined): string {
-	const normalized = threadKey?.trim();
-	if (!normalized) return randomUUID();
-	if (Buffer.byteLength(normalized, "utf8") > MAX_SUBAGENT_THREAD_KEY_BYTES) {
-		throw new Error(`Subagent thread key exceeds ${MAX_SUBAGENT_THREAD_KEY_BYTES} bytes.`);
-	}
-	return normalized;
 }
 
 function subagentAbortError(): Error {
@@ -528,10 +496,6 @@ type UnresolvedDerivedSessionTransition = {
 	cause: unknown;
 };
 
-type StoredAgentObservation = PiboAgentObservation & {
-	managingParentId: string;
-};
-
 class PiboSessionDisposalTimeoutError extends Error {
 	constructor(readonly piboSessionId: string, readonly timeoutMs: number) {
 		super(`Timed out disposing Pibo session "${piboSessionId}" after ${timeoutMs}ms`);
@@ -575,9 +539,9 @@ export class PiboSessionRouter {
 	private readonly portableHistoryProvider?: AgentRuntimePortableHistoryProvider;
 	private readonly runtimeResourceSessions = new Map<string, PiboRuntimeResourceSession>();
 	private readonly runtimeAuthFingerprints = new Map<string, string>();
-	private readonly activeSubagentRequests = new Map<string, Set<ActiveSubagentRequest>>();
+	private readonly activeSubagentRequests = new Map<string, Set<PluginActiveChildRequest>>();
 	private readonly subagentRequestIdsByEvent = new Map<string, string>();
-	private readonly agentObservations: StoredAgentObservation[] = [];
+	private readonly agentObservations: PluginChildOutputRecord[] = [];
 	private readonly agentObservationHighWaterByParent = new Map<string, number>();
 	private readonly agentObservationEvictedThroughByParent = new Map<string, number>();
 	private readonly agentObservationAutoCursorFallback = new Map<string, number>();
@@ -588,7 +552,7 @@ export class PiboSessionRouter {
 	private readonly runReminderRecoveries = new Map<string, RunReminderRecoveryState>();
 	private readonly runReminderGenerations = new Map<string, number>();
 	private readonly runReminderAdmissionWarnings = new Map<string, number>();
-	private readonly runControllers: PiboRunControllerManager;
+	private readonly yieldedRuns: PiboYieldedRunScheduler;
 	private readonly quiescingSessions = new Set<string>();
 	private readonly unresolvedDerivedSessionTransitions = new Map<string, UnresolvedDerivedSessionTransition>();
 	private readonly disposingSessions = new Map<string, Promise<void>>();
@@ -642,7 +606,7 @@ export class PiboSessionRouter {
 		this.runtimeResourceService = options.runtimeResourceService ?? new PiboRuntimeResourceService();
 		this.portableHistoryProvider = options.portableHistoryProvider ?? portableHistoryProviderFromSessionStore(this.sessionStore);
 		this.runRegistry = new PiboRunRegistry({ store: this.reliabilityStore });
-		this.runControllers = new PiboRunControllerManager({
+		this.yieldedRuns = new PiboYieldedRunScheduler({
 			registry: this.runRegistry,
 			reserve: (parentPiboSessionId, toolName) => this.gatewayWorkAdmission.reserve(`yielded run ${toolName}`, {
 				sessionId: parentPiboSessionId,
@@ -850,7 +814,7 @@ export class PiboSessionRouter {
 		if (options?.includeRuns) {
 			const runs = ids.flatMap((id) => this.runRegistry.listActiveControllerRuns(id));
 			try {
-				const cancelled = await this.runControllers.cancelRunsAfterSettlement(runs, "Pibo session subtree was killed.");
+				const cancelled = await this.yieldedRuns.cancelRunsAfterSettlement(runs, "Pibo session subtree was killed.");
 				cancelledRuns.push(...cancelled.map((run) => run.runId));
 			} catch (error) {
 				failures.push(error);
@@ -919,7 +883,7 @@ export class PiboSessionRouter {
 			await startGate;
 			const runCancellationResults = options.cancelRuns
 				? await Promise.allSettled([
-					this.runControllers.cancelRunsAfterSettlement(
+					this.yieldedRuns.cancelRunsAfterSettlement(
 						ids.flatMap((id) => this.runRegistry.listActiveControllerRuns(id)),
 						reason,
 					),
@@ -987,7 +951,7 @@ export class PiboSessionRouter {
 			if (childSession) killed.push(await childSession.kill());
 			if (!options?.includeRuns) continue;
 			const runs = this.runRegistry.listActiveControllerRuns(id);
-			const cancelled = await this.runControllers.cancelRunsAfterSettlement(runs, `Child Pibo session "${id}" was killed.`);
+			const cancelled = await this.yieldedRuns.cancelRunsAfterSettlement(runs, `Child Pibo session "${id}" was killed.`);
 			cancelledRuns.push(...cancelled.map((run) => run.runId));
 		}
 		return { killed, cancelledRuns };
@@ -1475,7 +1439,7 @@ export class PiboSessionRouter {
 			for (const timer of this.idleSessionTimers.values()) clearTimeout(timer);
 			this.idleSessionTimers.clear();
 			const runCancellationResult = await Promise.allSettled([
-				this.runControllers.cancelRunsAfterSettlement(this.runRegistry.listActiveRuns(), "Pibo session router was disposed."),
+				this.yieldedRuns.cancelRunsAfterSettlement(this.runRegistry.listActiveRuns(), "Pibo session router was disposed."),
 			]);
 			this.scheduledRunReminders.clear();
 			const disposeResults = await Promise.allSettled(sessions.map(([id, session]) => this.disposeRoutedSession(id, session, "router disposed")));
@@ -1828,8 +1792,8 @@ export class PiboSessionRouter {
 					profileName: sessionProfile.profileName,
 					cwd: workspace,
 				}),
-				[PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE]: Object.freeze({ create: () => this.runControllers.create(piboSession.id) }),
-				[PIBO_SESSION_DELEGATION_FACTORY_SERVICE]: Object.freeze({ create: () => this.createAgentsController(piboSession.id) }),
+				[PIBO_SESSION_YIELDED_RUNS_SERVICE]: this.yieldedRuns.controlFor(piboSession.id),
+				[PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE]: this.createChildOrchestrationService(),
 				[PIBO_SESSION_AGENT_TARGETS_SERVICE]: sessionProfile.subagents,
 				[PIBO_SESSION_GOAL_STORE_SERVICE]: this.options.goalStorePath,
 			},
@@ -2490,7 +2454,26 @@ export class PiboSessionRouter {
 		return created;
 	}
 
-	private trackActiveSubagent(parentPiboSessionId: string, request: ActiveSubagentRequest): () => void {
+	/** Generic child-session orchestration supplied to selected feature providers. */
+	private createChildOrchestrationService(): PluginChildSessionOrchestration {
+		return Object.freeze({
+			getDepth: (piboSessionId) => this.getSubagentDepth(piboSessionId),
+			resolveChildSession: (input) => this.resolveChildSession(input),
+			listChildSessions: (query) => this.listChildSessions(query),
+			requireChildSession: (query) => this.requireChildSession(query),
+			associateRequest: (childId, eventId, requestId) => this.subagentRequestIdsByEvent.set(subagentRequestEventKey(childId, eventId), requestId),
+			dissociateRequest: (childId, eventId) => { this.subagentRequestIdsByEvent.delete(subagentRequestEventKey(childId, eventId)); },
+			emitOutput: (event) => this.emitOutput(event),
+			emitMessageAndWaitForReply: (event, signal) => this.emitMessageAndWaitForReply(event, undefined, signal),
+			trackActive: (parentId, request) => this.trackActiveSubagent(parentId, request),
+			readChildOutputs: (parentId) => this.readChildOutputs(parentId),
+			getObservationCursor: (parentId, scope) => this.getAgentObservationAutoCursor(parentId, scope),
+			advanceObservationCursor: (parentId, scope, sequence) => this.advanceAgentObservationAutoCursor(parentId, scope, sequence),
+			killChildSession: (input) => this.killChildSession(input),
+		});
+	}
+
+	private trackActiveSubagent(parentPiboSessionId: string, request: PluginActiveChildRequest): () => void {
 		let requests = this.activeSubagentRequests.get(parentPiboSessionId);
 		if (!requests) {
 			requests = new Set();
@@ -2516,98 +2499,35 @@ export class PiboSessionRouter {
 		if (failures.length > 0) throw new AggregateError(failures, "Failed to cancel active subagent requests.");
 	}
 
-	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
-		return createPiboDelegationController({
-			assertDepth: (parentId, subagent) => this.assertSubagentDepth(parentId, subagent),
-			resolveSession: (parentId, subagent, sessionName, threadKey) => this.resolveSubagentSession(parentId, subagent, sessionName, threadKey),
-			associateRequest: (childId, eventId, requestId) => this.subagentRequestIdsByEvent.set(subagentRequestEventKey(childId, eventId), requestId),
-			dissociateRequest: (childId, eventId) => { this.subagentRequestIdsByEvent.delete(subagentRequestEventKey(childId, eventId)); },
-			emitOutput: (event) => this.emitOutput(event),
-			emitMessageAndWaitForReply: (event, signal) => this.emitMessageAndWaitForReply(event, undefined, signal),
-			trackActive: (parentId, request) => this.trackActiveSubagent(parentId, request),
-			listAgents: (parentId) => this.listManagedAgents(parentId),
-			observeAgents: (parentId, input) => this.observeManagedAgents(parentId, input),
-			killAgent: (parentId, agentId) => this.killManagedAgent(parentId, agentId),
-		}, parentPiboSessionId);
-	}
-
-	private listManagedAgents(parentPiboSessionId: string): PiboManagedAgent[] {
+	private listChildSessions(query: PluginChildSessionQuery) {
 		return this.sessionStore.find({
-			channel: "pibo.subagents",
-			kind: "subagent",
-			parentId: parentPiboSessionId,
-		}).map((session) => {
-			const live = this.sessions.get(session.id)?.getStatus();
-			const killed = session.metadata?.agentStatus === "killed";
-			const running = !killed && Boolean(live && (live.processing || live.streaming || live.queuedMessages > 0));
-			return {
-				agentId: session.id,
-				name: typeof session.metadata?.subagentName === "string" ? session.metadata.subagentName : session.profile,
-				profile: session.profile,
-				...(session.title ? { sessionName: session.title } : {}),
-				...(typeof session.metadata?.threadKey === "string" ? { threadKey: session.metadata.threadKey } : {}),
-				status: killed ? "killed" : running ? "running" : "idle",
-				createdAt: session.createdAt,
-				updatedAt: session.updatedAt,
-				...(session.activeModel ? { activeModel: { ...session.activeModel } } : {}),
-			};
-		});
+			channel: query.channel,
+			kind: query.kind,
+			parentId: query.parentPiboSessionId,
+		}).map((session) => ({ session, liveStatus: this.sessions.get(session.id)?.getStatus() }));
 	}
 
-	private requireManagedAgent(parentPiboSessionId: string, agentId: string): PiboSession {
-		const session = this.sessionStore.get(agentId);
+	private requireChildSession(query: PluginChildSessionQuery & { childPiboSessionId: string }): PiboSession {
+		const session = this.sessionStore.get(query.childPiboSessionId);
 		if (
 			!session
-			|| session.parentId !== parentPiboSessionId
-			|| session.channel !== "pibo.subagents"
-			|| session.kind !== "subagent"
+			|| session.parentId !== query.parentPiboSessionId
+			|| session.channel !== query.channel
+			|| session.kind !== query.kind
 		) {
-			throw new Error(`Agent "${agentId}" is not owned by Pibo session "${parentPiboSessionId}".`);
+			throw new Error(`Child Pibo session "${query.childPiboSessionId}" is not owned by Pibo session "${query.parentPiboSessionId}".`);
 		}
 		return session;
 	}
 
-	private observeManagedAgents(parentPiboSessionId: string, input: PiboAgentObserveInput) {
-		for (const agentId of input.agentIds ?? []) this.requireManagedAgent(parentPiboSessionId, agentId);
-		const baseQuery = preparePiboAgentObservationQuery(input);
-		const cursorScope = piboAgentObservationCursorScopeKey(baseQuery.filters);
-		const explicitAfterSequence = input.afterSequence !== undefined;
-		const savedAfterSequence = baseQuery.cursorMode === "auto" && !explicitAfterSequence
-			? this.getAgentObservationAutoCursor(parentPiboSessionId, cursorScope)
-			: undefined;
-		const query = savedAfterSequence === undefined
-			? baseQuery
-			: preparePiboAgentObservationQuery({ ...input, afterSequence: savedAfterSequence });
-		const observations = this.agentObservations;
-		const evictedThrough = this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0;
-		const sourceHighWater = Math.max(
-			evictedThrough,
-			this.agentObservationHighWaterByParent.get(parentPiboSessionId) ?? 0,
-		);
-		function* ordered(): IterableIterator<PiboAgentObservation> {
-			const start = query.scanOrder === "asc" ? 0 : observations.length - 1;
-			const end = query.scanOrder === "asc" ? observations.length : -1;
-			const step = query.scanOrder === "asc" ? 1 : -1;
-			for (let index = start; index !== end; index += step) {
-				const { managingParentId, ...observation } = observations[index]!;
-				if (managingParentId === parentPiboSessionId) yield observation;
-			}
-		}
-		const page = selectPiboAgentObservationPage(ordered(), query, { evictedThrough });
-		if (query.cursorMode === "history") return page;
-
-		const initialSnapshot = !explicitAfterSequence && savedAfterSequence === undefined;
-		const nextAfterSequence = initialSnapshot || !page.truncated
-			? Math.max(page.nextAfterSequence, sourceHighWater)
-			: page.nextAfterSequence;
-		const advancedAfterSequence = this.advanceAgentObservationAutoCursor(
-			parentPiboSessionId,
-			cursorScope,
-			nextAfterSequence,
-		);
+	private readChildOutputs(parentPiboSessionId: string) {
 		return {
-			...page,
-			autoCursorSequence: advancedAfterSequence,
+			records: this.agentObservations.filter((record) => record.managingParentPiboSessionId === parentPiboSessionId),
+			highWaterSequence: Math.max(
+				this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0,
+				this.agentObservationHighWaterByParent.get(parentPiboSessionId) ?? 0,
+			),
+			evictedThroughSequence: this.agentObservationEvictedThroughByParent.get(parentPiboSessionId) ?? 0,
 		};
 	}
 
@@ -2640,57 +2560,41 @@ export class PiboSessionRouter {
 		return advanced;
 	}
 
-	private async killManagedAgent(parentPiboSessionId: string, agentId: string) {
-		const child = this.requireManagedAgent(parentPiboSessionId, agentId);
-		const ids = [agentId, ...this.descendantSessionIds(agentId)];
+	private async killChildSession(input: PluginChildSessionQuery & { childPiboSessionId: string; terminalMetadata: PiboJsonObject; reason: string }) {
+		const child = this.requireChildSession(input);
+		const ids = [input.childPiboSessionId, ...this.descendantSessionIds(input.childPiboSessionId)];
 		const idSet = new Set(ids);
 		const activeParentRunIds = new Set(
-			[...(this.activeSubagentRequests.get(parentPiboSessionId) ?? [])]
-				.filter((request) => idSet.has(request.agentId))
+			[...(this.activeSubagentRequests.get(input.parentPiboSessionId) ?? [])]
+				.filter((request) => idSet.has(request.childPiboSessionId))
 				.map((request) => request.requestId),
 		);
 		const cancellableRuns = this.runRegistry.listAll({ includeConsumed: true, includeDetached: true })
 			.filter((run) => !isTerminalRunStatus(run.status) && (
 				idSet.has(run.controllerPiboSessionId)
-				|| (run.controllerPiboSessionId === parentPiboSessionId && activeParentRunIds.has(run.runId))
+					|| (run.controllerPiboSessionId === input.parentPiboSessionId && activeParentRunIds.has(run.runId))
 			));
-		const reason = `killed by parent ${parentPiboSessionId}`;
-		await this.runControllers.cancelRunsAfterSettlement(
-			cancellableRuns.filter((run) => run.controllerPiboSessionId === parentPiboSessionId),
-			reason,
+		await this.yieldedRuns.cancelRunsAfterSettlement(
+			cancellableRuns.filter((run) => run.controllerPiboSessionId === input.parentPiboSessionId),
+			input.reason,
 		);
 		await Promise.allSettled(ids.flatMap((id) => this.sessions.has(id)
 			? [this.emit({ type: "execution", piboSessionId: id, action: "abort", id: randomUUID() })]
 			: []));
-		if (child.metadata?.agentStatus !== "killed") {
-			this.sessionStore.update(agentId, {
-				metadata: {
-					...(child.metadata ?? {}),
-					agentStatus: "killed",
-					killedAt: new Date().toISOString(),
-				},
-			});
-		}
-		await this.disposeSessionSubtree(agentId, reason, { cancelRuns: true });
+		this.sessionStore.update(input.childPiboSessionId, {
+			metadata: { ...(child.metadata ?? {}), ...structuredClone(input.terminalMetadata) },
+		});
+		await this.disposeSessionSubtree(input.childPiboSessionId, input.reason, { cancelRuns: true });
 		const cancelledRuns = cancellableRuns.flatMap((run) => {
 			const current = this.runRegistry.status(run.controllerPiboSessionId, run.runId);
 			return current.status === "cancelled" ? [run.runId] : [];
 		});
-		return { agentId, killed: ids, cancelledRuns };
+		return { childPiboSessionId: input.childPiboSessionId, killed: ids, cancelledRuns };
 	}
 
 	/** Internal test seam; production controller creation is invoked by the selected package provider. */
 	private createRunToolController(parentPiboSessionId: string) {
-		return this.runControllers.create(parentPiboSessionId);
-	}
-
-	private assertSubagentDepth(parentPiboSessionId: string, subagent: SubagentProfile): void {
-		const maxDepth = subagent.maxDepth ?? DEFAULT_SUBAGENT_MAX_DEPTH;
-		if (hasReachedSubagentMaxDepth(subagent, this.getSubagentDepth(parentPiboSessionId))) {
-			throw new Error(
-				`Subagent "${subagent.name}" exceeded max depth ${maxDepth} from Pibo session "${parentPiboSessionId}"`,
-			);
-		}
+		return this.yieldedRuns.controlFor(parentPiboSessionId);
 	}
 
 	private getSubagentDepth(piboSessionId: string, sessionsById?: ReadonlyMap<string, PiboSession>): number {
@@ -2706,70 +2610,47 @@ export class PiboSessionRouter {
 		return depth;
 	}
 
-	private resolveSubagentSession(
-		parentPiboSessionId: string,
-		subagent: SubagentProfile,
-		sessionName: string,
-		threadKey?: string,
-	): PiboSession {
-		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, subagent.targetProfile);
-		const parent = this.resolvePiboSession(parentPiboSessionId);
-		const resolvedThreadKey = resolveSubagentThreadKey(threadKey);
-		const identityMetadata: PiboJsonObject = {
-			subagentName: subagent.name,
-			threadKey: resolvedThreadKey,
-		};
-		const metadata: PiboJsonObject = withWorkflowSessionKind({
-			...identityMetadata,
-			subagentToolName: PIBO_DELEGATION_SEND_TOOL_NAME,
-			agentStatus: "active",
-		}, "subagent");
+	private resolveChildSession(input: PluginResolveChildSessionInput): PiboSession {
+		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
+		const parent = this.resolvePiboSession(input.parentPiboSessionId);
+		const metadata: PiboJsonObject = structuredClone(input.metadata);
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
 		if (parentChatRoomId) metadata.chatRoomId = parentChatRoomId;
-		const newSessionMetadata: PiboJsonObject = withPiboSessionModelFallbacksMetadata({
-			...metadata,
-			...(subagent.thinkingLevel ? { initialThinkingLevel: subagent.thinkingLevel } : {}),
-			...(subagent.runtimeOptions && Object.keys(subagent.runtimeOptions).length > 0
-				? { initialRuntimeOptions: structuredClone(subagent.runtimeOptions) }
-				: {}),
-		}, subagent.modelFallbacks ?? []);
 		const existing = this.sessionStore.find({
-			channel: "pibo.subagents",
-			kind: "subagent",
+			channel: input.channel,
+			kind: input.kind,
 			parentId: parent.id,
 			profile: targetProfile,
-			metadata: identityMetadata,
-		}).find((candidate) => candidate.metadata?.agentStatus !== "killed");
+			metadata: input.identityMetadata,
+		}).find((candidate) => !input.excludeMetadata || !Object.entries(input.excludeMetadata).every(
+			([key, value]) => isDeepStrictEqual(candidate.metadata?.[key], value),
+		));
 		if (existing) {
-			const updatedMetadata = withWorkflowSessionKind(
-				{
-					...(existing.metadata ?? {}),
-					subagentToolName: PIBO_DELEGATION_SEND_TOOL_NAME,
-					agentStatus: "active",
-					...(parentChatRoomId ? { chatRoomId: parentChatRoomId } : {}),
-				},
-				"subagent",
-			);
-			if (existing.title !== sessionName || JSON.stringify(updatedMetadata) !== JSON.stringify(existing.metadata ?? {})) {
-				return this.sessionStore.update(existing.id, { title: sessionName, metadata: updatedMetadata }) ?? existing;
+			const updatedMetadata = {
+				...(existing.metadata ?? {}),
+				...structuredClone(input.reuseMetadata ?? {}),
+				...(parentChatRoomId ? { chatRoomId: parentChatRoomId } : {}),
+			};
+			if (existing.title !== input.title || JSON.stringify(updatedMetadata) !== JSON.stringify(existing.metadata ?? {})) {
+				return this.sessionStore.update(existing.id, { title: input.title, metadata: updatedMetadata }) ?? existing;
 			}
 			return existing;
 		}
 
 		const childProfile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, targetProfile);
 		const childSession = this.sessionStore.create({
-			channel: "pibo.subagents",
-			kind: "subagent",
+			channel: input.channel,
+			kind: input.kind,
 			profile: targetProfile,
 			parentId: parent.id,
 			runtimeBinding: this.createRuntimeBindingInput(childProfile),
 			workspace: parent.workspace,
-			title: sessionName,
-			metadata: newSessionMetadata,
-			activeModel: subagent.model,
+			title: input.title,
+			metadata,
+			activeModel: input.activeModel,
 		});
 		this.signalRegistry.project({ type: "session_created", session: childSession });
-		if (subagent.model) return childSession;
+		if (input.activeModel) return childSession;
 		const activeModel = resolvePiboSessionActiveModel({
 			profile: childProfile,
 			piboSession: childSession,
@@ -2779,12 +2660,8 @@ export class PiboSessionRouter {
 		return activeModel ? this.sessionStore.update(childSession.id, { activeModel }) ?? childSession : childSession;
 	}
 
-	private recordAgentObservation(event: PiboOutputEvent, session: PiboSession | undefined): void {
-		if (!session || session.kind !== "subagent" || session.channel !== "pibo.subagents" || !session.parentId) return;
-		const name = typeof session.metadata?.subagentName === "string" ? session.metadata.subagentName : session.profile;
-		const source = piboAgentObservationSourceFromEvent(event);
-		const role = piboAgentObservationRole(source);
-		const text = piboAgentObservationText(source);
+	private recordChildOutput(event: PiboOutputEvent, session: PiboSession | undefined): void {
+		if (!session?.parentId) return;
 		const provenance = "provenance" in event ? event.provenance : undefined;
 		const eventId = "eventId" in event && typeof event.eventId === "string" ? event.eventId : undefined;
 		const requestId = provenance?.kind === "subagent-request"
@@ -2797,24 +2674,14 @@ export class PiboSessionRouter {
 			this.nextAgentObservationSequence,
 		) ?? this.nextAgentObservationSequence;
 		this.nextAgentObservationSequence = Math.max(this.nextAgentObservationSequence, sequence + 1);
-		const observation: StoredAgentObservation = {
-			managingParentId: session.parentId,
+		this.agentObservations.push({
+			managingParentPiboSessionId: session.parentId,
+			childSession: structuredClone(session),
 			sequence,
 			createdAt: new Date().toISOString(),
 			...(requestId ? { requestId } : {}),
-			agentId: session.id,
-			name,
-			...(typeof session.metadata?.threadKey === "string" ? { threadKey: session.metadata.threadKey } : {}),
-			eventType: event.type,
-			kind: piboAgentObservationKind(event.type),
-			...(role ? { role } : {}),
-			...(text ? { text } : {}),
-			...("toolName" in event && typeof event.toolName === "string" ? { toolName: event.toolName } : {}),
-			...("toolCallId" in event && typeof event.toolCallId === "string" ? { toolCallId: event.toolCallId } : {}),
-			...(event.type === "tool_execution_finished" ? { isError: event.isError } : event.type === "session_error" ? { isError: true } : {}),
-			details: piboAgentObservationDetails(event),
-		};
-		this.agentObservations.push(observation);
+			event: structuredClone(event),
+		});
 		this.agentObservationHighWaterByParent.set(
 			session.parentId,
 			Math.max(this.agentObservationHighWaterByParent.get(session.parentId) ?? 0, sequence),
@@ -2823,8 +2690,8 @@ export class PiboSessionRouter {
 			const evicted = this.agentObservations.splice(0, this.agentObservations.length - MAX_AGENT_OBSERVATIONS);
 			for (const item of evicted) {
 				this.agentObservationEvictedThroughByParent.set(
-					item.managingParentId,
-					Math.max(this.agentObservationEvictedThroughByParent.get(item.managingParentId) ?? 0, item.sequence),
+					item.managingParentPiboSessionId,
+					Math.max(this.agentObservationEvictedThroughByParent.get(item.managingParentPiboSessionId) ?? 0, item.sequence),
 				);
 			}
 		}
@@ -2833,7 +2700,7 @@ export class PiboSessionRouter {
 	private readonly emitOutput = (event: PiboOutputEvent): void => {
 		const positionedEvent = this.outputRenderSequencer.position(event);
 		const session = this.sessionStore.get(positionedEvent.piboSessionId);
-		this.recordAgentObservation(positionedEvent, session);
+		this.recordChildOutput(positionedEvent, session);
 		this.telemetryRecorder?.recordOutput(positionedEvent, { session, status: this.sessions.get(positionedEvent.piboSessionId)?.getStatus() });
 		this.signalRegistry.project({ type: "pibo_output", event: positionedEvent, session });
 		this.pluginRegistry.notifyEvent(positionedEvent);
@@ -2850,6 +2717,23 @@ export class PiboSessionRouter {
 			this.scheduleRunReminder(positionedEvent.piboSessionId, true);
 		}
 	};
+
+	private isRunReminderServiceMessage(piboSessionId: string, message: PiboMessageEvent): boolean {
+		return this.portableToolSessions.get(piboSessionId)?.isServiceMessage(
+			PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
+			message,
+		) ?? false;
+	}
+
+	private formatRunReminderMessage(piboSessionId: string, notification: PiboRunNotification): string {
+		const text = this.portableToolSessions.get(piboSessionId)?.formatServiceMessage(
+			PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
+			notification,
+			{ maxDurationMs: RUN_REMINDER_MAX_DURATION_MS },
+		);
+		if (!text) throw new Error("Selected yielded-run provider does not supply a reminder message handler.");
+		return text;
+	}
 
 	private handleRunReminderOutput(event: PiboOutputEvent): void {
 		if (event.type === "message_finished") {
@@ -2892,7 +2776,7 @@ export class PiboSessionRouter {
 			this.recordRunReminderRecovery(delivery);
 			const alreadyDeferred = this.deferredRunReminders.get(delivery.piboSessionId) === delivery.generation;
 			this.deferredRunReminders.set(delivery.piboSessionId, delivery.generation);
-			this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage);
+			this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages((message) => this.isRunReminderServiceMessage(delivery.piboSessionId, message));
 			if (!alreadyDeferred) this.queueRunReminderRecoveryCompaction(delivery.piboSessionId, delivery.generation);
 			return;
 		}
@@ -2911,7 +2795,7 @@ export class PiboSessionRouter {
 		this.clearRunReminderRecovery(delivery);
 		this.deferredRunReminders.delete(delivery.piboSessionId);
 		this.clearRunReminderAdmissionWarning(delivery.piboSessionId, delivery.generation);
-		this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage);
+		this.sessions.get(delivery.piboSessionId)?.removeQueuedMessages((message) => this.isRunReminderServiceMessage(delivery.piboSessionId, message));
 		this.scheduleRunReminder(delivery.piboSessionId, false, delivery.generation);
 	}
 
@@ -2965,7 +2849,7 @@ export class PiboSessionRouter {
 
 	private handleInterruptedRunReminders(messages: readonly PiboMessageEvent[]): void {
 		for (const message of messages) {
-			if (!isPiboRunReminderServiceMessage(message) || !message.id) continue;
+			if (!this.isRunReminderServiceMessage(message.piboSessionId, message) || !message.id) continue;
 			const delivery = this.runReminderDeliveries.get(message.id);
 			if (!delivery) continue;
 			this.runReminderDeliveries.delete(message.id);
@@ -3007,7 +2891,7 @@ export class PiboSessionRouter {
 				if (delivery.piboSessionId === piboSessionId) this.runReminderDeliveries.delete(eventId);
 			}
 			try {
-				this.sessions.get(piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage);
+				this.sessions.get(piboSessionId)?.removeQueuedMessages((message) => this.isRunReminderServiceMessage(piboSessionId, message));
 			} catch {
 				// A concurrently disposed RoutedSession is already quiescent.
 			}
@@ -3066,7 +2950,7 @@ export class PiboSessionRouter {
 	}
 
 	private refreshQueuedRunReminders(piboSessionId: string): void {
-		const removed = this.sessions.get(piboSessionId)?.removeQueuedMessages(isPiboRunReminderServiceMessage) ?? 0;
+		const removed = this.sessions.get(piboSessionId)?.removeQueuedMessages((message) => this.isRunReminderServiceMessage(piboSessionId, message)) ?? 0;
 		if (removed > 0) {
 			this.scheduleRunReminder(piboSessionId, true);
 		} else if (!this.runRegistry.hasPendingNotification(piboSessionId, { includeAlreadyNotified: true })) {
@@ -3109,7 +2993,7 @@ export class PiboSessionRouter {
 			// Release the queued snapshot before reserving its replacement. The
 			// interruption callback restores every unconsumed run to pending state.
 			const replaced = session.removeQueuedMessages?.((event) => {
-				if (!isPiboRunReminderServiceMessage(event) || !event.id) return false;
+				if (!this.isRunReminderServiceMessage(piboSessionId, event) || !event.id) return false;
 				const delivery = this.runReminderDeliveries.get(event.id);
 				return delivery?.piboSessionId === piboSessionId && delivery.generation === expectedGeneration;
 			}) ?? 0;
@@ -3125,7 +3009,7 @@ export class PiboSessionRouter {
 			session.enqueueMessage({
 				type: "message",
 				piboSessionId,
-				text: formatPiboRunReminderMessage(notification, RUN_REMINDER_MAX_DURATION_MS),
+				text: this.formatRunReminderMessage(piboSessionId, notification),
 				source: "service",
 				id: eventId,
 				provenance: runReminderProvenance(notification),

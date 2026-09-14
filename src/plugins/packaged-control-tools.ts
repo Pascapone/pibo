@@ -4,18 +4,21 @@ import { createPiboLoopChannel, PiboLoopServiceController } from "../loops/chann
 import { parsePiboSessionGoalCommand } from "../loops/plugin.js";
 import { createBuiltInLoopStopConditions } from "../loops/stopping.js";
 import { createPiboGoalToolDefinitions } from "../loops/tools.js";
-import { createRunToolDefinitions, type PiboRunToolController } from "../runs/tools.js";
-import { createAgentToolDefinitions, type PiboAgentsController } from "../subagents/tool.js";
+import { formatPiboRunReminderMessage, isPiboRunReminderServiceMessage } from "../runs/reminders.js";
+import type { PiboRunNotification } from "../runs/registry.js";
+import { createRunToolDefinitions } from "../runs/tools.js";
+import { createPiboDelegationController } from "../subagents/controller.js";
+import { createAgentToolDefinitions } from "../subagents/tool.js";
 import type { PiboToolDefinition } from "../tools/contract.js";
 import type { PluginSetupContext } from "./host.js";
 import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, type PiboPluginProductOptions } from "./product-services.js";
 import {
 	PIBO_SESSION_AGENT_TARGETS_SERVICE,
-	PIBO_SESSION_DELEGATION_FACTORY_SERVICE,
 	PIBO_SESSION_GOAL_STORE_SERVICE,
-	PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE,
+	PIBO_SESSION_YIELDED_RUNS_SERVICE,
+	PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
 	definePluginSessionToolProvider,
-	type PluginSessionServiceFactory,
+	type PluginYieldedRunControl,
 	type PluginSessionToolProviderContext,
 	type PluginSessionToolRegistration,
 } from "./runtime.js";
@@ -34,9 +37,16 @@ export function setupRunControl(context: PluginSetupContext): void {
 		phase: "augment",
 		includeNativeTools: true,
 		createSession(providerContext) {
-			const controller = providerContext.services.require<PluginSessionServiceFactory<PiboRunToolController>>(PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE).create();
+			const controller = providerContext.services.require<PluginYieldedRunControl>(PIBO_SESSION_YIELDED_RUNS_SERVICE);
 			const definitions = createRunToolDefinitions(providerContext.availableTools.map((tool) => tool.definition), controller);
-			return { tools: registrationsForSelectedTools(providerContext, definitions) };
+			return {
+				tools: registrationsForSelectedTools(providerContext, definitions),
+				serviceMessages: [{
+					kind: PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
+					format: (payload, messageContext) => formatPiboRunReminderMessage(payload as PiboRunNotification, messageContext.maxDurationMs),
+					matches: isPiboRunReminderServiceMessage,
+				}],
+			};
 		},
 	}));
 	context.register("settings", {});
@@ -74,7 +84,7 @@ export function setupGoalControl(context: PluginSetupContext): () => Promise<voi
 export function setupAgentDelegation(context: PluginSetupContext): void {
 	context.register("session-tools", definePluginSessionToolProvider({
 		createSession(providerContext) {
-			const controller = providerContext.services.require<PluginSessionServiceFactory<PiboAgentsController>>(PIBO_SESSION_DELEGATION_FACTORY_SERVICE).create();
+			const controller = createPiboDelegationController(providerContext.services, providerContext.piboSessionId);
 			const agents = providerContext.services.require<readonly SubagentProfile[]>(PIBO_SESSION_AGENT_TARGETS_SERVICE);
 			return { tools: registrationsForSelectedTools(providerContext, createAgentToolDefinitions(agents, controller)) };
 		},

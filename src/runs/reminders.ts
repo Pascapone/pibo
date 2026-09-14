@@ -1,4 +1,3 @@
-import type { PiboMessageEvent } from "../core/events.js";
 import type { PiboRunNotification } from "./registry.js";
 
 const RUN_NOTIFICATION_OPEN = "<pibo_run_notification>";
@@ -23,6 +22,6 @@ export function formatPiboRunReminderMessage(notification: PiboRunNotification, 
 	].join("\n");
 }
 
-export function isPiboRunReminderServiceMessage(event: PiboMessageEvent): boolean {
+export function isPiboRunReminderServiceMessage(event: { source?: string; text: string }): boolean {
 	return event.source === "service" && event.text.startsWith(RUN_NOTIFICATION_OPEN);
 }

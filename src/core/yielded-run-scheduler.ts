@@ -1,21 +1,21 @@
-import type { PiboRunOrigin, PiboRunSnapshot, PiboRunRegistry } from "./registry.js";
+import type { PiboRunOrigin, PiboRunRegistry, PiboRunSnapshot } from "../runs/registry.js";
 import {
 	PiboRunCancellationError,
 	PiboRunCancelledError,
 	PiboRunExecutionTimeoutError,
 	waitForRunCancellationSettlement,
-} from "./lifecycle.js";
-import { PiboRunResourceLimitError, type YieldedRunHostResourceSnapshot } from "./resource-isolation.js";
-import type { PiboRunToolController } from "./tools.js";
+} from "../runs/lifecycle.js";
+import { PiboRunResourceLimitError, type YieldedRunHostResourceSnapshot } from "../runs/resource-isolation.js";
+import type { PluginYieldedRunControl } from "../plugins/runtime.js";
 
-export type PiboRunControllerReservation = {
+export type PiboYieldedRunReservation = {
 	admission: YieldedRunHostResourceSnapshot;
 	release(): void;
 };
 
-export type PiboRunControllerManagerOptions = {
+export type PiboYieldedRunSchedulerOptions = {
 	registry: PiboRunRegistry;
-	reserve(parentPiboSessionId: string, toolName: string): PiboRunControllerReservation;
+	reserve(parentPiboSessionId: string, toolName: string): PiboYieldedRunReservation;
 	origin(parentPiboSessionId: string): PiboRunOrigin | undefined;
 	reminderGeneration(parentPiboSessionId: string): number;
 	handleTerminalRun(parentPiboSessionId: string, runId: string, reminderGeneration: number): void;
@@ -26,13 +26,13 @@ function isTerminalRunStatus(status: string): boolean {
 	return status === "completed" || status === "failed" || status === "timed_out" || status === "cancelled";
 }
 
-export class PiboRunControllerManager {
+export class PiboYieldedRunScheduler {
 	private readonly cancellationHandlers = new Map<string, () => Promise<void>>();
 	private readonly activeExecutions = new Set<string>();
 
-	constructor(private readonly options: PiboRunControllerManagerOptions) {}
+	constructor(private readonly options: PiboYieldedRunSchedulerOptions) {}
 
-	create(parentPiboSessionId: string): PiboRunToolController {
+	controlFor(parentPiboSessionId: string): PluginYieldedRunControl {
 		const registry = this.options.registry;
 		return {
 			startToolRun: ({ toolName, params, completionPolicy, retryable, maxAttempts, timeoutMs, serviceWarning, resources, execute, cancel }) => {

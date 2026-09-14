@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T16:57:00Z"
+  at: "2026-09-14T20:30:00Z"
 sources:
   - id: "owner-completion"
     resource: "scope:owner decisions 2026-09-14 in Pibo Session ps_c5596e29-e5db-47e8-a736-714f4a1c99cf; independent minimal core; all Pibo extension tools through public plugin contracts; explicit core views; Codex-owned Runtime Requests subject to dependency inspection; OMP maintenance only; remove executable legacy APIs; preserve data through migration; write a plan without implementation"
@@ -349,6 +349,12 @@ Eine generisch benannte Core-Service-Factory erfüllt diese Grenze nicht, wenn d
 Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/App.tsx`, `src/apps/chat-ui/src/plugins/plugin-workspace.tsx`, `src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx`, jeweilige `packaged-*`-Module.
 
 **Fertig, wenn:** Installation eines Featurepakets genügt für seine vollständige Funktion; Entfernen beeinträchtigt keine unabhängigen Kernansichten. Abhängigkeiten: F01–F03; Datencutover erst mit F07.
+
+### F04-Zwischenstand: generische Run-/Child-Orchestrierung
+
+N-022 ist im Quell- und Verhaltenspfad umgesetzt. Der Core stellt nur noch generationgebundene, fachlich neutrale Dienste für Yielded-Run-Scheduling sowie Parent-/Child-Session-Lifecycle, Ausgabe, Abbruch, Cursor und Cleanup bereit. Das Delegationspaket konstruiert seinen Controller selbst und besitzt Toolname, Child-Metadaten, Agentdarstellung und Beobachtungsprojektion. Das Run-Control-Paket besitzt seinen Remindertext und dessen Erkennung; der Core dispatcht nur nach der semantischen Service-Message-Fähigkeit. Die alte Controller-Injection der Portable-Tool-Session einschließlich `subagentRunner` ist entfernt.
+
+Der fokussierte Nachweis umfasst Root-Emit und 56 Run-/Delegation-/Reminder-/Portable-/Codex-Ressourcentests; `/tmp/pibo4-f04-n022.md` protokolliert die Befunde. Diese Quellprüfung ersetzt den F06-07-Nachweis nicht: Erst Importgraph und Inhalt des gepackten Minimal-Core belegen die physische Delivery-Grenze.
 
 ## F05 – Runtimepakete und Runtime Requests abschließen
 

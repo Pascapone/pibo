@@ -15,9 +15,9 @@ import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import { createAgentPluginSelection } from "../dist/plugins/selection.js";
 import {
 	PIBO_SESSION_AGENT_TARGETS_SERVICE,
-	PIBO_SESSION_DELEGATION_FACTORY_SERVICE,
+	PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE,
 	PIBO_SESSION_GOAL_STORE_SERVICE,
-	PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE,
+	PIBO_SESSION_YIELDED_RUNS_SERVICE,
 } from "../dist/plugins/runtime.js";
 import { PiboPortableToolService } from "../dist/tools/session-service.js";
 
@@ -101,10 +101,16 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 		cancel() { throw new Error("not executed in schema test"); },
 		acknowledge() { throw new Error("not executed in schema test"); },
 	};
-	const delegationController = {
-		sendMessage() { throw new Error("not executed in schema test"); },
+	const delegationHost = {
+		assertDepth() {},
+		resolveSession() { throw new Error("not executed in schema test"); },
+		associateRequest() {},
+		dissociateRequest() {},
+		emitOutput() {},
+		emitMessageAndWaitForReply() { throw new Error("not executed in schema test"); },
+		trackActive() { return () => {}; },
 		listAgents() { return []; },
-		observe() { return { observations: [], truncated: false, nextAfterSequence: 0 }; },
+		observeAgents() { return { observations: [], truncated: false, nextAfterSequence: 0 }; },
 		killAgent() { throw new Error("not executed in schema test"); },
 	};
 	const session = portableService.createSession({
@@ -117,8 +123,8 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 		cwd: root,
 		sessionToolProviders: generation.sessionToolProviders,
 		sessionServices: {
-			[PIBO_SESSION_RUN_CONTROL_FACTORY_SERVICE]: { create: () => runController },
-			[PIBO_SESSION_DELEGATION_FACTORY_SERVICE]: { create: () => delegationController },
+			[PIBO_SESSION_YIELDED_RUNS_SERVICE]: runController,
+			[PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE]: delegationHost,
 			[PIBO_SESSION_AGENT_TARGETS_SERVICE]: generation.profile.subagents,
 			[PIBO_SESSION_GOAL_STORE_SERVICE]: join(root, "goals.sqlite"),
 		},

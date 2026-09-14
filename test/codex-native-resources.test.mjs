@@ -125,7 +125,6 @@ function trackedPortableSession(session, issued) {
 		adapterId: session.adapterId,
 		sessionGeneration: session.sessionGeneration,
 		createDefinitions: (...args) => session.createDefinitions(...args),
-		configureControllers: (...args) => session.configureControllers(...args),
 		setConversationEntriesProvider: (...args) => session.setConversationEntriesProvider(...args),
 		async issueMcpAccess(options) {
 			const access = await session.issueMcpAccess(options);

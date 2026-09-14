@@ -41,15 +41,6 @@ test("portable tool sessions share one frozen tool selection across direct and M
 		.addTool({ name: "alpha", definition: alpha })
 		.withToolPackages({ runControl: true, goalControl: false })
 		.createSession();
-	const runController = {
-		start() { throw new Error("not executed"); },
-		list() { return []; },
-		status() { throw new Error("not executed"); },
-		wait() { throw new Error("not executed"); },
-		read() { throw new Error("not executed"); },
-		cancel() { throw new Error("not executed"); },
-		acknowledge() { throw new Error("not executed"); },
-	};
 	const service = new PiboPortableToolService();
 	t.after(async () => service.dispose());
 	const session = service.createSession({
@@ -59,23 +50,21 @@ test("portable tool sessions share one frozen tool selection across direct and M
 		adapterId: "codex",
 		profile,
 		cwd: "/tmp/portable",
-		runToolController: runController,
 	});
 
-	const portable = session.createDefinitions();
-	assert.deepEqual(portable.map((tool) => tool.name).sort(), ["alpha", "pibo_run_ack", "pibo_run_cancel", "pibo_run_list", "pibo_run_read", "pibo_run_start", "pibo_run_status", "pibo_run_wait"]);
-	assert.deepEqual(toolByName(portable, "pibo_run_start").inputSchema.properties.toolName.enum, ["alpha"]);
+	const nativeYieldableTools = [nativeBash];
+	const portable = session.createDefinitions({ nativeYieldableTools });
+	assert.deepEqual(portable.map((tool) => tool.name).sort(), ["alpha", "bash"]);
 
-	const directWithNative = session.createDefinitions({ nativeYieldableTools: [nativeBash] });
+	const directWithNative = session.createDefinitions({ nativeYieldableTools });
 	assert.ok(directWithNative.some((tool) => tool.name === "bash"));
-	assert.deepEqual(toolByName(directWithNative, "pibo_run_start").inputSchema.properties.toolName.enum.sort(), ["alpha", "bash"]);
 
 	await assert.rejects(
 		() => session.issueMcpAccess({ allowedToolNames: ["bash"] }),
 		/Portable MCP tools are unavailable/,
 	);
-	const access = await session.issueMcpAccess({ allowedToolNames: ["alpha", "pibo_run_start"] });
-	assert.deepEqual(access.allowedToolNames, ["alpha", "pibo_run_start"]);
+	const access = await session.issueMcpAccess({ allowedToolNames: ["alpha"] });
+	assert.deepEqual(access.allowedToolNames, ["alpha"]);
 	const transport = new StreamableHTTPClientTransport(new URL(access.url), {
 		requestInit: { headers: { Authorization: `Bearer ${access.token}` } },
 	});
@@ -83,7 +72,7 @@ test("portable tool sessions share one frozen tool selection across direct and M
 	const client = new Client({ name: "portable-session-test", version: "1" });
 	await client.connect(transport);
 	const listed = await client.listTools();
-	assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), ["alpha", "pibo_run_start"]);
+	assert.deepEqual(listed.tools.map((tool) => tool.name).sort(), ["alpha"]);
 	const result = await client.callTool({ name: "alpha", arguments: { value: "hello" } });
 	assert.equal(result.content[0].text, "ps_portable:hello");
 

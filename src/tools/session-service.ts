@@ -1,29 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { RuntimePluginHook, PluginHookEvidence } from "../agent-runtime/plugin-hooks.js";
 import type { InitialSessionContext } from "../core/profiles.js";
-import type { PiboRunToolController } from "../runs/tools.js";
-import type { PiboAgentsController, PiboSubagentRunner } from "../subagents/tool.js";
-import type { CodexBrowserToolController } from "./codex-browser.js";
 import type { PiboToolDefinition, PiboToolDefinitionContext } from "./contract.js";
-import type { PluginSessionAvailableTool, PluginSessionToolProviderBinding, PluginSessionToolSet } from "../plugins/runtime.js";
+import type { PluginSessionAvailableTool, PluginSessionServiceMessageHandler, PluginSessionToolProviderBinding, PluginSessionToolSet } from "../plugins/runtime.js";
 import {
 	PiboToolMcpBridge,
 	type PiboToolMcpBridgeAddress,
 	type PiboToolPayloadWriter,
 } from "./mcp-bridge.js";
-import type { PiboRuntimeToolController } from "./runtime/tool.js";
 import { createPiboSessionToolDefinitions, type SessionToolDefinitionRegistration } from "./session-tool-set.js";
 
-export type PiboPortableToolSessionControllers = {
-	agentsController?: PiboAgentsController;
-	/** @deprecated Use agentsController. Retained so integrations receive an explicit migration error. */
-	subagentRunner?: PiboSubagentRunner;
-	runToolController?: PiboRunToolController;
-	runtimeToolController?: PiboRuntimeToolController;
-	codexBrowserController?: CodexBrowserToolController;
-};
-
-export type CreatePiboPortableToolSessionInput = PiboPortableToolSessionControllers & {
+export type CreatePiboPortableToolSessionInput = {
 	piboSessionId: string;
 	piboRoomId?: string;
 	runtimeInstanceId: string;
@@ -67,7 +54,8 @@ export interface PiboPortableToolSession {
 	createDefinitions(options?: PiboPortableToolDefinitionOptions): PiboToolDefinition[];
 	/** Already materialized inventory only; never executes a factory. */
 	getDefinitions(): readonly PiboToolDefinition[];
-	configureControllers(controllers: Partial<PiboPortableToolSessionControllers>): void;
+	formatServiceMessage(kind: string, payload: unknown, context: { maxDurationMs: number }): string | undefined;
+	isServiceMessage(kind: string, message: { source?: string; text: string }): boolean;
 	setConversationEntriesProvider(provider: PiboToolDefinitionContext["getConversationEntries"] | undefined): void;
 	issueMcpAccess(options?: { allowedToolNames?: readonly string[]; ttlMs?: number }): Promise<PiboToolMcpAccess>;
 	renewMcpAccess(token: string, ttlMs?: number): PiboToolMcpAccess;
@@ -94,7 +82,6 @@ type SessionRecord = {
 	providerCleanupErrors?: unknown[];
 	disposePromise?: Promise<void>;
 	input: CreatePiboPortableToolSessionInput;
-	controllers: PiboPortableToolSessionControllers;
 	getConversationEntries?: PiboToolDefinitionContext["getConversationEntries"];
 	sessionGeneration: string;
 };
@@ -152,13 +139,6 @@ export class PiboPortableToolService {
 				runtimeInstanceId,
 				adapterId,
 				cwd,
-			},
-			controllers: {
-				agentsController: input.agentsController,
-				subagentRunner: input.subagentRunner,
-				runToolController: input.runToolController,
-				runtimeToolController: input.runtimeToolController,
-				codexBrowserController: input.codexBrowserController,
 			},
 			getConversationEntries: input.getConversationEntries,
 			sessionGeneration,
@@ -294,6 +274,12 @@ export class PiboPortableToolService {
 		return tools;
 	}
 
+	private serviceMessageHandler(record: SessionRecord, kind: string): PluginSessionServiceMessageHandler | undefined {
+		const handlers = (record.providerToolSets ?? []).flatMap((set) => set.serviceMessages ?? []).filter((handler) => handler.kind === kind);
+		if (handlers.length > 1) throw new Error(`Session service-message handler conflict for ${kind}`);
+		return handlers[0];
+	}
+
 	private queueProviderCleanup(record: SessionRecord, sets = record.providerToolSets ?? []): void {
 		record.providerToolSets = undefined;
 		record.baseProviderTools = undefined;
@@ -340,11 +326,8 @@ export class PiboPortableToolService {
 			includeNativeTools: record.input.sessionToolProviders?.some((binding) => binding.provider.includeNativeTools === true) ?? false,
 			createDefinitions: (options) => this.createDefinitions(record, options),
 			getDefinitions: () => [...(record.definitions ?? [])],
-			configureControllers: (controllers) => {
-				if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
-				record.controllers = { ...record.controllers, ...controllers };
-				record.definitions = undefined;
-			},
+			formatServiceMessage: (kind, payload, context) => this.serviceMessageHandler(record, kind)?.format(payload, context),
+			isServiceMessage: (kind, message) => this.serviceMessageHandler(record, kind)?.matches(message) ?? false,
 			setConversationEntriesProvider: (provider) => {
 				if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
 				record.getConversationEntries = provider;
