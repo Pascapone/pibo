@@ -74,6 +74,74 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		assert.equal(persistedAfterDeepLink.width, 544);
 		await act(async () => routeRenderer.unmount());
 
+		let sessionAWorkspace = model.emptyDesktopTabState();
+		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "route", route: { area: "workflows" } }, { id: "a-one", now: 1 });
+		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "route", route: { area: "settings" } }, { id: "a-two", now: 2 });
+		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "session-tool", tool: "preview" }, { id: "a-three", now: 3 });
+		sessionAWorkspace = model.activateDesktopTab(sessionAWorkspace, "a-two", 4);
+		const sessionATabset = { schemaVersion: 1, piboSessionId: "ps_switch_a", revision: 1, tabs: [], activeTabId: null, layout: model.desktopTabStateToSessionLayout({}, sessionAWorkspace) };
+		const emptySessionBTabset = { schemaVersion: 1, piboSessionId: "ps_switch_b", revision: 1, tabs: [], activeTabId: null, layout: {} };
+		const emptySessionCTabset = { schemaVersion: 1, piboSessionId: "ps_switch_c", revision: 1, tabs: [], activeTabId: null, layout: {} };
+		const switchController = (id, initial, delayed = false) => {
+			let stored = structuredClone(initial);
+			let releaseRead;
+			const controller = new SessionTabController(id, {
+				read: () => delayed ? new Promise((resolve) => { releaseRead = () => resolve(structuredClone(stored)); }) : Promise.resolve(structuredClone(stored)),
+				write: async (next, expectedRevision) => {
+					assert.equal(expectedRevision, stored.revision);
+					stored = structuredClone({ ...next, revision: expectedRevision + 1 });
+					return structuredClone(stored);
+				},
+			});
+			return { controller, releaseRead: () => releaseRead?.(), stored: () => stored };
+		};
+		const switchA = switchController("ps_switch_a", sessionATabset);
+		const switchB = switchController("ps_switch_b", emptySessionBTabset);
+		const switchC = switchController("ps_switch_c", emptySessionCTabset, true);
+		await switchA.controller.load();
+		await switchB.controller.load();
+		void switchC.controller.load();
+		const switchControllers = { ps_switch_a: switchA.controller, ps_switch_b: switchB.controller, ps_switch_c: switchC.controller };
+		let switchedWorkspaceState;
+		function SessionSwitchHarness({ selectedId, selectionGeneration, route }) {
+			const workspace = useDesktopTabWorkspace(route, true, switchControllers[selectedId], { selectionGeneration, ready: true });
+			switchedWorkspaceState = workspace.state;
+			return React.createElement("div", { "data-session": selectedId, "data-active-tab": workspace.state.activeTabId });
+		}
+		let switchRenderer;
+		await act(async () => {
+			switchRenderer = create(React.createElement(SessionSwitchHarness, { selectedId: "ps_switch_a", selectionGeneration: 1, route: { area: "settings" } }));
+		});
+		assert.deepEqual(switchedWorkspaceState.tabs.map((tab) => tab.id), ["a-one", "a-two", "a-three"]);
+		assert.equal(switchedWorkspaceState.activeTabId, "a-two", "Session A starts with its second tab selected");
+		await act(async () => {
+			switchRenderer.update(React.createElement(SessionSwitchHarness, { selectedId: "ps_switch_b", selectionGeneration: 2, route: { area: "settings" } }));
+		});
+		assert.deepEqual(switchedWorkspaceState.tabs, [], "a ready empty Session cannot inherit the prior Session's selected route tab during a fast switch");
+		assert.deepEqual(model.desktopTabStateFromSessionTabset(switchB.controller.state).tabs, []);
+		await act(async () => {
+			switchRenderer.update(React.createElement(SessionSwitchHarness, { selectedId: "ps_switch_a", selectionGeneration: 3, route: { area: "settings" } }));
+		});
+		assert.deepEqual(switchedWorkspaceState.tabs.map((tab) => tab.id), ["a-one", "a-two", "a-three"]);
+		assert.equal(switchedWorkspaceState.activeTabId, "a-two", "returning to Session A restores its independent active selection");
+		await act(async () => {
+			switchRenderer.update(React.createElement(SessionSwitchHarness, { selectedId: "ps_switch_c", selectionGeneration: 4, route: { area: "settings" } }));
+			switchC.releaseRead();
+			await Promise.resolve();
+		});
+		assert.equal(switchC.controller.ready, true);
+		assert.deepEqual(switchedWorkspaceState.tabs, [], "a delayed empty Session cannot inherit a stale route when its controller finishes loading");
+		assert.deepEqual(model.desktopTabStateFromSessionTabset(switchC.controller.state).tabs, []);
+		await act(async () => {
+			switchRenderer.update(React.createElement(SessionSwitchHarness, { selectedId: "ps_switch_a", selectionGeneration: 5, route: { area: "sessions", piboSessionId: "ps_switch_a" } }));
+		});
+		assert.equal(switchedWorkspaceState.activeTabId, "a-two", "the Sessions route preserves Session A's stored active tab");
+		await act(async () => {
+			switchRenderer.update(React.createElement(SessionSwitchHarness, { selectedId: "ps_switch_a", selectionGeneration: 5, route: { area: "cron" } }));
+		});
+		assert.equal(model.activeDesktopTab(switchedWorkspaceState).target.route.area, "cron", "a new explicit route still reconciles into its current Session owner");
+		await act(async () => switchRenderer.unmount());
+
 		const lifecycle = [];
 		let focusedTitle = null;
 		let observedState;

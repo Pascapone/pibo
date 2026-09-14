@@ -112,7 +112,12 @@ export function desktopTabCatalog(): readonly CatalogEntry[] {
 	return [...routes, ...SESSION_TOOL_CATALOG];
 }
 
-export function useDesktopTabWorkspace(route: ChatAppRoute, enabled: boolean, controller: SessionTabController | null): {
+export function useDesktopTabWorkspace(
+	route: ChatAppRoute,
+	enabled: boolean,
+	controller: SessionTabController | null,
+	routeOwnership: { selectionGeneration: number; ready: boolean } = { selectionGeneration: 0, ready: true },
+): {
 	state: DesktopTabState;
 	setState: Dispatch<SetStateAction<DesktopTabState>>;
 } {
@@ -121,8 +126,22 @@ export function useDesktopTabWorkspace(route: ChatAppRoute, enabled: boolean, co
 	const state = enabled && controller?.ready ? desktopTabStateFromSessionTabset(controller.state) : emptyDesktopTabState();
 	const stateKey = serializeDesktopTabState(state);
 	const routeKey = useMemo(() => JSON.stringify(route), [route]);
+	// A route may seed only the Session selection generation that observed it; Session state renders before client routing catches up.
+	const routeOwnerRef = useRef<{ routeKey: string; selectionGeneration: number | null }>({
+		routeKey,
+		selectionGeneration: routeOwnership.ready ? routeOwnership.selectionGeneration : null,
+	});
+	if (routeOwnerRef.current.routeKey !== routeKey) {
+		routeOwnerRef.current = {
+			routeKey,
+			selectionGeneration: routeOwnership.ready ? routeOwnership.selectionGeneration : null,
+		};
+	} else if (routeOwnerRef.current.selectionGeneration === null && routeOwnership.ready) {
+		routeOwnerRef.current = { routeKey, selectionGeneration: routeOwnership.selectionGeneration };
+	}
+	const routeBelongsToSelection = routeOwnerRef.current.selectionGeneration === routeOwnership.selectionGeneration;
 	useEffect(() => {
-		if (!enabled || !controller?.ready || controller.conflict) return;
+		if (!enabled || !controller?.ready || controller.conflict || !routeBelongsToSelection) return;
 		const next = reconcileDesktopRoute(state, route);
 		const shouldInitialize = !sessionTabsetHasDesktopState(controller.state) && (next.tabs.length > 0 || route.area !== "sessions");
 		if (!shouldInitialize && serializeDesktopTabState(next) === stateKey) return;
@@ -131,7 +150,7 @@ export function useDesktopTabWorkspace(route: ChatAppRoute, enabled: boolean, co
 		} catch {
 			// Loading and CAS conflicts are rendered by the shared Session workspace.
 		}
-	}, [controller, enabled, routeKey, stateKey]);
+	}, [controller, enabled, routeBelongsToSelection, routeKey, routeOwnership.selectionGeneration, stateKey]);
 	const setState = useCallback<Dispatch<SetStateAction<DesktopTabState>>>((update) => {
 		if (!enabled || !controller?.ready || controller.conflict) return;
 		try {

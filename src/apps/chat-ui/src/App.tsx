@@ -354,7 +354,10 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
 	const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
 	const pluginSessionController = usePluginSessionTabController(selectedBackendPiboSessionId ?? null);
-	const desktopWorkspace = useDesktopTabWorkspace(route, desktopTabsEnabled, pluginSessionController);
+	const desktopWorkspace = useDesktopTabWorkspace(route, desktopTabsEnabled, pluginSessionController, {
+		selectionGeneration: sessionSelectionGenerationRef.current,
+		ready: bootstrap !== null,
+	});
 	const desktopActiveTab = activeDesktopTab(desktopWorkspace.state);
 	const desktopActiveTool = desktopTabTool(desktopActiveTab);
 	const desktopPanelRoute = desktopActiveTab?.target.kind === "route" ? desktopActiveTab.target.route : undefined;
