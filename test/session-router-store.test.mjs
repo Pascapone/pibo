@@ -1382,7 +1382,7 @@ test("session router lazily creates the reserved Pi transcript for an empty migr
 	}
 });
 
-test("session router marks a missing bound Pi transcript instead of creating a replacement", async () => {
+test("session router marks a missing bound Pi transcript and refuses an empty replacement", async () => {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-missing-pi-binding-"));
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -1404,7 +1404,7 @@ test("session router marks a missing bound Pi transcript instead of creating a r
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_missing_pi", action: "status" }),
-			(error) => error?.name === "AgentRuntimeBindingMissingError" && /77777777/.test(error.message),
+			(error) => error?.name === "AgentRuntimeUnavailableError" && /durable Pibo portable history is unavailable/.test(error.message),
 		);
 		const stored = store.get("ps_missing_pi");
 		assert.equal(stored.piSessionId, "77777777-7777-4777-8777-777777777777");

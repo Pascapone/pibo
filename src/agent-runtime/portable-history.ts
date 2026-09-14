@@ -45,8 +45,14 @@ export type PersistedPortableHistoryHandoff = {
 	version: typeof PORTABLE_HISTORY_VERSION;
 	status: "pending";
 	mode: "import" | "fresh";
+	reason?: "native-recovery";
 	sourceRuntimeInstanceId: string;
 	sourceAdapterId: string;
+	sourceNativeSessionId?: string;
+	sourceBindingState?: RuntimeSessionBinding["state"];
+	sourceBindingRevision?: number;
+	sourceLocator?: RuntimeSessionBinding["locator"];
+	sourceDiagnosticCode?: string;
 	targetRuntimeInstanceId: string;
 	targetAdapterId: string;
 	requestedAt: string;
@@ -60,6 +66,11 @@ export interface AgentRuntimePortableHistoryProvider {
 		sourceBinding: Pick<RuntimeSessionBinding, "runtimeInstanceId" | "adapterId">;
 		checkpoint: AgentRuntimePortableHistoryCheckpoint;
 	}): AgentRuntimePortableHistory;
+}
+
+export function hasRecoverablePortableHistory(history: AgentRuntimePortableHistory): boolean {
+	const syntheticIds = new Set(["portable:pibo-context", "portable:nonportable-fallback", "portable:bounded-fallback"]);
+	return history.entries.some((entry) => entry.source === "product" && !syntheticIds.has(entry.id));
 }
 
 type MessageRow = {
@@ -94,6 +105,13 @@ function validBoundedIdentifier(value: unknown): value is string {
 
 function validTimestamp(value: unknown): value is string {
 	return typeof value === "string" && value.length <= 128 && Number.isFinite(Date.parse(value));
+}
+
+function validBindingLocator(value: unknown): value is NonNullable<RuntimeSessionBinding["locator"]> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const record = value as Record<string, unknown>;
+	return ["local-file", "local-directory", "uri", "remote", "adapter-resolved"].includes(String(record.kind))
+		&& (record.value === undefined || (typeof record.value === "string" && record.value.length <= 4096));
 }
 
 function parseObject(value: string): Record<string, unknown> {
@@ -546,16 +564,27 @@ function normalizeEntrySize(entry: AgentRuntimeHistoryEntry): AgentRuntimeHistor
 
 export function createPortableHistoryHandoffMetadata(input: {
 	mode: "import" | "fresh";
-	sourceBinding: Pick<RuntimeSessionBinding, "runtimeInstanceId" | "adapterId">;
+	reason?: "native-recovery";
+	sourceBinding: Pick<RuntimeSessionBinding, "runtimeInstanceId" | "adapterId"> & Partial<Pick<RuntimeSessionBinding,
+		"nativeSessionId" | "state" | "revision" | "locator" | "metadata">>;
 	targetBinding: Pick<RuntimeSessionBinding, "runtimeInstanceId" | "adapterId">;
 	checkpoint?: AgentRuntimePortableHistoryCheckpoint;
 }): PersistedPortableHistoryHandoff {
+	const sourceDiagnosticCode = typeof input.sourceBinding.metadata?.diagnosticCode === "string"
+		? input.sourceBinding.metadata.diagnosticCode
+		: undefined;
 	return {
 		version: PORTABLE_HISTORY_VERSION,
 		status: "pending",
 		mode: input.mode,
+		...(input.reason ? { reason: input.reason } : {}),
 		sourceRuntimeInstanceId: input.sourceBinding.runtimeInstanceId,
 		sourceAdapterId: input.sourceBinding.adapterId,
+		...(input.sourceBinding.nativeSessionId ? { sourceNativeSessionId: input.sourceBinding.nativeSessionId } : {}),
+		...(input.sourceBinding.state ? { sourceBindingState: input.sourceBinding.state } : {}),
+		...(input.sourceBinding.revision !== undefined ? { sourceBindingRevision: input.sourceBinding.revision } : {}),
+		...(input.sourceBinding.locator ? { sourceLocator: structuredClone(input.sourceBinding.locator) } : {}),
+		...(sourceDiagnosticCode ? { sourceDiagnosticCode } : {}),
 		targetRuntimeInstanceId: input.targetBinding.runtimeInstanceId,
 		targetAdapterId: input.targetBinding.adapterId,
 		requestedAt: new Date().toISOString(),
@@ -588,12 +617,29 @@ export function readPortableHistoryHandoffMetadata(
 			createdAt: selected.createdAt,
 		};
 	}
+	const reason = record.reason === "native-recovery" ? record.reason : undefined;
+	const sourceNativeSessionId = validBoundedIdentifier(record.sourceNativeSessionId) ? record.sourceNativeSessionId : undefined;
+	const sourceBindingState = ["unbound", "bound", "missing", "error"].includes(String(record.sourceBindingState))
+		? record.sourceBindingState as RuntimeSessionBinding["state"]
+		: undefined;
+	const sourceBindingRevision = Number.isSafeInteger(record.sourceBindingRevision) && Number(record.sourceBindingRevision) > 0
+		? Number(record.sourceBindingRevision)
+		: undefined;
+	const sourceLocator = validBindingLocator(record.sourceLocator) ? structuredClone(record.sourceLocator) : undefined;
+	const sourceDiagnosticCode = validBoundedIdentifier(record.sourceDiagnosticCode) ? record.sourceDiagnosticCode : undefined;
+	if (reason === "native-recovery" && (!sourceNativeSessionId || !sourceBindingState || sourceBindingRevision === undefined)) return undefined;
 	return {
 		version: PORTABLE_HISTORY_VERSION,
 		status: "pending",
 		mode: record.mode,
+		...(reason ? { reason } : {}),
 		sourceRuntimeInstanceId: record.sourceRuntimeInstanceId,
 		sourceAdapterId: record.sourceAdapterId,
+		...(sourceNativeSessionId ? { sourceNativeSessionId } : {}),
+		...(sourceBindingState ? { sourceBindingState } : {}),
+		...(sourceBindingRevision !== undefined ? { sourceBindingRevision } : {}),
+		...(sourceLocator ? { sourceLocator } : {}),
+		...(sourceDiagnosticCode ? { sourceDiagnosticCode } : {}),
 		targetRuntimeInstanceId: record.targetRuntimeInstanceId,
 		targetAdapterId: record.targetAdapterId,
 		requestedAt: record.requestedAt,
@@ -623,8 +669,14 @@ export function withoutPortableHistoryHandoffMetadata(input: {
 			version: PORTABLE_HISTORY_VERSION,
 			status: "completed",
 			mode: input.handoff.mode,
+			...(input.handoff.reason ? { reason: input.handoff.reason } : {}),
 			sourceRuntimeInstanceId: input.handoff.sourceRuntimeInstanceId,
 			sourceAdapterId: input.handoff.sourceAdapterId,
+			...(input.handoff.sourceNativeSessionId ? { sourceNativeSessionId: input.handoff.sourceNativeSessionId } : {}),
+			...(input.handoff.sourceBindingState ? { sourceBindingState: input.handoff.sourceBindingState } : {}),
+			...(input.handoff.sourceBindingRevision !== undefined ? { sourceBindingRevision: input.handoff.sourceBindingRevision } : {}),
+			...(input.handoff.sourceLocator ? { sourceLocator: structuredClone(input.handoff.sourceLocator) } : {}),
+			...(input.handoff.sourceDiagnosticCode ? { sourceDiagnosticCode: input.handoff.sourceDiagnosticCode } : {}),
 			targetRuntimeInstanceId: input.handoff.targetRuntimeInstanceId,
 			targetAdapterId: input.handoff.targetAdapterId,
 			requestedAt: input.handoff.requestedAt,

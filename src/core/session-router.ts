@@ -81,7 +81,11 @@ import {
 	type RuntimeSessionBindingRebindInput,
 	type RuntimeSessionBindingUpdateOptions,
 } from "../sessions/runtime-binding.js";
-import { AgentRuntimeBindingMissingError, AgentRuntimeUnavailableError } from "../agent-runtime/errors.js";
+import {
+	AgentRuntimeBindingMissingError,
+	AgentRuntimeCapabilityUnavailableError,
+	AgentRuntimeUnavailableError,
+} from "../agent-runtime/errors.js";
 import type {
 	AgentRuntimeAuthStatus,
 	AgentRuntimeAuthTargetOperationResult,
@@ -125,6 +129,7 @@ import {
 	PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY,
 	PiboDataPortableHistoryProvider,
 	createPortableHistoryHandoffMetadata,
+	hasRecoverablePortableHistory,
 	readPortableHistoryHandoffMetadata,
 	withoutPortableHistoryHandoffMetadata,
 	withPortableHistoryHandoffMetadata,
@@ -1684,6 +1689,63 @@ export class PiboSessionRouter {
 		}
 	}
 
+	private prepareNativeSessionRecovery(
+		piboSession: PiboSession,
+		binding: RuntimeSessionBinding,
+		historyImportSupported: boolean,
+	): {
+		binding: RuntimeSessionBinding;
+		handoff: ReturnType<typeof createPortableHistoryHandoffMetadata>;
+	} {
+		if (!historyImportSupported) {
+			throw new AgentRuntimeCapabilityUnavailableError(
+				"native session recovery",
+				binding.runtimeInstanceId,
+				`Runtime instance "${binding.runtimeInstanceId}" authoritatively reported the native session absent but cannot import durable Pibo history; the original binding and history were preserved.`,
+			);
+		}
+		if (!this.portableHistoryProvider) {
+			throw new AgentRuntimeUnavailableError(
+				binding.runtimeInstanceId,
+				"The native session is absent and durable Pibo portable history is unavailable; refusing to create an empty replacement.",
+			);
+		}
+		const checkpoint = this.portableHistoryProvider.createCheckpoint(piboSession.id);
+		const history = this.portableHistoryProvider.read({
+			piboSession,
+			sourceBinding: binding,
+			checkpoint,
+		});
+		if (!hasRecoverablePortableHistory(history)) {
+			throw new AgentRuntimeUnavailableError(
+				binding.runtimeInstanceId,
+				"The native session is absent, but durable Pibo history contains no recoverable conversation context; refusing to create an empty replacement.",
+			);
+		}
+		const handoff = createPortableHistoryHandoffMetadata({
+			mode: "import",
+			reason: "native-recovery",
+			sourceBinding: binding,
+			targetBinding: binding,
+			checkpoint,
+		});
+		const recovered = this.persistSessionRuntimeBinding(piboSession, {
+			...binding,
+			nativeSessionId: undefined,
+			state: "unbound",
+			locator: undefined,
+			metadata: withPortableHistoryHandoffMetadata({
+				...(binding.metadata ?? {}),
+				diagnosticCode: "native_session_reconstruction_pending",
+				diagnosticMessage: "The intended adapter proved its native session absent; a checkpointed same-runtime reconstruction is pending.",
+			}, handoff),
+		}, {
+			expectedRevision: binding.revision,
+			mode: "rebind",
+		});
+		return { binding: recovered, handoff };
+	}
+
 	private async createAdmittedRoutedSession(piboSessionId: string, phases: Record<string,number>, pluginGeneration: PluginRuntimeGeneration | undefined, setup: { nativeCleanupUncertain: boolean }): Promise<RoutedSession> {
 		let phaseStarted = performance.now();
 		const piboSession = this.resolvePiboSession(piboSessionId);
@@ -1696,7 +1758,7 @@ export class PiboSessionRouter {
 		const modelDefaults = this.resolveModelDefaults();
 		const initialThinkingLevel = resolvePiboSessionInitialThinkingLevel(piboSession);
 		const sessionProfile = pluginGeneration?.profile ?? this.getSessionRuntimeProfile(piboSession.id);
-		const persistedHistoryHandoff = readPortableHistoryHandoffMetadata(binding.metadata);
+		let persistedHistoryHandoff = readPortableHistoryHandoffMetadata(binding.metadata);
 		if (binding.metadata?.[PORTABLE_HISTORY_HANDOFF_METADATA_KEY] !== undefined && !persistedHistoryHandoff) {
 			throw new Error("The pending portable history handoff metadata is invalid; refusing to start a contextless target runtime.");
 		}
@@ -1727,12 +1789,29 @@ export class PiboSessionRouter {
 			);
 		}
 		const workspace = piboSession.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace();
-		if (binding.state === "bound" && runtimeAdapter.resolveBinding) {
-			const resolved = await runtimeAdapter.resolveBinding({ binding, workspace });
-			if (!runtimeBindingsEqual(binding, resolved)) {
-				binding = this.persistSessionRuntimeBinding(piboSession, resolved, {
-					expectedRevision: binding.revision,
-				});
+		if (!persistedHistoryHandoff && (binding.state === "bound" || binding.state === "missing")) {
+			if (!runtimeAdapter.resolveBinding) {
+				if (binding.state === "missing") {
+					throw new AgentRuntimeCapabilityUnavailableError(
+						"native session recovery",
+						binding.runtimeInstanceId,
+						`Runtime instance "${binding.runtimeInstanceId}" cannot authoritatively recheck a missing native session; the original binding and Pibo history were preserved.`,
+					);
+				}
+			} else {
+				const previousState = binding.state;
+				const resolved = await runtimeAdapter.resolveBinding({ binding, workspace });
+				if (!runtimeBindingsEqual(binding, resolved)) {
+					binding = this.persistSessionRuntimeBinding(piboSession, resolved, {
+						expectedRevision: binding.revision,
+						...(previousState === "missing" && resolved.state === "bound" ? { mode: "repair" as const } : {}),
+					});
+				}
+			}
+			if (binding.state === "missing") {
+				const recovery = this.prepareNativeSessionRecovery(piboSession, binding, runtimeAdapter.descriptor.capabilities.historyImport);
+				binding = recovery.binding;
+				persistedHistoryHandoff = recovery.handoff;
 			}
 		}
 		this.assertOpenableRuntimeBinding(binding);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { SessionManager, type AgentSessionRuntime, type ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { AgentSessionRuntime, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import {
 	InitialSessionContext,
 	type ModelProfile,
@@ -63,6 +63,7 @@ import {
 	inspectPiAgentRuntimeHistory,
 	readPiAgentRuntimeHistory,
 	readPiAgentRuntimeForkCandidates,
+	resolvePiSessionForBinding,
 } from "./history.js";
 import {
 	historyReconciliationDigest,
@@ -744,7 +745,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
 		const binding = structuredClone(input.binding);
-		if (binding.state !== "bound" || binding.metadata?.persistent === false) return binding;
+		if ((binding.state !== "bound" && binding.state !== "missing") || binding.metadata?.persistent === false) return binding;
 		if (!binding.nativeSessionId) {
 			return {
 				...binding,
@@ -752,29 +753,31 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				metadata: {
 					...(binding.metadata ?? {}),
 					diagnosticCode: "pi_binding_native_id_missing",
-					diagnosticMessage: "The persisted Pi binding is bound but has no native session id.",
+					diagnosticMessage: "The persisted Pi binding has no native session id.",
 				},
 			};
 		}
-		const existing = (await SessionManager.list(input.workspace)).find((session) => session.id === binding.nativeSessionId);
+		const existing = await resolvePiSessionForBinding(input);
 		if (existing) {
+			const { diagnosticCode: _diagnosticCode, diagnosticMessage: _diagnosticMessage, ...metadata } = binding.metadata ?? {};
 			return {
 				...binding,
+				state: "bound",
 				locator: { kind: "local-file", value: existing.path },
 				metadata: {
-					...(binding.metadata ?? {}),
+					...metadata,
 					nativePresenceExpected: existing.messageCount > 0,
 				},
 			};
 		}
-		if (binding.metadata?.nativePresenceExpected === false) return binding;
+		if (binding.state === "bound" && binding.metadata?.nativePresenceExpected === false) return binding;
 		return {
 			...binding,
 			state: "missing",
 			metadata: {
 				...(binding.metadata ?? {}),
 				diagnosticCode: "pi_session_missing",
-				diagnosticMessage: `Pi session "${binding.nativeSessionId}" was not found for workspace "${input.workspace}".`,
+				diagnosticMessage: `Pi session "${binding.nativeSessionId}" was not found through its locator or workspace storage "${input.workspace}".`,
 			},
 		};
 	}

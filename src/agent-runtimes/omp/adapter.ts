@@ -6,6 +6,7 @@ import {
 import {
 	AgentRuntimeAuthError,
 	AgentRuntimeBindingMissingError,
+	AgentRuntimeCapabilityUnavailableError,
 	AgentRuntimeUnavailableError,
 } from "../../agent-runtime/errors.js";
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
@@ -661,8 +662,11 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 						if (typeof rr.sessionFile === "string") nativeSessionFile = rr.sessionFile;
 					}
 				} catch (resumeError) {
-					// Keep the fresh session; a failed switch is not fatal.
-					// (bindNativeSessionId below still sets the binding.)
+					throw new AgentRuntimeUnavailableError(
+						this.instanceId,
+						"OMP could not resume the bound native transcript. Its protocol does not distinguish authoritative absence from permission, corruption, or transient failures, so Pibo preserved the original binding instead of starting fresh.",
+						{ cause: resumeError },
+					);
 				}
 			}
 		} catch (error) {
@@ -743,7 +747,14 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	}
 
 	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
-		// OMP can verify and resume the transcript only after startup via switch_session.
+		if (input.binding.state === "missing") {
+			throw new AgentRuntimeCapabilityUnavailableError(
+				"native session recovery",
+				this.instanceId,
+				"OMP cannot authoritatively distinguish a missing transcript from permission, corruption, or transient switch_session failures; the original binding and Pibo history were preserved.",
+			);
+		}
+		// OMP can verify and resume a bound transcript only after startup via switch_session.
 		return structuredClone(input.binding);
 	}
 }

@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
 	InitialSessionContextBuilder,
-	PiboPluginRegistry,
 	PiboSessionRouter,
 	createMinimalAgentRuntimeCapabilities,
-	definePiboPlugin,
 	profileWithRuntimeInstance,
 } from "../dist/index.js";
+import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
 import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
 import {
 	PORTABLE_HISTORY_HANDOFF_METADATA_KEY,
@@ -18,6 +17,8 @@ import {
 	PiboDataPortableHistoryProvider,
 } from "../dist/agent-runtime/portable-history.js";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
+import { AgentRuntimeAuthError, AgentRuntimeUnavailableError } from "../dist/agent-runtime/errors.js";
+import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import { importPortableHistoryIntoPi } from "../dist/agent-runtimes/pi/portable-history.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
@@ -151,6 +152,55 @@ test("cross-runtime profile projection drops source-runtime model, options, and 
 	assert.equal(target.nativeSubagents, undefined);
 	assert.equal(target.autoContextFiles, false, "portable profile settings remain available to the frozen target runtime");
 });
+
+function buildNativeRecoveryRegistry(options = {}) {
+	const capabilities = createMinimalAgentRuntimeCapabilities();
+	capabilities.historyImport = options.historyImport !== false;
+	const driver = createFakeAgentRuntimeDriver({
+		adapterId: options.adapterId ?? "recovery-adapter",
+		capabilities,
+		...(options.resolveBinding ? { resolveBinding: options.resolveBinding } : {}),
+	});
+	const runtimeInstanceId = options.runtimeInstanceId ?? "recovery-runtime";
+	const profileName = options.profileName ?? "recovery-profile";
+	const registry = PiboPluginRegistry.create({
+		plugins: [piboCorePlugin, definePiboPlugin({
+			id: `test.native-recovery.${runtimeInstanceId}`,
+			register(api) {
+				api.registerAgentRuntimeDriver(driver);
+				api.registerAgentRuntimeInstance({ id: runtimeInstanceId, adapterId: options.adapterId ?? "recovery-adapter" });
+				api.registerProfile({
+					name: profileName,
+					create() {
+						return new InitialSessionContextBuilder(profileName)
+							.withAgentRuntime(runtimeInstanceId)
+							.withBuiltinTools("disabled")
+							.withAutoContextFiles(false)
+							.withToolPackages({ goalControl: false })
+							.createSession();
+					},
+				});
+			},
+		})],
+	});
+	return { registry, adapter: registry.requireAgentRuntimeAdapter(runtimeInstanceId), runtimeInstanceId, profileName };
+}
+
+function nativeRecoverySession(id, profileName = "recovery-profile", runtimeInstanceId = "recovery-runtime", adapterId = "recovery-adapter") {
+	const session = sessionRecord(id);
+	session.profile = profileName;
+	session.runtimeBinding = {
+		...session.runtimeBinding,
+		piboSessionId: id,
+		runtimeInstanceId,
+		adapterId,
+		nativeSessionId: `native-${id}`,
+		locator: { kind: "local-file", value: `/old/${id}.jsonl` },
+		metadata: { recoveryMarker: "original" },
+	};
+	session.metadata = { ...session.metadata, workspaceTabs: ["trace", "settings"] };
+	return session;
+}
 
 function buildRegistry() {
 	const sourceCapabilities = createMinimalAgentRuntimeCapabilities();
@@ -724,6 +774,268 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 	assert.equal(freshCompleted.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].status, "completed");
 	assert.equal(freshCompleted.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].mode, "fresh");
 	await router.disposeAll();
+});
+
+test("Pi rechecks a stale missing binding through its persisted native locator", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-pi-native-recovery-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const nativeSessionId = "98888888-8888-4888-8888-888888888888";
+	const transcript = join(root, `2026-09-14T00-00-00_${nativeSessionId}.jsonl`);
+	await writeFile(transcript, `${JSON.stringify({
+		type: "session",
+		version: 3,
+		id: nativeSessionId,
+		timestamp: "2026-09-14T00:00:00.000Z",
+		cwd: root,
+	})}\n`, "utf8");
+	const adapter = PI_AGENT_RUNTIME_DRIVER.create({
+		instanceId: "pi-recovery",
+		displayName: "Pi Recovery",
+		enabled: true,
+		config: PI_AGENT_RUNTIME_DRIVER.defaultConfig(),
+	});
+	const resolved = await adapter.resolveBinding({
+		binding: {
+			piboSessionId: "ps_pi_recovery",
+			runtimeInstanceId: "pi-recovery",
+			adapterId: "pi",
+			nativeSessionId,
+			state: "missing",
+			locator: { kind: "local-file", value: transcript },
+			metadata: { diagnosticCode: "pi_session_missing" },
+		},
+		workspace: root,
+	});
+	assert.equal(resolved.state, "bound");
+	assert.equal(resolved.nativeSessionId, nativeSessionId);
+	assert.deepEqual(resolved.locator, { kind: "local-file", value: transcript });
+	assert.equal(resolved.metadata.diagnosticCode, undefined);
+});
+
+test("native-first continuation repairs a stale locator and resumes the original native session", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-native-recovery-present-"));
+	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	t.after(async () => {
+		sessionStore.close();
+		dataStore.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const { registry, adapter } = buildNativeRecoveryRegistry({
+		resolveBinding({ binding }) {
+			return { ...binding, state: "bound", locator: { kind: "local-file", value: "/repaired/original.jsonl" } };
+		},
+	});
+	const created = sessionStore.create(nativeRecoverySession("ps_native_present"));
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	t.after(() => router.disposeAll());
+
+	await router.getSessionStatusSnapshot(created.id);
+	assert.equal(adapter.openInputs.length, 1);
+	assert.equal(adapter.openInputs[0].binding.nativeSessionId, created.runtimeBinding.nativeSessionId);
+	assert.equal(adapter.openInputs[0].binding.state, "bound");
+	assert.equal(adapter.openInputs[0].historyHandoff, undefined);
+	assert.equal(sessionStore.getRuntimeBinding(created.id).locator.value, "/repaired/original.jsonl");
+	assert.equal(sessionStore.getRuntimeBinding(created.id).nativeSessionId, created.runtimeBinding.nativeSessionId);
+});
+
+test("authoritative native absence reconstructs once in the same runtime from checkpointed Pibo history", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-native-recovery-import-"));
+	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	t.after(async () => {
+		sessionStore.close();
+		dataStore.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const { registry, adapter } = buildNativeRecoveryRegistry({
+		resolveBinding({ binding }) {
+			return {
+				...binding,
+				state: "missing",
+				metadata: { ...binding.metadata, diagnosticCode: "native_absent", diagnosticMessage: "Authoritatively absent." },
+			};
+		},
+	});
+	const created = sessionStore.create(nativeRecoverySession("ps_native_absent"));
+	ingestConversation(dataStore, created);
+	const originalModel = structuredClone(created.activeModel);
+	const originalRoom = created.metadata.chatRoomId;
+	const originalTabs = structuredClone(created.metadata.workspaceTabs);
+	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	t.after(() => router.disposeAll());
+
+	await router.getSessionStatusSnapshot(created.id);
+	assert.equal(adapter.openInputs.length, 1);
+	const opened = adapter.openInputs[0];
+	assert.equal(opened.binding.state, "unbound");
+	assert.equal(opened.binding.runtimeInstanceId, created.runtimeBinding.runtimeInstanceId);
+	assert.equal(opened.historyHandoff.mode, "import");
+	assert.match(JSON.stringify(opened.historyHandoff.history), /Remember alpha|Alpha is remembered/);
+	assert.equal(adapter.sessions[0].prompts.length, 0, "reconstruction must import context without replaying a model or tool turn");
+	const completedSession = sessionStore.get(created.id);
+	const completed = completedSession.runtimeBinding;
+	assert.equal(completed.state, "bound");
+	assert.notEqual(completed.nativeSessionId, created.runtimeBinding.nativeSessionId);
+	assert.equal(completed.runtimeInstanceId, created.runtimeBinding.runtimeInstanceId);
+	assert.equal(completed.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY], undefined);
+	assert.equal(completed.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].reason, "native-recovery");
+	assert.equal(completed.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].sourceNativeSessionId, created.runtimeBinding.nativeSessionId);
+	assert.deepEqual(completed.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].sourceLocator, created.runtimeBinding.locator);
+	assert.equal(completed.metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].sourceDiagnosticCode, "native_absent");
+	assert.equal(completedSession.metadata.chatRoomId, originalRoom);
+	assert.deepEqual(completedSession.metadata.workspaceTabs, originalTabs);
+	assert.equal(completedSession.profile, created.profile);
+	assert.deepEqual(completedSession.activeModel, originalModel);
+});
+
+test("native reconstruction retries the same durable checkpoint after target startup failure", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-native-recovery-retry-"));
+	const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	const sessionStore = new PiboDataSessionStore(dataStore);
+	let router;
+	t.after(async () => {
+		await router?.disposeAll();
+		sessionStore.close();
+		dataStore.close();
+		await rm(root, { recursive: true, force: true });
+	});
+	const { registry, adapter } = buildNativeRecoveryRegistry({
+		resolveBinding({ binding }) {
+			return { ...binding, state: "missing", metadata: { ...binding.metadata, diagnosticCode: "native_absent" } };
+		},
+	});
+	const created = sessionStore.create(nativeRecoverySession("ps_native_retry"));
+	ingestConversation(dataStore, created);
+	const originalOpen = adapter.openSession.bind(adapter);
+	let failFirstOpen = true;
+	adapter.openSession = async (input) => {
+		if (failFirstOpen) {
+			failFirstOpen = false;
+			adapter.openInputs.push(input);
+			throw new AgentRuntimeUnavailableError(adapter.instanceId, "Transient recovery startup failure.");
+		}
+		return await originalOpen(input);
+	};
+
+	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /Transient recovery startup failure/);
+	const pending = sessionStore.getRuntimeBinding(created.id);
+	assert.equal(pending.state, "unbound");
+	assert.equal(pending.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY].reason, "native-recovery");
+	const checkpoint = structuredClone(pending.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY].checkpoint);
+	await router.disposeAll();
+
+	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	await router.getSessionStatusSnapshot(created.id);
+	assert.deepEqual(adapter.openInputs[1].historyHandoff.history.checkpoint, checkpoint);
+	assert.equal(sessionStore.getRuntimeBinding(created.id).metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].reason, "native-recovery");
+});
+
+test("auth and transient native inspection failures never trigger reconstruction", async (t) => {
+	for (const [label, failure] of [
+		["auth", new AgentRuntimeAuthError("auth_required", "Runtime authentication is required.", true)],
+		["transient", new AgentRuntimeUnavailableError("recovery-runtime", "Native storage is temporarily unavailable.")],
+	]) {
+		await t.test(label, async () => {
+			const root = await mkdtemp(join(tmpdir(), `pibo-native-recovery-${label}-`));
+			const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+			const sessionStore = new PiboDataSessionStore(dataStore);
+			const { registry, adapter } = buildNativeRecoveryRegistry({ resolveBinding() { throw failure; } });
+			const created = sessionStore.create(nativeRecoverySession(`ps_native_${label}`));
+			ingestConversation(dataStore, created);
+			const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+			try {
+				await assert.rejects(() => router.getSessionStatusSnapshot(created.id), (error) => error === failure);
+				const preserved = sessionStore.getRuntimeBinding(created.id);
+				assert.equal(preserved.state, "bound");
+				assert.equal(preserved.nativeSessionId, created.runtimeBinding.nativeSessionId);
+				assert.equal(preserved.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY], undefined);
+				assert.equal(adapter.openInputs.length, 0);
+			} finally {
+				await router.disposeAll();
+				sessionStore.close();
+				dataStore.close();
+				await rm(root, { recursive: true, force: true });
+			}
+		});
+	}
+});
+
+test("native recovery fails closed for insufficient history, unsupported adapters, and concurrent binding changes", async (t) => {
+	await t.test("insufficient history", async () => {
+		const root = await mkdtemp(join(tmpdir(), "pibo-native-recovery-empty-"));
+		const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		const { registry, adapter } = buildNativeRecoveryRegistry({
+			resolveBinding({ binding }) { return { ...binding, state: "missing" }; },
+		});
+		const created = sessionStore.create(nativeRecoverySession("ps_native_empty"));
+		const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+		try {
+			await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /no recoverable conversation context/);
+			assert.equal(sessionStore.getRuntimeBinding(created.id).state, "missing");
+			assert.equal(adapter.openInputs.length, 0);
+		} finally {
+			await router.disposeAll();
+			sessionStore.close();
+			dataStore.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	await t.test("unsupported adapter", async () => {
+		const root = await mkdtemp(join(tmpdir(), "pibo-native-recovery-unsupported-"));
+		const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		const { registry, adapter } = buildNativeRecoveryRegistry({ historyImport: false });
+		const input = nativeRecoverySession("ps_native_unsupported");
+		input.runtimeBinding.state = "missing";
+		const created = sessionStore.create(input);
+		const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+		try {
+			await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /cannot authoritatively recheck a missing native session/);
+			assert.equal(sessionStore.getRuntimeBinding(created.id).state, "missing");
+			assert.equal(adapter.openInputs.length, 0);
+		} finally {
+			await router.disposeAll();
+			sessionStore.close();
+			dataStore.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	await t.test("CAS conflict", async () => {
+		const root = await mkdtemp(join(tmpdir(), "pibo-native-recovery-cas-"));
+		const dataStore = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+		const sessionStore = new PiboDataSessionStore(dataStore);
+		let sessionId;
+		const { registry, adapter } = buildNativeRecoveryRegistry({
+			resolveBinding({ binding }) {
+				sessionStore.updateRuntimeBinding(sessionId, {
+					...binding,
+					metadata: { ...binding.metadata, concurrentWriter: true },
+				}, { expectedRevision: binding.revision });
+				return { ...binding, state: "missing" };
+			},
+		});
+		const created = sessionStore.create(nativeRecoverySession("ps_native_cas"));
+		sessionId = created.id;
+		ingestConversation(dataStore, created);
+		const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+		try {
+			await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /changed concurrently/);
+			const preserved = sessionStore.getRuntimeBinding(created.id);
+			assert.equal(preserved.state, "bound");
+			assert.equal(preserved.metadata.concurrentWriter, true);
+			assert.equal(adapter.openInputs.length, 0);
+		} finally {
+			await router.disposeAll();
+			sessionStore.close();
+			dataStore.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
 });
 
 test("cross-runtime rebind clears source model selection across restart while same-runtime rebind preserves it", async (t) => {

@@ -907,6 +907,30 @@ test("Codex native binding inspection marks a missing thread without creating a 
 	);
 });
 
+test("Codex native binding inspection repairs a stale missing binding when the original thread still exists", async (t) => {
+	const root = await testRoot(t);
+	const { adapter, instanceId } = createAdapter(root);
+	await seedThread(runtimeConfig(root), {
+		runtimeInstanceId: instanceId,
+		threadId: "thread-recovered-original",
+		workspace: root,
+		cwd: root,
+		name: "Recovered original",
+		preview: "still present",
+		turns: seededTurns(),
+	});
+	const binding = {
+		...boundBinding(instanceId, "ps_codex_recovered", "thread-recovered-original"),
+		state: "missing",
+		locator: { kind: "local-file", value: "/stale/codex-rollout.jsonl" },
+		metadata: { diagnosticCode: "codex_native_thread_missing" },
+	};
+	const resolved = await adapter.resolveBinding({ binding, workspace: root });
+	assert.equal(resolved.state, "bound");
+	assert.equal(resolved.nativeSessionId, "thread-recovered-original");
+	assert.equal(resolved.locator.kind, "adapter-resolved");
+});
+
 test("Codex native first-message branches bind only when their first message becomes durable", async (t) => {
 	const root = await testRoot(t);
 	const instanceId = "codex-native-first-message-branch";

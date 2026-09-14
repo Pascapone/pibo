@@ -227,6 +227,11 @@ export interface AgentRuntimeAdapter {
 	readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
 	/** Read persisted fork candidates without opening a runtime; undefined retains the live fallback. */
 	readForkCandidates?(input: ResolveAgentRuntimeBindingInput): Promise<AgentRuntimeForkCandidate[] | undefined>;
+	/**
+	 * Recheck a bound or missing native identity in adapter-owned storage.
+	 * Returning `missing` is authoritative absence and may admit checkpointed same-runtime reconstruction;
+	 * auth, permission, corruption, ambiguity, unavailability, and transient failures must throw instead.
+	 */
 	resolveBinding?(input: ResolveAgentRuntimeBindingInput): Promise<RuntimeSessionBinding>;
 }
 

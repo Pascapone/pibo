@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { AgentRuntimeCapabilityUnavailableError } from "../dist/agent-runtime/errors.js";
 import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
 import { OMP_AGENT_RUNTIME_DRIVER, OMP_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/omp/adapter.js";
 import { OmpRpcClient } from "../dist/agent-runtimes/omp/client.js";
@@ -77,6 +78,28 @@ test("OMP binding resolution preserves a persisted native session after gateway 
 	const resolved = await adapter.resolveBinding({ binding, workspace: "/tmp" });
 	assert.deepEqual(resolved, binding);
 	assert.doesNotThrow(() => nextRuntimeSessionBinding(binding, resolved, { expectedRevision: 2 }));
+});
+
+test("OMP binding recovery stays unsupported when switch_session cannot prove native absence", async () => {
+	const adapter = OMP_AGENT_RUNTIME_DRIVER.create({
+		instanceId: "omp-native",
+		displayName: "Oh My Pi",
+		enabled: true,
+		config: OMP_AGENT_RUNTIME_DRIVER.defaultConfig(),
+	});
+	await assert.rejects(
+		adapter.resolveBinding({
+			binding: {
+				piboSessionId: "ps_omp_missing",
+				runtimeInstanceId: "omp-native",
+				adapterId: "omp",
+				nativeSessionId: "missing-omp-session",
+				state: "missing",
+			},
+			workspace: "/tmp",
+		}),
+		(error) => error instanceof AgentRuntimeCapabilityUnavailableError && /cannot authoritatively distinguish/.test(error.message),
+	);
 });
 
 test("OMP RPC client performs ready handshake then protocol negotiation", async (t) => {

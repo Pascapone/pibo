@@ -4,6 +4,7 @@ import {
 	type AgentRuntimeCapabilities,
 } from "../../agent-runtime/capabilities.js";
 import {
+	AgentRuntimeAuthError,
 	AgentRuntimeBindingMissingError,
 	AgentRuntimeUnavailableError,
 } from "../../agent-runtime/errors.js";
@@ -1176,7 +1177,7 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
 		const binding = structuredClone(input.binding);
-		if (binding.state !== "bound") return binding;
+		if (binding.state !== "bound" && binding.state !== "missing") return binding;
 		if (!binding.nativeSessionId) {
 			return {
 				...binding,
@@ -1209,9 +1210,11 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					},
 				};
 			}
+			if (error instanceof AgentRuntimeAuthError || error instanceof AgentRuntimeUnavailableError) throw error;
 			throw new AgentRuntimeUnavailableError(
 				this.instanceId,
-				`Codex binding inspection failed for runtime instance "${this.instanceId}".`,
+				`Codex binding inspection failed for runtime instance "${this.instanceId}"; this is not authoritative evidence that the native thread is absent.`,
+				{ cause: error },
 			);
 		}
 	}

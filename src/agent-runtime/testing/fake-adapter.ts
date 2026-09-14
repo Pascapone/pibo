@@ -34,6 +34,7 @@ export type FakeAgentRuntimeDriverOptions = {
 	capabilities?: AgentRuntimeCapabilities;
 	script?: FakeAgentRuntimeScript | ((input: AgentRuntimePromptInput, promptIndex: number) => FakeAgentRuntimeScript);
 	diagnostics?: readonly AgentRuntimeDiagnostic[];
+	resolveBinding?: (input: { binding: RuntimeSessionBinding; workspace: string }) => RuntimeSessionBinding | Promise<RuntimeSessionBinding>;
 };
 
 export class FakeAgentRuntimeSession implements AgentRuntimeSession {
@@ -172,6 +173,7 @@ export class FakeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 	readonly enabled: boolean;
 	readonly sessions: FakeAgentRuntimeSession[] = [];
 	readonly openInputs: OpenAgentRuntimeSessionInput[] = [];
+	readonly resolveBinding?: AgentRuntimeAdapter["resolveBinding"];
 	private nextNativeSession = 1;
 
 	constructor(
@@ -185,6 +187,9 @@ export class FakeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		this.config = structuredClone(config);
 		this.displayName = displayName ?? descriptor.displayName;
 		this.enabled = enabled;
+		this.resolveBinding = options.resolveBinding
+			? async (input) => structuredClone(await options.resolveBinding!(structuredClone(input)))
+			: undefined;
 	}
 
 	async diagnose(): Promise<readonly AgentRuntimeDiagnostic[]> {

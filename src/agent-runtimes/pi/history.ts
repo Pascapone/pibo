@@ -558,6 +558,66 @@ function jsonValue(value: unknown): PiboJsonValue | undefined {
 	}
 }
 
+export async function resolvePiSessionForBinding(input: ResolveAgentRuntimeBindingInput): Promise<Pick<PiboSessionListItem, "path" | "messageCount"> | undefined> {
+	const nativeSessionId = input.binding.nativeSessionId;
+	if (!nativeSessionId) return undefined;
+	const locatorPath = input.binding.locator?.kind === "local-file" ? input.binding.locator.value : undefined;
+	if (locatorPath) {
+		try {
+			return readPiSessionAtPathStrict(locatorPath, nativeSessionId, input.workspace);
+		} catch (error) {
+			if (!isMissingFileError(error)) throw error;
+		}
+	}
+	const sessionDir = defaultPiSessionDir(input.workspace);
+	try {
+		const candidates = readdirSync(sessionDir).filter((candidate) => candidate.endsWith(`_${nativeSessionId}.jsonl`));
+		if (candidates.length > 1) throw new Error(`Multiple Pi transcripts match native session "${nativeSessionId}" in workspace storage.`);
+		if (candidates.length === 1) return readPiSessionAtPathStrict(join(sessionDir, candidates[0]), nativeSessionId, input.workspace);
+	} catch (error) {
+		if (!isMissingFileError(error)) throw error;
+	}
+	const matches = (await SessionManager.list(input.workspace)).filter((session) => session.id === nativeSessionId);
+	if (matches.length > 1) throw new Error(`Multiple Pi session records match native session "${nativeSessionId}" for workspace "${input.workspace}".`);
+	return matches[0] ? { path: matches[0].path, messageCount: matches[0].messageCount } : undefined;
+}
+
+function isMissingFileError(error: unknown): boolean {
+	return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "ENOENT");
+}
+
+function readPiSessionAtPathStrict(sessionPath: string, nativeSessionId: string, cwd: string): PiboSessionListItem {
+	const stats = statSync(sessionPath);
+	const entries = parseSessionEntries(readFileSync(sessionPath, "utf8"));
+	const header = entries.find((entry) => entry.type === "session") as
+		| { id?: unknown; timestamp?: unknown; cwd?: unknown; parentSession?: unknown }
+		| undefined;
+	if (!header || header.id !== nativeSessionId) {
+		throw new Error(`Pi transcript locator "${sessionPath}" is corrupt or belongs to a different native session.`);
+	}
+	let name: string | undefined;
+	let firstMessage = "";
+	let messageCount = 0;
+	for (const entry of entries) {
+		if (entry.type === "session_info") name = stringValue((entry as { name?: unknown }).name)?.trim() || undefined;
+		if (entry.type !== "message") continue;
+		messageCount += 1;
+		if (firstMessage || piMessageRole(entry) !== "user") continue;
+		firstMessage = extractPiMessageText(piMessageContent(entry));
+	}
+	return {
+		path: sessionPath,
+		id: nativeSessionId,
+		cwd: stringValue(header.cwd) ?? cwd,
+		name,
+		parentSessionPath: stringValue(header.parentSession),
+		created: stringValue(header.timestamp) ?? stats.birthtime.toISOString(),
+		modified: sessionModifiedIso(entries.filter((entry): entry is SessionEntry => entry.type !== "session"), stringValue(header.timestamp), stats.mtime),
+		messageCount,
+		firstMessage: firstMessage || "(no messages)",
+	};
+}
+
 async function findPiSessionForHistory(
 	nativeSessionId: string,
 	cwd: string,
