@@ -9,6 +9,14 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 	const script = `
 		import assert from "node:assert/strict";
 		const model = await import("./src/apps/chat-ui/src/desktop-tabs-model.ts");
+		const core = await import("./src/apps/chat-ui/src/core-workspace-model.ts");
+		assert.deepEqual(core.CORE_WORKSPACE_CATALOG.map((entry) => entry.id), ["agents", "context", "settings"]);
+		assert.deepEqual(core.CORE_SESSION_VIEW_CATALOG.map((entry) => entry.id), ["raw-events", "session-inspector"]);
+		assert.equal(core.isCoreWorkspaceRoute({ area: "agents" }), true);
+		assert.equal(core.isCoreWorkspaceRoute({ area: "workflows" }), false);
+		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "agents" } }), null, "core routes do not depend on plugin view IDs");
+		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "settings" } }), null, "core Settings is not a hidden product plugin");
+		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "workflows" } }), "pibo.product-ui/workflows");
 		let state = model.emptyDesktopTabState();
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "workflows" } }, { id: "workflows", now: 1 });
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "cron" } }, { id: "cron", now: 2 });

@@ -200,11 +200,9 @@ export function desktopTabPluginViewId(target: DesktopTabTarget): PluginQualifie
 	if (target.kind === "plugin-view") return target.viewId;
 	if (target.kind !== "route") return null;
 	if (target.route.area === "workflows") return "pibo.product-ui/workflows";
-	if (target.route.area === "agents") return "pibo.product-ui/agent-designer";
 	if (target.route.area === "cron") return "pibo.product-ui/cron";
 	if (target.route.area === "loops") return "pibo.product-ui/loops";
-	if (target.route.area === "context") return "pibo.product-ui/user-resources";
-	return "pibo.product-ui/settings";
+	return null;
 }
 
 export function desktopTabStateFromSessionTabset(tabset: PluginSessionTabset): DesktopTabState {

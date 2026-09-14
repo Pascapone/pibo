@@ -29,8 +29,8 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 |---|---|---|---|---|
 | F00 – Abhängigkeiten und Paketgrenzen festziehen | abgeschlossen | Quellen-/Importaudit abgeschlossen | offen bis F10 | F01-Verträge implementieren |
 | F01 – Öffentliche Host-Dienste und Tool-Verträge vervollständigen | abgeschlossen | Typecheck, SDK-Build und 42 fokussierte Tests | offen bis F10 | F02-Toolfamilien migrieren |
-| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen | Root-Emit, SDK-Build, Chat-UI-Typecheck und 167 fokussierte Tests | offen bis F10 | F03-Kernansichten lösen |
-| F03 – Kernansichten aus Sammelplugins lösen | offen | offen | offen | gemäß Detailaufgaben |
+| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | teilweise; Provider-/Auswahlpfad abgeschlossen, Controller-Ownership offen | Root-Emit, SDK-Build, Chat-UI-Typecheck und 167 fokussierte Tests | offen bis F10 | N-022 in F04 lösen und in F06 am Minimalartefakt beweisen |
+| F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | offen bis F10 | F04-Featurepakete trennen |
 | F04 – Featurepakete einschließlich ihrer Oberflächen trennen | offen | offen | offen | gemäß Detailaufgaben |
 | F05 – Runtimepakete und Runtime Requests abschließen | offen | offen | offen | gemäß Detailaufgaben |
 | F06 – Minimal- und Standarddistribution bauen | offen | offen | offen | gemäß Detailaufgaben |
@@ -71,20 +71,20 @@ Nachweise: Implementierungsbericht `/tmp/pibo4-f01-public-runtime.md`; vollstän
 ## F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen
 
 - [x] F02-01: Goals, Runs, Delegation, Code Runtime, Codex Compat, File Editing, Browser Tools und weitere inventarisierte Familien über F01 anbinden.
-- [x] F02-02: Toolnamenslisten und konkrete Factory-Auswahl aus Core/Router/Context-Build entfernen.
+- [ ] F02-02: Toolnamenslisten und konkrete Factory-Auswahl aus Core/Router/Context-Build entfernen. Provider-Auswahl und Context Build sind generisch; `session-router` importiert jedoch weiterhin Delegation-/Run-Featurefactory, Delegation-Toolname und konkrete Run-Reminderformatter. Verbindliche Restarbeit: N-022 in F04, Artefaktnachweis in F06.
 - [x] F02-03: Kontext-/Prompt-Erzeugung aus dem Plugin-Plan ableiten und Codex-Compat-Inkonsistenz ohne neue Namenssonderliste beheben.
 - [x] F02-04: Run-Abbruch, Fortschritt, Ergebnisabholung, Parent-/Child-Korrelation und Ressourcencleanup in den bestehenden Verhaltensprüfungen erhalten.
 
-Nachweise: Abschlussbericht `/tmp/pibo4-f02-completion.md`; Root-Typecheck und Root-Emit, SDK-Build, Chat-UI-Typecheck sowie **167/167** fokussierte Tests. `test/plugin-system-first-party-tools.test.mjs` belegt direkte und ausschließlich yieldbare Tools, Run-Enum-/Context-Parität, MCP-Ausgabe, native Adapterziele, Prompt-Transformation und Cleanup. `test/plugin-system-selection.test.mjs` trennt nicht entschiedene Defaults von explizitem Tool-/Plugin-Off, prüft fremde und transitive Dependencies, globale Nichtverfügbarkeit sowie Runtime-Inkompatibilität und hält die gespeicherte Auswahl unverändert. `test/subagents.test.mjs` behält 44 Prüfungen einschließlich Parent-Abort, abgelehnter Child-Cancellation, Queue-Settlement, Kill, Timeout und echtem Pi-Bash-Yielding. Der negative Portable-Fall bleibt separat in `test/context-build-inspector.test.mjs`.
+Nachweise zum abgeschlossenen Provider-/Auswahlteil: Reviewbericht `/tmp/pibo4-f02-completion.md`; Root-Typecheck und Root-Emit, SDK-Build, Chat-UI-Typecheck sowie **167/167** fokussierte Tests. `test/plugin-system-first-party-tools.test.mjs` belegt direkte und ausschließlich yieldbare Tools, Run-Enum-/Context-Parität, MCP-Ausgabe, native Adapterziele, Prompt-Transformation und Cleanup. `test/plugin-system-selection.test.mjs` trennt nicht entschiedene Defaults von explizitem Tool-/Plugin-Off, prüft fremde und transitive Dependencies, globale Nichtverfügbarkeit sowie Runtime-Inkompatibilität und hält die gespeicherte Auswahl unverändert. `test/subagents.test.mjs` behält 44 Prüfungen einschließlich Parent-Abort, abgelehnter Child-Cancellation, Queue-Settlement, Kill, Timeout und echtem Pi-Bash-Yielding. Der negative Portable-Fall bleibt separat in `test/context-build-inspector.test.mjs`. Diese Verhaltensnachweise beweisen noch nicht die physische Core-/Featuregrenze; F02 bleibt bis N-022 und dem F06-Import-/Artefaktbeweis teilweise offen.
 
 ## F03 – Kernansichten aus Sammelplugins lösen
 
-- [ ] F03-01: Settings, Agent Designer, Kontext, Session Inspector und Raw Events als feste Core-Angebote registrieren.
-- [ ] F03-02: Benutzerressourcen, Verwaltung und grundlegenden Web-Zugang ohne `pibo.product-ui`, `pibo.user-resources` oder anderes zwingendes Featurepaket betreiben.
-- [ ] F03-03: Plugin-Erweiterungspunkte der Kernansichten erhalten; adapterspezifische Inspector-Details deklarativ anbinden.
-- [ ] F03-04: Sessiontab-Lifecycle unverändert verwenden; keine zweite Tab-Verwaltung für Core-Ansichten einführen.
+- [x] F03-01: Settings, Agent Designer, Kontext, Session Inspector und Raw Events als feste Core-Angebote registrieren.
+- [x] F03-02: Benutzerressourcen, Verwaltung und grundlegenden Web-Zugang ohne `pibo.product-ui`, `pibo.user-resources` oder anderes zwingendes Featurepaket betreiben.
+- [x] F03-03: Plugin-Erweiterungspunkte der Kernansichten erhalten; adapterspezifische Inspector-Details deklarativ anbinden.
+- [x] F03-04: Sessiontab-Lifecycle unverändert verwenden; keine zweite Tab-Verwaltung für Core-Ansichten einführen.
 
-Nachweise: offen.
+Nachweise: `/tmp/pibo4-f03-completion.md`; Root-Emit, Chat-UI-Typecheck und Produktionsbuild; **34/34** fokussierte Core-/Gateway-/Auth-/Route-/Tab-/Responsive-Tests. `test/plugin-system-core-views.test.mjs` belegt den direkten Core-Renderpfad und dass die Übergangspakete keine Core-Flächen mehr beanspruchen. `test/plugin-system-product-runtime.test.mjs` startet Auth, Basis-Web, Chat und Benutzerressourcen mit `installDefaultPlugins: false` und null Installationen. Headful geprüft: Desktop 1280×800 für alle fünf Core-Ansichten, Mobile 390×844 für Settings; Screenshots sind im Abschlussbericht verzeichnet. Alte Product-UI-Tab-IDs bleiben ausschließlich als F07-Migrationseingang, physische Browser-/Paketclosure bleibt F06.
 
 ## F04 – Featurepakete einschließlich ihrer Oberflächen trennen
 
@@ -94,6 +94,7 @@ Nachweise: offen.
 - [ ] F04-04: Gemeinsames First-Party-Navigationsdesign als wiederverwendbare Hilfe anbieten; keine Plugin-ID-Allowlist im Host.
 - [ ] F04-05: Plugin-Abhängigkeiten explizit deklarieren; z. B. keine implizite Preview- oder Cron-Abhängigkeit über einen globalen Import.
 - [ ] F04-06: Deinstallation erhält Daten/Tabzustände und zeigt fehlende Angebote verständlich; Wiederinstallation stellt zuordenbare Zustände wieder bereit.
+- [ ] F04-07: Run-/Delegation-Pakete konstruieren und registrieren ihre Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste; Core importiert weder Feature-Factories noch Toolnamen oder konkrete Reminderformatter (N-022).
 
 Nachweise: offen.
 
@@ -116,6 +117,7 @@ Nachweise: offen.
 - [ ] F06-04: Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
 - [ ] F06-05: Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
 - [ ] F06-06: Gepackten 3.6.2-/Beta-Monolithen über einen versionierten Cutover-Plan auf gepackten Minimal-Core plus exakt benötigte Artefakte aktualisieren; unvorbereiteter Direktwechsel bleibt fail-closed.
+- [ ] F06-07: Gepackten Minimal-Core per Importgraph und Artefaktinhalt beweisen: keine Run-/Delegation-Featurecontroller, Toolnamen oder konkreten Reminder-/Metadatenimplementierungen in seiner Closure (N-022).
 
 Nachweise: offen.
 
@@ -180,12 +182,14 @@ Nachweise: offen.
 | N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | offen; zweistufiger Cutover und fail-closed Direktwechsel beschlossen |
 | N-014 | Ein pauschal auswählbarer Session-Tool-Provider könnte mehrere nicht einzeln deklarierte oder abgewählte Tools freischalten. | F01 | behoben und fokussiert geprüft; appweiter Provider plus einzeln ausgewählte/runtimegefilterte Tool-Contributions |
 | N-015 | `dispose(): void` akzeptiert in TypeScript auch async Funktionen; Provider-Cleanup könnte dadurch unbemerkt weiterlaufen oder fehlschlagen. | F01 | behoben und fokussiert geprüft; Cleanup wird awaited, aggregiert und blockiert Zulassungsfreigabe |
-| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02 | behoben; Code Runtime/Browser besitzen ihren Controller-Lifecycle, Run-Manager und Reminder liegen im Run-Modul, Delegation konstruiert ihren Controller im Delegation-Modul; ausgewählte Pakete fordern nur sessiongebundene Factory-Dienste an |
+| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02/F04/F06 | teilweise; Code Runtime/Browser besitzen ihren Lifecycle, aber Run-/Delegation-Factories und konkrete Reminder bleiben aus `session-router` statisch importiert; durch N-022 verbindlich offen |
 | N-017 | Das externe Fixture mit Repo-Symlink belegt F01-API-Nutzbarkeit, aber keine eigenständige Distribution. | F06 | offen; gepackter Minimal-Core-/Plugin-Nachweis ohne Symlink oder Source-Checkout bleibt Pflicht |
 | N-018 | Importfreie Installationsprüfung kannte echte Core-Service-Provider nicht und wies externe Pakete vor Aktivierung fälschlich als service-los ab. | F01 | behoben und fokussiert geprüft; Manager liest nur versionierte Core-Service-Metadaten |
 | N-019 | `yieldable` allein unterscheidet kein direkt sichtbares Tool von einem ausschließlich über Run erreichbaren Tool; Delegation würde sonst `pibo_agents_send_message` direkt freigeben. | F02 | behoben; `direct` und `yieldable` sind unabhängige Contribution-Eigenschaften und positiv über Run, Context und MCP geprüft |
 | N-020 | Eine Pi-seitige Legacy-Session-Assembly würde die entfernten First-Party-Namens-/Factory-Sonderfälle als ausführbaren Harnesspfad konservieren. | F02/F08 | Produktionshelper wieder entfernt; Altzustandsvergleich bleibt ausschließlich in `test/helpers/legacy-session-tool-names.mjs`, Delivery-Audit in F08 bleibt offen |
 | N-021 | Dependency-Expansion darf `globallyActive` nicht als Erlaubnis verwenden, um eine explizite Agent-Deaktivierung zu überstimmen; gespeicherte und effektive Nutzerwahl müssen übereinstimmen. | F02/F07 | behoben und fokussiert geprüft; aktuelle Snapshots trennen unentschiedene Defaults von expliziten Entscheidungen, Legacy-Snapshots fallen sicher auf explizite Booleans zurück, Plan-Diagnosen benennen Tool-, Agent-Plugin-, globale und Runtime-Blockaden |
+| N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Run-/Delegation-Controller konstruiert, den Delegation-Toolnamen importiert oder konkrete Reminder-/Metadaten formatiert. | F02/F04/F06 | offen; Plugin konstruiert und registriert eigenen Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste, danach Importgraph-/Minimalartefaktbeweis |
+| N-023 | Frischer Standardstart scheiterte, weil ein Pluginprofil ein provider-backed Tool noch als ausführbar registriertes Legacy-Tool auflösen wollte. | F03/F06 | behoben; Profile können deklarierte provider-backed Toolmetadaten generisch aus aktiven Manifesten projizieren, frischer isolierter Docker-Gatewaystart und Profilinventur bestanden |
 
 # Abnahmestand
 
@@ -200,4 +204,5 @@ A-C40-01 bis A-C40-16 aus dem Plan sind offen. Je Szenario werden Commit/Paket, 
 - F01 abgeschlossen und fokussiert geprüft: echter Core-Service-Bootstrap ohne Management-Installation, öffentliche Backend-/Browser-/Runtime-Verträge, einzeln ausgewählte sessiongebundene Provider-Tools, generation-sicherer Kontext und Promise-fähiges Drain/Cleanup. F02 migriert nun die First-Party-Toolfamilien und entfernt ihre Namens-/Controller-Sonderfälle aus Core.
 - F02 in Arbeit: Core-Session-Assembly ist generisch; First-Party-Pakete registrieren einzeln ausgewählte Provider-Tools. `direct` trennt direkte von ausschließlich yieldbaren Tools. Der kurzzeitig angelegte Pi-Legacy-Assemblypfad wurde vor Abschluss wieder entfernt; positive installierte Delegation-/Run-/MCP-Parität wird separat zum negativen pluginfreien Portable-Fall geprüft.
 - F02-Review N-021 geschlossen: Dependency-Expansion aktiviert nur unentschiedene, im akzeptierten Snapshot bekannte Defaults. Explizites Tool-Off, explizites Agent-Plugin-Off, global deaktivierte/deinstallierte Pakete und Runtime-Inkompatibilität erzeugen pfadgenaue Diagnosen; transitive Expansion bleibt generisch und enthält keinen Run-Control-Sonderfall.
-- F02 abgeschlossen: Root-Emit, SDK-Build und Chat-UI-Typecheck sind grün; 167 fokussierte Tests laufen aus dem emittierten `dist` erfolgreich. Der finale all-in-one Build-Rerun wurde vom Host-PSI-Guard beendet, während die betroffenen Stufen einzeln bestanden; integrierte Gesamtabnahme bleibt F10.
+- F02-Review korrigiert den Abschlussstatus: Provider-/Auswahl-/Verhaltenspfade sind mit Root-Emit, SDK-Build, Chat-UI-Typecheck und 167 fokussierten Tests grün, aber F02-02 bleibt teilweise offen. `session-router` importiert noch konkrete Run-/Delegation-Factories, den Delegation-Toolnamen und Run-Reminderformatter. N-022 bindet die Eigentumsbereinigung an F04 und den physischen Minimalartefaktbeweis an F06; F03 läuft sequenziell weiter.
+- F03 abgeschlossen: fünf Core-Ansichten rendern ohne Product-UI-Beiträge im bestehenden Sessiontab-Lifecycle; Auth, Basis-Web, Chat und Benutzerressourcen starten mit null Plugininstallationen. Übergangspakete besitzen nur noch Featureflächen. Root-Emit, Chat-UI-Typecheck/-Build, 34 fokussierte Tests und headful Desktop-/Mobile-Abnahme sind grün. N-023 behob dabei den frischen provider-backed Profilstart; F04 übernimmt die verbleibenden Sammelfeatures.

@@ -33,6 +33,7 @@ import {
 	type SetStateAction,
 } from "react";
 import type { ChatAppRoute } from "./app-routes";
+import { CORE_SESSION_VIEW_CATALOG, CORE_WORKSPACE_CATALOG, type CoreSessionViewId } from "./core-workspace-model";
 import { DESKTOP_COLLAPSED_SIDEBAR_WIDTH, DESKTOP_TERMINAL_MIN_WIDTH } from "./desktop-session-sidebar-model";
 import { usePluginWorkspaceCatalogViews, usePluginWorkspaceRefreshGuard } from "./plugins/plugin-workspace";
 import {
@@ -91,24 +92,41 @@ export function desktopTabInsertionIndex(
 	return overIndex + (position === "after" ? 1 : 0);
 }
 
-const SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
+const FEATURE_SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
 	{ id: "preview", label: "Preview", description: "Live session preview", icon: Sparkles, target: { kind: "session-tool", tool: "preview" } },
-	{ id: "raw-events", label: "Raw Events", description: "Raw trace and event payloads", icon: Braces, target: { kind: "session-tool", tool: "raw-events" } },
 	{ id: "web-annotations", label: "Web Annotations", description: "Annotations attached to this session", icon: MessageSquareText, target: { kind: "session-tool", tool: "web-annotations" } },
 	{ id: "runtime-requests", label: "Runtime Requests", description: "Approvals and runtime input", icon: TerminalSquare, target: { kind: "session-tool", tool: "runtime-requests" } },
-	{ id: "session-inspector", label: "Session Inspector", description: "Session, signal, and runtime metadata", icon: ListTree, target: { kind: "session-tool", tool: "session-inspector" } },
 ] as const;
 
+function coreSessionToolCatalogEntry(id: CoreSessionViewId, icon: LucideIcon): CatalogEntry {
+	const entry = CORE_SESSION_VIEW_CATALOG.find((candidate) => candidate.id === id)!;
+	return { id, label: entry.title, description: entry.description, icon, target: { kind: "session-tool", tool: id } };
+}
+
 export function desktopTabCatalog(): readonly CatalogEntry[] {
-	const routes: CatalogEntry[] = [
+	const coreIcons = { agents: Sparkles, context: Braces, settings: Settings } as const;
+	const coreRoutes: CatalogEntry[] = CORE_WORKSPACE_CATALOG.map((entry) => ({
+		id: entry.id,
+		label: entry.title,
+		description: entry.description,
+		icon: coreIcons[entry.id],
+		target: { kind: "route", route: { area: entry.id } },
+	}));
+	const featureRoutes: CatalogEntry[] = [
 		{ id: "workflows", label: "Workflows", description: "Workflow definitions and drafts", icon: Workflow, target: { kind: "route", route: { area: "workflows" } } },
 		{ id: "cron", label: "Cron", description: "Scheduled jobs", icon: Clock3, target: { kind: "route", route: { area: "cron" } } },
 		{ id: "loops", label: "Loops", description: "Goal and legacy Ralph loops", icon: GitBranch, target: { kind: "route", route: { area: "loops" } } },
-		{ id: "agents", label: "Agent Designer", description: "Agents, profiles, and capability selection", icon: Sparkles, target: { kind: "route", route: { area: "agents" } } },
-		{ id: "context", label: "Context", description: "Context files, prompts, and MCP tools", icon: Braces, target: { kind: "route", route: { area: "context" } } },
-		{ id: "settings", label: "Settings", description: "Chat and runtime settings", icon: Settings, target: { kind: "route", route: { area: "settings" } } },
 	];
-	return [...routes, ...SESSION_TOOL_CATALOG];
+	const [preview, annotations, runtimeRequests] = FEATURE_SESSION_TOOL_CATALOG;
+	return [
+		...coreRoutes,
+		...featureRoutes,
+		preview!,
+		coreSessionToolCatalogEntry("raw-events", Braces),
+		annotations!,
+		runtimeRequests!,
+		coreSessionToolCatalogEntry("session-inspector", ListTree),
+	];
 }
 
 export function useDesktopTabWorkspace(
@@ -201,9 +219,6 @@ export function DesktopTabSidebar({
 	const pluginViews = usePluginWorkspaceCatalogViews();
 	const entries = useMemo(() => {
 		const representedViews = new Set([
-			"pibo.product-ui/user-resources",
-			"pibo.product-ui/agent-designer",
-			"pibo.product-ui/settings",
 			"pibo.product-ui/workflows",
 			"pibo.product-ui/cron",
 			"pibo.product-ui/loops",

@@ -57,7 +57,6 @@ export type GatewayServerOptions = {
 	loopStorePath?: string;
 	pluginProductOptions?: PiboPluginProductOptions;
 	includeWebProduct?: boolean;
-	includeUserResources?: boolean;
 };
 
 type GatewayQueuedFrame = {
@@ -335,10 +334,9 @@ export class PiboGatewayServer {
 				loopStorePath: this.options.loopStorePath,
 				dataStorePath: this.options.dataStorePath,
 				dataPayloadRootDir: this.options.dataPayloadRootDir,
-				userResources: { contextFilesMode: "catalog", customAgents: { agentStorePath: this.options.agentStorePath }, ...this.options.pluginProductOptions?.userResources },
+				userResources: { contextFilesMode: "catalog", userSkills: {}, customAgents: { agentStorePath: this.options.agentStorePath }, ...this.options.pluginProductOptions?.userResources },
 			},
 			includeWebProduct: this.options.includeWebProduct,
-			includeUserResources: this.options.includeUserResources ?? true,
 			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
 			readSessionPlan: (piboSessionId, kind) => {
 				if (!this.router) throw new Error("Plugin session plan service is not ready");

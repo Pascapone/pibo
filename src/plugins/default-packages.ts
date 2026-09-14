@@ -74,11 +74,8 @@ export function webProductPackageManifest(): PluginManifest {
 		entrypoints: { backend: "backend.mjs" },
 		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
 		contributions: [
-			{ id: "auth", kind: "auth-service", name: "web-auth", title: "Web authentication", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
-			{ id: "web-channel", kind: "channel", name: "web", title: "Web channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
-			{ id: "cron-channel", kind: "channel", name: "cron", title: "Cron channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
-			{ id: "preview-app", kind: "web-app", name: "session-live-previews", title: "Session live previews", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
-			{ id: "chat-app", kind: "web-app", name: "chat", title: "Chat", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Web product infrastructure." } },
+			{ id: "cron-channel", kind: "channel", name: "cron", title: "Cron channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Cron feature infrastructure." } },
+			{ id: "preview-app", kind: "web-app", name: "session-live-previews", title: "Session live previews", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Preview feature infrastructure." } },
 		],
 	};
 }
@@ -387,16 +384,6 @@ export function productUiPackageManifest(): PluginManifest {
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		contributions: [
-			productView("user-resources", "User Resources", "UserResourcesView", [
-				{ id: "context-files", title: "Context Files", purpose: "content" },
-				{ id: "skills", title: "Skills", purpose: "content" },
-				{ id: "base-prompt", title: "Base Prompt", purpose: "content" },
-				{ id: "compaction-prompt", title: "Compaction Prompt", purpose: "content" },
-			]),
-			productView("agent-designer", "Agent Designer", "AgentDesignerView"),
-			productView("settings", "Settings", "GlobalSettingsView", [
-				...(["general", "plugins", "debug", "concurrency", "previews", "transcription", "speech", "shortcuts", "maintenance", "skills", "providers"] as const).map((id) => ({ id, title: id[0]!.toUpperCase() + id.slice(1), purpose: "content" as const })),
-			]),
 			productView("workflows", "Workflows", "WorkflowsView"),
 			productView("cron", "Cron", "CronView"),
 			productView("loops", "Loops", "LoopsView"),
@@ -437,13 +424,11 @@ type DefaultPackageDescriptor = {
 	backendExport: string;
 	backendModule: "core" | "user-resources" | "web-product" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
 	webOnly?: boolean;
-	userResourcesOnly?: boolean;
 	browserExports?: string;
 };
 
 const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: corePackageManifest, backendExport: "setupCore", backendModule: "core" },
-	{ manifest: userResourcesPackageManifest, backendExport: "setupUserResources", backendModule: "user-resources", userResourcesOnly: true },
 	{ manifest: webProductPackageManifest, backendExport: "setupWebProduct", backendModule: "web-product", webOnly: true },
 	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription" },
 	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription" },
@@ -462,8 +447,7 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-adapters" },
 	{ manifest: ompRuntimePackageManifest, backendExport: "setupOmpRuntime", backendModule: "runtime-adapters" },
 	{ manifest: mcpCliPackageManifest, backendExport: "setupMcpCli", backendModule: "mcp-cli", browserExports: "ToolFamilyView" },
-	{ manifest: productUiPackageManifest, backendExport: "setupProductUi", backendModule: "product-ui", browserExports: "UserResourcesView, AgentDesignerView, GlobalSettingsView, WorkflowsView, CronView, LoopsView" },
-	{ manifest: standardShellPackageManifest, backendExport: "setupStandardShell", backendModule: "product-ui", browserExports: "setupStandardShell as setup" },
+	{ manifest: productUiPackageManifest, backendExport: "setupProductUi", backendModule: "product-ui", browserExports: "WorkflowsView, CronView, LoopsView" },
 ];
 
 async function materializeDefaultPackage(artifactRoot: string, descriptor: DefaultPackageDescriptor): Promise<{ manifest: PluginManifest; source: string }> {
@@ -479,9 +463,9 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 }
 
 /** Seed missing defaults and upgrade only active Pibo-managed defaults. Explicit disable/uninstall remains authoritative. */
-export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean; includeUserResources?: boolean; activateExisting?: (installation: PluginInstallation) => Promise<void> } = {}): Promise<void> {
+export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean; activateExisting?: (installation: PluginInstallation) => Promise<void> } = {}): Promise<void> {
 	for (const descriptor of DEFAULT_PACKAGES) {
-		if (descriptor.webOnly && !options.includeWebProduct || descriptor.userResourcesOnly && !options.includeUserResources) continue;
+		if (descriptor.webOnly && !options.includeWebProduct) continue;
 		const expected = descriptor.manifest();
 		const existing = manager.store.getInstallation(expected.id);
 		const defaultSourceRoot = resolve(artifactRoot, "default-sources", expected.id);

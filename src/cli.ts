@@ -24,8 +24,7 @@ async function resolveCliProfile(profileName?: string) {
 	const product = await startPluginProductRuntime({
 		host: registry.getPluginHost(),
 		collectConsumers: async () => [],
-		includeUserResources: true,
-		productOptions: { userResources: { contextFilesMode: "catalog" } },
+		productOptions: { userResources: { contextFilesMode: "catalog", userSkills: {}, customAgents: {} } },
 	});
 	try {
 		const materializePreview = (targetProfile?: string) => {

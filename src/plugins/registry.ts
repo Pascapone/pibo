@@ -943,13 +943,33 @@ export class PiboPluginRegistry {
 
 	private createProfileBuildContext(): PiboProfileBuildContext {
 		return {
-			getTool: (name) => this.getRequired(this.tools, name, "tool"),
-			getTools: (names) => names.map((name) => this.getRequired(this.tools, name, "tool")),
+			getTool: (name) => this.getProfileTool(name),
+			getTools: (names) => names.map((name) => this.getProfileTool(name)),
 			getSkill: (name) => this.getRequired(this.skills, name, "skill"),
 			getContextFile: (key) => this.getRequired(this.contextFiles, key, "context file"),
 			getSubagent: (name) => this.getRequired(this.subagents, name, "subagent"),
 			getSubagents: (names) => names.map((name) => this.getRequired(this.subagents, name, "subagent")),
 		};
+	}
+
+	private getProfileTool(name: string): ToolProfile {
+		const registered = this.tools.get(name);
+		if (registered) return registered;
+		for (const installation of this.projection.host.inspect().plugins) {
+			const contribution = installation.manifest.contributions.find((candidate) =>
+				candidate.scope === "agent"
+				&& candidate.kind === "tool"
+				&& (candidate.name ?? candidate.id) === name,
+			);
+			if (!contribution) continue;
+			return normalizeToolProfile({
+				name,
+				description: contribution.title ?? name,
+				pluginId: installation.pluginId,
+				providerBacked: true,
+			});
+		}
+		throw new Error(`Unknown tool "${name}"`);
 	}
 
 	private getRequired<T>(map: ReadonlyMap<string, T>, key: string, label: string): T {

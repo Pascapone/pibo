@@ -8,8 +8,6 @@ import { migrateBrowserV1TabsOnce, readBrowserV1UpgradeReport } from "./browser-
 
 type Workspace = { controller: SessionTabController; host: BrowserPluginHost | null; plan: EffectivePluginPlan | null; catalog: PluginBrowserCatalog | null; agentId?: string; roomId?: string; error: string | null; openView: PluginViewProps["openView"]; createSession?: PluginViewProps["createSession"]; refresh: () => void; prepareTabRefresh: (instanceId: string) => Promise<boolean>; activateTab: (instanceId: string) => Promise<boolean>; closeTab: (instanceId: string) => Promise<boolean>; registerBeforeLeave: (instanceId: string, handler: () => Promise<void>) => () => void };
 const FIRST_PARTY_SELF_NAVIGATED_VIEWS = new Set<PluginQualifiedId>([
-	"pibo.product-ui/user-resources",
-	"pibo.product-ui/settings",
 	"pibo.web-annotations/annotations",
 	"pibo.code-runtime/settings",
 	"pibo.file-editing/settings",

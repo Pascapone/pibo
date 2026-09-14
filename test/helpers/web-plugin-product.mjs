@@ -16,7 +16,6 @@ export async function startTestWebPluginProduct(options = {}) {
 		artifactRoot: join(root, "artifacts"),
 		collectConsumers: async () => [],
 		includeWebProduct: true,
-		includeUserResources: true,
 		productOptions: {
 			web: { authMode: options.authMode === "local" ? "dev-auth" : options.authMode, auth: options.auth, channel: { ...options.web, landingAppName: "pibo.chat-web" }, chat: options.chat },
 			userResources: {

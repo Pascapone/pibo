@@ -323,7 +323,9 @@ Provider-Cleanup darf synchron oder asynchron sein. Session- und Router-Drain wi
 
 Einstieg: `src/tools/session-tool-set.ts`, `src/core/context-build.ts`, `src/core/session-router.ts`, `src/plugins/packaged-control-tools.ts`, `src/plugins/packaged-tool-families.ts`, `src/agent-runtime/plugin-plan.ts`.
 
-**Fertig, wenn:** Der Kern kann eine neue gleichartige Toolfamilie ohne Codeänderung ausführen und hat keine Kenntnis ihrer fachlichen Namen. Abhängigkeit: F01.
+Eine generisch benannte Core-Service-Factory erfüllt diese Grenze nicht, wenn der Core weiterhin den konkreten Feature-Controller konstruiert, dessen Toolnamenkonstanten importiert oder featurebezogene Reminder und Metadaten formatiert. Das Featurepaket konstruiert und registriert seinen Controller selbst über generische Session-Orchestrierungs- und Lifecycle-Dienste. Allgemeine Run-Scheduling-/Cancellation-Primitiven dürfen Core sein; konkrete Toolcontroller, Remindertexte und Featuremetadaten nicht.
+
+**Fertig, wenn:** Der Kern kann eine neue gleichartige Toolfamilie ohne Codeänderung ausführen und hat keine Kenntnis ihrer fachlichen Namen oder Implementierungsimports. Abhängigkeit: F01.
 
 ## F03 – Kernansichten aus Sammelplugins lösen
 
@@ -342,6 +344,7 @@ Einstieg: `src/tools/session-tool-set.ts`, `src/core/context-build.ts`, `src/cor
 - [ ] Gemeinsames First-Party-Navigationsdesign als wiederverwendbare Hilfe anbieten; keine Plugin-ID-Allowlist im Host.
 - [ ] Plugin-Abhängigkeiten explizit deklarieren; z. B. keine implizite Preview- oder Cron-Abhängigkeit über einen globalen Import.
 - [ ] Deinstallation erhält Daten/Tabzustände und zeigt fehlende Angebote verständlich; Wiederinstallation stellt zuordenbare Zustände wieder bereit.
+- [ ] Run-/Delegation-Pakete konstruieren und registrieren ihre Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste; Core importiert weder Feature-Factories noch Toolnamen oder konkrete Reminderformatter.
 
 Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/App.tsx`, `src/apps/chat-ui/src/plugins/plugin-workspace.tsx`, `src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx`, jeweilige `packaged-*`-Module.
 
@@ -366,6 +369,7 @@ Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/Ap
 - [ ] Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
 - [ ] Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
 - [ ] Einen gepackten alten Monolith-/Beta-Stand über den zweistufigen Cutover auf gepackten Minimal-Core plus exakt gemappte Artefakte aktualisieren; ein unvorbereiteter Direktwechsel muss fail-closed bleiben.
+- [ ] Den gepackten Minimal-Core per Importgraph und Artefaktinhalt darauf prüfen, dass Run-, Delegation- und andere Featurecontroller, Toolnamen sowie konkrete Reminder-/Metadatenimplementierungen nicht benötigt oder mitgeliefert werden.
 
 **Fertig, wenn:** Minimalbetrieb und nachträgliche externe Erweiterung sind aus echten gepackten Artefakten nachgewiesen. Abhängigkeiten: F02–F05; Migration von Bestand mit F07.
 

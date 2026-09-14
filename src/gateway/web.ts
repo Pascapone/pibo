@@ -206,7 +206,6 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 			dataPayloadRootDir: resolvedOptions.chat?.dataPayloadRootDir,
 			agentStorePath: resolvedOptions.chat?.agentStorePath,
 			includeWebProduct: true,
-			includeUserResources: true,
 			pluginProductOptions: {
 				userResources: {
 					contextFilesMode: "full",

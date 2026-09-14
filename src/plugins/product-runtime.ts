@@ -10,6 +10,8 @@ import type { PluginConsumerCollector } from "./operations.js";
 import { PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation } from "./manifest.js";
 import { ensureDefaultPluginInstallations } from "./default-packages.js";
+import { provideCoreUserResources } from "../core/user-resources.js";
+import { provideCoreWebProduct } from "../core/web-product.js";
 
 /** Product wiring exposes core services without manufacturing a plugin installation. */
 export async function startPluginProductRuntime(options: {
@@ -21,7 +23,6 @@ export async function startPluginProductRuntime(options: {
 	productOptions?: PiboPluginProductOptions;
 	installDefaultPlugins?: boolean;
 	includeWebProduct?: boolean;
-	includeUserResources?: boolean;
 }) {
 	const ownsData = options.data === undefined;
 	const data = options.data ?? new PiboDataStore();
@@ -57,6 +58,8 @@ export async function startPluginProductRuntime(options: {
 		host.provideCoreService({ id: PLUGIN_MANAGEMENT_SERVICE, version: "1.0.0", value: manager }),
 		host.provideCoreService({ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", value: Object.freeze({ ...options.productOptions }) }),
 		...(options.readSessionPlan ? [host.provideCoreService({ id: PLUGIN_SESSION_PLAN_SERVICE, version: "1.0.0", value: options.readSessionPlan })] : []),
+		provideCoreUserResources(host, options.productOptions?.userResources),
+		...(options.productOptions?.web ? [provideCoreWebProduct(host, options.productOptions.web)] : []),
 	];
 
 	try {
@@ -64,7 +67,7 @@ export async function startPluginProductRuntime(options: {
 		// managed manifests before importing any persisted backend definition.
 		if (initialState.state === "idle") await host.start({ plugins: [] });
 		if (options.installDefaultPlugins !== false) await ensureDefaultPluginInstallations(manager, artifactRoot, {
-			includeWebProduct: options.includeWebProduct, includeUserResources: options.includeUserResources,
+			includeWebProduct: options.includeWebProduct,
 			activateExisting: async (installation) => {
 				if (!host.inspect().plugins.some((plugin) => plugin.pluginId === installation.pluginId)) await lifecycle.activate(installation);
 			},

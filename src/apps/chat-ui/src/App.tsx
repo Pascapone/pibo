@@ -126,7 +126,8 @@ import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutation
 import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";
 import { PluginWorkspaceProvider, PluginWorkspaceView, usePluginSessionTabController } from "./plugins/plugin-workspace";
 import { closePluginTab } from "./plugins/session-tab-controller";
-import type { PluginJsonObject, PluginQualifiedId } from "../../../plugins/sdk";
+import { CoreWorkspaceView } from "./core-workspace-view";
+import { isCoreWorkspaceRoute, type CoreWorkspaceRoute } from "./core-workspace-model";
 import { DeleteRoomModal, DeleteSessionModal } from "./delete-confirmation-modals";
 import { AppErrorBanner, AppHeader, BootstrapLoadError, FallbackGatewayBanner, SignedOut, type AppArea as Area } from "./app-chrome";
 import { useMobileSidebarModal, useMobileSidebarViewport } from "./mobile-sidebar-accessibility";
@@ -199,26 +200,17 @@ const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
 const EMPTY_SESSION_PATH_IDS = new Set<string>();
 
-type PluginRouteView = {
-	viewId: PluginQualifiedId;
-	subviewId?: string;
-	state?: PluginJsonObject;
-};
-
-function pluginViewForRoute(route: Exclude<ChatAppRoute, { area: "sessions" }>): PluginRouteView {
+function featureViewForRoute(route: Extract<ChatAppRoute, { area: "workflows" | "cron" | "loops" }>) {
 	if (route.area === "workflows") return {
-		viewId: "pibo.product-ui/workflows",
+		viewId: "pibo.product-ui/workflows" as const,
 		state: {
 			...(route.draftId ? { draftId: route.draftId } : {}),
 			...(route.viewWorkflowId ? { viewWorkflowId: route.viewWorkflowId } : {}),
 			...(route.viewWorkflowVersion ? { viewWorkflowVersion: route.viewWorkflowVersion } : {}),
 		},
 	};
-	if (route.area === "agents") return { viewId: "pibo.product-ui/agent-designer" };
-	if (route.area === "cron") return { viewId: "pibo.product-ui/cron" };
-	if (route.area === "loops") return { viewId: "pibo.product-ui/loops" };
-	if (route.area === "context") return { viewId: "pibo.product-ui/user-resources", subviewId: "context-files" };
-	return { viewId: "pibo.product-ui/settings", subviewId: route.panel ?? "general" };
+	if (route.area === "cron") return { viewId: "pibo.product-ui/cron" as const, state: undefined };
+	return { viewId: "pibo.product-ui/loops" as const, state: undefined };
 }
 
 type ChatDownloadStatus = ChatDownloadProgress & {
@@ -395,6 +387,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
+	const [coreContextFileKey, setCoreContextFileKey] = useState<string | undefined>();
 	const [workflowSessionDialog, setWorkflowSessionDialog] = useState<{ selection?: WorkflowSessionSelection } | null>(null);
 	const creatingSessionRef = useRef(false);
 	const agentAutosaveHandlerRef = useRef<(() => Promise<void>) | null>(null);
@@ -2039,9 +2032,28 @@ export function App({ route }: { route: ChatAppRoute }) {
 		navigateToSelectedSession(selectedRoomId ?? bootstrap.selectedRoomId, selectedPiboSessionId ?? bootstrap.selectedPiboSessionId);
 		window.setTimeout(() => document.querySelector<HTMLElement>('[data-pibo-debug="desktop-session-sidebar"] button')?.focus(), 0);
 	};
-	const renderPluginRoute = (panelRoute: Exclude<ChatAppRoute, { area: "sessions" }>, active = true) => {
-		const view = pluginViewForRoute(panelRoute);
-		return <PluginWorkspaceView viewId={view.viewId} subviewId={view.subviewId} state={view.state} active={active} />;
+	const refreshCoreWorkspace = () => loadBootstrap(
+		selectedBackendPiboSessionId ?? undefined,
+		showArchivedRef.current,
+		selectedRoomId ?? undefined,
+		{ force: true, selectSession: false },
+	);
+	const renderWorkspaceRoute = (panelRoute: Exclude<ChatAppRoute, { area: "sessions" }>, active = true) => {
+		if (isCoreWorkspaceRoute(panelRoute)) return <CoreWorkspaceView
+			route={panelRoute}
+			bootstrap={bootstrap}
+			active={active}
+			piboSessionId={selectedBackendPiboSessionId}
+			contextFileKey={coreContextFileKey}
+			onContextFileKeyChange={setCoreContextFileKey}
+			onBootstrapChange={setBootstrap}
+			onRefresh={refreshCoreWorkspace}
+			onCreateSession={createSession}
+			onNavigate={(target: CoreWorkspaceRoute) => navigateToRoute(target)}
+			onAutosaveHandlerChange={updateAgentAutosaveHandler}
+		/>;
+		const view = featureViewForRoute(panelRoute);
+		return <PluginWorkspaceView viewId={view.viewId} state={view.state} active={active} />;
 	};
 	const renderDesktopPanel = (tab: DesktopTab, active: boolean) => {
 		if (tab.target.kind === "new-tab") return null;
@@ -2051,7 +2063,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (tab.target.kind === "plugin-view") {
 			return <PluginWorkspaceView viewId={tab.target.viewId} active={active} />;
 		}
-		return renderPluginRoute(tab.target.route, active);
+		return renderWorkspaceRoute(tab.target.route, active);
 	};
 
 	return (
@@ -2164,7 +2176,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						/>
 					</DesktopSessionSidebar>
 					<main data-pibo-debug="desktop-session-center" hidden={isDesktopPreviewFullscreen} aria-hidden={isDesktopPreviewFullscreen || undefined} className="min-h-0 min-w-[250px] flex-1 overflow-hidden">
-						{isMobileSidebarViewport && route.area !== "sessions" ? renderPluginRoute(route) : <SessionTracePane
+						{isMobileSidebarViewport && route.area !== "sessions" ? renderWorkspaceRoute(route) : <SessionTracePane
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
 							selectedRoomId={selectedRoomId}
