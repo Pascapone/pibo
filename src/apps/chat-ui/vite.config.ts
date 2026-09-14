@@ -21,11 +21,17 @@ export default defineConfig({
 			preserveEntrySignatures: "strict",
 			input: {
 				app: resolve(root, "index.html"),
-				"pibo-builtin-plugin": resolve(root, "src/plugins/builtin-browser-entry.tsx"),
+				"pibo-plugin-tool-family": resolve(root, "src/plugins/tool-family-view.tsx"),
+				"pibo-plugin-web-annotations": resolve(root, "src/plugins/web-annotations-view.tsx"),
+				"pibo-plugin-build-context": resolve(root, "src/plugins/build-context-view.tsx"),
+				"pibo-plugin-preview": resolve(root, "src/plugins/preview-view.tsx"),
+				"pibo-plugin-workflows": resolve(root, "src/plugins/workflows-view.tsx"),
+				"pibo-plugin-cron": resolve(root, "src/plugins/cron-view.tsx"),
+				"pibo-plugin-loops": resolve(root, "src/plugins/loops-view.tsx"),
 			},
 			output: {
-				entryFileNames: (chunk) => chunk.name === "pibo-builtin-plugin"
-					? "assets/pibo-builtin-plugin.js"
+				entryFileNames: (chunk) => chunk.name.startsWith("pibo-plugin-")
+					? `assets/${chunk.name}.js`
 					: "assets/[name]-[hash].js",
 			},
 		},

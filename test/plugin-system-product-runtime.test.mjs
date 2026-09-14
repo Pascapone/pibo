@@ -54,7 +54,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   await stagedInstallation(t, data, root);
   const host = new PluginHost();
   const expectedPlan = { plan: { marker: true } };
-  const product = await startPluginProductRuntime({ host, data, artifactRoot: join(root, 'artifacts'), collectConsumers: async () => [], readSessionPlan: async () => expectedPlan });
+  const product = await startPluginProductRuntime({ host, data, artifactRoot: join(root, 'artifacts'), collectConsumers: async () => [], readSessionPlan: async () => expectedPlan, includeWebProduct: true });
   assert.equal(host.inspect().state, 'active');
   assert.equal(host.services.get(PLUGIN_HOST_SERVICE), host);
   assert.equal(host.services.get(PLUGIN_MANAGEMENT_SERVICE), product.manager);
@@ -67,7 +67,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.ok(annotations.artifactPath);
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/web_annotations_list').contribution.kind, 'tool');
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/annotations').contribution.view.exportName, 'WebAnnotationsView');
-  for (const pluginId of ['pibo.core', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp', 'pibo.product-ui']) {
+  for (const pluginId of ['pibo.core', 'pibo.preview', 'pibo.cron', 'pibo.workflows', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp']) {
     const installation = data.plugins.getInstallation(pluginId);
     assert.equal(installation.state, 'active', `${pluginId} should be an ordinary active installation`);
     assert.equal(installation.source.kind, 'local');
@@ -81,7 +81,9 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.ok(projection.getChannels().some((channel) => channel.name === 'pibo.loop'));
   assert.ok(projection.getGatewayAction('goal'));
   assert.equal(projection.getLoopStopConditionInfos().length, 4);
-  assert.equal(host.contributions.get('contribution', 'pibo.product-ui/workflows').contribution.view.exportName, 'WorkflowsView');
+  assert.equal(host.contributions.get('contribution', 'pibo.workflows/view').contribution.view.exportName, 'WorkflowsView');
+  assert.equal(host.contributions.get('contribution', 'pibo.cron/view').contribution.view.exportName, 'CronView');
+  assert.equal(host.contributions.get('contribution', 'pibo.goal-control/loops').contribution.view.exportName, 'LoopsView');
   assert.equal(host.contributions.get('contribution', 'pibo.product-ui/agent-designer'), undefined);
   assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings'), undefined);
   assert.equal(data.plugins.getInstallation('pibo.standard-shell'), undefined);
@@ -89,7 +91,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   const plan = product.runtime.preview(profile, { adapterId: 'pi', instanceId: 'pi', capabilities: {} }, 'ps_annotations');
   assert.equal(plan.valid, true);
   assert.ok(plan.contributions.some((entry) => entry.id === 'pibo.web-annotations/annotations'));
-  assert.ok(plan.contributions.some((entry) => entry.id === 'pibo.product-ui/workflows'));
+  assert.ok(plan.contributions.some((entry) => entry.id === 'pibo.workflows/view'));
   assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.product-ui/agent-designer'), false);
   assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.product-ui/settings'), false);
   assert.equal(plan.contributions.some((entry) => entry.id === 'pibo.standard-shell/shell'), false);
@@ -150,7 +152,7 @@ test('user resources are Core-owned without an installation and support dynamic 
   assert.equal(host.inspect().state, 'idle');
 });
 
-test('active managed default packages upgrade coherently when their packaged manifest changes', async t => {
+test('split defaults preserve an active legacy Product UI installation for versioned migration', async t => {
   const root = await mkdtemp(join(tmpdir(), 'plugin-product-default-upgrade-')); t.after(() => rm(root, { recursive: true, force: true }));
   const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
   const artifactRoot = join(root, 'artifacts');
@@ -158,16 +160,18 @@ test('active managed default packages upgrade coherently when their packaged man
   assert.ok(legacy.manifest.contributions.some((contribution) => contribution.id === 'settings'));
 
   const host = new PluginHost();
-  const product = await startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [] });
+  const product = await startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [], includeWebProduct: true });
   t.after(() => product.dispose());
 
-  const upgraded = data.plugins.getInstallation('pibo.product-ui');
-  assert.notEqual(upgraded.revision, legacy.revision);
-  assert.equal(upgraded.state, 'active');
-  assert.equal(upgraded.enabled, true);
-  assert.equal(upgraded.manifest.contributions.some((contribution) => contribution.id === 'settings'), false);
-  assert.equal(upgraded.manifest.contributions.some((contribution) => contribution.id === 'agent-designer'), false);
-  assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings'), undefined);
+  const retained = data.plugins.getInstallation('pibo.product-ui');
+  assert.equal(retained.revision, legacy.revision);
+  assert.equal(retained.state, 'active');
+  assert.equal(retained.enabled, true);
+  assert.equal(retained.manifest.contributions.some((contribution) => contribution.id === 'settings'), true);
+  assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings').installation.revision, legacy.revision);
+  assert.equal(data.plugins.getInstallation('pibo.workflows').state, 'active');
+  assert.equal(data.plugins.getInstallation('pibo.cron').state, 'active');
+  assert.equal(data.plugins.getInstallation('pibo.preview').state, 'active');
 });
 
 test('disabled managed defaults remain pinned and are not silently re-enabled or upgraded', async t => {

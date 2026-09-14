@@ -338,12 +338,12 @@ Eine generisch benannte Core-Service-Factory erfüllt diese Grenze nicht, wenn d
 
 ## F04 – Featurepakete einschließlich ihrer Oberflächen trennen
 
-- [ ] Preview, Web Annotations, Goal/Loops, Cron und Workflows als unabhängig auslieferbare Pakete abschließen.
-- [ ] Je Paket alle benötigten Dienste, API-/Channel-/CLI-Beiträge, Tools, Settings, Kontext und Ansichten mitliefern.
-- [ ] Feature-Einträge aus `DesktopSessionTool` und festem App-Dispatch entfernen; nur echte Kernziele behalten.
-- [ ] Gemeinsames First-Party-Navigationsdesign als wiederverwendbare Hilfe anbieten; keine Plugin-ID-Allowlist im Host.
-- [ ] Plugin-Abhängigkeiten explizit deklarieren; z. B. keine implizite Preview- oder Cron-Abhängigkeit über einen globalen Import.
-- [ ] Deinstallation erhält Daten/Tabzustände und zeigt fehlende Angebote verständlich; Wiederinstallation stellt zuordenbare Zustände wieder bereit.
+- [x] Preview, Web Annotations, Goal/Loops, Cron und Workflows als unabhängig auslieferbare Pakete abschließen; gepackte npm-Artefakte werden in F06 belegt.
+- [x] Je Paket alle benötigten Dienste, API-/Channel-/CLI-Beiträge, Tools, Settings, Kontext und Ansichten mitliefern.
+- [x] Feature-Einträge aus `DesktopSessionTool` und festem Plugin-ID-App-Dispatch entfernen; nur echte Kernziele behalten.
+- [x] Gemeinsames First-Party-Navigationsdesign als wiederverwendbare Hilfe anbieten; keine Plugin-ID-Allowlist im Host.
+- [x] Plugin-Abhängigkeiten explizit deklarieren; keine implizite Preview- oder Cron-Abhängigkeit über einen globalen Import.
+- [x] Deinstallation erhält Daten/Tabzustände und zeigt fehlende Angebote verständlich; Wiederinstallation stellt zuordenbare Zustände wieder bereit.
 - [ ] Run-/Delegation-Pakete konstruieren und registrieren ihre Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste; Core importiert weder Feature-Factories noch Toolnamen oder konkrete Reminderformatter.
 
 Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/App.tsx`, `src/apps/chat-ui/src/plugins/plugin-workspace.tsx`, `src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx`, jeweilige `packaged-*`-Module.
@@ -355,6 +355,12 @@ Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/Ap
 N-022 ist im Quell- und Verhaltenspfad umgesetzt. Der Core stellt nur noch generationgebundene, fachlich neutrale Dienste für Yielded-Run-Scheduling sowie Parent-/Child-Session-Lifecycle, Ausgabe, Abbruch, Cursor und Cleanup bereit. Das Delegationspaket konstruiert seinen Controller selbst und besitzt Toolname, Child-Metadaten, Agentdarstellung und Beobachtungsprojektion. Das Run-Control-Paket besitzt seinen Remindertext und dessen Erkennung; der Core dispatcht nur nach der semantischen Service-Message-Fähigkeit. Die alte Controller-Injection der Portable-Tool-Session einschließlich `subagentRunner` ist entfernt.
 
 Der fokussierte Nachweis umfasst Root-Emit und 56 Run-/Delegation-/Reminder-/Portable-/Codex-Ressourcentests; `/tmp/pibo4-f04-n022.md` protokolliert die Befunde. Diese Quellprüfung ersetzt den F06-07-Nachweis nicht: Erst Importgraph und Inhalt des gepackten Minimal-Core belegen die physische Delivery-Grenze.
+
+### F04-Abschluss: getrennte Featureoberflächen
+
+Preview, Cron und Workflows besitzen getrennte Backendmodule; Preview, Cron, Workflows, Goal/Loops, Web Annotations, Build Context und die Toolfamilien besitzen getrennte stabile Browserentries. `metadata.chatRoute` ordnet bestehende Produkt-Routen installierten Beiträgen zu, ohne konkrete Plugin-ID im App-Dispatch. `view.subviewNavigation` legt deklarativ fest, ob Host oder Renderer die interne Navigation zeichnet; die frühere First-Party-Allowlist ist entfernt. Preview und Web Annotations sind keine `DesktopSessionTool`-Werte mehr. Fehlende Featurepakete liefern einen verständlichen Leerzustand und lassen Sessiontab-/Datenzustand für eine Wiederinstallation bestehen.
+
+Root-Emit, Chat-UI-Typecheck/-Build und 39 fokussierte Feature-/UI-/Cachetests sind grün; `/tmp/pibo4-f04-feature-packages.md` enthält den Nachweis. Die Module werden im Arbeitsbaum bereits nach Owner getrennt, aber der Beleg eigenständiger self-contained npm-Artefakte und der physische Minimal-Core-Importgraph gehören weiterhin zu F06. Historische Product-UI-IDs bleiben bis F07 ausschließlich Cutover-Eingang; F08 entfernt danach ihre ausführbaren Übergangsmodule.
 
 ## F05 – Runtimepakete und Runtime Requests abschließen
 

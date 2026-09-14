@@ -124,7 +124,7 @@ import { classifyBootstrapError, type BootstrapErrorState } from "./app-bootstra
 import { errorMessage } from "./error-message";
 import { RoomMutationTracker, type RoomMutationInput } from "./app-room-mutations";
 import { CreateWorkflowSessionDialog, type WorkflowSessionSelection } from "./workflows/CreateWorkflowSessionDialog";
-import { PluginWorkspaceProvider, PluginWorkspaceView, usePluginSessionTabController } from "./plugins/plugin-workspace";
+import { PluginWorkspaceProvider, PluginWorkspaceView, usePluginSessionTabController, usePluginWorkspaceCatalogViews, type PluginWorkspaceCatalogView } from "./plugins/plugin-workspace";
 import { closePluginTab } from "./plugins/session-tab-controller";
 import { CoreWorkspaceView } from "./core-workspace-view";
 import { isCoreWorkspaceRoute, type CoreWorkspaceRoute } from "./core-workspace-model";
@@ -200,17 +200,29 @@ const SESSION_PAGE_SIZE = 120;
 const ARCHIVED_SESSION_PAGE_SIZE = 60;
 const EMPTY_SESSION_PATH_IDS = new Set<string>();
 
-function featureViewForRoute(route: Extract<ChatAppRoute, { area: "workflows" | "cron" | "loops" }>) {
-	if (route.area === "workflows") return {
-		viewId: "pibo.product-ui/workflows" as const,
-		state: {
+function featureViewForRoute(
+	route: Extract<ChatAppRoute, { area: "workflows" | "cron" | "loops" }>,
+	views: readonly PluginWorkspaceCatalogView[],
+) {
+	const view = views.find((candidate) => candidate.chatRoutes.includes(route.area));
+	if (!view) return null;
+	return {
+		viewId: view.id,
+		state: route.area === "workflows" ? {
 			...(route.draftId ? { draftId: route.draftId } : {}),
 			...(route.viewWorkflowId ? { viewWorkflowId: route.viewWorkflowId } : {}),
 			...(route.viewWorkflowVersion ? { viewWorkflowVersion: route.viewWorkflowVersion } : {}),
-		},
+		} : undefined,
 	};
-	if (route.area === "cron") return { viewId: "pibo.product-ui/cron" as const, state: undefined };
-	return { viewId: "pibo.product-ui/loops" as const, state: undefined };
+}
+
+function FeatureWorkspaceRoute({ route, active, onResolved }: { route: Extract<ChatAppRoute, { area: "workflows" | "cron" | "loops" }>; active: boolean; onResolved?: (area: "workflows" | "cron" | "loops", viewId: PluginWorkspaceCatalogView["id"] | null) => void }) {
+	const view = featureViewForRoute(route, usePluginWorkspaceCatalogViews());
+	useEffect(() => {
+		onResolved?.(route.area, view?.viewId ?? null);
+	}, [onResolved, route.area, view?.viewId]);
+	if (!view) return <div className="grid h-full place-items-center p-4 text-sm text-slate-400">The {route.area} plugin is not installed or enabled. Saved tabs and data remain available after reinstall.</div>;
+	return <PluginWorkspaceView viewId={view.viewId} state={view.state} active={active} />;
 }
 
 type ChatDownloadStatus = ChatDownloadProgress & {
@@ -383,11 +395,16 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [newSessionProfileRoomId, setNewSessionProfileRoomId] = useState<string | null>(null);
 	const [sessionViewId, setSessionViewId] = useState<ChatSessionViewId>(() => routeSessionViewId ?? readStoredSessionView());
 	const [terminalFullscreen, setTerminalFullscreen] = useState(false);
-	const [desktopPreviewFullscreen, setDesktopPreviewFullscreen] = useState(false);
 	const [composerText, setComposerText] = useState("");
 	const [composerFocusSignal, setComposerFocusSignal] = useState(0);
 	const [creatingSession, setCreatingSession] = useState(false);
 	const [coreContextFileKey, setCoreContextFileKey] = useState<string | undefined>();
+	const [featureRouteViewIds, setFeatureRouteViewIds] = useState<Partial<Record<"workflows" | "cron" | "loops", PluginWorkspaceCatalogView["id"]>>>({});
+	const recordFeatureRouteView = useCallback((area: "workflows" | "cron" | "loops", viewId: PluginWorkspaceCatalogView["id"] | null) => {
+		setFeatureRouteViewIds((current) => current[area] === viewId
+			? current
+			: viewId ? { ...current, [area]: viewId } : Object.fromEntries(Object.entries(current).filter(([key]) => key !== area)));
+	}, []);
 	const [workflowSessionDialog, setWorkflowSessionDialog] = useState<{ selection?: WorkflowSessionSelection } | null>(null);
 	const creatingSessionRef = useRef(false);
 	const agentAutosaveHandlerRef = useRef<(() => Promise<void>) | null>(null);
@@ -406,14 +423,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 	const [desktopToolHosts, setDesktopToolHosts] = useState<Partial<Record<DesktopSessionTool, Element | null>>>({});
 	const desktopToolHostCallbacks = useMemo(() => {
-		const tools: DesktopSessionTool[] = ["preview", "raw-events", "web-annotations", "runtime-requests", "session-inspector"];
+		const tools: DesktopSessionTool[] = ["raw-events", "runtime-requests", "session-inspector"];
 		return Object.fromEntries(tools.map((tool) => [tool, (node: HTMLDivElement | null) => {
 			setDesktopToolHosts((current) => current[tool] === node ? current : { ...current, [tool]: node });
 		}])) as Record<DesktopSessionTool, (node: HTMLDivElement | null) => void>;
 	}, []);
-	useEffect(() => {
-		if (!desktopTabsEnabled || desktopActiveTool !== "preview") setDesktopPreviewFullscreen(false);
-	}, [desktopActiveTool, desktopTabsEnabled]);
 	const mobileSidebarTriggerRef = useRef<HTMLButtonElement>(null);
 	const mobileSidebarRef = useRef<HTMLElement>(null);
 	const mobileSidebarRootRef = useRef<HTMLDivElement>(null);
@@ -1947,10 +1961,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const isTerminalFullscreen = terminalFullscreen
 		&& area === "sessions"
 		&& sessionViewId === "terminal";
-	const isDesktopPreviewFullscreen = desktopTabsEnabled
-		&& desktopPreviewFullscreen
-		&& desktopActiveTool === "preview";
-	const isAppFullscreen = isTerminalFullscreen || isDesktopPreviewFullscreen;
+	const isAppFullscreen = isTerminalFullscreen;
 	const routeShellClassName = isTerminalFullscreen
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
 		: (area === "workflows" || area === "cron" || area === "loops" || area === "agents")
@@ -2008,11 +2019,18 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const activateDesktopWorkspaceTab = async (tab: DesktopTab) => {
 		await applyDesktopWorkspaceTransition(activateTabInDesktopTabs(desktopWorkspace.state, tab.id));
 	};
+	const resolvedDesktopPluginViewId = (target: DesktopTabTarget) => {
+		const direct = desktopTabPluginViewId(target);
+		if (direct || target.kind !== "route") return direct;
+		return target.route.area === "workflows" || target.route.area === "cron" || target.route.area === "loops"
+			? featureRouteViewIds[target.route.area] ?? null
+			: null;
+	};
 	const closeDesktopWorkspaceTab = async (tab: DesktopTab): Promise<boolean> => {
 		const next = closeDesktopTab(desktopWorkspace.state, tab.id);
 		const closed = await applyDesktopWorkspaceTransition(next, { saveClosingTab: tab });
-		const viewId = desktopTabPluginViewId(tab.target);
-		if (closed && viewId && pluginSessionController && !next.tabs.some((candidate) => desktopTabPluginViewId(candidate.target) === viewId)) {
+		const viewId = resolvedDesktopPluginViewId(tab.target);
+		if (closed && viewId && pluginSessionController && !next.tabs.some((candidate) => resolvedDesktopPluginViewId(candidate.target) === viewId)) {
 			try {
 				pluginSessionController.edit((tabset) => tabset.tabs.some((pluginTab) => pluginTab.viewId === viewId)
 					? tabset.tabs.filter((pluginTab) => pluginTab.viewId === viewId).reduce((current, pluginTab) => closePluginTab(current, pluginTab.instanceId), tabset)
@@ -2022,10 +2040,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 			}
 		}
 		return closed;
-	};
-	const closeDesktopSessionTool = (tool: DesktopSessionTool) => {
-		const tab = desktopWorkspace.state.tabs.find((candidate) => candidate.target.kind === "session-tool" && candidate.target.tool === tool);
-		if (tab) void closeDesktopWorkspaceTab(tab);
 	};
 	const focusDesktopSessions = async (newTab?: DesktopTab) => {
 		if (newTab && !await closeDesktopWorkspaceTab(newTab)) return;
@@ -2052,13 +2066,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 			onNavigate={(target: CoreWorkspaceRoute) => navigateToRoute(target)}
 			onAutosaveHandlerChange={updateAgentAutosaveHandler}
 		/>;
-		const view = featureViewForRoute(panelRoute);
-		return <PluginWorkspaceView viewId={view.viewId} state={view.state} active={active} />;
+		return <FeatureWorkspaceRoute route={panelRoute} active={active} onResolved={recordFeatureRouteView} />;
 	};
 	const renderDesktopPanel = (tab: DesktopTab, active: boolean) => {
 		if (tab.target.kind === "new-tab") return null;
 		if (tab.target.kind === "session-tool") {
-			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className={`h-full min-h-0 overflow-hidden ${tab.target.tool === "preview" ? "flex flex-col" : ""}`} data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
+			return <div ref={desktopToolHostCallbacks[tab.target.tool]} className="h-full min-h-0 overflow-hidden" data-pibo-debug={`desktop-session-tool-${tab.target.tool}`} />;
 		}
 		if (tab.target.kind === "plugin-view") {
 			return <PluginWorkspaceView viewId={tab.target.viewId} active={active} />;
@@ -2077,7 +2090,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 				data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 				data-pibo-selected-session-id={selectedPiboSessionId ?? bootstrap.selectedPiboSessionId ?? undefined}
 				data-pibo-terminal-fullscreen={isTerminalFullscreen ? "true" : "false"}
-				data-pibo-preview-fullscreen={isDesktopPreviewFullscreen ? "true" : "false"}
 				className={`h-dvh overflow-hidden bg-[#101d22] text-slate-200 grid ${isAppFullscreen ? "grid-rows-[1fr]" : desktopTabsEnabled ? "grid-rows-[auto_1fr]" : "grid-rows-[auto_auto_1fr]"}`}
 			>
 				{isAppFullscreen || desktopTabsEnabled ? null : (
@@ -2175,7 +2187,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onOptimisticTitleCancel={cancelOptimisticSessionTitleIntent}
 						/>
 					</DesktopSessionSidebar>
-					<main data-pibo-debug="desktop-session-center" hidden={isDesktopPreviewFullscreen} aria-hidden={isDesktopPreviewFullscreen || undefined} className="min-h-0 min-w-[250px] flex-1 overflow-hidden">
+					<main data-pibo-debug="desktop-session-center" className="min-h-0 min-w-[250px] flex-1 overflow-hidden">
 						{isMobileSidebarViewport && route.area !== "sessions" ? renderWorkspaceRoute(route) : <SessionTracePane
 							bootstrap={bootstrap}
 							selectedPiboSessionId={selectedPiboSessionId}
@@ -2222,11 +2234,6 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onRefreshBootstrap={refreshSelectedBootstrap}
 							desktopActiveTool={desktopActiveTool}
 							desktopToolHosts={desktopToolHosts}
-							onOpenDesktopTool={(tool) => void openDesktopTarget({ kind: "session-tool", tool })}
-							onCloseDesktopTool={closeDesktopSessionTool}
-							desktopPreviewFullscreen={isDesktopPreviewFullscreen}
-							onEnterDesktopPreviewFullscreen={() => setDesktopPreviewFullscreen(true)}
-							onExitDesktopPreviewFullscreen={() => setDesktopPreviewFullscreen(false)}
 							onSend={async (text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery) => {
 								if (isSessionComposerDisabled(selectedPiboSessionId, selectedRoomArchived) || !selectedPiboSessionId) return;
 								try {
@@ -2247,7 +2254,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						renderPanel={(tab, active) => renderDesktopPanel(tab, active)}
 						reservedLeftWidth={desktopSessionSidebar.state.collapsed ? DESKTOP_COLLAPSED_SIDEBAR_WIDTH : desktopSessionSidebar.state.width}
 						hidden={isTerminalFullscreen}
-						fullscreen={isDesktopPreviewFullscreen}
+						fullscreen={false}
 					/> : null}
 					{deleteRoomTarget ? <DeleteRoomModal room={deleteRoomTarget} confirmName={deleteRoomConfirmName} deleting={deletingRoom} onConfirmNameChange={setDeleteRoomConfirmName} onCancel={cancelRoomDelete} onDelete={() => void permanentlyDeleteRoom()} /> : null}
 					{deleteSessionTarget ? <DeleteSessionModal session={deleteSessionTarget} confirmText={deleteSessionConfirmText} deleting={deletingSession} onConfirmTextChange={setDeleteSessionConfirmText} onCancel={cancelSessionDelete} onDelete={() => void permanentlyDeleteSession()} /> : null}

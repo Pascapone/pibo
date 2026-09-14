@@ -73,6 +73,8 @@ export type PluginViewDefinition = {
 	mount: "unmount" | "keep-alive";
 	stateSchemaVersion: number;
 	stateSchema?: PluginJsonSchema;
+	/** Renderer-owned navigation suppresses only the host's duplicate subview strip. */
+	subviewNavigation?: "host" | "renderer";
 	subviews?: { id: string; title: string; purpose: "content" | "settings" | "context"; settingsScopes?: PluginSettingsScope[] }[];
 };
 export type PluginContribution = {

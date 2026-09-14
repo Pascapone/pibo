@@ -255,6 +255,7 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 			else {
 				if (v.presentation !== undefined && !presentationValid) fail("invalid-view", "presentation must be workspace or internal", at);
 				if (v.visibility !== undefined && !legacyVisibilityValid) fail("invalid-view", "Legacy visibility must be session or infrastructure", at);
+				if (v.subviewNavigation !== undefined && !["host", "renderer"].includes(String(v.subviewNavigation))) fail("invalid-view", "subviewNavigation must be host or renderer", at);
 				if (!isPluginRecord(m.entrypoints) || !m.entrypoints.browser) fail("missing-browser-entrypoint", "Views require a prebuilt browser entrypoint", at);
 				if (v.stateSchema !== undefined) diagnostics.push(...validatePluginConfigSchema(v.stateSchema, [root, ...at, "view", "stateSchema"]));
 				if ((v.presentation === "internal" || v.presentation === undefined && v.visibility === "infrastructure") && c.scope !== "app") fail("invalid-view-scope", "Internal views must be app-scoped", at);

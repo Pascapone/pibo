@@ -1,4 +1,8 @@
-export const BUILTIN_PLUGIN_ASSET_PATH = "/apps/chat/assets/pibo-builtin-plugin.js";
+export const PLUGIN_ASSET_PATH_PREFIX = "/apps/chat/assets/pibo-plugin-";
+
+export function isMutablePluginAssetPath(pathname: string): boolean {
+	return pathname.startsWith(PLUGIN_ASSET_PATH_PREFIX) && pathname.endsWith(".js");
+}
 
 type MutableAssetCache = {
 	keys(): Promise<readonly Request[]>;
@@ -10,13 +14,13 @@ type MutableAssetCacheStorage = {
 	open(name: string): Promise<MutableAssetCache>;
 };
 
-/** Remove only the mutable built-in plugin entry before plugin modules can be imported. */
+/** Remove mutable plugin entry modules before plugin modules can be imported. */
 export async function evictCachedBuiltinPluginAssets(storage: MutableAssetCacheStorage): Promise<number> {
 	let deleted = 0;
 	for (const name of await storage.keys()) {
 		const cache = await storage.open(name);
 		for (const request of await cache.keys()) {
-			if (new URL(request.url).pathname !== BUILTIN_PLUGIN_ASSET_PATH) continue;
+			if (!isMutablePluginAssetPath(new URL(request.url).pathname)) continue;
 			if (await cache.delete(request)) deleted += 1;
 		}
 	}

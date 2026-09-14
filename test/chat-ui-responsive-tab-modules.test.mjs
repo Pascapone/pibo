@@ -7,8 +7,12 @@ async function sources(paths) {
 }
 
 test("desktop module tabs use pane-width sidebars and container-responsive content flows", async () => {
-	const [browserEntry, coreWorkspace, pluginWorkspace, responsivePane, loops, cron, agents, settings, contextFiles, designerUi, workflowGraph] = await sources([
+	const [browserEntry, cronView, loopsView, webAnnotationsView, toolFamilyView, coreWorkspace, pluginWorkspace, responsivePane, loops, cron, agents, settings, contextFiles, designerUi, workflowGraph] = await sources([
 		"src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx",
+		"src/apps/chat-ui/src/plugins/cron-view.tsx",
+		"src/apps/chat-ui/src/plugins/loops-view.tsx",
+		"src/apps/chat-ui/src/plugins/web-annotations-view.tsx",
+		"src/apps/chat-ui/src/plugins/tool-family-view.tsx",
 		"src/apps/chat-ui/src/core-workspace-view.tsx",
 		"src/apps/chat-ui/src/plugins/plugin-workspace.tsx",
 		"src/apps/chat-ui/src/responsive-pane-sidebar.tsx",
@@ -21,16 +25,17 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
 	]);
 
-	assert.match(browserEntry, /<CronArea[\s\S]*?surface="tab"/);
-	assert.match(browserEntry, /<LoopArea[\s\S]*?surface="tab"/);
+	assert.match(cronView, /<CronArea[\s\S]*?surface="tab"/);
+	assert.match(loopsView, /<LoopArea[\s\S]*?surface="tab"/);
 	assert.match(coreWorkspace, /<AgentsView[\s\S]*surface="tab"/);
 	assert.match(coreWorkspace, /CoreContextView[\s\S]*<ContextFilesView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Context"/);
 	assert.match(coreWorkspace, /CoreSettingsView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Settings"[\s\S]*<SettingsSidebar/);
 	assert.doesNotMatch(browserEntry, /AgentDesignerView|UserResourcesView|GlobalSettingsView/);
-	assert.match(browserEntry, /WebAnnotationsView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Web Annotations"/);
-	assert.match(browserEntry, /ToolFamilyView[\s\S]*ResponsiveTabSidebarPanel/);
+	assert.match(webAnnotationsView, /WebAnnotationsView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Web Annotations"/);
+	assert.match(toolFamilyView, /ToolFamilyView[\s\S]*ResponsiveTabSidebarPanel/);
 	assert.doesNotMatch(browserEntry, /grid-cols-\[220px_minmax\(0,1fr\)\][\s\S]*max-\[700px\]:grid-cols-1/);
-	assert.match(pluginWorkspace, /FIRST_PARTY_SELF_NAVIGATED_VIEWS/);
+	assert.doesNotMatch(pluginWorkspace, /FIRST_PARTY_SELF_NAVIGATED_VIEWS|pibo\.web-annotations\/annotations/);
+	assert.match(pluginWorkspace, /view\.subviewNavigation !== "renderer"/);
 	assert.match(pluginWorkspace, /showHostSubviewNavigation && view\.subviews\?\.length/);
 	assert.match(pluginWorkspace, /aria-label=\{`\$\{view\.title\} subviews`\}/);
 

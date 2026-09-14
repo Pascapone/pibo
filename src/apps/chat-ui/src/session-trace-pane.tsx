@@ -77,7 +77,6 @@ import {
   removeSessionLivePreview,
   startSessionLivePreview,
   stopSessionLivePreview,
-  subscribeSessionLivePreviewEvents,
   type SessionLivePreview,
 } from "./api-previews";
 import {
@@ -94,18 +93,6 @@ import type { DesktopSessionTool } from "./desktop-tabs-model";
 import { DEFAULT_TOOL_METRIC_THRESHOLDS, type ToolMetricThresholds } from "./tool-metric-settings";
 
 const livePreviewQueryKey = (piboSessionId: string) => ["chat", "session-live-previews", piboSessionId] as const;
-
-export function useHostedPreviewFullscreenRecovery(
-  fullscreen: boolean,
-  previewAvailable: boolean,
-  onExitFullscreen?: () => void,
-): void {
-  const onExitFullscreenRef = useRef(onExitFullscreen);
-  onExitFullscreenRef.current = onExitFullscreen;
-  useEffect(() => {
-    if (fullscreen && !previewAvailable) onExitFullscreenRef.current?.();
-  }, [fullscreen, previewAvailable]);
-}
 
 export function SessionTracePane({
   bootstrap,
@@ -159,11 +146,6 @@ export function SessionTracePane({
   onError,
   desktopActiveTool = null,
   desktopToolHosts,
-  onOpenDesktopTool,
-  onCloseDesktopTool,
-  desktopPreviewFullscreen = false,
-  onEnterDesktopPreviewFullscreen,
-  onExitDesktopPreviewFullscreen,
 }: {
   bootstrap: BootstrapData;
   selectedPiboSessionId: string | null;
@@ -221,11 +203,6 @@ export function SessionTracePane({
   onError: (message: string | null) => void;
   desktopActiveTool?: DesktopSessionTool | null;
   desktopToolHosts?: Partial<Record<DesktopSessionTool, Element | null>>;
-  onOpenDesktopTool?: (tool: DesktopSessionTool) => void;
-  onCloseDesktopTool?: (tool: DesktopSessionTool) => void;
-  desktopPreviewFullscreen?: boolean;
-  onEnterDesktopPreviewFullscreen?: () => void;
-  onExitDesktopPreviewFullscreen?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [initialRetryTransaction] = useState(readPendingMessageTransaction);
@@ -284,9 +261,6 @@ export function SessionTracePane({
   });
   const selectedPreviewSessionRef = useRef<string | undefined>(selectedBackendPiboSessionId);
   selectedPreviewSessionRef.current = selectedBackendPiboSessionId;
-  const openDesktopToolRef = useRef(onOpenDesktopTool);
-  openDesktopToolRef.current = onOpenDesktopTool;
-  const desktopPreviewAutoOpenEnabled = Boolean(onOpenDesktopTool);
   const [livePreviewViewSessionId, setLivePreviewViewSessionId] = useState<string | null>(null);
   const [selectedLivePreview, setSelectedLivePreview] = useState<SessionLivePreviewSelection | undefined>();
   const [livePreviewReload, setLivePreviewReload] = useState<{ piboSessionId: string; value: number } | undefined>();
@@ -313,11 +287,6 @@ export function SessionTracePane({
   });
   const livePreviews = livePreviewAuthority.kind === "ready" ? livePreviewAuthority.previews : [];
   const selectedLivePreviewRecord = selectAuthoritativeLivePreview(livePreviewAuthority, selectedLivePreview);
-  useHostedPreviewFullscreenRecovery(
-    desktopPreviewFullscreen,
-    livePreviewAuthority.kind === "ready" && Boolean(selectedLivePreviewRecord),
-    onExitDesktopPreviewFullscreen,
-  );
   const livePreviewSelected = Boolean(selectedBackendPiboSessionId && livePreviewViewSessionId === selectedBackendPiboSessionId);
   const terminalUsageEnabled = Boolean(
     selectedBackendPiboSessionId
@@ -356,20 +325,6 @@ export function SessionTracePane({
     });
   }, [livePreviewAuthority, selectedLivePreview]);
 
-  useEffect(() => {
-    if (!desktopPreviewAutoOpenEnabled || !selectedBackendPiboSessionId) return;
-    const piboSessionId = selectedBackendPiboSessionId;
-    return subscribeSessionLivePreviewEvents(piboSessionId, ({ preview }) => {
-      if (selectedPreviewSessionRef.current !== piboSessionId || preview.piboSessionId !== piboSessionId) return;
-      queryClient.setQueryData<SessionLivePreviewQueryEnvelope>(livePreviewQueryKey(piboSessionId), (current) => ({
-        piboSessionId,
-        configured: true,
-        previews: [preview, ...(current?.piboSessionId === piboSessionId ? current.previews.filter((candidate) => candidate.id !== preview.id) : [])],
-      }));
-      setSelectedLivePreview({ piboSessionId, previewId: preview.id });
-      openDesktopToolRef.current?.("preview");
-    });
-  }, [desktopPreviewAutoOpenEnabled, queryClient, selectedBackendPiboSessionId]);
   const openSessionWindowAvailable = Boolean(selectedBackendPiboSessionId) && canOpenDesktopPwaSessionWindow();
   const openSelectedSessionWindow = useCallback(() => {
     if (openCurrentPwaSessionWindow()) return;
@@ -408,7 +363,7 @@ export function SessionTracePane({
     selectedPiboSessionId: selectedBackendPiboSessionId,
     onError,
     formatError: compactWebAnnotationError,
-    forcePanelVisible: Boolean(desktopToolHosts?.["web-annotations"]),
+    forcePanelVisible: false,
   });
   const createUploadAttachmentId = useCallback(
     () => `upload-${createClientTxnId()}`,
@@ -767,7 +722,7 @@ export function SessionTracePane({
       : livePreviewAuthority.kind === "unconfigured"
         ? <PreviewMessage label="Live previews are not configured on this Pibo instance." />
         : <PreviewMessage label="No active live preview is attached to this Pibo Session." />;
-  const previewPanelRequested = livePreviewSelected || Boolean(desktopToolHosts?.preview);
+  const previewPanelRequested = livePreviewSelected;
   const previewPanelContent = previewPanelRequested
     ? livePreviewAuthority.kind === "ready" && selectedLivePreviewRecord
       ? (
@@ -783,9 +738,8 @@ export function SessionTracePane({
             onStop={(previewId) => void runLivePreviewAction(previewId, "stop")}
             onRemove={(previewId) => void runLivePreviewAction(previewId, "remove")}
             actionPending={selectedLivePreviewActionPending}
-            fullscreen={desktopPreviewFullscreen}
-            onEnterFullscreen={onEnterDesktopPreviewFullscreen ?? onEnterTerminalFullscreen}
-            onExitFullscreen={onExitDesktopPreviewFullscreen}
+            fullscreen={false}
+            onEnterFullscreen={onEnterTerminalFullscreen}
           />
         )
       : previewAuthorityMessage
@@ -822,26 +776,6 @@ export function SessionTracePane({
     />
   ) : undefined;
 
-  const desktopAnnotationsPanel = (
-    <div className="@container h-full min-h-0 overflow-y-auto bg-[#101d22]" data-pibo-debug="web-annotations-tab-panel">
-      <WebAnnotationsControls
-        piboSessionId={selectedPiboSessionId}
-        piboRoomId={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
-        disabled={!selectedPiboSessionId || selectedRoomArchived}
-        onError={onError}
-      />
-      <WebAnnotationsSessionPanel
-        piboSessionId={selectedPiboSessionId}
-        annotations={visibleWebAnnotations}
-        selectedIds={selectedWebAnnotationIds}
-        loading={webAnnotationsQuery.isLoading || webAnnotationsQuery.isFetching || clearingWebAnnotations}
-        error={webAnnotationsQuery.error ? errorMessage(webAnnotationsQuery.error) : null}
-        onRefresh={() => void webAnnotationsQuery.refetch()}
-        onToggle={toggleWebAnnotationAttachment}
-        onClear={() => void clearVisibleWebAnnotations()}
-      />
-    </div>
-  );
   const desktopRuntimeRequestsPanel = selectedBackendPiboSessionId ? (
     <div className="h-full overflow-auto bg-[#101d22]">
       {runtimeApprovals.length || runtimeUserInputs.length ? (
@@ -872,7 +806,6 @@ export function SessionTracePane({
     </div>
   ) : <DesktopSessionToolEmpty label="Select a Pibo Session to inspect it." />;
   const desktopToolPanels: Partial<Record<DesktopSessionTool, ReactNode>> = {
-    preview: previewPanelContent ?? <DesktopSessionToolEmpty label="Select a Pibo Session to view its Preview." />,
     "raw-events": (
       <RawEventsSidebar
         traceView={currentTraceView}
@@ -882,7 +815,6 @@ export function SessionTracePane({
         onLoadOlder={loadMoreRawEvents}
       />
     ),
-    "web-annotations": desktopAnnotationsPanel,
     "runtime-requests": desktopRuntimeRequestsPanel,
     "session-inspector": desktopInspectorPanel,
   };

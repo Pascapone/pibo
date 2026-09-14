@@ -12,7 +12,6 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		import React, { act, useEffect, useState } from "react";
 		import TestRenderer from "react-test-renderer";
 		import { DesktopTabSidebar, desktopTabInsertionIndex, useDesktopTabWorkspace } from "./src/apps/chat-ui/src/desktop-tabs.tsx";
-		import { useHostedPreviewFullscreenRecovery } from "./src/apps/chat-ui/src/session-trace-pane.tsx";
 		import { SessionLivePreviewPanel } from "./src/apps/chat-ui/src/session-live-preview.tsx";
 		import * as model from "./src/apps/chat-ui/src/desktop-tabs-model.ts";
 		import { SessionTabController } from "./src/apps/chat-ui/src/plugins/session-tab-controller.ts";
@@ -77,9 +76,16 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		let sessionAWorkspace = model.emptyDesktopTabState();
 		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "route", route: { area: "workflows" } }, { id: "a-one", now: 1 });
 		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "route", route: { area: "settings" } }, { id: "a-two", now: 2 });
-		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "session-tool", tool: "preview" }, { id: "a-three", now: 3 });
+		sessionAWorkspace = model.openDesktopTab(sessionAWorkspace, { kind: "plugin-view", piboSessionId: "ps_switch_a", viewId: "pibo.preview/view", title: "Preview" }, { id: "a-three", now: 3 });
 		sessionAWorkspace = model.activateDesktopTab(sessionAWorkspace, "a-two", 4);
-		const sessionATabset = { schemaVersion: 1, piboSessionId: "ps_switch_a", revision: 1, tabs: [], activeTabId: null, layout: model.desktopTabStateToSessionLayout({}, sessionAWorkspace) };
+		const sessionATabset = {
+			schemaVersion: 1,
+			piboSessionId: "ps_switch_a",
+			revision: 1,
+			tabs: [{ instanceId: "a-three", piboSessionId: "ps_switch_a", pluginId: "pibo.preview", viewId: "pibo.preview/view", pluginRevision: "sha256:preview", stateSchemaVersion: 1, state: {}, fallback: "Preview" }],
+			activeTabId: "a-three",
+			layout: model.desktopTabStateToSessionLayout({}, sessionAWorkspace),
+		};
 		const emptySessionBTabset = { schemaVersion: 1, piboSessionId: "ps_switch_b", revision: 1, tabs: [], activeTabId: null, layout: {} };
 		const emptySessionCTabset = { schemaVersion: 1, piboSessionId: "ps_switch_c", revision: 1, tabs: [], activeTabId: null, layout: {} };
 		const switchController = (id, initial, delayed = false) => {
@@ -166,7 +172,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		};
 
 		let initial = model.emptyDesktopTabState();
-		initial = model.openDesktopTab(initial, { kind: "session-tool", tool: "preview" }, { id: "preview", now: 1 });
+		initial = model.openDesktopTab(initial, { kind: "plugin-view", piboSessionId: "ps_1", viewId: "pibo.preview/view", title: "Preview" }, { id: "preview", now: 1 });
 		initial = model.openDesktopTab(initial, { kind: "route", route: { area: "workflows", viewWorkflowId: "workflow-1", viewWorkflowVersion: "1.0.0" } }, { id: "workflow", now: 2 });
 		initial = model.openDesktopTab(initial, { kind: "route", route: { area: "settings" } }, { id: "settings", now: 3 });
 		initial = model.activateDesktopTab(initial, "preview", 4);
@@ -176,7 +182,6 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 			const [previewFullscreen, setPreviewFullscreen] = useState(false);
 			const [selectedPreview, setSelectedPreview] = useState(preview);
 			removeSelectedPreview = () => setSelectedPreview(undefined);
-			useHostedPreviewFullscreenRecovery(previewFullscreen, Boolean(selectedPreview), () => setPreviewFullscreen(false));
 			observedState = state;
 			return React.createElement(DesktopTabSidebar, {
 				state,
@@ -188,7 +193,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 				onBeforeRefresh: (tab) => beforeRefresh(tab),
 				onFocusSessions: (tab) => setState((current) => model.closeDesktopTab(current, tab.id)),
 				reservedLeftWidth: 300,
-				renderPanel: (tab) => tab.target.kind === "session-tool" && tab.target.tool === "preview"
+				renderPanel: (tab) => tab.target.kind === "plugin-view" && tab.target.viewId === "pibo.preview/view"
 					? React.createElement(SessionLivePreviewPanel, {
 						previews: selectedPreview ? [selectedPreview] : [], selectedPreview, loading: false, reloadKey: 0,
 						onSelect() {}, onReload() {}, onRefresh() {}, onStart() {}, onStop() {}, onRemove() {},
@@ -218,13 +223,13 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		const workflowPanelBefore = mounted.root.findByProps({ "data-resource": "Workflow · workflow-1" });
 		const settingsPanelBefore = mounted.root.findByProps({ "data-resource": "Settings" });
 		const workflowTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Workflow ·"))[0];
-		await act(async () => workflowTab.props.onClick());
+		await act(async () => workflowTab.parent.props.onClick());
 		const previewFrameAfter = mounted.root.findByType("iframe");
 		assert.equal(previewFrameAfter, previewFrameBefore, "Preview iframe remains the same React instance when another tab activates");
 		assert.equal(mounted.root.findByProps({ "data-resource": "Workflow · workflow-1" }), workflowPanelBefore, "activating a mounted generic panel preserves its React instance");
 
 		const settingsTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Settings."))[0];
-		await act(async () => settingsTab.props.onClick());
+		await act(async () => settingsTab.parent.props.onClick());
 		assert.equal(mounted.root.findByProps({ "data-resource": "Workflow · workflow-1" }), workflowPanelBefore, "inactive Workflow content stays mounted");
 		assert.equal(mounted.root.findByProps({ "data-resource": "Settings" }), settingsPanelBefore, "the selected Settings panel also keeps its instance");
 		assert.equal(lifecycle.filter((event) => event === "unmount:Workflow · workflow-1").length, 0);
@@ -235,7 +240,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		const refreshWorkflow = mounted.root.findByProps({ "aria-label": "Refresh Workflow · workflow-1" });
 		let releaseRefresh;
 		beforeRefresh = () => new Promise((resolve) => { releaseRefresh = resolve; });
-		await act(async () => refreshWorkflow.props.onClick());
+		await act(async () => refreshWorkflow.props.onClick({ stopPropagation() {} }));
 		assert.equal(lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length, workflowMountsBeforeRefresh, "Refresh does not remount while a leave/save guard is pending");
 		await act(async () => { releaseRefresh(true); await Promise.resolve(); });
 		assert.equal(lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length, workflowMountsBeforeRefresh + 1, "Refresh remounts its target panel after guards succeed");
@@ -244,7 +249,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		assert.equal(mounted.root.findByProps({ "data-resource": "Settings" }), settingsPanelBefore);
 		beforeRefresh = async () => false;
 		const workflowMountsBeforeBlockedRefresh = lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length;
-		await act(async () => { refreshWorkflow.props.onClick(); await Promise.resolve(); });
+		await act(async () => { refreshWorkflow.props.onClick({ stopPropagation() {} }); await Promise.resolve(); });
 		assert.equal(lifecycle.filter((event) => event === "mount:Workflow · workflow-1").length, workflowMountsBeforeBlockedRefresh, "failed Refresh guards preserve the existing mount");
 		beforeRefresh = async () => true;
 
@@ -271,7 +276,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		assert.equal(mounted.root.findAllByProps({ "data-pibo-debug": "desktop-tab-drop-gap" }).length, 0, "drop clears the insertion gap");
 
 		const workflowAgain = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Workflow ·"))[0];
-		await act(async () => workflowAgain.props.onClick());
+		await act(async () => workflowAgain.parent.props.onClick());
 		const workflowUnmountsBeforeClose = lifecycle.filter((event) => event === "unmount:Workflow · workflow-1").length;
 		await act(async () => workflowAgain.props.onKeyDown({ key: "Delete", preventDefault() {} }));
 		assert.equal(observedState.activeTabId, "settings");
@@ -279,7 +284,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		assert.match(focusedTitle, /^Settings\./, "Delete moves DOM focus to the deterministic right neighbor");
 
 		const previewTab = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("Preview."))[0];
-		await act(async () => previewTab.props.onClick());
+		await act(async () => previewTab.parent.props.onClick());
 		const enterPreviewFullscreen = mounted.root.findByProps({ "aria-label": "Enter Preview fullscreen" });
 		await act(async () => enterPreviewFullscreen.props.onClick());
 		assert.equal(mounted.root.findByType("iframe"), previewFrameBefore, "Preview fullscreen reuses the mounted iframe");
@@ -308,7 +313,7 @@ test("desktop tab React flows preserve every mounted panel, refresh one tab, dis
 		assert.equal(model.activeDesktopTab(observedState).target.route.area, "settings");
 		const remainingNewTab = observedState.tabs.find((tab) => tab.target.kind === "new-tab");
 		const remainingNewTabButton = mounted.root.findAll((node) => node.props.role === "tab" && node.props.title?.startsWith("New Tab."))[0];
-		await act(async () => remainingNewTabButton.props.onClick());
+		await act(async () => remainingNewTabButton.parent.props.onClick());
 		await act(async () => catalogButton("Workflows").props.onClick());
 		assert.equal(observedState.activeTabId, remainingNewTab.id, "new module replaces the active New Tab in place");
 		assert.equal(model.activeDesktopTab(observedState).target.route.area, "workflows");

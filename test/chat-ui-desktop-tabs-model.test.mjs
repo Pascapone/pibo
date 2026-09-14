@@ -16,13 +16,13 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.equal(core.isCoreWorkspaceRoute({ area: "workflows" }), false);
 		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "agents" } }), null, "core routes do not depend on plugin view IDs");
 		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "settings" } }), null, "core Settings is not a hidden product plugin");
-		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "workflows" } }), "pibo.product-ui/workflows");
+		assert.equal(model.desktopTabPluginViewId({ kind: "route", route: { area: "workflows" } }), null, "feature routes resolve through manifest metadata, not host IDs");
 		let state = model.emptyDesktopTabState();
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "workflows" } }, { id: "workflows", now: 1 });
 		state = model.openDesktopTab(state, { kind: "route", route: { area: "cron" } }, { id: "cron", now: 2 });
-		state = model.openDesktopTab(state, { kind: "session-tool", tool: "preview" }, { id: "preview", now: 3 });
-		assert.deepEqual(state.tabs.map((tab) => tab.id), ["workflows", "cron", "preview"]);
-		assert.equal(state.activeTabId, "preview");
+		state = model.openDesktopTab(state, { kind: "session-tool", tool: "raw-events" }, { id: "raw-events", now: 3 });
+		assert.deepEqual(state.tabs.map((tab) => tab.id), ["workflows", "cron", "raw-events"]);
+		assert.equal(state.activeTabId, "raw-events");
 
 		let newTabs = model.openDesktopNewTab(model.emptyDesktopTabState(), { id: "new-one", now: 1 });
 		newTabs = model.openDesktopNewTab(newTabs, { id: "new-two", now: 2 });
@@ -53,14 +53,14 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 
 		state = model.activateDesktopTab(state, "cron", 8);
 		state = model.closeDesktopTab(state, "cron");
-		assert.equal(state.activeTabId, "preview", "close focuses the right neighbor");
-		state = model.moveDesktopTab(state, "preview", 1);
-		assert.equal(state.tabs.at(2).id, "preview");
-		state = model.reorderDesktopTab(state, "preview", 0);
-		assert.equal(state.tabs[0].id, "preview");
+		assert.equal(state.activeTabId, "raw-events", "close focuses the right neighbor");
+		state = model.moveDesktopTab(state, "raw-events", 1);
+		assert.equal(state.tabs.at(2).id, "raw-events");
+		state = model.reorderDesktopTab(state, "raw-events", 0);
+		assert.equal(state.tabs[0].id, "raw-events");
 		const withoutInactive = model.closeDesktopTab(state, "workflows");
 		assert.equal(withoutInactive.activeTabId, state.activeTabId, "closing an inactive tab keeps focus");
-		let one = model.openDesktopTab(model.emptyDesktopTabState(), { kind: "session-tool", tool: "preview" }, { id: "only", now: 1 });
+		let one = model.openDesktopTab(model.emptyDesktopTabState(), { kind: "session-tool", tool: "raw-events" }, { id: "only", now: 1 });
 		one = model.closeDesktopTab(one, "only");
 		assert.equal(one.activeTabId, null);
 		assert.deepEqual(one.tabs, []);
@@ -116,7 +116,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 
 		let closeRouteToTool = model.emptyDesktopTabState();
 		closeRouteToTool = model.openDesktopTab(closeRouteToTool, { kind: "route", route: { area: "agents" } }, { id: "agent", now: 11 });
-		closeRouteToTool = model.openDesktopTab(closeRouteToTool, { kind: "session-tool", tool: "preview" }, { id: "preview-tool", now: 12 });
+		closeRouteToTool = model.openDesktopTab(closeRouteToTool, { kind: "session-tool", tool: "raw-events" }, { id: "preview-tool", now: 12 });
 		closeRouteToTool = model.activateDesktopTab(closeRouteToTool, "agent", 13);
 		const beforeRouteClose = closeRouteToTool;
 		closeRouteToTool = model.closeDesktopTab(closeRouteToTool, "agent");
@@ -139,7 +139,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 			model.parseDesktopTabState(model.serializeDesktopTabState(committedRouteClose)),
 			sessionsRoute,
 		);
-		assert.equal(model.activeDesktopTab(reloadedTool).target.tool, "preview");
+		assert.equal(model.activeDesktopTab(reloadedTool).target.tool, "raw-events");
 		assert.equal(reloadedTool.tabs.some((tab) => tab.target.kind === "route" && tab.target.route.area === "agents"), false);
 
 		const duplicateRoute = {
@@ -164,7 +164,7 @@ test("desktop tabs model covers dedupe, close focus, reorder, persistence, and r
 		assert.deepEqual(recovered.tabs.map((tab) => tab.id), ["workflow-one", "cron"]);
 		assert.equal(recovered.activeTabId, "workflow-one", "duplicate target active id aliases to the retained tab");
 
-		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "preview", target: { kind: "session-tool", tool: "preview" } }), true);
+		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "raw-events", target: { kind: "session-tool", tool: "raw-events" } }), true);
 		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "raw", target: { kind: "session-tool", tool: "raw-events" } }), true);
 		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "workflow" }), true);
 		assert.equal(model.desktopTabKeepsMounted({ ...duplicateRoute, id: "agent", target: { kind: "route", route: { area: "agents" } } }), true);

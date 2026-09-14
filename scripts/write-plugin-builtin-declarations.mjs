@@ -3,7 +3,9 @@ import { join } from "node:path";
 
 const declarations = {
 	"packaged-core.d.ts": ["setupCore(context: PluginSetupContext): void;"],
-	"packaged-web-product.d.ts": ["setupWebProduct(context: PluginSetupContext): () => Promise<void>;"],
+	"packaged-preview.d.ts": ["setupPreview(context: PluginSetupContext): () => Promise<void>;"],
+	"packaged-cron.d.ts": ["setupCron(context: PluginSetupContext): void;"],
+	"packaged-workflows.d.ts": ["setupWorkflows(context: PluginSetupContext): void;"],
 	"packaged-user-resources.d.ts": ["setupUserResources(context: PluginSetupContext): void;"],
 	"packaged-transcription.d.ts": [
 		"setupOpenAiChatGptTranscription(context: PluginSetupContext): void;",

@@ -9,7 +9,7 @@ export const DESKTOP_TAB_MAX_WIDTH = 3840;
 export const DESKTOP_TAB_DEFAULT_WIDTH = 520;
 export const DESKTOP_TAB_LIMIT = 24;
 
-export type DesktopSessionTool = "preview" | "raw-events" | "web-annotations" | "runtime-requests" | "session-inspector";
+export type DesktopSessionTool = "raw-events" | "runtime-requests" | "session-inspector";
 
 export type DesktopTabTarget =
 	| { kind: "route"; route: Exclude<ChatAppRoute, { area: "sessions" }> }
@@ -62,9 +62,7 @@ export function desktopTabTitle(target: DesktopTabTarget): string {
 	if (target.kind === "new-tab") return "New Tab";
 	if (target.kind === "plugin-view") return target.title;
 	if (target.kind === "session-tool") {
-		if (target.tool === "preview") return "Preview";
 		if (target.tool === "raw-events") return "Raw Events";
-		if (target.tool === "web-annotations") return "Annotations";
 		if (target.tool === "runtime-requests") return "Runtime Requests";
 		return "Session Inspector";
 	}
@@ -197,12 +195,7 @@ export function desktopTabKeepsMounted(tab: DesktopTab): boolean {
 }
 
 export function desktopTabPluginViewId(target: DesktopTabTarget): PluginQualifiedId | null {
-	if (target.kind === "plugin-view") return target.viewId;
-	if (target.kind !== "route") return null;
-	if (target.route.area === "workflows") return "pibo.product-ui/workflows";
-	if (target.route.area === "cron") return "pibo.product-ui/cron";
-	if (target.route.area === "loops") return "pibo.product-ui/loops";
-	return null;
+	return target.kind === "plugin-view" ? target.viewId : null;
 }
 
 export function desktopTabStateFromSessionTabset(tabset: PluginSessionTabset): DesktopTabState {
@@ -416,7 +409,7 @@ function isDesktopTabTarget(value: unknown): value is DesktopTabTarget {
 }
 
 function isDesktopSessionTool(value: unknown): value is DesktopSessionTool {
-	return value === "preview" || value === "raw-events" || value === "web-annotations" || value === "runtime-requests" || value === "session-inspector";
+	return value === "raw-events" || value === "runtime-requests" || value === "session-inspector";
 }
 
 function isDesktopRoute(value: Record<string, unknown>): value is Exclude<ChatAppRoute, { area: "sessions" }> {

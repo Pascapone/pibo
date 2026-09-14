@@ -1,6 +1,6 @@
 const CACHE_NAME = "pibo-chat-v3";
 const APP_SHELL_URL = "/apps/chat/";
-const BUILTIN_PLUGIN_ASSET_PATH = "/apps/chat/assets/pibo-builtin-plugin.js";
+const PLUGIN_ASSET_PATH_PREFIX = "/apps/chat/assets/pibo-plugin-";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -47,9 +47,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname === BUILTIN_PLUGIN_ASSET_PATH) {
-    // This stable URL changes with each product build. Never combine an older
-    // plugin bundle (and its React chunks) with the current application shell.
+  if (url.pathname.startsWith(PLUGIN_ASSET_PATH_PREFIX) && url.pathname.endsWith(".js")) {
+    // These stable entry URLs change with each package build. Never combine an
+    // older plugin bundle (and its React chunks) with the current application shell.
     event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }

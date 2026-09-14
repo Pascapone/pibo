@@ -31,7 +31,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F01 – Öffentliche Host-Dienste und Tool-Verträge vervollständigen | abgeschlossen | Typecheck, SDK-Build und 42 fokussierte Tests | offen bis F10 | F02-Toolfamilien migrieren |
 | F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen; physischer Delivery-Nachweis folgt in F06 | Root-Emit, SDK-Build, Chat-UI-Typecheck, 167 Provider-/Auswahltests plus 56 Controller-/Reminder-/Lifecycle-Tests | offen bis F10 | F06-07 am Minimalartefakt beweisen |
 | F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | offen bis F10 | F04-Featurepakete trennen |
-| F04 – Featurepakete einschließlich ihrer Oberflächen trennen | teilweise; Run-/Delegation-Ownership abgeschlossen | N-022 Root-Emit und 56 fokussierte Tests | offen bis F10 | F04-01 bis F04-06 |
+| F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen; physische unabhängige Artefakte folgen in F06 | Root-Emit, Chat-UI-Typecheck/-Build, 39 Feature-/UI-/Cachetests plus N-022-Nachweis | offen bis F10 | F05 Runtime Requests und Runtimepakete |
 | F05 – Runtimepakete und Runtime Requests abschließen | offen | offen | offen | gemäß Detailaufgaben |
 | F06 – Minimal- und Standarddistribution bauen | offen | offen | offen | gemäß Detailaufgaben |
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | offen | offen | offen | gemäß Detailaufgaben |
@@ -88,15 +88,15 @@ Nachweise: `/tmp/pibo4-f03-completion.md`; Root-Emit, Chat-UI-Typecheck und Prod
 
 ## F04 – Featurepakete einschließlich ihrer Oberflächen trennen
 
-- [ ] F04-01: Preview, Web Annotations, Goal/Loops, Cron und Workflows als unabhängig auslieferbare Pakete abschließen.
-- [ ] F04-02: Je Paket alle benötigten Dienste, API-/Channel-/CLI-Beiträge, Tools, Settings, Kontext und Ansichten mitliefern.
-- [ ] F04-03: Feature-Einträge aus `DesktopSessionTool` und festem App-Dispatch entfernen; nur echte Kernziele behalten.
-- [ ] F04-04: Gemeinsames First-Party-Navigationsdesign als wiederverwendbare Hilfe anbieten; keine Plugin-ID-Allowlist im Host.
-- [ ] F04-05: Plugin-Abhängigkeiten explizit deklarieren; z. B. keine implizite Preview- oder Cron-Abhängigkeit über einen globalen Import.
-- [ ] F04-06: Deinstallation erhält Daten/Tabzustände und zeigt fehlende Angebote verständlich; Wiederinstallation stellt zuordenbare Zustände wieder bereit.
+- [x] F04-01: Preview, Web Annotations, Goal/Loops, Cron und Workflows als unabhängig auslieferbare Pakete abgeschlossen; selbständige gepackte npm-Artefakte folgen als F06-Distributionstest.
+- [x] F04-02: Je Paket benötigte Dienste, API-/Channel-/CLI-Beiträge, Tools, Settings, Kontext und Ansichten zugeordnet; Preview/Cron/Workflows besitzen getrennte Backendmodule und alle Featureansichten getrennte Browserentries.
+- [x] F04-03: Preview und Web Annotations aus `DesktopSessionTool` entfernt; Feature-Routen lösen installierte Views über Manifestmetadaten statt feste Plugin-IDs auf.
+- [x] F04-04: Gemeinsames First-Party-Navigationsdesign über `subviewNavigation` wiederverwendbar gemacht; die Host-Allowlist ist entfernt.
+- [x] F04-05: Featurepakete und Browserentries getrennt deklariert; Cron kann ohne versteckte Web-Produktoption starten, physische Closure folgt in F06.
+- [x] F04-06: Fehlende Route zeigt einen verständlichen Reinstall-/Datenerhalt-Leerzustand; Tabzustände bleiben Session-owned und Web-Annotations-Reinstall sowie Plugin-View-Lifecycle sind geprüft.
 - [x] F04-07: Run-/Delegation-Pakete konstruieren und registrieren ihre Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste; Core importiert weder Feature-Factories noch Toolnamen, Agent-Observation-Projektion oder konkrete Reminderformatter (N-022).
 
-Nachweise für F04-07: `/tmp/pibo4-f04-n022.md`; Root-Emit und **56/56** fokussierte Tests. F04-01 bis F04-06 sowie der gepackte F06-07-Grenznachweis bleiben offen.
+Nachweise: `/tmp/pibo4-f04-n022.md` für F04-07 und `/tmp/pibo4-f04-feature-packages.md` für F04-01 bis F04-06. Root-Emit, Chat-UI-Typecheck/-Build, **39/39** Feature-/UI-/Cachetests und **56/56** Controller-/Reminder-/Lifecycle-Tests sind grün. Der gepackte, self-contained F06-/F06-07-Grenznachweis bleibt offen.
 
 ## F05 – Runtimepakete und Runtime Requests abschließen
 
@@ -173,12 +173,12 @@ Nachweise: offen.
 | N-004 | Runtime-Request-Antwortaktionen hängen am bisherigen Core-Sammelplugin. | F05 | offen, im Plan berücksichtigt |
 | N-005 | Root-Export `./*` und `plugin-builtin/*` machen interne Implementierung zur Delivery-Fläche. | F01/F06/F08 | offen; explizite Subpaths beschlossen |
 | N-006 | Session-Tool-Assembly und Context-Build wählen konkrete Pibo-Toolfamilien nach Namen/Präfix. | F01/F02 | behoben; Materialisierung, Ursprung, direkte/yielded Kataloge und Context Build sind provider-/plangetrieben |
-| N-007 | App, Desktop-Katalog und Browser-Host enthalten konkrete Feature-View-IDs beziehungsweise First-Party-Allowlist. | F03/F04/F07 | offen; Core-Ziele plus deklarative View-Metadaten beschlossen |
-| N-008 | `pibo.web-product`, `pibo.user-resources` und `pibo.product-ui` besitzen noch ausdrücklich dem Core zugeordnete Flächen. | F03/F04/F06/F07 | offen; Owner-Aufteilung beschlossen |
+| N-007 | App, Desktop-Katalog und Browser-Host enthalten konkrete Feature-View-IDs beziehungsweise First-Party-Allowlist. | F03/F04/F07 | im normalen Laufzeitpfad behoben; alte IDs bleiben bis F07 nur als Migrationsinput |
+| N-008 | `pibo.web-product`, `pibo.user-resources` und `pibo.product-ui` besitzen noch ausdrücklich dem Core zugeordnete Flächen. | F03/F04/F06/F07 | normale Owner-Aufteilung behoben; alte Installationen/Module bleiben bis F07/F08 als Cutover-Eingang |
 | N-009 | Pi/Codex/OMP und Featureabhängigkeiten liegen weiterhin im Root-Build und Root-Dependencygraph. | F05/F06 | offen; getrennte Runtimepakete beschlossen |
 | N-010 | Legacy-Manifesthinweise werden im normalen Schema-v1-Laufzeitpfad interpretiert. | F07/F08 | offen; Übersetzung am Migrationseingang beschlossen |
 | N-011 | Der sichere Plugin-Installer installiert keine npm-Abhängigkeiten; unabhängige Pakete brauchen self-contained Bundles und nur öffentliche SDK-Peers. | F01/F06 | offen; Bundle-Grenze beschlossen |
-| N-012 | Ein zentraler `pibo-builtin-plugin.js`-Browserchunk bindet Core- und Feature-UI samt großer transitiver Closure. | F03/F04/F06 | offen; Core-/Feature-Entries werden getrennt |
+| N-012 | Ein zentraler `pibo-builtin-plugin.js`-Browserchunk bindet Core- und Feature-UI samt großer transitiver Closure. | F03/F04/F06 | Browserentries getrennt und Cachepfade geprüft; gepackte Minimal-/Featureclosure bleibt F06 |
 | N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | offen; zweistufiger Cutover und fail-closed Direktwechsel beschlossen |
 | N-014 | Ein pauschal auswählbarer Session-Tool-Provider könnte mehrere nicht einzeln deklarierte oder abgewählte Tools freischalten. | F01 | behoben und fokussiert geprüft; appweiter Provider plus einzeln ausgewählte/runtimegefilterte Tool-Contributions |
 | N-015 | `dispose(): void` akzeptiert in TypeScript auch async Funktionen; Provider-Cleanup könnte dadurch unbemerkt weiterlaufen oder fehlschlagen. | F01 | behoben und fokussiert geprüft; Cleanup wird awaited, aggregiert und blockiert Zulassungsfreigabe |
@@ -207,3 +207,4 @@ A-C40-01 bis A-C40-16 aus dem Plan sind offen. Je Szenario werden Commit/Paket, 
 - F02-Review korrigiert den Abschlussstatus: Provider-/Auswahl-/Verhaltenspfade sind mit Root-Emit, SDK-Build, Chat-UI-Typecheck und 167 fokussierten Tests grün, aber F02-02 bleibt teilweise offen. `session-router` importiert noch konkrete Run-/Delegation-Factories, den Delegation-Toolnamen und Run-Reminderformatter. N-022 bindet die Eigentumsbereinigung an F04 und den physischen Minimalartefaktbeweis an F06; F03 läuft sequenziell weiter.
 - F03 abgeschlossen: fünf Core-Ansichten rendern ohne Product-UI-Beiträge im bestehenden Sessiontab-Lifecycle; Auth, Basis-Web, Chat und Benutzerressourcen starten mit null Plugininstallationen. Übergangspakete besitzen nur noch Featureflächen. Root-Emit, Chat-UI-Typecheck/-Build, 34 fokussierte Tests und headful Desktop-/Mobile-Abnahme sind grün. N-023 behob dabei den frischen provider-backed Profilstart; F04 übernimmt die verbleibenden Sammelfeatures.
 - F04-07/N-022 abgeschlossen: Run- und Delegation-Pakete konstruieren ihre Controller selbst. Core besitzt nur generische Yielded-Run-/Child-Session-Orchestrierung; Delegationsname, Child-Metadaten, Agent-Observation-Projektion und Run-Reminderformat liegen im Paket. Alte Portable-Controller-Injection einschließlich `subagentRunner` wurde entfernt. Root-Emit und 56 fokussierte Tests sind grün; F06-07 muss die Grenze noch am gepackten Minimal-Core belegen.
+- F04 abgeschlossen: Preview, Cron und Workflows besitzen getrennte Backendpakete; alle Featureansichten liegen in getrennten Browserentries. Feature-Routen werden über `metadata.chatRoute` auf installierte Beiträge aufgelöst, interne Navigation über `subviewNavigation` statt Host-Allowlist gesteuert, Preview/Web Annotations sind keine Core-Sessiontools mehr. Root-Emit, Chat-UI-Typecheck/-Build und 39 Feature-/UI-/Cachetests sind grün; F06 übernimmt self-contained Paketartefakte und die physische Closure.

@@ -12,6 +12,9 @@ export const CORE_PLUGIN_ID = "pibo.core";
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
 export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
 export const WEB_PRODUCT_PLUGIN_ID = "pibo.web-product";
+export const PREVIEW_PLUGIN_ID = "pibo.preview";
+export const CRON_PLUGIN_ID = "pibo.cron";
+export const WORKFLOWS_PLUGIN_ID = "pibo.workflows";
 export const USER_RESOURCES_PLUGIN_ID = "pibo.user-resources";
 export const WEB_ANNOTATIONS_PLUGIN_ID = "pibo.web-annotations";
 export const CODE_RUNTIME_PLUGIN_ID = "pibo.code-runtime";
@@ -77,6 +80,49 @@ export function webProductPackageManifest(): PluginManifest {
 			{ id: "cron-channel", kind: "channel", name: "cron", title: "Cron channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Cron feature infrastructure." } },
 			{ id: "preview-app", kind: "web-app", name: "session-live-previews", title: "Session live previews", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Preview feature infrastructure." } },
 		],
+	};
+}
+
+export function previewPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: PREVIEW_PLUGIN_ID,
+		name: "Pibo Preview",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		contributions: [
+			systemContribution("app", "web-app", "session-live-previews"),
+			productView("view", "Preview", "PreviewView", "preview"),
+		],
+	};
+}
+
+export function cronPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: CRON_PLUGIN_ID,
+		name: "Pibo Cron",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
+		contributions: [
+			systemContribution("channel", "channel", "cron"),
+			productView("view", "Cron", "CronView", "cron"),
+		],
+	};
+}
+
+export function workflowsPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: WORKFLOWS_PLUGIN_ID,
+		name: "Pibo Workflows",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		contributions: [productView("view", "Workflows", "WorkflowsView", "workflows")],
 	};
 }
 
@@ -149,6 +195,7 @@ function settingsView(title: string): PluginContribution {
 			mount: "unmount",
 			stateSchemaVersion: 1,
 			stateSchema: { type: "object", additionalProperties: true },
+			subviewNavigation: "renderer",
 			subviews: [{ id: "settings", title: "Settings", purpose: "settings", settingsScopes: ["app", "agent", "session"] }, { id: "context", title: "Context", purpose: "context" }],
 		},
 	};
@@ -238,6 +285,7 @@ export function webAnnotationsPackageManifest(): PluginManifest {
 					mount: "keep-alive",
 					stateSchemaVersion: 1,
 					stateSchema: { type: "object", additionalProperties: true },
+					subviewNavigation: "renderer",
 					subviews: [
 						{ id: "annotations", title: "Annotations", purpose: "content" },
 						{ id: "settings", title: "Settings", purpose: "settings", settingsScopes: ["app", "agent", "session"] },
@@ -328,6 +376,7 @@ export function goalControlPackageManifest(): PluginManifest {
 			systemContribution("session-tools", "session-tool-provider", `${GOAL_CONTROL_PLUGIN_ID}-session-tools`),
 			...PIBO_GOAL_TOOL_NAMES.map((name) => ({ ...toolContribution(name, { defaultEnabled: true, context: { kind: "context", stage: "tools", description: "Persisted session-goal lifecycle tool.", loading: "runtime" } }), sessionToolProvider: `${GOAL_CONTROL_PLUGIN_ID}/session-tools` as const, dependsOn: [`${GOAL_CONTROL_PLUGIN_ID}/session-tools` as const] })),
 			settingsView("Pibo Goal Control settings"),
+			productView("loops", "Loops", "LoopsView", "loops"),
 			systemContribution("service", "system-service", PIBO_LOOP_SERVICE),
 			systemContribution("channel", "channel", "pibo.loop"),
 			systemContribution("goal-action", "gateway-action", "goal"),
@@ -361,7 +410,7 @@ export const builtinProfilesPackageManifest = (): PluginManifest => runtimeAdapt
 	systemContribution("base", "profile", "base"),
 	systemContribution("gateway-producer", "profile", "pibo-gateway-producer"),
 ]);
-function productView(id: string, title: string, exportName: string, subviews?: NonNullable<NonNullable<PluginContribution["view"]>["subviews"]>): PluginContribution {
+function productView(id: string, title: string, exportName: string, chatRoute?: string, subviews?: NonNullable<NonNullable<PluginContribution["view"]>["subviews"]>): PluginContribution {
 	return {
 		id,
 		kind: "view",
@@ -371,6 +420,7 @@ function productView(id: string, title: string, exportName: string, subviews?: N
 		defaultEnabled: true,
 		schemaVersion: 1,
 		context: { kind: "none", reason: "Product view; no model context." },
+		...(chatRoute ? { metadata: { chatRoute } } : {}),
 		view: { title, exportName, presentation: "workspace", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, stateSchema: { type: "object", additionalProperties: true }, ...(subviews ? { subviews } : {}) },
 	};
 }
@@ -384,9 +434,9 @@ export function productUiPackageManifest(): PluginManifest {
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		contributions: [
-			productView("workflows", "Workflows", "WorkflowsView"),
-			productView("cron", "Cron", "CronView"),
-			productView("loops", "Loops", "LoopsView"),
+			productView("workflows", "Workflows", "WorkflowsView", "workflows"),
+			productView("cron", "Cron", "CronView", "cron"),
+			productView("loops", "Loops", "LoopsView", "loops"),
 		],
 	};
 }
@@ -422,32 +472,33 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "core" | "user-resources" | "web-product" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
+	backendModule: "core" | "user-resources" | "preview" | "cron" | "workflows" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-adapters" | "profiles" | "mcp-cli" | "product-ui";
 	webOnly?: boolean;
-	browserExports?: string;
+	browserModules?: readonly { exports: string; asset: string }[];
 };
 
 const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: corePackageManifest, backendExport: "setupCore", backendModule: "core" },
-	{ manifest: webProductPackageManifest, backendExport: "setupWebProduct", backendModule: "web-product", webOnly: true },
+	{ manifest: previewPackageManifest, backendExport: "setupPreview", backendModule: "preview", webOnly: true, browserModules: [{ exports: "PreviewView", asset: "pibo-plugin-preview.js" }] },
+	{ manifest: cronPackageManifest, backendExport: "setupCron", backendModule: "cron", webOnly: true, browserModules: [{ exports: "CronView", asset: "pibo-plugin-cron.js" }] },
+	{ manifest: workflowsPackageManifest, backendExport: "setupWorkflows", backendModule: "workflows", browserModules: [{ exports: "WorkflowsView", asset: "pibo-plugin-workflows.js" }] },
 	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription" },
 	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription" },
-	{ manifest: webAnnotationsPackageManifest, backendExport: "setup", backendModule: "web-annotations", browserExports: "WebAnnotationsView, BuildContextView" },
-	{ manifest: codeRuntimePackageManifest, backendExport: "setupCodeRuntime", backendModule: "tool-families", browserExports: "ToolFamilyView" },
-	{ manifest: fileEditingPackageManifest, backendExport: "setupFileEditing", backendModule: "tool-families", browserExports: "ToolFamilyView" },
-	{ manifest: webSearchPackageManifest, backendExport: "setupWebSearch", backendModule: "tool-families", browserExports: "ToolFamilyView" },
-	{ manifest: browserToolsPackageManifest, backendExport: "setupBrowserTools", backendModule: "tool-families", browserExports: "ToolFamilyView" },
-	{ manifest: gatewayToolsPackageManifest, backendExport: "setupGatewayTools", backendModule: "tool-families", browserExports: "ToolFamilyView" },
-	{ manifest: codexCompatPackageManifest, backendExport: "setupCodexCompat", backendModule: "tool-families", browserExports: "ToolFamilyView" },
-	{ manifest: runControlPackageManifest, backendExport: "setupRunControl", backendModule: "control-tools", browserExports: "ToolFamilyView" },
-	{ manifest: goalControlPackageManifest, backendExport: "setupGoalControl", backendModule: "control-tools", browserExports: "ToolFamilyView" },
-	{ manifest: agentDelegationPackageManifest, backendExport: "setupAgentDelegation", backendModule: "control-tools", browserExports: "ToolFamilyView" },
+	{ manifest: webAnnotationsPackageManifest, backendExport: "setup", backendModule: "web-annotations", browserModules: [{ exports: "WebAnnotationsView", asset: "pibo-plugin-web-annotations.js" }, { exports: "BuildContextView", asset: "pibo-plugin-build-context.js" }] },
+	{ manifest: codeRuntimePackageManifest, backendExport: "setupCodeRuntime", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: fileEditingPackageManifest, backendExport: "setupFileEditing", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: webSearchPackageManifest, backendExport: "setupWebSearch", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: browserToolsPackageManifest, backendExport: "setupBrowserTools", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: gatewayToolsPackageManifest, backendExport: "setupGatewayTools", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: codexCompatPackageManifest, backendExport: "setupCodexCompat", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: runControlPackageManifest, backendExport: "setupRunControl", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: goalControlPackageManifest, backendExport: "setupGoalControl", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }, { exports: "LoopsView", asset: "pibo-plugin-loops.js" }] },
+	{ manifest: agentDelegationPackageManifest, backendExport: "setupAgentDelegation", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 	{ manifest: builtinProfilesPackageManifest, backendExport: "setupBuiltinProfiles", backendModule: "profiles" },
 	{ manifest: piRuntimePackageManifest, backendExport: "setupPiRuntime", backendModule: "runtime-adapters" },
 	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-adapters" },
 	{ manifest: ompRuntimePackageManifest, backendExport: "setupOmpRuntime", backendModule: "runtime-adapters" },
-	{ manifest: mcpCliPackageManifest, backendExport: "setupMcpCli", backendModule: "mcp-cli", browserExports: "ToolFamilyView" },
-	{ manifest: productUiPackageManifest, backendExport: "setupProductUi", backendModule: "product-ui", browserExports: "WorkflowsView, CronView, LoopsView" },
+	{ manifest: mcpCliPackageManifest, backendExport: "setupMcpCli", backendModule: "mcp-cli", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 ];
 
 async function materializeDefaultPackage(artifactRoot: string, descriptor: DefaultPackageDescriptor): Promise<{ manifest: PluginManifest; source: string }> {
@@ -457,7 +508,7 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 	await Promise.all([
 		writeFile(join(source, "pibo.plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 }),
 		writeFile(join(source, "backend.mjs"), `export { ${descriptor.backendExport} as setup } from "@pasko70/pibo/plugin-builtin/${descriptor.backendModule}";\n`, { mode: 0o600 }),
-		...(descriptor.browserExports ? [writeFile(join(source, "browser.mjs"), `export { ${descriptor.browserExports} } from "/apps/chat/assets/pibo-builtin-plugin.js?v=${manifest.version}";\n`, { mode: 0o600 })] : []),
+		...(descriptor.browserModules ? [writeFile(join(source, "browser.mjs"), `${descriptor.browserModules.map((entry) => `export { ${entry.exports} } from "/apps/chat/assets/${entry.asset}?v=${manifest.version}";`).join("\n")}\n`, { mode: 0o600 })] : []),
 	]);
 	return { manifest, source };
 }

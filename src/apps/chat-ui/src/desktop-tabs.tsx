@@ -7,7 +7,6 @@ import {
 	GitBranch,
 	Layers3,
 	ListTree,
-	MessageSquareText,
 	PanelRightClose,
 	PanelRightOpen,
 	Plus,
@@ -92,11 +91,13 @@ export function desktopTabInsertionIndex(
 	return overIndex + (position === "after" ? 1 : 0);
 }
 
-const FEATURE_SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
-	{ id: "preview", label: "Preview", description: "Live session preview", icon: Sparkles, target: { kind: "session-tool", tool: "preview" } },
-	{ id: "web-annotations", label: "Web Annotations", description: "Annotations attached to this session", icon: MessageSquareText, target: { kind: "session-tool", tool: "web-annotations" } },
-	{ id: "runtime-requests", label: "Runtime Requests", description: "Approvals and runtime input", icon: TerminalSquare, target: { kind: "session-tool", tool: "runtime-requests" } },
-] as const;
+const RUNTIME_REQUEST_CATALOG: CatalogEntry = {
+	id: "runtime-requests",
+	label: "Runtime Requests",
+	description: "Approvals and runtime input",
+	icon: TerminalSquare,
+	target: { kind: "session-tool", tool: "runtime-requests" },
+};
 
 function coreSessionToolCatalogEntry(id: CoreSessionViewId, icon: LucideIcon): CatalogEntry {
 	const entry = CORE_SESSION_VIEW_CATALOG.find((candidate) => candidate.id === id)!;
@@ -117,14 +118,11 @@ export function desktopTabCatalog(): readonly CatalogEntry[] {
 		{ id: "cron", label: "Cron", description: "Scheduled jobs", icon: Clock3, target: { kind: "route", route: { area: "cron" } } },
 		{ id: "loops", label: "Loops", description: "Goal and legacy Ralph loops", icon: GitBranch, target: { kind: "route", route: { area: "loops" } } },
 	];
-	const [preview, annotations, runtimeRequests] = FEATURE_SESSION_TOOL_CATALOG;
 	return [
 		...coreRoutes,
 		...featureRoutes,
-		preview!,
 		coreSessionToolCatalogEntry("raw-events", Braces),
-		annotations!,
-		runtimeRequests!,
+		RUNTIME_REQUEST_CATALOG,
 		coreSessionToolCatalogEntry("session-inspector", ListTree),
 	];
 }
@@ -218,15 +216,9 @@ export function DesktopTabSidebar({
 	const activeTab = activeDesktopTab(state);
 	const pluginViews = usePluginWorkspaceCatalogViews();
 	const entries = useMemo(() => {
-		const representedViews = new Set([
-			"pibo.product-ui/workflows",
-			"pibo.product-ui/cron",
-			"pibo.product-ui/loops",
-			"pibo.web-annotations/annotations",
-		]);
 		return [
 			...desktopTabCatalog(),
-			...pluginViews.filter((view) => !representedViews.has(view.id)).map((view) => ({
+			...pluginViews.filter((view) => view.chatRoutes.length === 0).map((view) => ({
 				id: `plugin:${view.id}`,
 				label: view.title,
 				description: `Plugin module · ${view.pluginId}`,
@@ -258,12 +250,18 @@ export function DesktopTabSidebar({
 		if (!closed) focusAfterCloseRef.current = false;
 	}, [onClose]);
 	const refreshTab = useCallback(async (tab: DesktopTab) => {
+		const directViewId = desktopTabPluginViewId(tab.target);
+		const routeArea = tab.target.kind === "route" ? tab.target.route.area : undefined;
+		const routeViewId = routeArea
+			? pluginViews.find((view) => view.chatRoutes.includes(routeArea))?.id
+			: undefined;
+		const pluginViewId = directViewId ?? routeViewId;
 		const allowed = onBeforeRefresh
 			? await onBeforeRefresh(tab)
-			: !(desktopTabPluginViewId(tab.target)) || await preparePluginRefresh(desktopTabPluginViewId(tab.target)!);
+			: !pluginViewId || await preparePluginRefresh(pluginViewId);
 		if (!allowed) return;
 		setRefreshVersions((current) => ({ ...current, [tab.id]: (current[tab.id] ?? 0) + 1 }));
-	}, [onBeforeRefresh, preparePluginRefresh]);
+	}, [onBeforeRefresh, pluginViews, preparePluginRefresh]);
 
 	const onCatalogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
 		const buttons = [...catalogRef.current?.querySelectorAll<HTMLButtonElement>("button[data-catalog-entry]") ?? []];

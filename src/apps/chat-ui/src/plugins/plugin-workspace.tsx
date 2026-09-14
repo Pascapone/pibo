@@ -7,19 +7,6 @@ import { PluginManagement } from "./plugin-management";
 import { migrateBrowserV1TabsOnce, readBrowserV1UpgradeReport } from "./browser-v1-upgrade";
 
 type Workspace = { controller: SessionTabController; host: BrowserPluginHost | null; plan: EffectivePluginPlan | null; catalog: PluginBrowserCatalog | null; agentId?: string; roomId?: string; error: string | null; openView: PluginViewProps["openView"]; createSession?: PluginViewProps["createSession"]; refresh: () => void; prepareTabRefresh: (instanceId: string) => Promise<boolean>; activateTab: (instanceId: string) => Promise<boolean>; closeTab: (instanceId: string) => Promise<boolean>; registerBeforeLeave: (instanceId: string, handler: () => Promise<void>) => () => void };
-const FIRST_PARTY_SELF_NAVIGATED_VIEWS = new Set<PluginQualifiedId>([
-	"pibo.web-annotations/annotations",
-	"pibo.code-runtime/settings",
-	"pibo.file-editing/settings",
-	"pibo.web-search/settings",
-	"pibo.browser-tools/settings",
-	"pibo.gateway-tools/settings",
-	"pibo.codex-compat/settings",
-	"pibo.run-control/settings",
-	"pibo.goal-control/settings",
-	"pibo.agent-delegation/settings",
-	"pibo.mcp-cli/settings",
-]);
 const WorkspaceContext = createContext<Workspace | null>(null);
 function useSessionTabControllerLifecycle(controller: SessionTabController | null, onMigrationError?: (message: string) => void) {
 	const [, rerender] = useReducer((value) => value + 1, 0);
@@ -144,7 +131,7 @@ function SessionWorkspace({ piboSessionId, controller: providedController, onCre
 	const shellContent = Shell ? <PluginErrorBoundary fallback={children}><Shell piboSessionId={piboSessionId}>{children}</Shell></PluginErrorBoundary> : children;
 	return <WorkspaceContext.Provider value={workspace}><BrowserPluginContext.Provider value={host ? { host, openView } : null}>{shellContent}</BrowserPluginContext.Provider></WorkspaceContext.Provider>;
 }
-export type PluginWorkspaceCatalogView = { id: PluginQualifiedId; title: string; pluginId: string; piboSessionId: string };
+export type PluginWorkspaceCatalogView = { id: PluginQualifiedId; title: string; pluginId: string; piboSessionId: string; chatRoutes: readonly string[] };
 
 export function usePluginWorkspaceCatalogViews(): readonly PluginWorkspaceCatalogView[] {
 	const workspace = useContext(WorkspaceContext);
@@ -154,6 +141,7 @@ export function usePluginWorkspaceCatalogViews(): readonly PluginWorkspaceCatalo
 			title: entry.contribution.view!.title,
 			pluginId: entry.pluginId,
 			piboSessionId: workspace.controller.piboSessionId,
+			chatRoutes: typeof entry.contribution.metadata?.chatRoute === "string" ? [entry.contribution.metadata.chatRoute] : [],
 		}))
 		: [], [workspace?.plan, workspace?.catalog]);
 }
@@ -281,7 +269,7 @@ function PluginTabPanel({ workspace, tab, active }: { workspace: Workspace; tab:
 	const Component = host?.views.get(tab.viewId);
 	const fallback = <div className="p-3 text-xs space-y-2" data-plugin-placeholder><h3>{tab.fallback}</h3><p>Plugin unavailable, disabled, incompatible, or failed. Saved state is retained.</p><p className="text-orange-300">{host?.errors.get(tab.pluginId)}</p><pre className="whitespace-pre-wrap break-all font-mono">{JSON.stringify(tab.state, null, 2)}</pre></div>;
 	if (!view || !Component || view.stateSchemaVersion !== tab.stateSchemaVersion) return fallback;
-	const showHostSubviewNavigation = !FIRST_PARTY_SELF_NAVIGATED_VIEWS.has(tab.viewId);
+	const showHostSubviewNavigation = view.subviewNavigation !== "renderer";
 	return <div className="h-full flex flex-col min-h-0">
 		{showHostSubviewNavigation && view.subviews?.length ? <nav aria-label={`${view.title} subviews`} className="flex gap-1 p-2 border-b border-slate-700">{view.subviews.map((item) => <button key={item.id} aria-current={tab.subviewId === item.id ? "page" : undefined} className={`text-xs px-2 py-1 ${tab.subviewId === item.id ? "text-cyan-300 bg-cyan-500/10" : "text-slate-400"}`} onClick={() => controller.edit((state) => updatePluginTab(state, tab.instanceId, { subviewId: item.id }))}>{item.title}</button>)}</nav> : null}
 		<div className="min-h-0 flex-1 overflow-clip"><PluginErrorBoundary key={`${tab.instanceId}:${tab.pluginRevision}`} fallback={fallback}><Component tab={tab} piboSessionId={tab.piboSessionId} agentId={workspace.agentId} roomId={workspace.roomId} active={active} signal={abort.signal} state={tab.state} updateState={(state) => { if (!abort.signal.aborted) controller.edit((current) => updatePluginTab(current, tab.instanceId, { state })); }} request={sessionPluginRequest(tab.piboSessionId, tab.pluginId, abort.signal)} openView={workspace.openView} createSession={workspace.createSession} registerBeforeLeave={registerBeforeLeave} /></PluginErrorBoundary></div>

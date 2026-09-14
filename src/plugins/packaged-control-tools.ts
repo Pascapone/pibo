@@ -63,6 +63,7 @@ export function setupGoalControl(context: PluginSetupContext): () => Promise<voi
 		},
 	}));
 	context.register("settings", {});
+	context.register("loops", {});
 	context.register("service", controller);
 	context.register("channel", createPiboLoopChannel(options, controller));
 	context.register("goal-action", {

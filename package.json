@@ -25,9 +25,17 @@
       "types": "./dist/plugins/packaged-core.d.ts",
       "import": "./dist/plugins/packaged-core.js"
     },
-    "./plugin-builtin/web-product": {
-      "types": "./dist/plugins/packaged-web-product.d.ts",
-      "import": "./dist/plugins/packaged-web-product.js"
+    "./plugin-builtin/preview": {
+      "types": "./dist/plugins/packaged-preview.d.ts",
+      "import": "./dist/plugins/packaged-preview.js"
+    },
+    "./plugin-builtin/cron": {
+      "types": "./dist/plugins/packaged-cron.d.ts",
+      "import": "./dist/plugins/packaged-cron.js"
+    },
+    "./plugin-builtin/workflows": {
+      "types": "./dist/plugins/packaged-workflows.d.ts",
+      "import": "./dist/plugins/packaged-workflows.js"
     },
     "./plugin-builtin/user-resources": {
       "types": "./dist/plugins/packaged-user-resources.d.ts",

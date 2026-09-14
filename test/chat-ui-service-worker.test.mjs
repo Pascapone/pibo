@@ -144,10 +144,10 @@ test("failed Chat navigation falls back to the canonical cached shell", async ()
 	assert.equal(await response.text(), "offline shell");
 });
 
-test("mutable built-in plugin entry always bypasses a retained asset cache", async () => {
+test("mutable plugin entries always bypass a retained asset cache", async () => {
 	const caches = createCacheStorage();
 	const cache = await caches.open(CACHE_NAME);
-	const assetUrl = `${ORIGIN}/apps/chat/assets/pibo-builtin-plugin.js?v=1.0.0`;
+	const assetUrl = `${ORIGIN}/apps/chat/assets/pibo-plugin-workflows.js?v=1.0.0`;
 	await cache.put(assetUrl, new Response("stale plugin bundle"));
 	let fetchOptions;
 	const worker = loadServiceWorker(async (_request, options) => {
