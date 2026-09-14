@@ -2,6 +2,8 @@
 
 ## 2026-09-14
 
+- **Native-first Session recovery**: Implemented and documented adapter-owned binding rechecks, exact Pi/Codex stale-binding repair, durable same-runtime reconstruction only after authoritative absence, retry/CAS-safe provenance checkpoints, and fail-closed handling for auth, permissions, corruption, ambiguity, transient failures, insufficient history and unsupported adapters. OMP no longer silently keeps a fresh transcript after failed resume. Source commit `bcb36ccd`; focused Docker checks passed without Pibo2 access, push, PR, deployment, release, browser/model execution, controller-gateway mutation or full suite.
+
 - Installed candidate `f01d453d` and verified delayed desktop/mobile Session switches against empty targets; recorded exact package identity and persisted-state evidence in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-tab-ownership-correction-acceptance-2026-09-14).
 
 

@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T21:26:00Z"
+  at: "2026-09-14T12:52:33Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "bfb31e40143ea149cf77917d787adaf477539f51"
+  commit: "bcb36ccd17ec45a11f4a568441037b94b1f6e0cd"
   requirements:
     - id: "RUN-SPI-005"
       status: "implemented"
@@ -88,6 +88,21 @@ traceability:
         - "Unavailable diagnostics and missing required methods fail inspection/open explicitly."
         - "Generic auth results are sanitized before leaving the registry boundary."
       confidence: "high"
+    - id: "RUN-SPI-006"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtime/types.ts"
+          symbol: "AgentRuntimeAdapter.resolveBinding"
+        - path: "src/core/session-router.ts"
+          symbol: "PiboSessionRouter.prepareNativeSessionRecovery"
+      tests:
+        - path: "test/runtime-portability.test.mjs"
+          name: "auth and transient native inspection failures never trigger reconstruction"
+        - path: "test/runtime-portability.test.mjs"
+          name: "native recovery fails closed for insufficient history, unsupported adapters, and concurrent binding changes"
+      failures:
+        - "Returning missing is authoritative; all non-absence failures throw and cannot trigger reconstruction or runtime switching."
+      confidence: "high"
 ---
 
 # Scope
@@ -98,9 +113,9 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: A session opens against one configured instance, emits normalized events, supports advertised operations, and disposes idempotently.
+- Lifecycle: Before normal continuation, an adapter may recheck the frozen bound or missing identity in adapter-owned storage; a session then opens against that same configured instance, emits normalized events, supports advertised operations, and disposes idempotently.
 - State: Descriptor, configured-instance, profile, and live-session capability claims must agree.
-- Failure: Unavailable diagnostics and missing required methods fail inspection/open explicitly.
+- Failure: `resolveBinding()` may return `missing` only as authoritative absence. Auth, permission, corruption, ambiguity, unavailability, and transient failures throw; unsupported recovery fails explicitly.
 - Security: Generic auth results are sanitized before leaving the registry boundary.
 - Compatibility: Generic runtime and router modules do not import Pi, Codex, or ORP implementations; compatibility facades contain no implementation logic.
 
@@ -126,6 +141,10 @@ Adapter-neutral runtime and router modules SHALL not import concrete runtime imp
 
 An adapter MAY provide read-only persisted fork candidates without opening a Runtime Session. The router SHALL use this optional operation only for a matching, bound, fork-capable adapter without a live, pending, disposing, or quiescing runtime and outside router shutdown. It SHALL recheck runtime absence, workspace, and binding after inspection. A concurrent live runtime SHALL take precedence; `undefined` SHALL retain the existing runtime fallback. Concrete transcript parsing remains adapter-owned.
 
+## Requirement: RUN-SPI-006
+
+An adapter implementing `resolveBinding()` SHALL own lookup and classification for both bound and stale-missing native identities. Returning `bound` SHALL identify the exact original native state; returning `missing` SHALL mean authoritative absence. Authentication, permission, corruption, ambiguity, provider/runtime unavailability, and transient failures SHALL throw and SHALL NOT authorize reconstruction or runtime switching.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -137,6 +156,7 @@ Implemented public contracts:
 - `AgentRuntimeSemanticEvent`
 - `AgentRuntimeAdapterRegistry`
 - `validateAgentRuntimeSessionContract`
+- `AgentRuntimeAdapter.resolveBinding`
 
 Related ownership boundaries:
 
@@ -159,7 +179,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `bfb31e40143ea149cf77917d787adaf477539f51`. Cold fork inspection has [Docker and Pibo2 evidence](/reports/idle-session-history-latency-validation-2026-09-05.md); earlier lifecycle evidence retains its original execution scope. Runtime admission validates the complete live-session contract before use; a partial session is rejected, cleanup still runs, and cleanup errors cannot mask the contract failure. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bcb36ccd17ec45a11f4a568441037b94b1f6e0cd`. Cold fork inspection has [Docker and Pibo2 evidence](/reports/idle-session-history-latency-validation-2026-09-05.md); earlier lifecycle evidence retains its original execution scope. Runtime admission validates the complete live-session contract before use; a partial session is rejected, cleanup still runs, and cleanup errors cannot mask the contract failure. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 

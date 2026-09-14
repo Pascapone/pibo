@@ -15,11 +15,11 @@ migration_lineage:
   source_body_sha256: "543f12d0ce1bb38fdf374dd4002046f7f7ec66836778ca7180180fb6749ebb37"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-09T06:20:36Z"
+  at: "2026-09-14T12:52:33Z"
 ---
 # Agent Runtime History and Debug
 
-**Updated:** 2026-09-09
+**Updated:** 2026-09-14
 
 Architecture and operating procedures are documented in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md) and [`agent-runtime-operations.md`](./agent-runtime-operations.md).
 
@@ -61,7 +61,15 @@ Native compatibility history is requested only when:
 
 Runtime-history cursors wrap the opaque provider cursor with the Pibo Session id, configured runtime instance id, and adapter id. Chat Web rejects a cursor used against a different session or binding.
 
-If native history is partial, trace projection suppresses event echoes only for covered turn/tool identities; uncovered event turns keep their lifecycle parents. If native history is missing, Pibo keeps the Pibo Session and renders any surviving product history/events. The adapter reports a missing-history diagnostic and never creates a replacement native conversation.
+If native history is partial, trace projection suppresses event echoes only for covered turn/tool identities; uncovered event turns keep their lifecycle parents. If native history is missing, Pibo keeps the Pibo Session and renders any surviving product history/events.
+
+## Native-first continuation and reconstruction
+
+Runtime continuation always prefers adapter-native state. The selected adapter rechecks the frozen native id through its own configured storage and trusted locator/workspace scope. A stale locator or stale `missing` marker is repaired when the exact original native state still exists.
+
+Portable reconstruction is a last resort, not a general error fallback. It begins only when the intended adapter authoritatively returns `missing`, the same adapter can import portable history, and the durable Pibo checkpoint contains actual conversation context. Pibo then persists one same-runtime handoff with the original native id, binding state/revision, locator, diagnostic code, and checkpoint; the adapter imports it before any prompt. This seeds a new native container without replaying tools, calling a model, synthesizing turns, changing Session/Room/profile/model/tab ownership, or selecting another runtime.
+
+Authentication, permission, corruption, ambiguity, provider/runtime unavailability, transient errors, unsupported adapters, insufficient history, and CAS conflicts stop recovery and preserve the original binding and files. OMP currently cannot distinguish true absence from other `switch_session` failures, so it fails explicitly and never keeps its fresh startup transcript as an implicit replacement. Explicit cross-runtime import and `startFresh` remain operator/user-directed paths with their existing semantics.
 
 ## Schema-v5 migration and rollback
 

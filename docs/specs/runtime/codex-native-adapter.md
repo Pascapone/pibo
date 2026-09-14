@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T12:20:39Z"
+  at: "2026-09-14T12:52:33Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
+  commit: "bcb36ccd17ec45a11f4a568441037b94b1f6e0cd"
   requirements:
     - id: "RUN-CNX-001"
       status: "implemented"
@@ -75,6 +75,19 @@ traceability:
         - "Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted."
         - "The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal."
       confidence: "high"
+    - id: "RUN-CNX-005"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/codex-native/adapter.ts"
+          symbol: "CodexNativeAgentRuntimeAdapter.resolveBinding"
+      tests:
+        - path: "test/codex-native-thread.test.mjs"
+          name: "Codex native binding inspection marks a missing thread without creating a replacement"
+        - path: "test/codex-native-thread.test.mjs"
+          name: "Codex native binding inspection repairs a stale missing binding when the original thread still exists"
+      failures:
+        - "Only CodexNativeThreadMissingError authorizes missing; auth, protocol, startup, permission, and transient failures propagate without reconstruction."
+      confidence: "high"
 ---
 
 # Scope
@@ -85,9 +98,9 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: Initialize/initialized completes before other RPC; portable history injects before first prompt; active turns support steer/interrupt and detached forks from completed turns; a running-safe fork does not adopt the derived thread or change the source binding; shutdown is bounded and idempotent.
+- Lifecycle: Initialize/initialized completes before other RPC; binding inspection rechecks both bound and stale-missing thread ids before open; portable history injects before first prompt; active turns support steer/interrupt and detached forks from completed turns; a running-safe fork does not adopt the derived thread or change the source binding; shutdown is bounded and idempotent.
 - State: Profile and instance are codex-native; the validated App Server is 0.153.2 and compatible stable 0.153.x releases from patch 2 are accepted with protocol codex-app-server-v2; native thread identity is persisted for resume.
-- Failure: Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted.
+- Failure: Only the App Server's normalized thread-missing result is authoritative absence. Auth, startup, protocol, permission, corruption, and transient inspection failures remain unavailable errors and never authorize reconstruction. Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded.
 - Security: The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal.
 - Compatibility: Generated protocol schemas are pinned to the supported App Server version; foreign and duplicate notifications do not duplicate terminal output.
 
@@ -108,6 +121,10 @@ Codex Native SHALL import portable history with thread/inject_items before the f
 ## Requirement: RUN-CNX-004
 
 Codex Native resource delivery SHALL materialize selected skills/context and verified HTTP MCP access, honor native-subagent overrides, renew bounded leases, and clean or revoke failed generations.
+
+## Requirement: RUN-CNX-005
+
+Codex Native binding inspection SHALL re-read bound and missing thread ids through the configured App Server, repair a stale missing binding when the original thread exists, and return missing only for the normalized authoritative thread-not-found outcome. Every other inspection failure SHALL propagate without creating or selecting a replacement runtime.
 
 # Interfaces and ownership
 
@@ -140,7 +157,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bcb36ccd17ec45a11f4a568441037b94b1f6e0cd`. Requirement confidence measures trace quality, not whether a command ran.
 
 The exact Codex 0.153.2 binary regenerated 83 full and 622 stable-v2 schema definitions. The committed SHA-256 values are `e8284c5cb8157554a3dd1e035aadbd4325aea501af56887e9c2e12eb1b9b9448` for the full schema and `d3eace08be5dca386bfd1f1e8df650058b4113f1e10870a284d775d75517576a` for stable v2. Schema comparison found no removed Pibo-required methods or definitions; the observed changes were additive.
 

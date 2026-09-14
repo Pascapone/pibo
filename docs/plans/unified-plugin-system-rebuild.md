@@ -60,6 +60,14 @@ Der Plugin-Umbau ist die nächste Hauptversion **4.0**. Breaking Changes an alte
 
 Die 4.0-Entscheidung ist kein Auftrag zur sofortigen Veröffentlichung, zum Merge oder zur NPM-Publikation. Fertigstellung verlangt einen Audit der tatsächlich ausgelieferten alten Ausführungspfade; eine neue Versionsnummer oder entfernte UI-Meldung allein erfüllt sie nicht.
 
+## PLG-REC-001: Native-first Session-Wiederaufnahme
+
+Bestehende Pibo Sessions behalten über Upgrades zuerst ihren ursprünglichen adaptereigenen Laufzeitzustand. Der gewählte Adapter prüft gebundene und veraltete `missing`-Bindings in seinem vertrauenswürdigen Locator-/Workspace-Speicher und repariert nur die exakte native Identität. Erst ein autoritatives `missing` darf eine Wiederherstellung aus langlebiger Pibo-Historie zulassen.
+
+Die implementierte Wiederherstellung bleibt in derselben Runtime, verwendet den bestehenden revisionsgesicherten Portable-History-Checkpoint und importiert vor dem ersten Prompt. Sie erhält Pibo Session, Room, Profil, Modell, Workspace-Tabs und Historie, speichert Herkunft des alten nativen Bindings und führt weder Tools noch Modellturns erneut aus. Authentifizierung, Berechtigungen, Korruption, Mehrdeutigkeit, Provider-/Runtime-Ausfall, transiente Fehler, unzureichende Historie und CAS-Konflikte brechen ohne Runtime-Wechsel oder leeren Ersatz ab. Expliziter Cross-Runtime-Import und `startFresh` bleiben unverändert. Adapter ohne beweisbare Abwesenheit oder Importfähigkeit liefern eine präzise Unsupported-Diagnose; OMP fällt in diese Gruppe, solange `switch_session` Abwesenheit nicht sicher von anderen Fehlern trennt.
+
+**Implementierter Nachweis:** Source-Commit `bcb36ccd`; 31/31 kombinierte Runtime-Binding-/Portability-Tests, davon 23/23 im vollständigen Portability-Test, fokussierte Pi-, Codex-Native- und OMP-Adaptertests sowie Root-Typecheck und Produktionsbuild im Docker-Worker. Keine Pibo2-Session wurde geöffnet, verändert oder rekonstruiert.
+
 ## Baseline und Arbeitsumgebung
 
 - Geprüfter Pibo-Commit: `cac4dcd03945b9754db7be9ab2ab4324f10c335c`, beim Planbeginn identisch mit frisch abgerufenem `upstream/dev`.
@@ -97,6 +105,7 @@ Die folgenden Punkte stammen aus den Produktvorgaben; sie werden von Coding-Agen
 | D20 | Das Erstellen einer Session verwendet ausschließlich die Client-Navigation der laufenden Chat-App. Die optimistische Session wird aktiviert und ihr Inline-Rename-Feld bereits vor Abschluss des Create-POST fokussiert, ohne Document-/PWA-Reload; eine neuere bewusste Auswahl bleibt maßgeblich. |
 | D21 | Ein geöffneter echter Workspace-Tab bleibt beim Wechsel zu einem anderen Tab gemountet. Inaktivität wird dem View-Vertrag signalisiert; Refresh führt zuerst die registrierten Leave-/Autosave-Guards und ausstehenden Tabset-Saves aus und remountet bei Erfolg ausschließlich den gewählten Tab. Close entfernt ihn und gibt seine UI-Ressourcen frei. |
 | D22 | Der sichtbare Desktop-Workspace ist Teil des revisionsgesicherten PluginStore-Tabsets seiner Pibo Session. Neue Sessions beginnen ohne echte Tabs; Reihenfolge, aktiver Tab und unterstützter View-Zustand werden weder Room- noch Browser-global geteilt. Auch die URL-/Route-Reconciliation gehört der Session-Auswahlgeneration, die die Route beobachtet hat: eine beim Sessionwechsel noch sichtbare Route von A darf weder ein bereits geladenes noch ein verzögert geladenes leeres Tabset von B initialisieren. Ein begrenzter Controller-Cache darf nur verlustfrei verwerfbare Einträge entfernen: lokale Entwürfe, CAS-Konflikte und laufende Reads/Writes bleiben bis Speicherung oder ausdrücklicher Recovery erhalten, während Browser-Hosts und React-Panels beim Sessionwechsel weiterhin entsorgt werden. |
+| D23 | Session-Wiederaufnahme ist native-first. Nur der gewählte Adapter darf native Abwesenheit autoritativ feststellen; erst dann ist ein checkpointed Same-Runtime-Import aus ausreichender langlebiger Pibo-Historie zulässig. Andere Fehler, Unsupported-Fälle und Konflikte erhalten Binding und Dateien ohne stillen Runtime-Wechsel oder frischen Ersatz. |
 
 
 ## PLG-UX-002: Session-Erstellung und Session-eigener Workspace-Lifecycle

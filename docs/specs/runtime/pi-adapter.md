@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T21:26:00Z"
+  at: "2026-09-14T12:52:33Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "bfb31e40143ea149cf77917d787adaf477539f51"
+  commit: "bcb36ccd17ec45a11f4a568441037b94b1f6e0cd"
   requirements:
     - id: "RUN-PI-005"
       status: "implemented"
@@ -96,6 +96,21 @@ traceability:
         - "Unsupported controls fail explicitly; external harness-native tools without an explicit host-tool capability cannot be wrapped, while Pi direct/native tools remain supported; transcript repair fails closed rather than rerunning durable tool effects."
         - "Pi Bash inherits only router-owned adapter environment without process-global mutation."
       confidence: "high"
+    - id: "RUN-PI-006"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/pi/history.ts"
+          symbol: "resolvePiSessionForBinding"
+        - path: "src/agent-runtimes/pi/adapter.ts"
+          symbol: "PiAgentRuntimeAdapter.resolveBinding"
+      tests:
+        - path: "test/runtime-portability.test.mjs"
+          name: "Pi rechecks a stale missing binding through its persisted native locator"
+        - path: "test/session-router-store.test.mjs"
+          name: "session router marks a missing bound Pi transcript and refuses an empty replacement"
+      failures:
+        - "Unreadable, corrupt, or ambiguous locator/workspace candidates throw and cannot authorize reconstruction."
+      confidence: "high"
 ---
 
 # Scope
@@ -106,9 +121,9 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: The built-in Pi instance opens the existing Pi runtime, preserves the requested session id, normalizes output, and disposes idempotently. While a turn is active, it exposes only completed user-message fork candidates and creates the selected branch from a separate persisted SessionManager snapshot without replacing the active source manager.
+- Lifecycle: The built-in Pi instance rechecks persisted locator and workspace storage before open, repairs a stale missing binding when the exact native id is found, opens the original Pi runtime, preserves the requested session id, normalizes output, and disposes idempotently. While a turn is active, it exposes only completed user-message fork candidates and creates the selected branch from a separate persisted SessionManager snapshot without replacing the active source manager.
 - State: Built-in adapter, driver, and instance identity is pi; the direct Pi runtime package set and adapter protocol version are exactly 0.85.0; intent tracing is off unless a boolean runtime option enables it.
-- Failure: Unsupported controls fail explicitly; external harness-native tools without an explicit host-tool capability cannot be wrapped, while Pi direct/native tools remain supported; transcript repair fails closed rather than rerunning durable tool effects.
+- Failure: Missing locator files continue to workspace-scoped lookup; unreadable, corrupt, mismatched, or ambiguous candidates fail explicitly and are not treated as absence. Unsupported controls fail explicitly; transcript reconstruction never reruns durable tool effects.
 - Security: Pi Bash inherits only router-owned adapter environment without process-global mutation.
 - Compatibility: Pi-backed codex compatibility can be explicitly registered but is not a default profile; exact package pins are one compatible version.
 
@@ -136,6 +151,10 @@ Pi SHALL inspect supported version-3 native histories for user-message fork cand
 
 Repeated reads MAY reuse one cache entry with at most 2 MiB of candidate text and ID payload. Cache reuse SHALL require unchanged native identity, path, device, inode, size, modification time, and change time. Returned candidates SHALL not expose shared mutable cached objects. The reader SHALL verify the file fingerprint again before caching a completed scan.
 
+## Requirement: RUN-PI-006
+
+Pi binding resolution SHALL recheck both `bound` and `missing` identities through the persisted local-file locator, the current workspace-derived session directory, and the workspace-scoped SessionManager listing. It SHALL repair the binding only for the exact native id, report `missing` only after those sources are exhausted, and throw on permission, corruption, mismatched locator content, or ambiguity.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -147,6 +166,7 @@ Implemented public contracts:
 - `compilePiboToolForPi`
 - `semanticEventFromPibo`
 - `PI_NATIVE_TOOL_YIELDING_LIMITATION`
+- `resolvePiSessionForBinding`
 
 Related ownership boundaries:
 
@@ -168,7 +188,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `bfb31e40143ea149cf77917d787adaf477539f51`. The persisted fork reader has [Docker and Pibo2 evidence](/reports/idle-session-history-latency-validation-2026-09-05.md); earlier package-upgrade verification remains scoped to that upgrade. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bcb36ccd17ec45a11f4a568441037b94b1f6e0cd`. The persisted fork reader has [Docker and Pibo2 evidence](/reports/idle-session-history-latency-validation-2026-09-05.md); earlier package-upgrade verification remains scoped to that upgrade. Requirement confidence measures trace quality, not whether a command ran.
 
 The 0.85.0 upgrade passed the complete TypeScript build and focused Pi/runtime routing tests. The explicit `@earendil-works/pi-server@0.85.0` pin closes the package entrypoint's published runtime import and is covered by the exact-version lockfile test.
 

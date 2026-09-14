@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T12:20:39Z"
+  at: "2026-09-14T12:52:33Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
+  commit: "bcb36ccd17ec45a11f4a568441037b94b1f6e0cd"
   requirements:
     - id: "RUN-OMP-001"
       status: "implemented"
@@ -89,6 +89,19 @@ traceability:
         - "Missing operator CLI/home configuration diagnoses unavailable and refuses spawn; transport and history inconsistencies fail explicitly; diagnostics redact credentials."
         - "The process uses private instance/session directories, an environment allowlist, and explicit provider-key forwarding; unbound reset removes stale native transcripts/handoffs."
       confidence: "high"
+    - id: "RUN-OMP-005"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/omp/adapter.ts"
+          symbol: "OmpAgentRuntimeAdapter.resolveBinding"
+      tests:
+        - path: "test/omp-runtime.test.mjs"
+          name: "OMP binding resolution preserves a persisted native session after gateway restart"
+        - path: "test/omp-runtime.test.mjs"
+          name: "OMP binding recovery stays unsupported when switch_session cannot prove native absence"
+      failures:
+        - "A failed switch_session preserves the original binding and fails; OMP never keeps the fresh startup transcript as an implicit replacement."
+      confidence: "high"
 ---
 
 # Scope
@@ -99,9 +112,9 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: The client waits for ready then negotiates protocol; prompts stream to agent_end or a bounded deadline; abort interrupts; binding resumes persisted native identity after restart. OMP does not declare running-safe fork support because its fork RPC changes the process-owned current session, so candidate reads and forks remain idle-only.
+- Lifecycle: The client waits for ready then negotiates protocol; prompts stream to agent_end or a bounded deadline; abort interrupts; a bound Session resumes its persisted transcript through `switch_session` after restart. OMP does not declare running-safe fork support because its fork RPC changes the process-owned current session, so candidate reads and forks remain idle-only.
 - State: Exact names are plugin pibo.orp, profile/adapter orp, configured instance omp-native, validated CLI 18.1.10, protocol omp-rpc v2 with v1/v2 accepted, model provider omp.
-- Failure: Missing operator CLI/home configuration diagnoses unavailable and refuses spawn; transport and history inconsistencies fail explicitly; diagnostics redact credentials.
+- Failure: `switch_session` does not provide a trustworthy absence classification. A failed resume therefore preserves the original binding and fails instead of silently retaining the fresh startup transcript; a pre-existing missing binding reports native recovery unsupported. Missing operator CLI/home configuration, transport, and history inconsistencies also fail explicitly.
 - Security: The process uses private instance/session directories, an environment allowlist, and explicit provider-key forwarding; unbound reset removes stale native transcripts/handoffs.
 - Compatibility: Startup accepts only the exactly validated OMP CLI 18.1.10; modern fork commands fall back to legacy branch RPC names only when unsupported; external MCP and native yielding remain unsupported.
 
@@ -122,6 +135,10 @@ The OMP client SHALL perform ready and protocol negotiation, correlate RPC by id
 ## Requirement: RUN-OMP-004
 
 OMP resource delivery SHALL expose selected Pibo tools as RPC host tools, append additive context, persist portable history before first target prompt, and disable every native task entry point.
+
+## Requirement: RUN-OMP-005
+
+OMP SHALL preserve a bound transcript only when `switch_session` succeeds. Because the protocol cannot distinguish true absence from permission, corruption, or transient failures, failed resume and persisted missing bindings SHALL report an explicit unsupported/unavailable result and SHALL NOT create, adopt, or reconstruct a replacement transcript.
 
 # Interfaces and ownership
 
@@ -158,7 +175,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bcb36ccd17ec45a11f4a568441037b94b1f6e0cd`. Requirement confidence measures trace quality, not whether a command ran.
 
 A real `@oh-my-pi/pi-coding-agent@18.1.10` installation under Bun 1.4.1 passed the protocol-v2 handshake plus `get_state`, `set_host_tools`, and `get_available_commands`. The additive `advisor_cost_changed` event remains safely tolerated by the client's unknown-event handling.
 

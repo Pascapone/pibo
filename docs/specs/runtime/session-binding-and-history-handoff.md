@@ -1,17 +1,17 @@
 ---
 type: "Specification"
 title: "Runtime Session Binding and Portable History Handoff"
-description: "Defines revisioned runtime binding transitions and bounded, retry-safe portable-history handoff during runtime rebind."
+description: "Defines native-first binding recovery and revisioned, retry-safe portable-history handoff for same- or cross-runtime reconstruction."
 tags: ["runtime", "binding", "rebind", "portable-history"]
 status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-14T12:52:33Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "bcb36ccd17ec45a11f4a568441037b94b1f6e0cd"
   requirements:
     - id: "RUN-BIND-001"
       status: "implemented"
@@ -75,6 +75,28 @@ traceability:
         - "Target startup failure preserves the same persisted checkpoint for retry; conflicting revisions fail explicitly."
         - "Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted."
       confidence: "high"
+    - id: "RUN-BIND-005"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtime/types.ts"
+          symbol: "AgentRuntimeAdapter.resolveBinding"
+        - path: "src/core/session-router.ts"
+          symbol: "PiboSessionRouter.prepareNativeSessionRecovery"
+        - path: "src/agent-runtime/portable-history.ts"
+          symbol: "PersistedPortableHistoryHandoff"
+      tests:
+        - path: "test/runtime-portability.test.mjs"
+          name: "authoritative native absence reconstructs once in the same runtime from checkpointed Pibo history"
+        - path: "test/runtime-portability.test.mjs"
+          name: "native reconstruction retries the same durable checkpoint after target startup failure"
+        - path: "test/runtime-portability.test.mjs"
+          name: "auth and transient native inspection failures never trigger reconstruction"
+        - path: "test/runtime-portability.test.mjs"
+          name: "native recovery fails closed for insufficient history, unsupported adapters, and concurrent binding changes"
+      failures:
+        - "Only an adapter-owned authoritative missing result admits reconstruction; every other inspection failure preserves the original binding and stops."
+        - "Insufficient durable conversation context and unsupported history import refuse an empty replacement."
+      confidence: "high"
 ---
 
 # Scope
@@ -85,9 +107,9 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Lifecycle: A rebind quiesces the source, persists one checkpointed handoff, opens the target, imports before first prompt, then clears or records the handoff retry-safely. Cross-runtime rebind clears the source runtime's model and fallback selection across restart; same-runtime rebind preserves it.
-- State: Binding states are unbound, bound, missing, or error; writes are revision-checked and distinguish normal, repair, and rebind transitions.
-- Failure: Target startup failure preserves the same persisted checkpoint for retry; conflicting revisions fail explicitly.
+- Lifecycle: Normal continuation first asks the selected adapter to recheck bound or missing native identity. A repaired original opens unchanged. Only authoritative absence may create a same-runtime portable-history handoff; explicit cross-runtime rebind and `startFresh` remain separate operations.
+- State: Binding states are unbound, bound, missing, or error; writes are revision-checked and distinguish normal, repair, and rebind transitions. Native-recovery handoffs retain source native identity, state, revision, locator, diagnostic code, and checkpoint provenance.
+- Failure: Auth, permission, corruption, ambiguity, runtime/provider unavailability, transient inspection failure, unsupported recovery, insufficient Pibo history, and CAS conflict never trigger reconstruction or runtime switching. Target startup failure preserves the same persisted checkpoint for retry.
 - Security: Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted and scopes provider-local reused tool IDs by turn, including after SQLite restart and truncation.
 - Compatibility: Legacy Pi rows migrate to a bound Pi runtime while the compatibility Pi column becomes nullable.
 
@@ -109,6 +131,10 @@ Portable history SHALL be role-aware, secret-redacted, checkpointed, and bounded
 
 Runtime rebind SHALL quiesce the source and import the persisted portable-history checkpoint before the target session receives its first prompt, preserving that checkpoint across retryable startup failure.
 
+## Requirement: RUN-BIND-005
+
+Normal continuation SHALL prefer the existing adapter-native session. The adapter SHALL return `missing` only after authoritative absence; every non-absence failure SHALL throw. A confirmed missing native session MAY reconstruct only into the same runtime when durable Pibo conversation context and history import are available. Reconstruction SHALL persist one CAS-protected checkpoint and source-binding provenance, import before any prompt, preserve Session/Room/profile/model/workspace-tab ownership, never replay tools or synthesize turns, and remain retry-safe. Unsupported adapters and insufficient history SHALL fail explicitly without an empty replacement.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -120,6 +146,8 @@ Implemented public contracts:
 - `createAgentRuntimeBindingPersistence`
 - `AgentRuntimePortableHistoryProvider`
 - `PiboDataPortableHistoryProvider`
+- `AgentRuntimeAdapter.resolveBinding`
+- `PersistedPortableHistoryHandoff`
 
 Related ownership boundaries:
 
@@ -130,6 +158,8 @@ Related ownership boundaries:
 # Failure and security behavior
 
 - Target startup failure preserves the same persisted checkpoint for retry; conflicting revisions fail explicitly.
+- Native reconstruction is same-runtime only, begins only after authoritative adapter-owned absence, and refuses insufficient history or unsupported import.
+- Auth, permissions, corruption, ambiguity, provider/runtime unavailability, and transient failures preserve the original binding and never select another runtime.
 - Only exact built-in store capabilities minted by createAgentRuntimeBindingPersistence are accepted; structural lookalikes are rejected; portable history is secret-redacted.
 
 # Known limits
@@ -141,7 +171,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `bcb36ccd17ec45a11f4a568441037b94b1f6e0cd`. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 
