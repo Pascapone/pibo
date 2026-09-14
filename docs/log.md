@@ -2,6 +2,9 @@
 
 ## 2026-09-14
 
+- Installed candidate `f01d453d` and verified delayed desktop/mobile Session switches against empty targets; recorded exact package identity and persisted-state evidence in the [execution ledger](/plans/unified-plugin-system-execution.md#pibo2-tab-ownership-correction-acceptance-2026-09-14).
+
+
 - **Session tab carryover correction**: Updated the [Session workspace specification](/specs/web/session-workspace-lifecycle.md), [PLG-UX-002 plan](/plans/unified-plugin-system-rebuild.md#plg-ux-002-session-erstellung-und-session-eigener-workspace-lifecycle), and [execution ledger](/plans/unified-plugin-system-execution.md#follow-up-stale-route-carryover-on-session-switch-2026-09-14) for commit `e901ebcc`. Route reconciliation is now owned by the Session-selection generation that observed the route, so Session A's active tab cannot seed ready-empty or delayed-loading B/C/D during fast or delayed desktop/mobile switching. The focused regression failed before the fix and passed after it; 58 focused tests, Chat UI typecheck/build, and authenticated headful worker evidence passed. The current fix was not packaged or deployed to Pibo2, and no full suite, model turn, push, PR, release, or controller-gateway mutation was performed.
 
 - **Pibo2 workspace evidence correction**: Corrected the [September 13 workspace record](/plans/unified-plugin-system-execution.md#pibo2-session-workspace-acceptance-2026-09-13): `/tmp/pibo2-workspace-accept.json` showed the other Session with a carried-over Settings tab, so that run did not prove per-Session empty-workspace isolation. Its panel-cache and targeted-Refresh observations remain historical; the carryover fix currently has worker-only evidence.
