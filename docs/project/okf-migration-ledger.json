@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-13T23:24:20Z",
+  "generated_at": "2026-09-14T08:10:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -25,9 +25,9 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 136122,
-      "file_sha256": "01d6d602c28601cc3372ebc54adbf082b718a15d53123b7fb210755baf9bc77e",
-      "body_sha256": "0cb082e3c707bb83077c327fb7816d11e1d7410e81d1ec93ffc1ec7034784a2d"
+      "file_bytes": 137146,
+      "file_sha256": "a7cd0f9b4e1473dea8b387f71205cc14cd47bbeef40706786f3887d5a08d989a",
+      "body_sha256": "395a8eecb80ef443358abe6299b44b17aec117c91342948bab7c060080e56a19"
     },
     {
       "path": "docs/plans/unified-plugin-system-execution.md",
@@ -37,9 +37,9 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 41397,
-      "file_sha256": "0db81aa963a5cca91368831086901bed35c7ddba9e3092f1981a16e74363deb9",
-      "body_sha256": "85508858ac91e84314570a50722b0db21567375d0264137bfe76c51c0ec7014f"
+      "file_bytes": 47543,
+      "file_sha256": "81f68f099fffdf5655bfb74855507658aa1bf9b2ffb06db549a9a458a8a8adf4",
+      "body_sha256": "987c71365796ec09553d6eb1608a32b6b6c5f38319cd2299beccdb6a6e8edf92"
     },
     {
       "path": "docs/reports/cordis-plugin-architecture-feasibility-2026-09-11.md",
@@ -8577,9 +8577,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 43258,
-      "file_sha256": "f68eed4ce7ff1119df7e1ca31a27215045dc00ff37ea33d98eaf8b1eb1ef621b",
-      "body_sha256": "f68eed4ce7ff1119df7e1ca31a27215045dc00ff37ea33d98eaf8b1eb1ef621b"
+      "file_bytes": 45231,
+      "file_sha256": "329b683406b9c8cfdc130fb6b47c54c1c6a15cd64e9be35381b3e9f4e0878a50",
+      "body_sha256": "329b683406b9c8cfdc130fb6b47c54c1c6a15cd64e9be35381b3e9f4e0878a50"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -13260,9 +13260,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 10257,
-      "file_sha256": "686c6a992a3640b09ea61acac848dc270e7c2845a05d54cb4e14240a9b5055ed",
-      "body_sha256": "343a3060b4a85c32991ec79d7c0c2bd7ba64093655180402baada264934f550e",
+      "file_bytes": 11880,
+      "file_sha256": "c94fc84235cda3e32967311f39bda9181c98acc1507b66a4fc421c7868fc7aab",
+      "body_sha256": "13d91882b1051abc920b0706601a3528522236797e6d9798416ac5391745e2ea",
       "lineage": null
     },
     {
