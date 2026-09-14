@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  at: "2026-09-14T14:03:01Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -24,29 +24,29 @@ implementation:
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "df1c3da6acbf56b70b39a526139ab9f6d2b87b01"
   requirements:
     - id: "WEB-CONFIG-CONTEXT-001"
       status: "implemented"
       sources:
-        - path: "src/apps/chat-ui/src/context/ContextBuildView.tsx"
-          symbol: "ContextBuildView"
-        - path: "src/apps/chat-ui/src/context/ContextBuildView.tsx"
-          symbol: "renderNodeForCopy"
-        - path: "src/apps/chat-ui/src/context/ContextBuildView.tsx"
-          symbol: "readInspectorOrigin"
+        - path: "src/apps/chat-ui/src/plugins/build-context-view.tsx"
+          symbol: "BuildContextView"
+        - path: "src/apps/chat-ui/src/plugins/build-context-view.tsx"
+          symbol: "recordedBuildNodes"
+        - path: "src/apps/chat-ui/src/plugins/build-context-view.tsx"
+          symbol: "renderPluginNodeModelContentForCopy"
       tests:
         - path: "test/chat-ui-context-build-origin.test.mjs"
-          name: "Context Build labels generated tool origins as inspector-only header metadata"
+          name: "plugin Build Context distinguishes inspector metadata from model content"
         - path: "test/chat-ui-context-build-origin.test.mjs"
-          name: "Context Build copy output excludes inspector-only origin metadata"
+          name: "plugin Build Context copy output includes only visible unredacted model text"
       public:
         - "/api/chat/context-build*"
         - "/api/chat/agents*"
         - "/api/chat/agent-folders*"
         - "/api/chat/catalog*"
         - "/api/chat/settings*"
-        - "ContextBuildView"
+        - "BuildContextView"
         - "ContextFilesView"
         - "AgentsView"
         - "SettingsView"
@@ -68,7 +68,7 @@ traceability:
         - "/api/chat/agent-folders*"
         - "/api/chat/catalog*"
         - "/api/chat/settings*"
-        - "ContextBuildView"
+        - "BuildContextView"
         - "ContextFilesView"
         - "AgentsView"
         - "SettingsView"
@@ -107,7 +107,7 @@ traceability:
         - "/api/chat/agent-folders*"
         - "/api/chat/catalog*"
         - "/api/chat/settings*"
-        - "ContextBuildView"
+        - "BuildContextView"
         - "ContextFilesView"
         - "AgentsView"
         - "SettingsView"
@@ -125,6 +125,12 @@ traceability:
           symbol: "SettingsPanel"
         - path: "src/apps/chat-ui/src/settings/SettingsSidebar.tsx"
           symbol: "SettingsSidebar"
+        - path: "src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx"
+          symbol: "FirstPartySubviewNavigation"
+        - path: "src/apps/chat-ui/src/responsive-pane-sidebar.tsx"
+          symbol: "ResponsiveTabSidebarPanel"
+        - path: "src/apps/chat-ui/src/context/ContextFilesView.tsx"
+          symbol: "ContextFilesView"
         - path: "src/apps/chat/chat-settings-routes.ts"
           symbol: "ChatSettingsRoute"
         - path: "src/apps/chat/chat-settings-routes.ts"
@@ -133,21 +139,24 @@ traceability:
           symbol: "chatSettingsRouteInvalidatesBootstrapCatalog"
         - path: "src/apps/chat/chat-settings-routes.ts"
           symbol: "handleChatSettingsRoute"
+      tests:
+        - path: "test/chat-ui-responsive-tab-modules.test.mjs"
+          name: "desktop module tabs use pane-width sidebars and container-responsive content flows"
       source_inspected: true
-      follow_up: "Add and run a route/panel matrix test covering all ten panel IDs, read/write methods, same-origin requirements, scopes, invalidation, failures, and narrow-view navigation."
+      follow_up: "Add and run a route/panel matrix test covering all eleven panel IDs, read/write methods, same-origin requirements, scopes, invalidation, and failures; retain focused headful navigation evidence for wide, narrow, and mobile tab containers."
       public:
         - "/api/chat/context-build*"
         - "/api/chat/agents*"
         - "/api/chat/agent-folders*"
         - "/api/chat/catalog*"
         - "/api/chat/settings*"
-        - "ContextBuildView"
+        - "BuildContextView"
         - "ContextFilesView"
         - "AgentsView"
         - "SettingsView"
       failures:
         - "Unknown panels/methods fail explicitly; failed mutations cannot update optimistic settings or stale capability catalogs."
-        - "Accessibility/responsive boundary: Sidebar current state, form labels/errors, focus return, and 640px padding need headful validation."
+        - "Accessibility/responsive boundary: Sidebar current state, form labels/errors, drawer focus return, and container-width transitions require focused headful validation."
         - "Compatibility boundary: Panel IDs/routes are compatibility surfaces; owner specs define each underlying setting."
       confidence: "medium"
     - id: "WEB-CONFIG-CREDENTIALS-005"
@@ -168,7 +177,7 @@ traceability:
         - "/api/chat/agent-folders*"
         - "/api/chat/catalog*"
         - "/api/chat/settings*"
-        - "ContextBuildView"
+        - "BuildContextView"
         - "ContextFilesView"
         - "AgentsView"
         - "SettingsView"
@@ -220,17 +229,31 @@ Origin metadata is inspector-only and excluded from copied context. Credentials 
 
 ### Accessibility and responsive behavior
 
-Context panes, responsive side panels, labeled forms, dialogs, errors, and 1180/640px context-file breakpoints are source-defined. No headful acceptance ran.
+First-party plugin tabs with stable sections or selectable entities use tab-container width, not browser viewport width, to keep a left sidebar or switch to a tab-local drawer. The drawer keeps a visible reopen control, traps and restores focus, closes on Escape or backdrop activation, and preserves the active subview. Context Files applies the same container rule to its nested file panel. Focused wide, narrow, and mobile browser checks are recorded outside this specification; physical-device and assistive-technology acceptance remain open.
 
 ### Compatibility and integration
 
-Runtime option schemas/catalogs drive UI; unknown capabilities must degrade without hard-coded global provider assumptions. Settings distinguish current Session effects from future-session defaults.
+Runtime option schemas/catalogs drive UI; unknown capabilities must degrade without hard-coded global provider assumptions. Settings distinguish current Session effects from future-session defaults. First-party self-navigation suppresses only the duplicate host subview row for an explicit built-in view list; third-party renderers retain their own layout and the generic host fallback.
+
+### First-party tab navigation inventory
+
+| First-party view | Implemented navigation |
+|---|---|
+| Settings | Responsive left section sidebar or local drawer; all eleven declared panel IDs retain their subview IDs. |
+| User Resources / Context | Responsive left section sidebar or local drawer for Context Files, Skills, Base Prompt, and Compaction Prompt; Context Files keeps its own container-responsive file panel. |
+| Agent Designer | Existing responsive left agent/folder sidebar or local drawer. |
+| Cron and Loops | Existing responsive left job sidebar or local drawer. |
+| Web Annotations | Responsive left section sidebar or local drawer for Annotations, Settings, and Context. |
+| First-party tool-family compatibility views | Responsive left section sidebar or local drawer for Settings and Context. |
+| Workflows | Intentionally navigation-free at the tab shell: one authoring surface owns its workflow picker, canvas, and inspectors. |
+| Build Context | Intentionally navigation-free: one read-only inspector owns its recorded-build selector and node disclosures. |
+| Standard Shell | Not a tab view; it provides composition only. |
 
 ## Requirements and invariants
 
 ### Requirement: WEB-CONFIG-CONTEXT-001
 
-Context Build MUST show the actual assembled context and resource origin metadata for inspection while excluding inspector-only origin headers from copied/delivered context.
+Build Context MUST show recorded or preview plugin context nodes and their origin metadata for inspection while excluding inspector-only metadata from copied model content.
 
 #### Current
 
@@ -238,9 +261,9 @@ Foundation source and named-test inspection define the current contract. The nam
 
 #### Acceptance and boundaries
 
-- Source: `src/apps/chat-ui/src/context/ContextBuildView.tsx` — `ContextBuildView`; `src/apps/chat-ui/src/context/ContextBuildView.tsx` — `renderNodeForCopy`; `src/apps/chat-ui/src/context/ContextBuildView.tsx` — `readInspectorOrigin`
-- Tests: `test/chat-ui-context-build-origin.test.mjs` — “Context Build labels generated tool origins as inspector-only header metadata”; `test/chat-ui-context-build-origin.test.mjs` — “Context Build copy output excludes inspector-only origin metadata”
-- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `ContextBuildView`; `ContextFilesView`; `AgentsView`; `SettingsView`
+- Source: `src/apps/chat-ui/src/plugins/build-context-view.tsx` — `BuildContextView`; `src/apps/chat-ui/src/plugins/build-context-view.tsx` — `recordedBuildNodes`; `src/apps/chat-ui/src/plugins/build-context-view.tsx` — `renderPluginNodeModelContentForCopy`
+- Tests: `test/chat-ui-context-build-origin.test.mjs` — “plugin Build Context distinguishes inspector metadata from model content”; `test/chat-ui-context-build-origin.test.mjs` — “plugin Build Context copy output includes only visible unredacted model text”
+- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `BuildContextView`; `ContextFilesView`; `AgentsView`; `SettingsView`
 - Failure/security boundary: Missing/malformed origin metadata must not become delivered content or break copy output.
 - Accessibility/responsive boundary: Tree/detail labels, copy feedback, and long preformatted content need headful checks.
 - Compatibility boundary: Actual context assembly semantics remain its resource/runtime owners.
@@ -259,7 +282,7 @@ Foundation source inspection defines the current contract. No named test exists 
 
 - Source: `src/apps/chat-ui/src/context/ContextFilesView.tsx` — `ContextFilesView`
 - Tests: No named test exists in the Foundation evidence set; this requirement remains source-only.
-- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `ContextBuildView`; `ContextFilesView`; `AgentsView`; `SettingsView`
+- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `BuildContextView`; `ContextFilesView`; `AgentsView`; `SettingsView`
 - Failure/security boundary: Stale revisions must fail visibly; failed saves cannot advance local revision or discard the user's buffer.
 - Accessibility/responsive boundary: Editor/panel labels, conflict focus, keyboard editing, and 1180/640px layouts require headful evidence.
 - Compatibility boundary: Managed storage/revision durability remains SPC-RES-003/SPC-DATA-001.
@@ -278,7 +301,7 @@ Foundation source and named-test inspection define the current contract. The nam
 
 - Source: `src/apps/chat-ui/src/agents/AgentsView.tsx` — `AgentsView`; `src/apps/chat-ui/src/agents/agent-designer-model.ts` — `agentDraftToSaveInput`; `src/apps/chat-ui/src/agents/agent-designer-model.ts` — `selectExistingAgentDraft`; `src/apps/chat-ui/src/agents/agent-designer-model.ts` — `createBlankAgentDraft`; `src/apps/chat-ui/src/agents/designer-ui.tsx` — `AgentRuntimeSelector`; `src/apps/chat-ui/src/agents/designer-ui.tsx` — `SchemaRuntimeOptionsFields`; `src/apps/chat-ui/src/agents/designer-ui.tsx` — `AgentRuntimeOptions`
 - Tests: `test/chat-ui-agent-designer-runtime-switch.test.mjs` — “Agent Designer drops only model selections unsupported by the selected runtime”; `test/chat-ui-agent-designer-runtime-switch.test.mjs` — “Agent Designer serializes cleared model selections so PATCH removes persisted overrides”; `test/chat-ui-agent-designer-runtime-switch.test.mjs` — “agent PATCH normalization preserves explicit null model clears”
-- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `ContextBuildView`; `ContextFilesView`; `AgentsView`; `SettingsView`
+- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `BuildContextView`; `ContextFilesView`; `AgentsView`; `SettingsView`
 - Failure/security boundary: Unsupported values must be removed explicitly; catalog failure cannot be treated as a valid empty catalog; secrets stay server-side.
 - Accessibility/responsive boundary: Forms need labels/errors/focus and non-color-only dirty/unsupported state.
 - Compatibility boundary: Runtime/catalog semantics remain SPC-RUN-008.
@@ -287,22 +310,22 @@ Foundation source and named-test inspection define the current contract. The nam
 
 ### Requirement: WEB-CONFIG-SETTINGS-004
 
-Settings MUST expose the implemented panel set—general, concurrency, previews, transcription, speech, shortcuts, maintenance, Pi packages, skills, and providers—and preserve each route's declared scope and bootstrap invalidation behavior.
+Settings MUST expose the implemented panel set—general, plugins, debug, concurrency, previews, transcription, speech, shortcuts, maintenance, skills, and providers—and preserve each subview's declared scope and bootstrap invalidation behavior. Settings and every other first-party tab with stable sections or selectable entities MUST use container-responsive left navigation with a local narrow drawer rather than viewport-only or duplicate top navigation.
 
 #### Current
 
-Foundation source inspection defines the current contract. No named test exists in the evidence set, so this requirement remains an explicit source-only gap and makes no focused-test claim.
+Current source and the focused responsive-module regression define the built-in navigation contract. The existing panel, route, scope, and invalidation owners remain unchanged.
 
 #### Acceptance and boundaries
 
-- Source: `src/apps/chat-ui/src/settings/SettingsView.tsx` — `SettingsView`; `src/apps/chat-ui/src/settings/types.ts` — `SettingsPanel`; `src/apps/chat-ui/src/settings/SettingsSidebar.tsx` — `SettingsSidebar`; `src/apps/chat/chat-settings-routes.ts` — `ChatSettingsRoute`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRoute`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRouteInvalidatesBootstrapCatalog`; `src/apps/chat/chat-settings-routes.ts` — `handleChatSettingsRoute`
-- Tests: No named test exists in the Foundation evidence set; this requirement remains source-only.
-- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `ContextBuildView`; `ContextFilesView`; `AgentsView`; `SettingsView`
+- Source: `src/apps/chat-ui/src/settings/SettingsView.tsx` — `SettingsView`; `src/apps/chat-ui/src/settings/types.ts` — `SettingsPanel`; `src/apps/chat-ui/src/settings/SettingsSidebar.tsx` — `SettingsSidebar`; `src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx` — `FirstPartySubviewNavigation`; `src/apps/chat-ui/src/responsive-pane-sidebar.tsx` — `ResponsiveTabSidebarPanel`; `src/apps/chat-ui/src/context/ContextFilesView.tsx` — `ContextFilesView`; `src/apps/chat/chat-settings-routes.ts` — `ChatSettingsRoute`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRoute`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRouteInvalidatesBootstrapCatalog`; `src/apps/chat/chat-settings-routes.ts` — `handleChatSettingsRoute`
+- Tests: `test/chat-ui-responsive-tab-modules.test.mjs` — “desktop module tabs use pane-width sidebars and container-responsive content flows”
+- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `BuildContextView`; `ContextFilesView`; `AgentsView`; `SettingsView`
 - Failure/security boundary: Unknown panels/methods fail explicitly; failed mutations cannot update optimistic settings or stale capability catalogs.
-- Accessibility/responsive boundary: Sidebar current state, form labels/errors, focus return, and 640px padding need headful validation.
-- Compatibility boundary: Panel IDs/routes are compatibility surfaces; owner specs define each underlying setting.
-- Confidence: **medium**
-- Verification follow-up: Add and run a route/panel matrix test covering all ten panel IDs, read/write methods, same-origin requirements, scopes, invalidation, failures, and narrow-view navigation.
+- Accessibility/responsive boundary: Sidebar current state, form labels/errors, drawer focus return, and container-width transitions require focused headful validation.
+- Compatibility boundary: Panel IDs/routes are compatibility surfaces; owner specs define each underlying setting. Third-party plugin layout remains renderer-owned.
+- Confidence: **high**
+- Verification follow-up: Add and run a route/panel matrix covering all eleven panel IDs, read/write methods, same-origin requirements, scopes, invalidation, and failures; retain focused wide/narrow/mobile drawer evidence.
 
 ### Requirement: WEB-CONFIG-CREDENTIALS-005
 
@@ -316,7 +339,7 @@ Foundation source and named-test inspection define the current contract. The nam
 
 - Source: `src/apps/chat-ui/src/settings/ProviderSettingsView.tsx` — `ProviderSettingsView`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRouteRequiresSameOrigin`; `src/apps/chat/chat-settings-routes.ts` — `handleChatSettingsRoute`
 - Tests: `test/chat-ui-provider-auth-methods.test.mjs` — “provider settings and model surfaces are runtime-catalog driven instead of a hard-coded global provider list”
-- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `ContextBuildView`; `ContextFilesView`; `AgentsView`; `SettingsView`
+- Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `BuildContextView`; `ContextFilesView`; `AgentsView`; `SettingsView`
 - Failure/security boundary: Credentials never round-trip; failed catalog/auth status remains a visible failure, not empty authority.
 - Accessibility/responsive boundary: Auth-method and effect status must be textual and keyboard reachable.
 - Compatibility boundary: Credentials/providers are SPC-RES-005/SPC-RUN-008/SPC-SEC-001; Web owns only safe configuration UX.
@@ -334,7 +357,7 @@ Foundation source and named-test inspection define the current contract. The nam
 - /api/chat/agent-folders*
 - /api/chat/catalog*
 - /api/chat/settings*
-- ContextBuildView
+- BuildContextView
 - ContextFilesView
 - AgentsView
 - SettingsView
@@ -356,9 +379,9 @@ Web browser state, caches, projections, overlays, annotations, and iframe presen
 
 ## Accessibility and responsive behavior
 
-Context panes, responsive side panels, labeled forms, dialogs, errors, and 1180/640px context-file breakpoints are source-defined. No headful acceptance ran.
+Built-in Settings, User Resources/Context, Agent Designer, Cron, Loops, Web Annotations, and tool-family section navigation responds to each tab container. Wide tabs show the left navigation; narrow tabs keep a labeled reopen button and modal drawer behavior. Context Files observes its nested editor container for the file panel. Workflows and Build Context intentionally remain single-surface views without decorative navigation. Focused Chromium evidence covers wide, narrow, and mobile dimensions; physical-device, screen-reader, zoom, and full keyboard acceptance remain open.
 
-Source-defined DOM, CSS, and ARIA are implementation evidence only. They do not constitute headful focus, keyboard, pointer, zoom, responsive, screen-reader, PWA, iframe, annotation, or settings acceptance.
+Source-defined DOM, CSS, ARIA, and focused Chromium checks do not constitute complete assistive-technology, physical-device, PWA, iframe, annotation, or settings acceptance.
 
 ## Compatibility and integration behavior
 
@@ -367,7 +390,7 @@ Runtime option schemas/catalogs drive UI; unknown capabilities must degrade with
 ## Known limits
 
 - Evidence gap: No focused tests cover managed-context revision conflict UI or the full settings panel matrix.
-- Evidence gap: No headful form, sidebar, diff, focus, narrow viewport, or credential-redaction validation.
+- Evidence gap: Focused tab-navigation layout and drawer interaction have headful Chromium evidence, but full form, diff, credential-redaction, screen-reader, zoom, physical-device, and exhaustive keyboard validation remain open.
 
 ## Reconciled stale claims
 
@@ -381,9 +404,9 @@ Runtime option schemas/catalogs drive UI; unknown capabilities must degrade with
 
 - Source and named-test locators resolve to regular files at Foundation commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
 - Imported or re-exported symbols use their canonical Foundation definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
+- Source inspection was performed for every requirement; two package requirements remain source-only exactly where no named test exists.
 - Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
+- Focused wide/narrow/mobile Chromium tab-navigation and drawer checks were performed; full visual, assistive-technology, PWA, iframe, annotation, settings, and VS Code acceptance was not performed.
 - External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
 - Confidence measures trace quality, not execution of an unclaimed evidence class.
 

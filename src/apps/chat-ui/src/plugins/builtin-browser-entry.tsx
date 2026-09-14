@@ -19,12 +19,46 @@ import { compactWebAnnotationError, WebAnnotationsControls, WebAnnotationsSessio
 import { readStoredDebugFeatures, readStoredDebugMode, readStoredExpandThinking, readStoredShowThinking, writeStoredDebugFeatures, writeStoredDebugMode, writeStoredExpandThinking, writeStoredShowThinking } from "../app-storage";
 import { readStoredToolMetricThresholds, writeStoredToolMetricThresholds } from "../tool-metric-settings";
 import { removeAgentCatalogUserSkill, upsertAgentCatalogUserSkill } from "../app-agent-catalog-mutations";
+import { ResponsiveTabSidebarPanel } from "../responsive-pane-sidebar";
 export { BuildContextView } from "./build-context-view";
+
+type FirstPartySubview = { id: string; title: string; description: string };
+
+function FirstPartySubviewNavigation({ label, activeId, items, onSelect }: { label: string; activeId: string; items: readonly FirstPartySubview[]; onSelect: (id: string) => void }) {
+	return <nav aria-label={`${label} sections`} className="space-y-1 p-2" data-pibo-sidebar-navigation>
+		<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+		{items.map((item) => <button key={item.id} type="button" aria-current={activeId === item.id ? "page" : undefined} onClick={() => onSelect(item.id)} className={`block w-full border p-2 text-left ${activeId === item.id ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-slate-800 bg-[#151f24] hover:border-slate-700"}`}>
+			<span className="block truncate text-sm text-slate-200">{item.title}</span>
+			<span className="block truncate font-mono text-[10px] text-slate-500">{item.description}</span>
+		</button>)}
+	</nav>;
+}
+
+const TOOL_FAMILY_SUBVIEWS: readonly FirstPartySubview[] = [
+	{ id: "settings", title: "Settings", description: "configuration + lifecycle" },
+	{ id: "context", title: "Context", description: "runtime delivery" },
+];
 
 export function ToolFamilyView(props: PluginViewProps) {
 	const pluginId = props.tab.pluginId;
-	return <div className="space-y-3 p-4 text-sm text-slate-300"><h2 className="font-semibold text-slate-100">{props.tab.fallback}</h2><p>Agent delivery is controlled by the immutable plugin selection and runtime capability report. This system view does not grant tools.</p><dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs"><dt className="text-slate-500">Plugin</dt><dd className="font-mono">{pluginId}</dd><dt className="text-slate-500">Revision</dt><dd className="break-all font-mono">{props.tab.pluginRevision}</dd><dt className="text-slate-500">Session</dt><dd className="font-mono">{props.piboSessionId}</dd></dl></div>;
+	const subview = props.tab.subviewId === "context" ? "context" : "settings";
+	return <ResponsiveTabSidebarPanel
+		label={props.tab.fallback}
+		sidebar={<FirstPartySubviewNavigation label={props.tab.fallback} activeId={subview} items={TOOL_FAMILY_SUBVIEWS} onSelect={(next) => props.openView(props.tab.viewId, next)} />}
+	>
+		<div className="space-y-3 p-4 text-sm text-slate-300">
+			<h2 className="font-semibold text-slate-100">{subview === "context" ? "Context delivery" : props.tab.fallback}</h2>
+			<p>{subview === "context" ? "Context and runtime delivery follow the immutable plugin selection and capability report." : "Agent delivery is controlled by the immutable plugin selection and runtime capability report. This system view does not grant tools."}</p>
+			<dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs"><dt className="text-slate-500">Plugin</dt><dd className="font-mono">{pluginId}</dd><dt className="text-slate-500">Revision</dt><dd className="break-all font-mono">{props.tab.pluginRevision}</dd><dt className="text-slate-500">Session</dt><dd className="font-mono">{props.piboSessionId}</dd></dl>
+		</div>
+	</ResponsiveTabSidebarPanel>;
 }
+
+const WEB_ANNOTATION_SUBVIEWS: readonly FirstPartySubview[] = [
+	{ id: "annotations", title: "Annotations", description: "saved browser notes" },
+	{ id: "settings", title: "Settings", description: "capture + shortcut" },
+	{ id: "context", title: "Context", description: "delivery boundaries" },
+];
 
 export function WebAnnotationsView(props: PluginViewProps) {
 	const [error, setError] = useState<string | null>(null);
@@ -34,22 +68,27 @@ export function WebAnnotationsView(props: PluginViewProps) {
 		formatError: compactWebAnnotationError,
 		forcePanelVisible: true,
 	});
-	if (props.tab.subviewId === "settings") {
-		return <WebAnnotationsControls piboSessionId={props.piboSessionId} piboRoomId={props.roomId} disabled={false} onError={setError} />;
-	}
-	if (props.tab.subviewId === "context") {
-		return <div className="space-y-2 p-4 text-sm text-slate-300"><p>Web Annotation tools receive the current Pibo Session ID from runtime context. The skill body loads progressively; API, settings, and browser state are not injected into model context.</p><p className="text-xs text-slate-500">App, agent, and session configuration previews are separate from immutable saved generation plans.</p></div>;
-	}
-	return <WebAnnotationsSessionPanel
-		piboSessionId={props.piboSessionId}
-		annotations={annotations.visibleWebAnnotations}
-		selectedIds={annotations.selectedWebAnnotationIds}
-		loading={annotations.webAnnotationsQuery.isFetching || annotations.clearingWebAnnotations}
-		error={error ?? (annotations.webAnnotationsQuery.error ? compactWebAnnotationError(annotations.webAnnotationsQuery.error, "Could not load web annotations") : null)}
-		onRefresh={() => { void annotations.webAnnotationsQuery.refetch(); }}
-		onToggle={annotations.toggleWebAnnotationAttachment}
-		onClear={() => { void annotations.clearVisibleWebAnnotations(); }}
-	/>;
+	const subview = WEB_ANNOTATION_SUBVIEWS.find((item) => item.id === props.tab.subviewId)?.id ?? "annotations";
+	const content = subview === "settings"
+		? <WebAnnotationsControls piboSessionId={props.piboSessionId} piboRoomId={props.roomId} disabled={false} onError={setError} />
+		: subview === "context"
+			? <div className="space-y-2 p-4 text-sm text-slate-300"><p>Web Annotation tools receive the current Pibo Session ID from runtime context. The skill body loads progressively; API, settings, and browser state are not injected into model context.</p><p className="text-xs text-slate-500">App, agent, and session configuration previews are separate from immutable saved generation plans.</p></div>
+			: <WebAnnotationsSessionPanel
+				piboSessionId={props.piboSessionId}
+				annotations={annotations.visibleWebAnnotations}
+				selectedIds={annotations.selectedWebAnnotationIds}
+				loading={annotations.webAnnotationsQuery.isFetching || annotations.clearingWebAnnotations}
+				error={error ?? (annotations.webAnnotationsQuery.error ? compactWebAnnotationError(annotations.webAnnotationsQuery.error, "Could not load web annotations") : null)}
+				onRefresh={() => { void annotations.webAnnotationsQuery.refetch(); }}
+				onToggle={annotations.toggleWebAnnotationAttachment}
+				onClear={() => { void annotations.clearVisibleWebAnnotations(); }}
+			/>;
+	return <ResponsiveTabSidebarPanel
+		label="Web Annotations"
+		sidebar={<FirstPartySubviewNavigation label="Web Annotations" activeId={subview} items={WEB_ANNOTATION_SUBVIEWS} onSelect={(next) => props.openView(props.tab.viewId, next)} />}
+	>
+		{content}
+	</ResponsiveTabSidebarPanel>;
 }
 
 function useBoundBootstrap(props: PluginViewProps) {
@@ -58,15 +97,32 @@ function useBoundBootstrap(props: PluginViewProps) {
 	useEffect(refresh, [props.piboSessionId, props.signal]);
 	return { bootstrap, setBootstrap, refresh, error };
 }
+const USER_RESOURCE_SUBVIEWS: readonly FirstPartySubview[] = [
+	{ id: "context-files", title: "Context Files", description: "managed + plugin files" },
+	{ id: "skills", title: "Skills", description: "user-managed resources" },
+	{ id: "base-prompt", title: "Base Prompt", description: "runtime foundation" },
+	{ id: "compaction-prompt", title: "Compaction Prompt", description: "history compaction" },
+];
+
 export function UserResourcesView(props: PluginViewProps) {
 	const { bootstrap, setBootstrap, refresh, error } = useBoundBootstrap(props);
 	const profiles = bootstrap?.agents.map((agent) => agent.name) ?? [];
-	const subview = props.tab.subviewId;
+	const subview = USER_RESOURCE_SUBVIEWS.find((item) => item.id === props.tab.subviewId)?.id ?? "context-files";
 	if (error) return <p role="alert">{error}</p>;
-	if (subview === "skills") return <div className="p-3"><p className="mb-2 text-xs text-slate-400">User-owned skills · app scope · independent of resource plugins</p><UserSkillsSettings skills={bootstrap?.agentCatalog?.userSkills} onSkillChanged={(skill) => { setBootstrap((current) => current ? upsertAgentCatalogUserSkill(current, skill) : current); refresh(); }} onSkillRemoved={(skillId) => { setBootstrap((current) => current ? removeAgentCatalogUserSkill(current, skillId) : current); refresh(); }} /></div>;
-	if (subview === "base-prompt") return <BasePromptView />;
-	if (subview === "compaction-prompt") return <CompactionPromptView />;
-	return <ContextFilesView agentProfiles={profiles} selectedFileKey={typeof props.state.selectedFileKey === "string" ? props.state.selectedFileKey : undefined} />;
+	const content = subview === "skills"
+		? <div className="p-3"><p className="mb-2 text-xs text-slate-400">User-owned skills · app scope · independent of resource plugins</p><UserSkillsSettings skills={bootstrap?.agentCatalog?.userSkills} onSkillChanged={(skill) => { setBootstrap((current) => current ? upsertAgentCatalogUserSkill(current, skill) : current); refresh(); }} onSkillRemoved={(skillId) => { setBootstrap((current) => current ? removeAgentCatalogUserSkill(current, skillId) : current); refresh(); }} /></div>
+		: subview === "base-prompt"
+			? <BasePromptView />
+			: subview === "compaction-prompt"
+				? <CompactionPromptView />
+				: <ContextFilesView agentProfiles={profiles} selectedFileKey={typeof props.state.selectedFileKey === "string" ? props.state.selectedFileKey : undefined} />;
+	return <ResponsiveTabSidebarPanel
+		label="Context"
+		sidebar={<FirstPartySubviewNavigation label="Context" activeId={subview} items={USER_RESOURCE_SUBVIEWS} onSelect={(next) => props.openView(props.tab.viewId, next)} />}
+		contentOverflow="hidden"
+	>
+		{content}
+	</ResponsiveTabSidebarPanel>;
 }
 const SETTINGS_PANELS = new Set<SettingsPanel>(["general", "plugins", "debug", "concurrency", "previews", "transcription", "speech", "shortcuts", "maintenance", "skills", "providers"]);
 export function GlobalSettingsView(props: PluginViewProps) {
@@ -79,10 +135,14 @@ export function GlobalSettingsView(props: PluginViewProps) {
 	const panel = SETTINGS_PANELS.has(props.tab.subviewId as SettingsPanel) ? props.tab.subviewId as SettingsPanel : "general";
 	if (error) return <p role="alert">{error}</p>;
 	if (!bootstrap) return <p role="status">Loading settings…</p>;
-	return <div className="grid h-full min-h-0 grid-cols-[220px_minmax(0,1fr)] max-[700px]:grid-cols-1">
-		<aside className="overflow-auto border-r border-slate-800 max-[700px]:border-b max-[700px]:border-r-0"><SettingsSidebar activePanel={panel} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} onSelect={(next) => props.openView(props.tab.viewId, next)} /></aside>
+	return <ResponsiveTabSidebarPanel
+		label="Settings"
+		sidebar={<SettingsSidebar activePanel={panel} userSkillCount={bootstrap.agentCatalog?.userSkills.length ?? 0} onSelect={(next) => props.openView(props.tab.viewId, next)} />}
+		sidebarWidth={220}
+		contentOverflow="hidden"
+	>
 		<SettingsView activePanel={panel} showThinking={showThinking} setShowThinking={(value) => { setShowThinking(value); writeStoredShowThinking(value); }} expandThinking={expandThinking} setExpandThinking={(value) => { setExpandThinking(value); writeStoredExpandThinking(value); }} debugMode={debugMode} onDebugModeChange={(value) => { setDebugMode(value); writeStoredDebugMode(value); }} debugFeatures={debugFeatures} onDebugFeaturesChange={(value) => { setDebugFeatures(value); writeStoredDebugFeatures(value); }} toolMetricThresholds={toolMetrics} onToolMetricThresholdsChange={(value) => { setToolMetrics(value); writeStoredToolMetricThresholds(value); }} modelDefaults={bootstrap.modelDefaults} modelCatalog={bootstrap.modelCatalog} onModelDefaultsChanged={(modelDefaults) => setBootstrap((current) => current ? { ...current, modelDefaults } : current)} userSkills={bootstrap.agentCatalog?.userSkills} onUserSkillChanged={(skill) => { setBootstrap((current) => current ? upsertAgentCatalogUserSkill(current, skill) : current); refresh(); }} onUserSkillRemoved={(skillId) => { setBootstrap((current) => current ? removeAgentCatalogUserSkill(current, skillId) : current); refresh(); }} piboSessionId={props.piboSessionId} agentId={props.agentId} onProviderAuthChanged={refresh} />
-	</div>;
+	</ResponsiveTabSidebarPanel>;
 }
 export function StandardShell({ children }: { children: ReactNode; piboSessionId: string }) { return <>{children}</>; }
 export function setupStandardShell(host: PluginBrowserSetup) { host.registerShell("pibo.standard-shell/shell", StandardShell); }

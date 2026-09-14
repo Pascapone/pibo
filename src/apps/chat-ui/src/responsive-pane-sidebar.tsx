@@ -116,7 +116,15 @@ export function ResponsiveTabSidebarPanel({
 						<button type="button" onClick={layout.closeSidebar} title={`Close ${label}`} aria-label={`Close ${label}`} className="inline-flex h-7 w-7 items-center justify-center rounded-sm border border-slate-700 text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"><X size={13} /></button>
 					</div>
 				) : null}
-				<div className="min-h-0 flex-1 overflow-auto">{sidebar}</div>
+				<div
+					className="min-h-0 flex-1 overflow-auto"
+					onClick={(event) => {
+						if (!layout.isOverlay || !(event.target instanceof Element)) return;
+						if (event.target.closest("[data-pibo-sidebar-navigation]")) layout.closeSidebar();
+					}}
+				>
+					{sidebar}
+				</div>
 			</aside>
 			<main className="flex min-h-0 min-w-0 flex-col bg-[#101d22]">
 				{layout.isOverlay ? (

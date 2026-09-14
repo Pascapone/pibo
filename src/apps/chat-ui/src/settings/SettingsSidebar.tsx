@@ -11,7 +11,7 @@ export function SettingsSidebar({
 	userSkillCount: number;
 }) {
 	return (
-		<div className="p-2">
+		<div className="p-2" data-pibo-sidebar-navigation>
 			<div className="mb-4">
 				<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Settings</div>
 				<button

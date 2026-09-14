@@ -410,6 +410,15 @@ For narrower screens:
 - text must wrap or truncate intentionally
 - no text should overlap controls or timestamps
 
+Plugin workspace tabs apply responsiveness to the tab container, not only the browser viewport:
+
+- a first-party view with stable sections or selectable entities uses a left sidebar when its own tab has enough width
+- the same navigation becomes a tab-local drawer when that container narrows, with a persistent reopen button in the content header
+- drawers use a labeled modal boundary, backdrop close, Escape handling, focus containment, and focus restoration
+- section selection preserves the existing tab instance, subview ID, deep link, editor state, and Session ownership
+- single-surface views such as Build Context and the Workflow canvas do not gain decorative navigation
+- third-party views retain control of their own internal layout; the host fallback navigation does not impose the first-party shell on them
+
 ## 6. Motion And Interaction
 
 Motion should communicate liveness, not decoration.

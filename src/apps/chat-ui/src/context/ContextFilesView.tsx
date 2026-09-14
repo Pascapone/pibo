@@ -20,6 +20,7 @@ import {
 	type ContextFileRevision,
 } from "../api-context-files";
 import type { ProductEvent, SaveState } from "../api";
+import { mobileSidebarA11yProps, useMobileSidebarModal } from "../mobile-sidebar-accessibility";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor";
 
 type ContextFileScope = "global" | "agent";
@@ -28,6 +29,10 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	const agentOptions = useMemo(() => [...new Set(agentProfiles)].sort((left, right) => left.localeCompare(right)), [agentProfiles]);
 	const editorRef = useRef<MarkdownEditorHandle>(null);
 	const saveStateRef = useRef<SaveState>("saved");
+	const rootElementRef = useRef<HTMLDivElement>(null);
+	const filePanelRef = useRef<HTMLElement>(null);
+	const filePanelTriggerRef = useRef<HTMLButtonElement>(null);
+	const filePanelNarrowRef = useRef<boolean | null>(null);
 	const [files, setFiles] = useState<ContextFileInfo[]>([]);
 	const [selectedKey, setSelectedKey] = useState<string | null>(null);
 	const [document, setDocument] = useState<ContextFileDocument | null>(null);
@@ -43,20 +48,42 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	const [formScope, setFormScope] = useState<ContextFileScope>("global");
 	const [formAgent, setFormAgent] = useState("");
 	const [metadataAgent, setMetadataAgent] = useState("");
-	const [filePanelOpen, setFilePanelOpen] = useState(() =>
-		typeof window === "undefined" || !window.matchMedia("(max-width: 1180px)").matches,
-	);
+	const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
+	const [filePanelNarrow, setFilePanelNarrow] = useState(false);
+	const [filePanelOpen, setFilePanelOpen] = useState(true);
+	const rootRef = useCallback((node: HTMLDivElement | null) => {
+		rootElementRef.current = node;
+		setRootElement(node);
+	}, []);
+	const requestCloseFilePanel = useCallback(() => setFilePanelOpen(false), []);
+	const closeFilePanel = useMobileSidebarModal({
+		isMobileViewport: filePanelNarrow,
+		isOpen: filePanelOpen,
+		onClose: requestCloseFilePanel,
+		triggerRef: filePanelTriggerRef,
+		sidebarRef: filePanelRef,
+		rootRef: rootElementRef,
+	});
 
 	useEffect(() => {
 		saveStateRef.current = saveState;
 	}, [saveState]);
 
 	useEffect(() => {
-		const mediaQuery = window.matchMedia("(max-width: 1180px)");
-		const handleBreakpointChange = (event: MediaQueryListEvent) => setFilePanelOpen(!event.matches);
-		mediaQuery.addEventListener("change", handleBreakpointChange);
-		return () => mediaQuery.removeEventListener("change", handleBreakpointChange);
-	}, []);
+		if (!rootElement) return;
+		const update = () => {
+			const narrow = rootElement.getBoundingClientRect().width <= 860;
+			if (filePanelNarrowRef.current === narrow) return;
+			filePanelNarrowRef.current = narrow;
+			setFilePanelNarrow(narrow);
+			setFilePanelOpen(!narrow);
+		};
+		update();
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(update);
+		observer.observe(rootElement);
+		return () => observer.disconnect();
+	}, [rootElement]);
 
 	const hydrateDocument = useCallback(async (nextDocument: ContextFileDocument) => {
 		setDocument(nextDocument);
@@ -141,11 +168,11 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 		try {
 			await editorRef.current?.flushSave();
 			await loadDocument(key);
-			if (window.matchMedia("(max-width: 1180px)").matches) setFilePanelOpen(false);
+			if (filePanelNarrow) closeFilePanel();
 		} catch (caught) {
 			setError(caught instanceof Error ? caught.message : String(caught));
 		}
-	}, [loadDocument]);
+	}, [closeFilePanel, filePanelNarrow, loadDocument]);
 
 	useEffect(() => {
 		if (!selectedFileKey || selectedFileKey === selectedKey) return;
@@ -333,7 +360,7 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 	}, [document, hydrateDocument, refreshFiles]);
 
 	return (
-		<div className={`context-files-view${filePanelOpen ? " context-files-view--panel-open" : ""}`}>
+		<div ref={rootRef} className={`context-files-view${filePanelOpen ? " context-files-view--panel-open" : ""}${filePanelNarrow ? " context-files-view--panel-overlay" : ""}`}>
 			<main className="context-files-workspace flex min-h-0 min-w-0 flex-col bg-[#101d22]">
 				<div className="flex h-14 items-center justify-between gap-3 border-b border-slate-800 bg-[#151f24] px-4 max-[640px]:h-auto max-[640px]:flex-wrap max-[640px]:py-3 @max-[520px]:h-auto @max-[520px]:flex-wrap @max-[520px]:py-3">
 					<div className="min-w-0">
@@ -347,12 +374,13 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 					</div>
 					<div className="flex shrink-0 items-center gap-2">
 						<button
+							ref={filePanelTriggerRef}
 							className="inline-flex h-8 items-center gap-1.5 border border-slate-700 px-2.5 text-xs text-slate-400 hover:border-[#11a4d4] hover:text-[#7dd3fc]"
 							type="button"
 							aria-controls="context-files-panel"
 							aria-expanded={filePanelOpen}
 							title={filePanelOpen ? "Hide context file panel" : "Show context file panel"}
-							onClick={() => setFilePanelOpen((current) => !current)}
+							onClick={() => filePanelOpen ? closeFilePanel() : setFilePanelOpen(true)}
 						>
 							{filePanelOpen ? <PanelRightClose size={15} aria-hidden="true" /> : <PanelRightOpen size={15} aria-hidden="true" />}
 							<span className="max-[720px]:hidden">Files</span>
@@ -484,16 +512,24 @@ export function ContextFilesView({ agentProfiles, selectedFileKey }: { agentProf
 				</div>
 			</main>
 
-			{filePanelOpen ? (
+			{filePanelNarrow && filePanelOpen ? (
 				<button
 					type="button"
+					data-pibo-mobile-sidebar-backdrop
 					className="context-files-panel-backdrop"
 					aria-label="Close context file panel"
-					onClick={() => setFilePanelOpen(false)}
+					onClick={closeFilePanel}
 				/>
 			) : null}
 
-			<aside id="context-files-panel" hidden={!filePanelOpen} className="context-files-panel min-h-0 overflow-auto border-l border-slate-800 bg-[#1a262b]">
+			<aside
+				ref={filePanelRef}
+				id="context-files-panel"
+				data-pibo-mobile-sidebar
+				hidden={!filePanelOpen}
+				{...mobileSidebarA11yProps(filePanelNarrow, filePanelOpen, "Context files")}
+				className="context-files-panel min-h-0 overflow-auto border-l border-slate-800 bg-[#1a262b]"
+			>
 				<div className="border-b border-slate-800 px-4 py-3">
 					<div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#11a4d4]">Context</div>
 					<h1 className="mt-1 text-sm font-semibold text-slate-100">Context Files</h1>

@@ -556,7 +556,7 @@ pre {
 	overflow: hidden;
 }
 
-.context-files-view--panel-open {
+.context-files-view--panel-open:not(.context-files-view--panel-overlay) {
 	grid-template-columns: minmax(0, 1fr) 300px;
 }
 
@@ -581,34 +581,22 @@ pre {
 	display: none;
 }
 
-@media (max-width: 1180px) {
-	.context-files-view--panel-open {
-		grid-template-columns: minmax(0, 1fr);
-	}
-
-	.context-files-panel {
-		position: absolute;
-		inset: 0 0 0 auto;
-		z-index: 12;
-		width: min(340px, calc(100% - 1rem));
-		border-left-color: #334155;
-		box-shadow: -18px 0 48px rgb(0 0 0 / 0.5);
-	}
-
-	.context-files-panel-backdrop {
-		position: absolute;
-		inset: 0;
-		z-index: 11;
-		display: block;
-		border: 0;
-		background: rgb(3 10 13 / 0.64);
-		backdrop-filter: blur(2px);
-		cursor: default;
-	}
+.context-files-view--panel-overlay .context-files-panel {
+	position: absolute;
+	inset: 0 0 0 auto;
+	z-index: 12;
+	width: min(340px, 100%);
+	border-left-color: #334155;
+	box-shadow: -18px 0 48px rgb(0 0 0 / 0.5);
 }
 
-@media (max-width: 640px) {
-	.context-files-panel {
-		width: 100%;
-	}
+.context-files-view--panel-overlay .context-files-panel-backdrop {
+	position: absolute;
+	inset: 0;
+	z-index: 11;
+	display: block;
+	border: 0;
+	background: rgb(3 10 13 / 0.64);
+	backdrop-filter: blur(2px);
+	cursor: default;
 }

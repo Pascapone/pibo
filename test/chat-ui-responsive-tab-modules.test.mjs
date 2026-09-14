@@ -7,7 +7,7 @@ async function sources(paths) {
 }
 
 test("desktop module tabs use pane-width sidebars and container-responsive content flows", async () => {
-	const [browserEntry, pluginWorkspace, responsivePane, loops, cron, agents, settings, designerUi, workflowGraph] = await sources([
+	const [browserEntry, pluginWorkspace, responsivePane, loops, cron, agents, settings, contextFiles, designerUi, workflowGraph] = await sources([
 		"src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx",
 		"src/apps/chat-ui/src/plugins/plugin-workspace.tsx",
 		"src/apps/chat-ui/src/responsive-pane-sidebar.tsx",
@@ -15,6 +15,7 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 		"src/apps/chat-ui/src/CronArea.tsx",
 		"src/apps/chat-ui/src/agents/AgentsView.tsx",
 		"src/apps/chat-ui/src/settings/SettingsView.tsx",
+		"src/apps/chat-ui/src/context/ContextFilesView.tsx",
 		"src/apps/chat-ui/src/agents/designer-ui.tsx",
 		"src/apps/chat-ui/src/workflows/WorkflowGraphCanvas.tsx",
 	]);
@@ -22,10 +23,14 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(browserEntry, /<CronArea[\s\S]*?surface="tab"/);
 	assert.match(browserEntry, /<LoopArea[\s\S]*?surface="tab"/);
 	assert.match(browserEntry, /<AgentsView[\s\S]*surface="tab"/);
-	assert.match(browserEntry, /UserResourcesView[\s\S]*<ContextFilesView/);
-	assert.match(browserEntry, /GlobalSettingsView[\s\S]*<SettingsSidebar/);
-	assert.match(browserEntry, /grid-cols-\[220px_minmax\(0,1fr\)\][\s\S]*max-\[700px\]:grid-cols-1/);
-	assert.match(pluginWorkspace, /view\.subviews\?\.length[\s\S]*aria-label=\{`\$\{view\.title\} subviews`\}/);
+	assert.match(browserEntry, /UserResourcesView[\s\S]*<ContextFilesView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Context"/);
+	assert.match(browserEntry, /GlobalSettingsView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Settings"[\s\S]*<SettingsSidebar/);
+	assert.match(browserEntry, /WebAnnotationsView[\s\S]*ResponsiveTabSidebarPanel[\s\S]*label="Web Annotations"/);
+	assert.match(browserEntry, /ToolFamilyView[\s\S]*ResponsiveTabSidebarPanel/);
+	assert.doesNotMatch(browserEntry, /grid-cols-\[220px_minmax\(0,1fr\)\][\s\S]*max-\[700px\]:grid-cols-1/);
+	assert.match(pluginWorkspace, /FIRST_PARTY_SELF_NAVIGATED_VIEWS/);
+	assert.match(pluginWorkspace, /showHostSubviewNavigation && view\.subviews\?\.length/);
+	assert.match(pluginWorkspace, /aria-label=\{`\$\{view\.title\} subviews`\}/);
 
 	assert.match(responsivePane, /ResizeObserver/);
 	assert.match(responsivePane, /const \[rootElement, setRootElement\]/);
@@ -35,6 +40,8 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(responsivePane, /w-\[min\(var\(--pibo-panel-sidebar-width\),86%\)\]/);
 	assert.doesNotMatch(responsivePane, /w-\[min\(\$\{/);
 	assert.match(responsivePane, /aria-modal=\{layout\.isOverlay && layout\.isOpen \? true : undefined\}/);
+	assert.match(responsivePane, /data-pibo-sidebar-navigation/);
+	assert.match(responsivePane, /layout\.closeSidebar\(\)/);
 
 	for (const source of [loops, cron, agents]) {
 		assert.match(source, /className="@container/);
@@ -45,6 +52,10 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(cron, /@max-\[720px\]:grid-cols-1/);
 	assert.match(agents, /grid-cols-\[300px_minmax\(0,1fr\)\]/);
 	assert.match(settings, /@max-\[520px\]:grid-cols-1/);
+	assert.match(contextFiles, /ResizeObserver/);
+	assert.match(contextFiles, /getBoundingClientRect\(\)\.width <= 860/);
+	assert.match(contextFiles, /mobileSidebarA11yProps\(filePanelNarrow, filePanelOpen, "Context files"\)/);
+	assert.doesNotMatch(contextFiles, /matchMedia\("\(max-width: 1180px\)"\)/);
 	assert.match(designerUi, /@max-\[680px\]:grid-cols-1/);
 	assert.match(workflowGraph, /@max-\[760px\]:grid-cols-1/);
 });

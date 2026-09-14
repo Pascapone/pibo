@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T08:10:00Z"
+  at: "2026-09-14T14:03:01Z"
 sources:
   - id: "v4-clean-cut"
     resource: "scope:owner decision 2026-09-13; plugin rebuild is Pibo 4.0; breaking interfaces accepted; automatic lossless migration; only new plugin delivery ships, no dual legacy runtime"
@@ -106,6 +106,16 @@ Die folgenden Punkte stammen aus den Produktvorgaben; sie werden von Coding-Agen
 | D21 | Ein geöffneter echter Workspace-Tab bleibt beim Wechsel zu einem anderen Tab gemountet. Inaktivität wird dem View-Vertrag signalisiert; Refresh führt zuerst die registrierten Leave-/Autosave-Guards und ausstehenden Tabset-Saves aus und remountet bei Erfolg ausschließlich den gewählten Tab. Close entfernt ihn und gibt seine UI-Ressourcen frei. |
 | D22 | Der sichtbare Desktop-Workspace ist Teil des revisionsgesicherten PluginStore-Tabsets seiner Pibo Session. Neue Sessions beginnen ohne echte Tabs; Reihenfolge, aktiver Tab und unterstützter View-Zustand werden weder Room- noch Browser-global geteilt. Auch die URL-/Route-Reconciliation gehört der Session-Auswahlgeneration, die die Route beobachtet hat: eine beim Sessionwechsel noch sichtbare Route von A darf weder ein bereits geladenes noch ein verzögert geladenes leeres Tabset von B initialisieren. Ein begrenzter Controller-Cache darf nur verlustfrei verwerfbare Einträge entfernen: lokale Entwürfe, CAS-Konflikte und laufende Reads/Writes bleiben bis Speicherung oder ausdrücklicher Recovery erhalten, während Browser-Hosts und React-Panels beim Sessionwechsel weiterhin entsorgt werden. |
 | D23 | Session-Wiederaufnahme ist native-first. Nur der gewählte Adapter darf native Abwesenheit autoritativ feststellen; erst dann ist ein checkpointed Same-Runtime-Import aus ausreichender langlebiger Pibo-Historie zulässig. Andere Fehler, Unsupported-Fälle und Konflikte erhalten Binding und Dateien ohne stillen Runtime-Wechsel oder frischen Ersatz. |
+| D24 | Mitgelieferte Plugin-Tabs mit stabilen Unterbereichen oder auswählbaren Entitäten verwenden bei ausreichender eigener Containerbreite eine linke Navigation und bei schmalem Container einen lokalen Drawer mit dauerhaft erreichbarem Öffner. Viewportbreite allein entscheidet nicht; Drittanbieter behalten ihre Layoutautonomie. |
+
+
+## PLG-UX-003: Konsistente interne Navigation in mitgelieferten Tabs
+
+Settings, User Resources/Context, Web Annotations und die mitgelieferten Toolfamilien verwenden dieselbe container-responsive Abschnittsnavigation. Agent Designer, Cron und Loops behalten ihre bereits vorhandenen container-responsiven Entity-Sidebars. Bei ausreichender Breite steht die Navigation links; unterhalb der lokalen Pane-Schwelle wird sie zum beschrifteten Drawer mit Backdrop, Escape, Fokusbegrenzung, Fokuswiederherstellung und dauerhaft sichtbarem Öffner im Inhaltsbereich. Die Umschaltung beobachtet die tatsächliche Tabbreite mit `ResizeObserver` und nicht nur die Browser-Viewportbreite. Der innere Context-Files-Dateibereich folgt derselben Containerregel, bleibt aber als fachlich eigener rechter Dateipanel erhalten.
+
+Unterbereichswechsel aktualisieren weiterhin die vorhandene `PluginTabInstance`: qualifizierte View-ID, `subviewId`, Deep Link, Session-Ownership, Keep-alive-/Refresh-/Close-Lifecycle und View-State bleiben unverändert. Der Host unterdrückt seine kompakte obere Fallbacknavigation ausschließlich für die ausdrücklich selbst navigierenden mitgelieferten Views. Drittanbieter erhalten weder diesen Wrapper noch eine neue Layoutpflicht; ohne eigene Navigation bleibt der generische Host-Fallback verfügbar.
+
+Die vollständige mitgelieferte View-Matrix ist bewusst abgeschlossen: Settings, User Resources/Context, Agent Designer, Cron, Loops, Web Annotations und Toolfamilien besitzen responsive Navigation. Workflows bleibt eine einzelne Autorenoberfläche mit eigenem Picker, Canvas und Inspectors; Build Context bleibt ein einzelner read-only Inspector. Beide erhalten keine dekorative Sidebar. `StandardShell` ist kein Tab. Änderungen an Datenmodellen, Plugin-Aktivierung, Runtime, Session-/Room-Routing oder Tabpersistenz gehören nicht zu dieser Korrektur.
 
 
 ## PLG-UX-002: Session-Erstellung und Session-eigener Workspace-Lifecycle
