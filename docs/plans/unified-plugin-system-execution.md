@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T14:03:01Z"
+  at: "2026-09-14T15:50:21Z"
 sources:
   - id: "rebuild-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
@@ -18,6 +18,8 @@ sources:
 ---
 
 # Active direction: Pibo 4.0 clean migration (2026-09-13)
+
+**Current completion scope (2026-09-14):** Continue on `beta/4.0-plugin-system` using the [4.0 completion plan](/plans/pibo-4-0-plugin-completion.md). Its F00–F10 work packages own the remaining core/plugin separation, independent delivery, legacy API removal, migration and documentation work. The named core views remain core. OMP requires functional plugin preservation only; additional OMP recovery, migration and runtime-switch coverage are explicitly outside the completion scope and no longer mandatory release blockers. Historical AP statuses and evidence below are preserved; do not restart completed work or treat earlier blanket plugin ownership as the new target.
 
 Parent review after the first local cutover phase was **not accepted as complete and was not deployed**. The authorized follow-up is now implemented locally: independent User Skills, Context Files and Custom-Agent profiles are owned by the ordinary `pibo.user-resources` host package and its scoped service; read-only Debug resolves immutable built-in adapter definitions directly; executable legacy plugin constructors and default Web/Core/Loop registries are removed from production source; and the default `pibo-sessions.sqlite` factory is no longer shipped. A source-audit regression rejects these entrypoints and any executable `definePiboPlugin` registration outside the retained compatibility registry implementation.
 

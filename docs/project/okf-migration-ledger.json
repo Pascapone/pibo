@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-14T08:10:00Z",
+  "generated_at": "2026-09-14T17:00:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -18,6 +18,30 @@
   },
   "records": [
     {
+      "path": "docs/plans/pibo-4-0-plugin-completion-todo.md",
+      "state": "conformant",
+      "classification": "active task-by-task execution of the owner-authorized Pibo 4.0 completion plan",
+      "type": "Task Ledger",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null,
+      "file_bytes": 18030,
+      "file_sha256": "e9029e327a67a7a42ba6c5e6b78574f3718045157a6bc9e81d1f0224dcf590f7",
+      "body_sha256": "034533a204871d712cbd8f11e46ad1e558759b46f5aeedf84831412da24a667e"
+    },
+    {
+      "path": "docs/plans/pibo-4-0-plugin-completion.md",
+      "state": "conformant",
+      "classification": "owner-directed Pibo 4.0 completion plan with explicit core boundaries and external plugin delivery",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null,
+      "file_bytes": 60488,
+      "file_sha256": "81757f4c848bf5b357bb296cf084e9726fc6a6fa2e9286f13fa48a51cb1097cb",
+      "body_sha256": "9b1031d48c9e8f2052a8f2b31c23df983f4c1089172f3c3e6d45f891f742f1a4"
+    },
+    {
       "path": "docs/plans/unified-plugin-system-rebuild.md",
       "state": "conformant",
       "classification": "owner-approved complete plugin rebuild plan",
@@ -25,9 +49,9 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 137146,
-      "file_sha256": "a7cd0f9b4e1473dea8b387f71205cc14cd47bbeef40706786f3887d5a08d989a",
-      "body_sha256": "395a8eecb80ef443358abe6299b44b17aec117c91342948bab7c060080e56a19"
+      "file_bytes": 141997,
+      "file_sha256": "8f57cc1055925dcaac2240d69b00c4d384149dc5f5e682beaeb0c52580d9a7da",
+      "body_sha256": "3267f40ba3fa892499fa6af0573317baa1670965418fd0c4c33a8f461ed00149"
     },
     {
       "path": "docs/plans/unified-plugin-system-execution.md",
@@ -37,9 +61,9 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 47543,
-      "file_sha256": "81f68f099fffdf5655bfb74855507658aa1bf9b2ffb06db549a9a458a8a8adf4",
-      "body_sha256": "987c71365796ec09553d6eb1608a32b6b6c5f38319cd2299beccdb6a6e8edf92"
+      "file_bytes": 55983,
+      "file_sha256": "3a210b29cb6939694fcae66009eddf80099caf8e5e4129c50c6b2365ef162f9e",
+      "body_sha256": "30b2603e4c0ca6fe26060d501a2444df6c6242bc2dde9ebf812f5fef8b72b371"
     },
     {
       "path": "docs/reports/cordis-plugin-architecture-feasibility-2026-09-11.md",
@@ -8577,9 +8601,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 45231,
-      "file_sha256": "329b683406b9c8cfdc130fb6b47c54c1c6a15cd64e9be35381b3e9f4e0878a50",
-      "body_sha256": "329b683406b9c8cfdc130fb6b47c54c1c6a15cd64e9be35381b3e9f4e0878a50"
+      "file_bytes": 48549,
+      "file_sha256": "f3d75b3a4dcd2e16f2f9b1ea4d06e9ebdc61b3a4219b8bb16880a02f430ac397",
+      "body_sha256": "f3d75b3a4dcd2e16f2f9b1ea4d06e9ebdc61b3a4219b8bb16880a02f430ac397"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -8615,9 +8639,9 @@
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
       "synthetic": false,
-      "file_bytes": 1637,
-      "file_sha256": "f1d7a10ec7926961b57e6a85f3711815b82721be5594ef5f96a9f68c61cb85b8",
-      "body_sha256": "f1d7a10ec7926961b57e6a85f3711815b82721be5594ef5f96a9f68c61cb85b8"
+      "file_bytes": 3064,
+      "file_sha256": "b7c5810279d589c45674afaa83b56ff2836ab1ff58ec5b254612ae5e9c7e24d7",
+      "body_sha256": "b7c5810279d589c45674afaa83b56ff2836ab1ff58ec5b254612ae5e9c7e24d7"
     },
     {
       "path": "docs/plans/okf-migration.md",

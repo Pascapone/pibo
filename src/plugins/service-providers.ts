@@ -2,7 +2,13 @@ import type { PluginDiagnostic, PluginInstallation } from "./manifest.js";
 import { pluginDiagnostic } from "./schema.js";
 
 /** Shared pure provider choice for host validation and generation/preview resolution. */
-export function resolvePluginServiceProviders(installations: readonly PluginInstallation[], choices: Record<string, string> = {}): { providers: Record<string, string>; diagnostics: PluginDiagnostic[] } {
+export type PluginExternalServiceClaim = { owner: string; version: string; replaces?: string[] };
+
+export function resolvePluginServiceProviders(
+	installations: readonly PluginInstallation[],
+	choices: Record<string, string> = {},
+	externalClaims: Record<string, PluginExternalServiceClaim> = {},
+): { providers: Record<string, string>; diagnostics: PluginDiagnostic[] } {
 	const claims = new Map<string, { pluginId: string; replaces?: string[] }[]>();
 	const providers: Record<string, string> = Object.create(null);
 	const diagnostics: PluginDiagnostic[] = [];
@@ -10,6 +16,10 @@ export function resolvePluginServiceProviders(installations: readonly PluginInst
 	for (const installation of installations) for (const service of installation.manifest.services?.provides ?? []) {
 		const entries = claims.get(service.id) ?? [];
 		entries.push({ pluginId: installation.pluginId, replaces: service.replaces }); claims.set(service.id, entries);
+	}
+	for (const [id, claim] of Object.entries(externalClaims)) {
+		const entries = claims.get(id) ?? [];
+		entries.push({ pluginId: claim.owner, replaces: claim.replaces }); claims.set(id, entries);
 	}
 	for (const [id, entries] of claims) {
 		const selected = choices[id];

@@ -12,6 +12,12 @@ import {
 import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import { PiboPluginRegistry } from "../plugins/registry.js";
 import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
+import {
+	PIBO_SESSION_CODE_RUNTIME_SERVICE,
+	PIBO_SESSION_CONTEXT_SERVICE,
+	PIBO_SESSION_DELEGATION_SERVICE,
+	PIBO_SESSION_RUN_CONTROL_SERVICE,
+} from "../plugins/runtime.js";
 import { capturePluginContextBuild, persistPluginContextBuild, persistPluginHookEvidence } from "../agent-runtime/plugin-context-build.js";
 import type { PluginJsonObject } from "../plugins/manifest.js";
 import type { PluginConsumer } from "../plugins/operations.js";
@@ -918,6 +924,7 @@ export class PiboSessionRouter {
 		const pluginGeneration = this.pluginGenerations.get(piboSessionId);
 		const ownsPluginGeneration = pluginGeneration !== undefined && this.pluginGenerations.delete(piboSessionId);
 		let runtimeDisposed = false;
+		let disposalError: unknown;
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		const timedOut = new Promise<never>((_resolve, reject) => {
 			timeout = setTimeout(() => reject(new PiboSessionDisposalTimeoutError(piboSessionId, this.routedSessionDisposeTimeoutMs)), this.routedSessionDisposeTimeoutMs);
@@ -927,6 +934,7 @@ export class PiboSessionRouter {
 			await Promise.race([disposal, timedOut]);
 			runtimeDisposed = true;
 		} catch (error) {
+			disposalError = error;
 			if (error instanceof PiboSessionDisposalTimeoutError) {
 				session.forceDispose(`${reason}; bounded disposal timeout`);
 				void disposal.catch(() => {});
@@ -934,17 +942,19 @@ export class PiboSessionRouter {
 			throw error;
 		} finally {
 			if (timeout) clearTimeout(timeout);
+			const cleanupErrors: unknown[] = [];
 			const portableTools = this.portableToolSessions.get(piboSessionId);
-			portableTools?.dispose();
+			try { await portableTools?.dispose(); } catch (error) { cleanupErrors.push(error); }
 			if (this.portableToolSessions.get(piboSessionId) === portableTools) this.portableToolSessions.delete(piboSessionId);
 			const resources = this.runtimeResourceSessions.get(piboSessionId);
-			if (resources) await resources.dispose();
+			try { if (resources) await resources.dispose(); } catch (error) { cleanupErrors.push(error); }
 			if (this.runtimeResourceSessions.get(piboSessionId) === resources) this.runtimeResourceSessions.delete(piboSessionId);
-			if (runtimeDisposed && pluginGeneration && ownsPluginGeneration) {
+			if (runtimeDisposed && cleanupErrors.length === 0 && pluginGeneration && ownsPluginGeneration) {
 				this.options.pluginRuntime!.release(pluginGeneration);
 			} else if (pluginGeneration && ownsPluginGeneration && !this.pluginGenerations.has(piboSessionId)) {
 				this.pluginGenerations.set(piboSessionId, pluginGeneration);
 			}
+			if (cleanupErrors.length > 0) throw new AggregateError(disposalError ? [disposalError, ...cleanupErrors] : cleanupErrors, `Session generation cleanup failed for ${piboSessionId}`);
 		}
 	}
 
@@ -1857,7 +1867,7 @@ export class PiboSessionRouter {
 		const sessionGeneration = pluginGeneration?.plan.generation ?? randomUUID();
 		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
 		if (previousResources) await previousResources.dispose();
-		this.portableToolSessions.get(piboSession.id)?.dispose();
+		await this.portableToolSessions.get(piboSession.id)?.dispose();
 		const portableTools = this.portableToolService.createSession({
 			piboSessionId: piboSession.id,
 			piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
@@ -1873,6 +1883,21 @@ export class PiboSessionRouter {
 			agentsController,
 			runToolController,
 			runtimeToolController: codeRuntimeToolController,
+			sessionToolProviders: pluginGeneration?.sessionToolProviders,
+			sessionServices: {
+				[PIBO_SESSION_CONTEXT_SERVICE]: Object.freeze({
+					piboSessionId: piboSession.id,
+					piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+					runtimeInstanceId: binding.runtimeInstanceId,
+					adapterId: binding.adapterId,
+					sessionGeneration,
+					profileName: sessionProfile.profileName,
+					cwd: workspace,
+				}),
+				[PIBO_SESSION_RUN_CONTROL_SERVICE]: runToolController,
+				[PIBO_SESSION_DELEGATION_SERVICE]: agentsController,
+				[PIBO_SESSION_CODE_RUNTIME_SERVICE]: codeRuntimeToolController,
+			},
 		});
 		this.portableToolSessions.set(piboSession.id, portableTools);
 		let resources: PiboRuntimeResourceSession;
@@ -1891,7 +1916,7 @@ export class PiboSessionRouter {
 			});
 			this.runtimeResourceSessions.set(piboSession.id, resources);
 		} catch (error) {
-			portableTools.dispose();
+			await portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			throw error;
 		}
@@ -1950,7 +1975,7 @@ export class PiboSessionRouter {
 				},
 			});
 		} catch (error) {
-			portableTools.dispose();
+			await portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			await resources.dispose();
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);
@@ -2002,7 +2027,7 @@ export class PiboSessionRouter {
 		} catch (error) {
 			await runtimeSession.dispose();
 			setup.nativeCleanupUncertain = false;
-			portableTools.dispose();
+			await portableTools.dispose();
 			if (this.portableToolSessions.get(piboSession.id) === portableTools) this.portableToolSessions.delete(piboSession.id);
 			await resources.dispose();
 			if (this.runtimeResourceSessions.get(piboSession.id) === resources) this.runtimeResourceSessions.delete(piboSession.id);

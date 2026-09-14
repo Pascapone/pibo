@@ -2,23 +2,12 @@ import { randomUUID } from "node:crypto";
 import { Value } from "typebox/value";
 import type { PluginHookDescriptor, PluginHookResult } from "../plugins/contributions.js";
 import type { PluginJsonValue } from "../plugins/manifest.js";
+import type { PluginHookEvidence, PluginHookScope, PluginRuntimeHook } from "../plugins/runtime.js";
 import type { PiboToolDefinition, PiboToolResult } from "../tools/contract.js";
 import { redactSensitiveText } from "../core/sensitive-data-redaction.js";
 
-export type PluginHookEvidence = {
-	id: string; hookId: string; phase: PluginHookDescriptor["phase"]; order: number;
-	status: "continued" | "transformed" | "rejected" | "failed";
-	generation: string; piboSessionId: string; executed?: boolean; diagnostic?: string;
-	provenance?: Extract<PluginHookResult, { action: "transform" }>["provenance"];
-};
-export type RuntimePluginHook = {
-	descriptor: PluginHookDescriptor;
-	run(value: PluginJsonValue, context: { piboSessionId: string; generation: string; toolName?: string; toolCallId?: string; signal: AbortSignal }): Promise<PluginHookResult> | PluginHookResult;
-};
-export type PluginHookScope = {
-	piboSessionId: string; generation: string; toolName?: string; toolCallId?: string;
-	signal?: AbortSignal; record: (evidence: PluginHookEvidence) => void;
-};
+export type { PluginHookEvidence, PluginHookScope } from "../plugins/runtime.js";
+export type RuntimePluginHook = PluginRuntimeHook;
 
 async function invokeHook(hook: RuntimePluginHook, value: PluginJsonValue, scope: PluginHookScope): Promise<PluginHookResult> {
 	const controller = new AbortController();

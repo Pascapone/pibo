@@ -1,34 +1,9 @@
 import * as React from "react";
 import * as sdk from "../../../../plugins/sdk";
-import type { EffectivePluginPlan, PluginArtifactEnvelope, PluginBrowserCatalog, PluginHookDescriptor, PluginHookResult, PluginJsonObject, PluginJsonValue, PluginQualifiedId, PluginTabInstance } from "../../../../plugins/sdk";
+import type { EffectivePluginPlan, PluginArtifactEnvelope, PluginBrowserCatalog, PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginHookDescriptor, PluginHookResult, PluginJsonValue, PluginQualifiedId, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
+export type { PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
 import { pluginRequest } from "./session-tab-controller";
 
-export type PluginViewProps = {
-	tab: PluginTabInstance;
-	piboSessionId: string;
-	agentId?: string;
-	roomId?: string;
-	active: boolean;
-	signal: AbortSignal;
-	state: PluginJsonObject;
-	updateState: (state: PluginJsonObject) => void;
-	request: <T>(path: string, init?: RequestInit) => Promise<T>;
-	openView: (viewId: PluginQualifiedId, subviewId?: string, state?: PluginJsonObject) => void;
-	createSession?: (profile: string) => Promise<void>;
-	registerBeforeLeave: (handler: () => Promise<void>) => () => void;
-};
-export type PluginRendererProps = { envelope: PluginArtifactEnvelope; piboSessionId: string; openView: PluginViewProps["openView"] };
-export type PluginComposerHook = { descriptor: PluginHookDescriptor; run: (value: PluginJsonValue, context: { piboSessionId: string; signal: AbortSignal }) => Promise<PluginHookResult> | PluginHookResult };
-export type PluginBrowserSetup = {
-	React: typeof React;
-	sdk: typeof sdk;
-	scope: sdk.PluginScope;
-	piboSessionId: string;
-	registerRenderer: (id: PluginQualifiedId, schemaVersion: number, component: React.ComponentType<PluginRendererProps>) => void;
-	registerHook: (hook: PluginComposerHook) => void;
-	registerShell: (id: PluginQualifiedId, component: React.ComponentType<{ children: React.ReactNode; piboSessionId: string }>) => void;
-};
-export type PluginBrowserModule = Record<string, unknown> & { setup?: (host: PluginBrowserSetup) => void | sdk.PluginDisposer | Promise<void | sdk.PluginDisposer> };
 export type BrowserModuleLoader = (url: string) => Promise<PluginBrowserModule>;
 const importModule: BrowserModuleLoader = (url) => import(/* @vite-ignore */ url);
 export class BrowserPluginHost {

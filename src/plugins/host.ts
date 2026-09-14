@@ -24,7 +24,13 @@ export type PluginDefinition = {
 	installation: PluginInstallation;
 	setup(context: PluginSetupContext): void | PluginDisposer | Promise<void | PluginDisposer>;
 };
-export type PluginActivationInput = { plugins: readonly PluginDefinition[]; providers?: Record<string, string> };
+export type PluginCoreServiceRegistration<T = unknown> = { id: string; version: string; value: T };
+export type PluginActivationInput = {
+	plugins: readonly PluginDefinition[];
+	providers?: Record<string, string>;
+	/** Core composition services participate in dependency validation without becoming plugin installations. */
+	coreServices?: Record<string, { owner: string; version: string }>;
+};
 export type PluginActivationPlan = { order: string[]; providers: Record<string, string>; diagnostics: PluginDiagnostic[]; valid: boolean };
 
 /** Complete graph validation happens before invoking any setup callback. */
@@ -51,7 +57,15 @@ export function planPluginActivation(input: PluginActivationInput): PluginActiva
 			entries.push({ pluginId: i.pluginId, ...service }); claims.set(service.id, entries);
 		}
 	}
-	const servicePlan = resolvePluginServiceProviders([...plugins.values()].map((plugin) => plugin.installation), input.providers);
+	for (const [serviceId, service] of Object.entries(input.coreServices ?? {})) {
+		const entries = claims.get(serviceId) ?? [];
+		entries.push({ pluginId: service.owner, version: service.version }); claims.set(serviceId, entries);
+	}
+	const servicePlan = resolvePluginServiceProviders(
+		[...plugins.values()].map((plugin) => plugin.installation),
+		input.providers,
+		input.coreServices,
+	);
 	Object.assign(providers, servicePlan.providers);
 	diagnostics.push(...servicePlan.diagnostics);
 	for (const [id, plugin] of plugins) {
@@ -66,7 +80,7 @@ export function planPluginActivation(input: PluginActivationInput): PluginActiva
 			if (!provider) { if (!requirement.optional) fail("missing-service", `Missing service ${requirement.id}`, [id, requirement.id]); continue; }
 			const declaration = claims.get(requirement.id)!.find((entry) => entry.pluginId === provider)!;
 			if (!satisfiesPluginVersion(declaration.version, requirement.version)) fail("service-version-conflict", `Service ${requirement.id} does not satisfy ${requirement.version}`, [id, requirement.id, provider]);
-			if (provider !== id) edges.get(id)!.add(provider);
+			if (provider !== id && plugins.has(provider)) edges.get(id)!.add(provider);
 		}
 	}
 	// Validate contribution identity/dependency contracts before any backend setup import/effect.
@@ -105,6 +119,7 @@ export function planPluginActivation(input: PluginActivationInput): PluginActiva
 export class PluginHost {
 	readonly contributions = new PluginContributionRegistry();
 	readonly services = new PluginServiceRegistry(this.contributions);
+	private readonly coreServiceScopes = new Map<string, PluginScope>();
 	private state: "idle" | "starting" | "active" | "stopping" | "failed" = "idle";
 	private scopes: PluginScope[] = [];
 	private installations: PluginInstallation[] = [];
@@ -114,6 +129,27 @@ export class PluginHost {
 
 	inspect() {
 		return freezePluginValue({ state: this.state, plugins: structuredClone(this.installations), diagnostics: structuredClone(this.diagnostics) });
+	}
+
+	coreServiceDeclarations(): Record<string, { owner: string; version: string }> {
+		return Object.fromEntries(Object.entries(this.services.declarations()).filter(([, service]) => service.owner === "@pibo/core"));
+	}
+
+	provideCoreService<T>({ id, version, value }: PluginCoreServiceRegistration<T>): PluginDisposer {
+		if (this.state === "starting" || this.state === "stopping" || this.state === "failed") throw new Error(`Plugin host is ${this.state}; core services require a stable composition boundary`);
+		if (!id.trim() || !version.trim()) throw new Error("Core service id and version are required");
+		if (this.coreServiceScopes.has(id)) throw new Error(`Core service ${id} is already registered`);
+		const scope = new PluginScope("@pibo/core", `@pibo/core/service/${id}`);
+		this.coreServiceScopes.set(id, scope);
+		this.services.provide(scope, id, version, value);
+		return async () => {
+			if (this.coreServiceScopes.get(id) !== scope) return;
+			const consumer = this.installations.find((installation) => installation.manifest.services?.requires?.some((service) => service.id === id)
+				|| installation.manifest.contributions.some((contribution) => contribution.services?.some((service) => service.id === id)));
+			if (consumer && this.providers[id] === "@pibo/core") throw new Error(`Core service ${id} cannot drain while ${consumer.pluginId} is active`);
+			this.coreServiceScopes.delete(id);
+			await scope.dispose();
+		};
 	}
 
 	async start(input: PluginActivationInput): Promise<void> {
@@ -133,6 +169,7 @@ export class PluginHost {
 		const plan = planPluginActivation({
 			plugins: [...this.installations.map((installation) => ({ installation, setup() {} })), ...input.plugins],
 			providers: { ...this.providers, ...input.providers },
+			coreServices: { ...this.coreServiceDeclarations(), ...input.coreServices },
 		});
 		if (incremental) for (const [service, owner] of Object.entries(this.services.owners())) {
 			if (plan.providers[service] !== owner) throw new Error(`Service ${service} requires a drained composition boundary before replacement`);

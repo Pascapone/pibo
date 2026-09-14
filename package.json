@@ -17,6 +17,10 @@
       "types": "./dist/plugins/host.d.ts",
       "import": "./dist/plugins/host.js"
     },
+    "./plugin-runtime": {
+      "types": "./dist/plugins/runtime.d.ts",
+      "import": "./dist/plugins/runtime.js"
+    },
     "./plugin-builtin/core": {
       "types": "./dist/plugins/packaged-core.d.ts",
       "import": "./dist/plugins/packaged-core.js"

@@ -31,6 +31,8 @@ export type CreatePiboSessionToolDefinitionsOptions = {
 	codexBrowserController?: CodexBrowserToolController;
 	/** Adapter-private tools exposed only when the adapter explicitly supports native-tool yielding. */
 	nativeYieldableTools?: readonly PiboToolDefinition[];
+	/** Generation-pinned tools supplied by selected public session tool providers. */
+	sessionToolDefinitions?: readonly PiboToolDefinition[];
 };
 
 export function isRuntimeToolProfile(tool: ToolProfile): boolean {
@@ -122,6 +124,7 @@ export function createPiboSessionToolDefinitions(
 	const delegatedSendTool = agentTools.find((tool) => tool.name === "pibo_agents_send_message");
 	const directAgentTools = agentTools.filter((tool) => tool !== delegatedSendTool);
 	const nativeYieldableTools = [...(options.nativeYieldableTools ?? [])];
+	const sessionToolDefinitions = [...(options.sessionToolDefinitions ?? [])];
 	const selectedNames = profile.effectivePluginPlan ? new Set(profile.tools.map((tool) => tool.name)) : undefined;
 	const isSelected = (tool: PiboToolDefinition) => !selectedNames || selectedNames.has(tool.name)
 		|| (profile.toolPackages.runControl === true && nativeYieldableTools.includes(tool));
@@ -138,6 +141,7 @@ export function createPiboSessionToolDefinitions(
 		...agentTools,
 		...codexCompatTools,
 		].filter(isSelected).map(wrap),
+		...sessionToolDefinitions.map(wrap),
 	];
 	const runControlYieldableTools = profile.toolPackages.runControl === true
 		? yieldableTools
@@ -156,6 +160,7 @@ export function createPiboSessionToolDefinitions(
 		...codexCompatTools,
 		...goalTools,
 		].filter(isSelected).map(wrap),
+		...sessionToolDefinitions.map(wrap),
 		...runTools.filter((tool) => !selectedNames || selectedNames.has(tool.name) || Boolean(delegatedSendTool)).map(wrap),
 	];
 }

@@ -63,4 +63,8 @@ export class PluginServiceRegistry {
 	versions(): Record<string, string> {
 		return Object.fromEntries(this.registrations.list<{ version: string }>("service").map((entry) => [entry.key, entry.value.version]));
 	}
+
+	declarations(): Record<string, { owner: string; version: string }> {
+		return Object.fromEntries(this.registrations.list<{ version: string }>("service").map((entry) => [entry.key, { owner: entry.owner, version: entry.value.version }]));
+	}
 }

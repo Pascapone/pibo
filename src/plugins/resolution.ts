@@ -114,25 +114,32 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 	// Plugin dependencies describe infrastructure, never implicitly enable that plugin's agent tools.
 	const infrastructure = new Set<string>();
 	const packageVisiting = new Set<string>();
-	const servicePlan = resolvePluginServiceProviders([...installations.values()].filter(usable), input.serviceProviders);
+	const externalServiceClaims = Object.fromEntries(Object.entries(input.serviceProviders ?? {})
+		.filter(([, owner]) => !installations.has(owner))
+		.flatMap(([id, owner]) => input.services?.[id] ? [[id, { owner, version: input.services[id] }]] : []));
+	const servicePlan = resolvePluginServiceProviders([...installations.values()].filter(usable), input.serviceProviders, externalServiceClaims);
 	diagnostics.push(...servicePlan.diagnostics);
 	const recordedServices = new Set<string>();
 	function pinServiceOwner(serviceId: string, consumerId: string, path: string[], required = true): boolean {
 		const owner = servicePlan.providers[serviceId];
 		const provider = owner ? installations.get(owner) : undefined;
+		const declaredVersion = input.services?.[serviceId];
+		if (!owner || !declaredVersion) {
+			fail("service-owner-unavailable", `Service ${serviceId} has no active provider`, [...path, serviceId], required); return false;
+		}
 		const declaration = provider?.manifest.services?.provides?.find((service) => service.id === serviceId);
-		if (!provider || !declaration || !usable(provider)) {
+		if (provider && (!declaration || !usable(provider))) {
 			fail("service-owner-unavailable", `Service ${serviceId} has no installed provider revision`, [...path, serviceId], required); return false;
 		}
-		if (declaration.version !== input.services?.[serviceId]) {
-			fail("service-owner-version-mismatch", `Service ${serviceId} differs from its declared provider ${owner}`, [...path, serviceId, owner!], required); return false;
+		if (declaration && declaration.version !== declaredVersion) {
+			fail("service-owner-version-mismatch", `Service ${serviceId} differs from its declared provider ${owner}`, [...path, serviceId, owner], required); return false;
 		}
-		if (owner !== consumerId) visitPackage(owner!, [...path, serviceId]);
+		if (provider && owner !== consumerId) visitPackage(owner, [...path, serviceId]);
 		if (!recordedServices.has(serviceId)) {
 			recordedServices.add(serviceId);
-			nodes.push({ schemaVersion: 1, id: `service:${serviceId}`, kind: "service", origin: "plugin", pluginId: owner, pluginRevision: provider.revision,
-				context: { kind: "none", reason: "Infrastructure service; agent contributions remain independently selected" }, status: "no-context", selected: true,
-				installed: true, globallyActive: true, agentSelected: entries.get(owner!)?.enabled === true, required,
+			nodes.push({ schemaVersion: 1, id: `service:${serviceId}`, kind: "service", origin: "plugin", ...(provider ? { pluginId: owner, pluginRevision: provider.revision } : {}),
+				context: { kind: "none", reason: provider ? "Infrastructure service; agent contributions remain independently selected" : "Core service available through the public host contract" }, status: "no-context", selected: true,
+				installed: true, globallyActive: true, agentSelected: provider ? entries.get(owner)?.enabled === true : false, required,
 				selectionReason: `Service dependency of ${path.join(" -> ")}`, order: nodes.length, predecessors: [], fallback: serviceId });
 		}
 		return true;

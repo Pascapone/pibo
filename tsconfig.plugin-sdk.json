@@ -4,5 +4,5 @@
     "declaration": true,
     "emitDeclarationOnly": true
   },
-  "include": ["src/plugins/sdk.ts", "src/plugins/host.ts"]
+  "include": ["src/plugins/sdk.ts", "src/plugins/host.ts", "src/plugins/runtime.ts"]
 }

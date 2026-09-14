@@ -29,6 +29,8 @@ export interface PluginManagerOptions {
 	externalInstallations?: readonly PluginInstallation[];
 	/** Explicit core service-provider choices for import-free installation graph validation. */
 	providers?: Record<string, string>;
+	/** Live core-service metadata; values remain private to the host. */
+	coreServices?: Record<string, { owner: string; version: string }> | (() => Record<string, { owner: string; version: string }>);
 }
 export interface PluginSessionRecovery {
 	piboSessionId: string;
@@ -78,7 +80,8 @@ export class PluginManager {
 		// Use the core's import-free graph validator, not a second dependency/version resolver.
 		const candidate: StoredPluginInstallation = { pluginId: resolved.manifest.id, revision: resolved.contentHash, version: resolved.manifest.version, contentHash: resolved.contentHash, source: resolved.source, manifest: resolved.manifest, state: "installed", enabled: true, stateRevision: options.expectedRevision, createdAt: this.now(), updatedAt: this.now() };
 		const composition = [...(this.options.externalInstallations ?? []), ...this.store.listInstallations().filter((item) => item.pluginId !== candidate.pluginId && !["uninstalled", "failed", "staged"].includes(item.state)).map((item) => ({ ...item, enabled: true })), candidate];
-		const graph = planPluginActivation({ plugins: composition.map((installation) => ({ installation, setup() {} })), providers: this.options.providers });
+		const coreServices = typeof this.options.coreServices === "function" ? this.options.coreServices() : this.options.coreServices;
+		const graph = planPluginActivation({ plugins: composition.map((installation) => ({ installation, setup() {} })), providers: this.options.providers, coreServices });
 		if (!graph.valid) throw new PluginValidationError(`Plugin dependency/service graph invalid: ${graph.diagnostics.map((item) => item.message).join("; ")}`);
 		if (options.dryRun) return { dryRun: true as const, pluginId: resolved.manifest.id, contentHash: resolved.contentHash, manifest: resolved.manifest, state: previous?.state, expectedRevision: options.expectedRevision };
 		let operation = this.store.putOperation<PluginOperation>({ id: randomUUID(), pluginId: resolved.manifest.id, revision: 0, kind: "install", state: "staging", createdAt: this.now(), installationRevision: options.expectedRevision, priorInstallation: previous }, 0);

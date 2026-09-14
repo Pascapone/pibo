@@ -5,9 +5,9 @@ import type { PluginStore, PluginGenerationAdmission } from "../plugins/store.js
 import type { PluginInstallation, PluginJsonObject } from "../plugins/manifest.js";
 import type { EffectivePluginPlan, IndependentPluginResource, PluginResolutionInput, PluginRuntimeTarget } from "../plugins/contributions.js";
 import { assertEffectivePluginPlan, resolvePluginContributions } from "../plugins/resolution.js";
-import type { RuntimePluginHook } from "./plugin-hooks.js";
 import { catalogPluginServices } from "../plugins/product-services.js";
 import type { PiboMcpAdapter } from "../plugins/mcp-adapter.js";
+import type { PluginRuntimeHook, PluginSessionToolProvider, PluginSessionToolProviderBinding } from "../plugins/runtime.js";
 
 /** Independent resources are not executable plugin selections, including manual child profiles. */
 export function independentProfileResources(profile: InitialSessionContext): IndependentPluginResource[] {
@@ -37,6 +37,7 @@ export function profileFromPluginPlan(profile: InitialSessionContext, plan: Effe
 		const registration = host.contributions.get<{ installation: PluginInstallation; value: unknown }>("contribution", entry.id);
 		const kind = entry.contribution.kind;
 		if (!["tool", "skill", "context-file", "subagent", "mcp-server", "mcp-adapter"].includes(kind)) continue;
+		if (kind === "tool" && entry.contribution.sessionToolProvider) continue;
 		if (!registration || registration.installation.revision !== entry.pluginRevision) throw new Error(`Selected contribution ${entry.id} is not loaded at revision ${entry.pluginRevision}`);
 		const value = registration.value;
 		if (kind === "tool") {
@@ -64,6 +65,36 @@ export function profileFromPluginPlan(profile: InitialSessionContext, plan: Effe
 	} });
 }
 
+export function sessionToolProvidersFromPluginPlan(plan: EffectivePluginPlan, host: PluginHost): PluginSessionToolProviderBinding[] {
+	const groups = new Map<string, EffectivePluginPlan["contributions"]>();
+	for (const entry of plan.contributions) {
+		const providerId = entry.contribution.kind === "tool" ? entry.contribution.sessionToolProvider : undefined;
+		if (!providerId) continue;
+		const selected = groups.get(providerId) ?? [];
+		selected.push(entry); groups.set(providerId, selected);
+	}
+	return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([providerContributionId, selectedTools]) => {
+		const providerEntry = plan.contributions.find((entry) => entry.id === providerContributionId && entry.contribution.kind === "session-tool-provider" && entry.contribution.scope === "app");
+		if (!providerEntry) throw new Error(`Selected tools require unavailable session tool provider: ${providerContributionId}`);
+		const registration = host.contributions.get<{ installation: PluginInstallation; value: PluginSessionToolProvider }>("contribution", providerContributionId as `${string}/${string}`);
+		if (!registration || registration.installation.revision !== providerEntry.pluginRevision || typeof registration.value?.createSession !== "function") throw new Error(`Selected session tool provider unavailable: ${providerContributionId}`);
+		return {
+			pluginId: providerEntry.pluginId,
+			pluginRevision: providerEntry.pluginRevision,
+			providerContributionId: providerEntry.id,
+			configuration: Object.freeze(structuredClone(plan.pluginConfigurations[providerEntry.pluginId] ?? {})),
+			contributionConfiguration: Object.freeze(structuredClone(providerEntry.config)),
+			selectedTools: selectedTools.map((entry) => ({
+				contributionId: entry.id,
+				name: entry.contribution.name!,
+				configuration: Object.freeze(structuredClone(plan.pluginConfigurations[entry.pluginId] ?? {})),
+				contributionConfiguration: Object.freeze(structuredClone(entry.config)),
+			})),
+			provider: registration.value,
+		};
+	});
+}
+
 export function mcpAdapterFromPluginPlan(profile: InitialSessionContext, host: PluginHost): PiboMcpAdapter | undefined {
 	const entry = profile.effectivePluginPlan?.contributions.find((candidate) => candidate.contribution.scope === "agent" && candidate.contribution.kind === "mcp-adapter");
 	if (!entry) return undefined;
@@ -72,7 +103,7 @@ export function mcpAdapterFromPluginPlan(profile: InitialSessionContext, host: P
 	return registration.value;
 }
 
-export type PluginRuntimeGeneration = { plan: EffectivePluginPlan; profile: InitialSessionContext; admission: PluginGenerationAdmission; hooks: RuntimePluginHook[] };
+export type PluginRuntimeGeneration = { plan: EffectivePluginPlan; profile: InitialSessionContext; admission: PluginGenerationAdmission; hooks: PluginRuntimeHook[]; sessionToolProviders: PluginSessionToolProviderBinding[] };
 
 /** One admission/persistence coordinator around the existing resolver and host, not another engine. */
 export class PluginRuntimeCoordinator {
@@ -99,12 +130,13 @@ export class PluginRuntimeCoordinator {
 			for (const plugin of plan.plugins) if (!admission.plugins.some((pin) => pin.pluginId === plugin.pluginId && pin.revision === plugin.revision)) throw new Error(`Plugin revision changed during admission: ${plugin.pluginId}`);
 			const effectiveProfile = profileFromPluginPlan(profile, plan, this.options.host);
 			const hooks = plan.contributions.filter((entry) => entry.contribution.scope === "agent" && entry.contribution.kind === "hook").map((entry) => {
-				const registration = this.options.host.contributions.get<{ installation: PluginInstallation; value: RuntimePluginHook }>("contribution", entry.id);
+				const registration = this.options.host.contributions.get<{ installation: PluginInstallation; value: PluginRuntimeHook }>("contribution", entry.id);
 				if (!registration || registration.installation.revision !== entry.pluginRevision || registration.value.descriptor.id !== entry.id) throw new Error(`Selected hook unavailable: ${entry.id}`);
 				return { ...registration.value, descriptor: { ...registration.value.descriptor, required: entry.required } };
 			});
+			const sessionToolProviders = sessionToolProvidersFromPluginPlan(plan, this.options.host);
 			this.options.store.putGenerationSnapshot({ piboSessionId, generationId: generation, plan, createdAt: new Date().toISOString() });
-			return { plan, profile: effectiveProfile, admission, hooks };
+			return { plan, profile: effectiveProfile, admission, hooks, sessionToolProviders };
 		} catch (error) {
 			this.options.manager.releaseGenerationAdmission(piboSessionId, generation, admission.revision);
 			throw error;

@@ -233,6 +233,11 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 		if (typeof c.kind !== "string" || !c.kind.trim() || !["app", "agent"].includes(String(c.scope)) || typeof c.required !== "boolean" || typeof c.defaultEnabled !== "boolean") fail("invalid-contribution", "kind, scope, required and defaultEnabled are required", at);
 		if (c.required === true && c.defaultEnabled !== true) fail("contradictory-selection", "Required contributions must be default-enabled", at);
 		if (c.name !== undefined && (typeof c.name !== "string" || !c.name.trim())) fail("invalid-contribution-name", "Contribution name must be nonempty", at);
+		if (c.kind === "session-tool-provider" && c.scope !== "app") fail("invalid-session-tool-provider", "Session tool providers are app-scoped infrastructure; individual tool contributions are agent-selected", at);
+		if (c.sessionToolProvider !== undefined) {
+			if (c.kind !== "tool" || c.scope !== "agent" || typeof c.name !== "string" || !c.name.trim() || typeof c.sessionToolProvider !== "string" || !qualifiedPattern.test(c.sessionToolProvider)) fail("invalid-session-tool-binding", "A session tool binding requires an agent-scoped named tool and a qualified provider contribution", at);
+			if (!Array.isArray(c.dependsOn) || !(c.dependsOn as unknown[]).includes(c.sessionToolProvider)) fail("missing-session-tool-provider-dependency", "A session tool must depend on its declared provider contribution", at);
+		}
 		if (c.metadata !== undefined && !isPluginRecord(c.metadata)) fail("invalid-contribution-metadata", "Contribution metadata must be an object", at);
 		if (c.order !== undefined && (typeof c.order !== "number" || !Number.isFinite(c.order))) fail("invalid-order", "order must be finite", at);
 		if (!isPluginRecord(c.context) || (c.context.kind === "none" ? typeof c.context.reason !== "string" || !c.context.reason.trim() : c.context.kind !== "context" || typeof c.context.stage !== "string" || !c.context.stage || typeof c.context.description !== "string" || !c.context.description || !["eager", "progressive", "runtime"].includes(String(c.context.loading)))) fail("missing-context-effect", "Every contribution needs explicit context effect or no-context reason", at);
@@ -264,6 +269,11 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 	}
 	for (const c of m.contributions) if (isPluginRecord(c) && Array.isArray(c.dependsOn)) for (const dependency of c.dependsOn) {
 		if (typeof dependency === "string" && dependency.startsWith(`${root}/`) && !ids.has(dependency.slice(root.length + 1))) fail("missing-contribution-dependency", `Missing local dependency ${dependency}`, [String(c.id), dependency]);
+	}
+	for (const c of m.contributions) if (isPluginRecord(c) && typeof c.sessionToolProvider === "string") {
+		const [providerPluginId, providerLocalId] = c.sessionToolProvider.split("/");
+		const provider = providerPluginId === root ? m.contributions.find((candidate) => isPluginRecord(candidate) && candidate.id === providerLocalId) : undefined;
+		if (!provider || !isPluginRecord(provider) || provider.kind !== "session-tool-provider" || provider.scope !== "app") fail("invalid-session-tool-provider", `Session tool provider ${c.sessionToolProvider} must be an app-scoped provider contribution in the same package`, [String(c.id), c.sessionToolProvider]);
 	}
 	return diagnostics;
 }

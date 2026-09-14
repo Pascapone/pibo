@@ -43,14 +43,10 @@ export type PiboPluginProductOptions = {
 export const PLUGIN_CONSUMER_COLLECTOR_RESOURCE = "plugin-consumer-collector";
 export type PluginOwnedConsumerCollector = PluginConsumerCollector;
 
-/** Product-internal services stay callable but never masquerade as selectable catalog providers. */
-export function catalogPluginServices(host: PluginHost | undefined, installations: readonly PluginInstallation[]) {
+/** Safe service metadata includes core and plugin providers; values remain host-private. */
+export function catalogPluginServices(host: PluginHost | undefined, _installations: readonly PluginInstallation[]) {
 	if (!host) return { services: undefined, serviceProviders: undefined };
-	const catalogPluginIds = new Set(installations.map((installation) => installation.pluginId));
-	const serviceProviders = Object.fromEntries(Object.entries(host.services.owners()).filter(([, pluginId]) => catalogPluginIds.has(pluginId)));
-	const versions = host.services.versions();
-	const services = Object.fromEntries(Object.keys(serviceProviders).map((id) => [id, versions[id]!]));
-	return { services, serviceProviders };
+	return { services: host.services.versions(), serviceProviders: host.services.owners() };
 }
 
 /** Read-only runtime projection. Preview must use the pure resolver and never open a runtime. */

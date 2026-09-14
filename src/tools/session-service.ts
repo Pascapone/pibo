@@ -5,6 +5,7 @@ import type { PiboRunToolController } from "../runs/tools.js";
 import type { PiboAgentsController, PiboSubagentRunner } from "../subagents/tool.js";
 import type { CodexBrowserToolController } from "./codex-browser.js";
 import type { PiboToolDefinition, PiboToolDefinitionContext } from "./contract.js";
+import type { PluginSessionToolProviderBinding, PluginSessionToolSet } from "../plugins/runtime.js";
 import {
 	PiboToolMcpBridge,
 	type PiboToolMcpBridgeAddress,
@@ -36,6 +37,10 @@ export type CreatePiboPortableToolSessionInput = PiboPortableToolSessionControll
 	cwd: string;
 	getActiveMessage?: PiboToolDefinitionContext["getActiveMessage"];
 	getConversationEntries?: PiboToolDefinitionContext["getConversationEntries"];
+	/** Selected providers pinned by the effective plugin generation. */
+	sessionToolProviders?: readonly PluginSessionToolProviderBinding[];
+	/** Session-owned services exposed by stable public IDs. */
+	sessionServices?: Readonly<Record<string, unknown>>;
 };
 
 export type PiboPortableToolDefinitionOptions = {
@@ -65,7 +70,8 @@ export interface PiboPortableToolSession {
 	issueMcpAccess(options?: { allowedToolNames?: readonly string[]; ttlMs?: number }): Promise<PiboToolMcpAccess>;
 	renewMcpAccess(token: string, ttlMs?: number): PiboToolMcpAccess;
 	revokeMcpAccess(token: string): boolean;
-	dispose(): void;
+	/** Revokes access immediately, then awaits provider cleanup and surfaces cleanup failures. */
+	dispose(): Promise<void>;
 }
 
 export type PiboPortableToolServiceOptions = {
@@ -78,6 +84,11 @@ type SessionRecord = {
 	active: boolean;
 	definitions?: PiboToolDefinition[];
 	nativeYieldableTools?: readonly PiboToolDefinition[];
+	providerToolSets?: PluginSessionToolSet[];
+	providerTools?: PiboToolDefinition[];
+	providerCleanupPromises?: Promise<void>[];
+	providerCleanupErrors?: unknown[];
+	disposePromise?: Promise<void>;
 	input: CreatePiboPortableToolSessionInput;
 	controllers: PiboPortableToolSessionControllers;
 	getConversationEntries?: PiboToolDefinitionContext["getConversationEntries"];
@@ -153,19 +164,18 @@ export class PiboPortableToolService {
 	}
 
 	async dispose(): Promise<void> {
-		for (const record of this.sessions.values()) {
-			record.active = false;
-			this.bridge.credentials.revokeSessionGeneration(record.input.piboSessionId, record.sessionGeneration);
-			this.bridge.closeSessionGeneration(record.input.piboSessionId, record.sessionGeneration);
-		}
-		this.sessions.clear();
+		const records = [...this.sessions.values()];
+		const results = await Promise.allSettled(records.map((record) => this.disposeSessionRecord(record)));
 		await this.bridge.stop();
+		const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected").map((result) => result.reason);
+		if (errors.length > 0) throw new AggregateError(errors, "Portable tool service cleanup failed");
 	}
 
 	private createDefinitions(record: SessionRecord, options: PiboPortableToolDefinitionOptions = {}): PiboToolDefinition[] {
 		if (!record.active) throw new Error(`Portable tool session for "${record.input.piboSessionId}" is disposed.`);
 		if (record.definitions && record.nativeYieldableTools === options.nativeYieldableTools) return record.definitions;
 		record.nativeYieldableTools = options.nativeYieldableTools;
+		const providerTools = this.createProviderTools(record);
 		const definitions = createPiboSessionToolDefinitions({
 			profile: record.input.profile,
 			pluginHooks: record.input.pluginHooks,
@@ -181,9 +191,113 @@ export class PiboPortableToolService {
 			},
 			...record.controllers,
 			nativeYieldableTools: options.nativeYieldableTools,
+			sessionToolDefinitions: providerTools,
 		});
+		const duplicates = definitions.map((tool) => tool.name).filter((name, index, names) => names.indexOf(name) !== index);
+		if (duplicates.length > 0) throw new Error(`Session tool name conflict: ${[...new Set(duplicates)].sort().join(", ")}`);
 		record.definitions = definitions;
 		return definitions;
+	}
+
+	private createProviderTools(record: SessionRecord): PiboToolDefinition[] {
+		if (record.providerTools) return record.providerTools;
+		const sets: PluginSessionToolSet[] = [];
+		const tools: PiboToolDefinition[] = [];
+		try {
+			for (const binding of record.input.sessionToolProviders ?? []) {
+				const providerPlugin = Object.freeze({
+					id: binding.pluginId,
+					contributionId: binding.providerContributionId,
+					revision: binding.pluginRevision,
+					configuration: Object.freeze(structuredClone(binding.configuration)),
+					contributionConfiguration: Object.freeze(structuredClone(binding.contributionConfiguration)),
+				});
+				const selectedTools = binding.selectedTools.map((selected) => Object.freeze({
+					contributionId: selected.contributionId,
+					name: selected.name,
+					configuration: Object.freeze(structuredClone(selected.configuration)),
+					contributionConfiguration: Object.freeze(structuredClone(selected.contributionConfiguration)),
+				}));
+				const selectedById = new Map(selectedTools.map((selected) => [selected.contributionId, selected]));
+				const sessionServices = record.input.sessionServices ?? {};
+				const toolSet = binding.provider.createSession(Object.freeze({
+					piboSessionId: record.input.piboSessionId,
+					piboRoomId: record.input.piboRoomId,
+					profileName: record.input.profile.profileName,
+					cwd: record.input.cwd,
+					getActiveMessage: record.input.getActiveMessage,
+					getConversationEntries: () => record.getConversationEntries?.() ?? [],
+					runtimeInstanceId: record.input.runtimeInstanceId,
+					adapterId: record.input.adapterId,
+					sessionGeneration: record.sessionGeneration,
+					plugin: providerPlugin,
+					selectedTools,
+					services: Object.freeze({
+						get: <T>(id: string) => sessionServices[id] as T | undefined,
+						require: <T>(id: string) => {
+							const value = sessionServices[id] as T | undefined;
+							if (value === undefined) throw new Error(`Session service ${id} is unavailable for ${binding.providerContributionId}`);
+							return value;
+						},
+					}),
+				}));
+				if (!toolSet || !Array.isArray(toolSet.tools)) throw new Error(`Session tool provider ${binding.providerContributionId} returned an invalid tool set`);
+				sets.push(toolSet);
+				const returned = new Set<string>();
+				for (const registration of toolSet.tools) {
+					const selected = registration && selectedById.get(registration.contributionId);
+					const definition = registration?.definition;
+					if (!selected) throw new Error(`Session tool provider ${binding.providerContributionId} returned undeclared or unselected tool ${registration?.contributionId ?? "<missing>"}`);
+					if (returned.has(selected.contributionId)) throw new Error(`Session tool provider ${binding.providerContributionId} returned duplicate tool ${selected.contributionId}`);
+					if (!definition || definition.name !== selected.name || !definition.inputSchema || typeof definition.inputSchema !== "object" || typeof definition.execute !== "function") throw new Error(`Session tool ${selected.contributionId} does not match its declared name/schema contract`);
+					returned.add(selected.contributionId);
+					const plugin = Object.freeze({ id: binding.pluginId, contributionId: selected.contributionId, revision: binding.pluginRevision, configuration: selected.configuration, contributionConfiguration: selected.contributionConfiguration });
+					tools.push({ ...definition, inputSchema: structuredClone(definition.inputSchema), execute: (callId, input, signal, onUpdate, context) => {
+						if (!record.active || this.sessions.get(record.key) !== record) throw new Error(`Session tool provider generation ${record.sessionGeneration} is no longer active`);
+						if (context.sessionGeneration && context.sessionGeneration !== record.sessionGeneration) throw new Error("Session tool execution generation does not match its provider binding");
+						return definition.execute(callId, input, signal, onUpdate, { ...context, plugin });
+					} });
+				}
+				const missing = selectedTools.filter((selected) => !returned.has(selected.contributionId));
+				if (missing.length > 0) throw new Error(`Session tool provider ${binding.providerContributionId} omitted selected tools: ${missing.map((entry) => entry.contributionId).join(", ")}`);
+			}
+		} catch (error) {
+			this.queueProviderCleanup(record, sets);
+			throw error;
+		}
+		record.providerToolSets = sets;
+		record.providerTools = tools;
+		return tools;
+	}
+
+	private queueProviderCleanup(record: SessionRecord, sets = record.providerToolSets ?? []): void {
+		record.providerToolSets = undefined;
+		record.providerTools = undefined;
+		record.providerCleanupPromises ??= [];
+		record.providerCleanupErrors ??= [];
+		for (const set of [...sets].reverse()) {
+			const cleanup = Promise.resolve().then(() => set.dispose?.()).catch((error) => { record.providerCleanupErrors!.push(error); });
+			record.providerCleanupPromises.push(cleanup);
+		}
+	}
+
+	private async finishProviderCleanup(record: SessionRecord): Promise<void> {
+		this.queueProviderCleanup(record);
+		await Promise.all(record.providerCleanupPromises ?? []);
+		const errors = record.providerCleanupErrors ?? [];
+		record.providerCleanupPromises = [];
+		record.providerCleanupErrors = [];
+		if (errors.length > 0) throw new AggregateError(errors, `Session tool provider cleanup failed for generation ${record.sessionGeneration}`);
+	}
+
+	private disposeSessionRecord(record: SessionRecord): Promise<void> {
+		if (record.disposePromise) return record.disposePromise;
+		record.active = false;
+		this.sessions.delete(record.key);
+		this.bridge.credentials.revokeSessionGeneration(record.input.piboSessionId, record.sessionGeneration);
+		this.bridge.closeSessionGeneration(record.input.piboSessionId, record.sessionGeneration);
+		record.disposePromise = this.finishProviderCleanup(record);
+		return record.disposePromise;
 	}
 
 	private resolveTools(piboSessionId: string, generation: string): PiboToolDefinition[] {
@@ -275,13 +389,7 @@ export class PiboPortableToolService {
 				if (revoked) this.bridge.closeCredentialSessions(current.credentialId);
 				return revoked;
 			},
-			dispose: () => {
-				if (!record.active) return;
-				record.active = false;
-				this.sessions.delete(record.key);
-				this.bridge.credentials.revokeSessionGeneration(record.input.piboSessionId, record.sessionGeneration);
-				this.bridge.closeSessionGeneration(record.input.piboSessionId, record.sessionGeneration);
-			},
+			dispose: () => this.disposeSessionRecord(record),
 		};
 	}
 }

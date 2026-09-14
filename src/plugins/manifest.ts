@@ -90,6 +90,8 @@ export type PluginContribution = {
 	context: PluginContextEffect;
 	/** Visible name conflicts are checked per kind (tools share the tool namespace). */
 	name?: string;
+	/** App-scoped provider that materializes this individually selectable tool for one session generation. */
+	sessionToolProvider?: PluginQualifiedId;
 	replaces?: PluginQualifiedId[];
 	order?: number;
 	configSchema?: PluginJsonSchema;

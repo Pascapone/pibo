@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T14:03:01Z"
+  at: "2026-09-14T15:50:21Z"
 sources:
   - id: "v4-clean-cut"
     resource: "scope:owner decision 2026-09-13; plugin rebuild is Pibo 4.0; breaking interfaces accepted; automatic lossless migration; only new plugin delivery ships, no dual legacy runtime"
@@ -33,6 +33,8 @@ sources:
 ---
 
 # Zweck, Verbindlichkeit und Einstieg
+
+**Aktuelle Abschlussrichtung vom 14. September 2026:** Der [4.0-Abschlussplan](/plans/pibo-4-0-plugin-completion.md) konkretisiert die verbleibende Umsetzung und hat Vorrang bei der Kern-/Plugin-Grenze, unabhängigen Paketierung, vollständigen Entfernung alter Erweiterungs-APIs und dem begrenzten OMP-Umfang. Settings, Agent Designer, Kontext, Session Inspector und Raw Events bleiben Kern; andere fachliche Erweiterungen werden unabhängig auslieferbar. Frühere pauschale Aussagen über sämtliche UI als Plugins und alte Arbeitsbranch-/Baseline-Vorgaben gelten dafür nicht mehr. Implementierung und historische Evidenz dieses Plans bleiben erhalten.
 
 Dieser Plan ist die gemeinsame Ausführungsgrundlage für Coding-Agents. Er beschreibt **noch zu implementierendes Verhalten** und ersetzt keine aktuelle Spezifikation. Alle Arbeitspakete beginnen offen. Ein Haken bedeutet später nachgewiesene Fertigstellung, nicht lediglich geschriebenen Code.
 
