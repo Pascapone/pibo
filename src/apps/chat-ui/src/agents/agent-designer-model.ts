@@ -509,11 +509,15 @@ export function buildPluginBuiltinToolReplacementMap(plan: EffectivePluginPlan |
 
 export function setAgentPluginEnabled(selection: AgentPluginSelection, plugin: AgentPluginCatalog["plugins"][number], enabled: boolean): AgentPluginSelection {
 	const next = structuredClone(selection);
-	const entry = next.plugins.find((item) => item.pluginId === plugin.pluginId);
+	let entry = next.plugins.find((item) => item.pluginId === plugin.pluginId);
 	if (entry) entry.enabled = enabled;
 	else {
 		if (!plugin.initialSelection) throw new Error("System-only plugins have no agent selection");
-		next.plugins.push({ ...structuredClone(plugin.initialSelection), enabled });
+		entry = { ...structuredClone(plugin.initialSelection), enabled };
+		next.plugins.push(entry);
+	}
+	if (enabled) for (const contribution of plugin.contributions) {
+		if (contribution.scope === "agent") entry.contributions[contribution.id] = true;
 	}
 	return next;
 }

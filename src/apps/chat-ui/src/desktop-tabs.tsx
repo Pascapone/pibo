@@ -400,6 +400,7 @@ export function DesktopTabSidebar({
 										{gapBefore ? <DesktopTabDropGap index={dragInsertion.toIndex} /> : null}
 										<div
 										draggable
+											onClick={() => onActivate(tab)}
 											onDragStart={(event) => {
 												dragTabIdRef.current = tab.id;
 												event.dataTransfer.effectAllowed = "move";
@@ -435,23 +436,22 @@ export function DesktopTabSidebar({
 											aria-selected={selected}
 											aria-controls={`desktop-tabpanel-${tab.id}`}
 											tabIndex={selected ? 0 : -1}
-											onClick={() => onActivate(tab)}
 											onKeyDown={(event) => tabKeyDown(event, tab, index)}
 											title={`${tab.title}. Alt+Shift+Arrow reorders; Delete closes.`}
-											className="min-w-0 flex-1 truncate px-2 text-left text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"
+											className="h-full min-w-0 flex-1 truncate px-2 text-left text-[11px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"
 										>
 											{tab.title}
 										</button>
-										<button type="button" onClick={() => { void refreshTab(tab); }} title={`Refresh ${tab.title}`} aria-label={`Refresh ${tab.title}`} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><RefreshCw size={11} /></button>
-										<button type="button" onClick={() => void requestClose(tab)} title={`Close ${tab.title}`} aria-label={`Close ${tab.title}`} className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><X size={12} /></button>
+										<button type="button" onClick={(event) => { event.stopPropagation(); void refreshTab(tab); }} title={`Refresh ${tab.title}`} aria-label={`Refresh ${tab.title}`} className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><RefreshCw size={11} /></button>
+										<button type="button" onClick={(event) => { event.stopPropagation(); void requestClose(tab); }} title={`Close ${tab.title}`} aria-label={`Close ${tab.title}`} className="mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-slate-500 opacity-70 hover:bg-slate-700 hover:text-slate-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#11a4d4]"><X size={12} /></button>
 										</div>
 										{gapAfter ? <DesktopTabDropGap index={dragInsertion.toIndex} /> : null}
 									</div>
 								);
 							})}
+							<button ref={plusButtonRef} type="button" onClick={() => onStateChange(openDesktopNewTab(state))} title="New Tab" aria-label="New Tab" className="w-9 shrink-0 border-r border-slate-800 text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"><Plus size={15} className="mx-auto" /></button>
 						</div>
 						<button type="button" onClick={() => tabListRef.current?.scrollBy({ left: 220, behavior: "smooth" })} title="Scroll tabs right" aria-label="Scroll tabs right" className="w-7 shrink-0 border-l border-slate-800 text-slate-500 hover:text-[#11a4d4]"><ChevronRight size={13} className="mx-auto" /></button>
-						<button ref={plusButtonRef} type="button" onClick={() => onStateChange(openDesktopNewTab(state))} title="New Tab" aria-label="New Tab" className="w-9 shrink-0 border-l border-slate-800 text-slate-300 hover:bg-[#11a4d4]/10 hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"><Plus size={15} className="mx-auto" /></button>
 						<button type="button" onClick={() => onStateChange({ ...state, collapsed: true })} title="Collapse workspace tabs" aria-label="Collapse workspace tabs" className="w-9 shrink-0 border-l border-slate-800 text-slate-400 hover:text-[#11a4d4] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#11a4d4]"><PanelRightClose size={15} className="mx-auto" /></button>
 					</div>
 					<div className={`relative min-h-0 overflow-hidden bg-[#101d22] ${fullscreen ? "row-start-2" : ""}`}>
