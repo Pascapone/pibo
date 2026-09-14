@@ -381,13 +381,15 @@ Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Runtime-/Request-/UI-/Deb
 
 ## F06 – Minimal- und Standarddistribution bauen
 
-- [ ] Eigenständiges Core-Artefakt ohne Featurecode und Runtime-SDKs erstellen.
-- [ ] Standardzusammenstellung aus separaten versionierten Pluginartefakten bauen; vorhandene Auswahl respektieren.
-- [ ] Paketinhalt, installierte Abhängigkeiten und Browser-Bundles prüfen, nicht nur einen Start mit Disabled-Flags.
-- [ ] Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
-- [ ] Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
+- [x] Eigenständiges Core-Artefakt ohne Featurecode und Runtime-SDKs erstellen.
+- [x] Standardzusammenstellung aus separaten versionierten Pluginartefakten bauen; vorhandene Auswahl respektieren.
+- [x] Paketinhalt, installierte Abhängigkeiten und Browser-Bundles prüfen, nicht nur einen Start mit Disabled-Flags.
+- [x] Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
+- [x] Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
 - [ ] Einen gepackten alten Monolith-/Beta-Stand über den zweistufigen Cutover auf gepackten Minimal-Core plus exakt gemappte Artefakte aktualisieren; ein unvorbereiteter Direktwechsel muss fail-closed bleiben.
-- [ ] Den gepackten Minimal-Core per Importgraph und Artefaktinhalt darauf prüfen, dass Run-, Delegation- und andere Featurecontroller, Toolnamen sowie konkrete Reminder-/Metadatenimplementierungen nicht benötigt oder mitgeliefert werden.
+- [x] Den gepackten Minimal-Core per Importgraph und Artefaktinhalt darauf prüfen, dass Run-, Delegation- und andere Featurecontroller, Toolnamen sowie konkrete Reminder-/Metadatenimplementierungen nicht benötigt oder mitgeliefert werden.
+
+Zwischenstand 2026-09-14: `npm run pibo4:packages` erzeugt Minimal-Core, Standardkomposition und 20 separat packbare Artefakte. `test/pibo4-packed-distribution.test.mjs` startet Minimal-Core aus einem Tarball ohne Quellcheckout und ohne Plugins, installiert Preview aus einem zweiten Tarball und prüft den physischen Ausschluss konkreter Runtime-/Run-/Delegation-Symbole. `/tmp/pibo4-f06-package-boundaries.md` enthält Größen, Hashes und Paketnachweise. Der Alt-zu-Neu-Cutover bleibt gemeinsam mit F07 offen.
 
 **Fertig, wenn:** Minimalbetrieb und nachträgliche externe Erweiterung sind aus echten gepackten Artefakten nachgewiesen. Abhängigkeiten: F02–F05; Migration von Bestand mit F07.
 

@@ -490,7 +490,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "core" | "user-resources" | "preview" | "cron" | "workflows" | "transcription" | "web-annotations" | "tool-families" | "control-tools" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli" | "product-ui";
+	backendModule: "core" | "user-resources" | "preview" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "agent-delegation" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli" | "product-ui";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
@@ -500,18 +500,18 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: previewPackageManifest, backendExport: "setupPreview", backendModule: "preview", webOnly: true, browserModules: [{ exports: "PreviewView", asset: "pibo-plugin-preview.js" }] },
 	{ manifest: cronPackageManifest, backendExport: "setupCron", backendModule: "cron", webOnly: true, browserModules: [{ exports: "CronView", asset: "pibo-plugin-cron.js" }] },
 	{ manifest: workflowsPackageManifest, backendExport: "setupWorkflows", backendModule: "workflows", browserModules: [{ exports: "WorkflowsView", asset: "pibo-plugin-workflows.js" }] },
-	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription" },
-	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription" },
+	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription-openai-chatgpt" },
+	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription-openai" },
 	{ manifest: webAnnotationsPackageManifest, backendExport: "setup", backendModule: "web-annotations", browserModules: [{ exports: "WebAnnotationsView", asset: "pibo-plugin-web-annotations.js" }, { exports: "BuildContextView", asset: "pibo-plugin-build-context.js" }] },
-	{ manifest: codeRuntimePackageManifest, backendExport: "setupCodeRuntime", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: fileEditingPackageManifest, backendExport: "setupFileEditing", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: webSearchPackageManifest, backendExport: "setupWebSearch", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: browserToolsPackageManifest, backendExport: "setupBrowserTools", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: gatewayToolsPackageManifest, backendExport: "setupGatewayTools", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: codexCompatPackageManifest, backendExport: "setupCodexCompat", backendModule: "tool-families", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: runControlPackageManifest, backendExport: "setupRunControl", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
-	{ manifest: goalControlPackageManifest, backendExport: "setupGoalControl", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }, { exports: "LoopsView", asset: "pibo-plugin-loops.js" }] },
-	{ manifest: agentDelegationPackageManifest, backendExport: "setupAgentDelegation", backendModule: "control-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: codeRuntimePackageManifest, backendExport: "setupCodeRuntime", backendModule: "code-runtime", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: fileEditingPackageManifest, backendExport: "setupFileEditing", backendModule: "file-editing", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: webSearchPackageManifest, backendExport: "setupWebSearch", backendModule: "web-search", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: browserToolsPackageManifest, backendExport: "setupBrowserTools", backendModule: "browser-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: gatewayToolsPackageManifest, backendExport: "setupGatewayTools", backendModule: "gateway-tools", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: codexCompatPackageManifest, backendExport: "setupCodexCompat", backendModule: "codex-compat", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: runControlPackageManifest, backendExport: "setupRunControl", backendModule: "run-control", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
+	{ manifest: goalControlPackageManifest, backendExport: "setupGoalControl", backendModule: "goal-loops", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }, { exports: "LoopsView", asset: "pibo-plugin-loops.js" }] },
+	{ manifest: agentDelegationPackageManifest, backendExport: "setupAgentDelegation", backendModule: "agent-delegation", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 	{ manifest: builtinProfilesPackageManifest, backendExport: "setupBuiltinProfiles", backendModule: "profiles" },
 	{ manifest: piRuntimePackageManifest, backendExport: "setupPiRuntime", backendModule: "runtime-pi" },
 	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-codex-native", browserModules: [{ exports: "RuntimeRequestsView", asset: "pibo-plugin-runtime-requests.js" }] },

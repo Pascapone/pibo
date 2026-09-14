@@ -111,15 +111,15 @@ Nachweise: offen.
 
 ## F06 – Minimal- und Standarddistribution bauen
 
-- [ ] F06-01: Eigenständiges Core-Artefakt ohne Featurecode und Runtime-SDKs erstellen.
-- [ ] F06-02: Standardzusammenstellung aus separaten versionierten Pluginartefakten bauen; vorhandene Auswahl respektieren.
-- [ ] F06-03: Paketinhalt, installierte Abhängigkeiten und Browser-Bundles prüfen, nicht nur einen Start mit Disabled-Flags.
-- [ ] F06-04: Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
-- [ ] F06-05: Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
+- [x] F06-01: Eigenständiges Core-Artefakt ohne Featurecode und Runtime-SDKs erstellen.
+- [x] F06-02: Standardzusammenstellung aus separaten versionierten Pluginartefakten bauen; vorhandene Auswahl respektieren.
+- [x] F06-03: Paketinhalt, installierte Abhängigkeiten und Browser-Bundles prüfen, nicht nur einen Start mit Disabled-Flags.
+- [x] F06-04: Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
+- [x] F06-05: Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
 - [ ] F06-06: Gepackten 3.6.2-/Beta-Monolithen über einen versionierten Cutover-Plan auf gepackten Minimal-Core plus exakt benötigte Artefakte aktualisieren; unvorbereiteter Direktwechsel bleibt fail-closed.
-- [ ] F06-07: Gepackten Minimal-Core per Importgraph und Artefaktinhalt beweisen: keine Run-/Delegation-Featurecontroller, Toolnamen oder konkreten Reminder-/Metadatenimplementierungen in seiner Closure (N-022).
+- [x] F06-07: Gepackten Minimal-Core per Importgraph und Artefaktinhalt beweisen: keine Run-/Delegation-Featurecontroller, Toolnamen oder konkreten Reminder-/Metadatenimplementierungen in seiner Closure (N-022).
 
-Nachweise: offen.
+Nachweise: `/tmp/pibo4-f06-package-boundaries.md`; `npm run pibo4:packages`; `test/pibo4-packed-distribution.test.mjs` (4/4); fokussierte Host-/SDK-/Provider-/Manager-/Product-Runtime-Suiten. F06-06 bleibt bewusst offen und wird gemeinsam mit F07 als tatsächlicher Alt-zu-Neu-Cutover belegt.
 
 ## F07 – Migration an neue Eigentümer und Paketgrenzen anpassen
 

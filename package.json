@@ -41,6 +41,14 @@
       "types": "./dist/plugins/packaged-user-resources.d.ts",
       "import": "./dist/plugins/packaged-user-resources.js"
     },
+    "./plugin-builtin/transcription-openai-chatgpt": {
+      "types": "./dist/plugins/packaged-transcription-openai-chatgpt.d.ts",
+      "import": "./dist/plugins/packaged-transcription-openai-chatgpt.js"
+    },
+    "./plugin-builtin/transcription-openai": {
+      "types": "./dist/plugins/packaged-transcription-openai.d.ts",
+      "import": "./dist/plugins/packaged-transcription-openai.js"
+    },
     "./plugin-builtin/transcription": {
       "types": "./dist/plugins/packaged-transcription.d.ts",
       "import": "./dist/plugins/packaged-transcription.js"
@@ -49,9 +57,45 @@
       "types": "./dist/plugins/packaged-web-annotations.d.ts",
       "import": "./dist/plugins/packaged-web-annotations.js"
     },
+    "./plugin-builtin/code-runtime": {
+      "types": "./dist/plugins/packaged-code-runtime.d.ts",
+      "import": "./dist/plugins/packaged-code-runtime.js"
+    },
+    "./plugin-builtin/file-editing": {
+      "types": "./dist/plugins/packaged-file-editing.d.ts",
+      "import": "./dist/plugins/packaged-file-editing.js"
+    },
+    "./plugin-builtin/web-search": {
+      "types": "./dist/plugins/packaged-web-search.d.ts",
+      "import": "./dist/plugins/packaged-web-search.js"
+    },
+    "./plugin-builtin/browser-tools": {
+      "types": "./dist/plugins/packaged-browser-tools.d.ts",
+      "import": "./dist/plugins/packaged-browser-tools.js"
+    },
+    "./plugin-builtin/gateway-tools": {
+      "types": "./dist/plugins/packaged-gateway-tools.d.ts",
+      "import": "./dist/plugins/packaged-gateway-tools.js"
+    },
+    "./plugin-builtin/codex-compat": {
+      "types": "./dist/plugins/packaged-codex-compat.d.ts",
+      "import": "./dist/plugins/packaged-codex-compat.js"
+    },
     "./plugin-builtin/tool-families": {
       "types": "./dist/plugins/packaged-tool-families.d.ts",
       "import": "./dist/plugins/packaged-tool-families.js"
+    },
+    "./plugin-builtin/run-control": {
+      "types": "./dist/plugins/packaged-run-control.d.ts",
+      "import": "./dist/plugins/packaged-run-control.js"
+    },
+    "./plugin-builtin/goal-loops": {
+      "types": "./dist/plugins/packaged-goal-loops.d.ts",
+      "import": "./dist/plugins/packaged-goal-loops.js"
+    },
+    "./plugin-builtin/agent-delegation": {
+      "types": "./dist/plugins/packaged-agent-delegation.d.ts",
+      "import": "./dist/plugins/packaged-agent-delegation.js"
     },
     "./plugin-builtin/control-tools": {
       "types": "./dist/plugins/packaged-control-tools.d.ts",
@@ -162,7 +206,10 @@
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "prepack": "npm run build && node scripts/package-shrinkwrap.mjs prepare",
     "postpack": "node scripts/package-shrinkwrap.mjs clean",
-    "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json && node scripts/write-plugin-builtin-declarations.mjs"
+    "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json && node scripts/write-plugin-builtin-declarations.mjs",
+    "pibo4:artifacts": "node scripts/build-pibo4-artifacts.mjs",
+    "pibo4:minimal-core": "node scripts/build-pibo4-minimal-core.mjs",
+    "pibo4:packages": "npm run pibo4:artifacts && npm run pibo4:minimal-core"
   },
   "dependencies": {
     "@balena/dockerignore": "1.0.2",
