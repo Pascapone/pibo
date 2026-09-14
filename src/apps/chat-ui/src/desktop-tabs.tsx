@@ -101,7 +101,6 @@ const SESSION_TOOL_CATALOG: readonly CatalogEntry[] = [
 
 export function desktopTabCatalog(): readonly CatalogEntry[] {
 	const routes: CatalogEntry[] = [
-		{ id: "sessions", label: "Sessions", description: "Focus the fixed Rooms and Sessions navigation", icon: Layers3, sessionsAction: true },
 		{ id: "workflows", label: "Workflows", description: "Workflow definitions and drafts", icon: Workflow, target: { kind: "route", route: { area: "workflows" } } },
 		{ id: "cron", label: "Cron", description: "Scheduled jobs", icon: Clock3, target: { kind: "route", route: { area: "cron" } } },
 		{ id: "loops", label: "Loops", description: "Goal and legacy Ralph loops", icon: GitBranch, target: { kind: "route", route: { area: "loops" } } },
