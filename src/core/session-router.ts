@@ -9,8 +9,8 @@ import {
 	type ModelProfile,
 	type SubagentProfile,
 } from "./profiles.js";
-import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
-import { PiboPluginRegistry } from "../plugins/registry.js";
+import { createPiboProfileFromCapabilitiesOrDefault, resolvePiboProfileNameFromCapabilitiesOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
+import { PiboCapabilityHost } from "./capability-host.js";
 import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
 import {
 	PIBO_SESSION_AGENT_TARGETS_SERVICE,
@@ -145,7 +145,7 @@ export type PiboRuntimeBindingRebindInput = RuntimeSessionBindingRebindInput;
 
 export type PiboSessionRouterOptions = Omit<PiboRuntimeOptions, "profile" | "resources"> & {
 	profile?: InitialSessionContext;
-	pluginRegistry?: PiboPluginRegistry;
+	capabilityHost?: PiboCapabilityHost;
 	/** Same host + persisted manager used by product plugin management. Required for migrated profiles. */
 	pluginRuntime?: PluginRuntimeCoordinator;
 	sessionStore?: PiboSessionStore;
@@ -560,7 +560,7 @@ export class PiboSessionRouter {
 	private readonly routedSessionIdleTimeoutMs: number | false;
 	private readonly routedSessionDisposeTimeoutMs: number;
 	private readonly baseProfile: InitialSessionContext;
-	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly capabilityHost: PiboCapabilityHost;
 	private readonly pluginGenerations = new Map<string, PluginRuntimeGeneration>();
 	private readonly sessionStore: PiboSessionStore;
 	private readonly reliabilityStore?: PiboReliabilityStore;
@@ -572,7 +572,7 @@ export class PiboSessionRouter {
 
 	constructor(private readonly options: PiboSessionRouterOptions = {}) {
 		this.capacity = new RuntimeCapacity(options.runtimeCapacity);
-		this.pluginRegistry = options.pluginRegistry ?? PiboPluginRegistry.create(options.pluginRuntime ? { host: options.pluginRuntime.options.host } : {});
+		this.capabilityHost = options.capabilityHost ?? PiboCapabilityHost.create(options.pluginRuntime ? { host: options.pluginRuntime.options.host } : {});
 		this.sessionStore = options.sessionStore ?? new InMemoryPiboSessionStore();
 		this.outputRenderSequencer = new OutputRenderSequencer({
 			highWaterStore: outputRenderHighWaterStore(this.sessionStore),
@@ -595,8 +595,8 @@ export class PiboSessionRouter {
 		this.routedSessionDisposeTimeoutMs = typeof disposeTimeoutMs === "number" && Number.isFinite(disposeTimeoutMs) && disposeTimeoutMs > 0
 			? disposeTimeoutMs
 			: DEFAULT_ROUTED_SESSION_DISPOSE_TIMEOUT_MS;
-		const defaultProfileName = selectDefaultPiboProfileName(this.pluginRegistry);
-		this.baseProfile = options.profile ?? createPiboProfileFromRegistryOrDefault(this.pluginRegistry, defaultProfileName);
+		const defaultProfileName = selectDefaultPiboProfileName(this.capabilityHost);
+		this.baseProfile = options.profile ?? createPiboProfileFromCapabilitiesOrDefault(this.capabilityHost, defaultProfileName);
 		this.reliabilityStore = options.reliabilityStore ?? (options.persistSession === false ? undefined : createDefaultPiboReliabilityStore());
 		this.signalRegistry = options.signalRegistry ?? createPiboSignalRegistry();
 		const payloadStore = payloadStoreFromSessionStore(this.sessionStore);
@@ -1034,7 +1034,7 @@ export class PiboSessionRouter {
 			? parentBinding.nativeSessionId
 			: undefined;
 		return profileForSession(
-			createPiboProfileFromRegistryOrDefault(this.pluginRegistry, session.profile),
+			createPiboProfileFromCapabilitiesOrDefault(this.capabilityHost, session.profile),
 			binding.runtimeInstanceId,
 			binding.nativeSessionId,
 			parentNativeSessionId,
@@ -1093,7 +1093,7 @@ export class PiboSessionRouter {
 			}
 		}
 		const workspace = session.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace();
-		const baseProfile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, session.profile);
+		const baseProfile = createPiboProfileFromCapabilitiesOrDefault(this.capabilityHost, session.profile);
 		const targetProfile = profileForSession(
 			baseProfile,
 			input.runtimeInstanceId,
@@ -1453,8 +1453,8 @@ export class PiboSessionRouter {
 			];
 			if (failures.length > 0) throw new AggregateError(failures, "Failed to dispose all Pibo sessions");
 		} finally {
-			const authDisposals = await Promise.allSettled([this.pluginRegistry.disposeAgentRuntimeAuth()]);
-			const ownedPluginRegistries = this.options.pluginRegistry === undefined ? [this.pluginRegistry] : [];
+			const authDisposals = await Promise.allSettled([this.capabilityHost.disposeAgentRuntimeAuth()]);
+			const ownedPluginRegistries = this.options.capabilityHost === undefined ? [this.capabilityHost] : [];
 			const webAppDisposals = await Promise.allSettled(
 				ownedPluginRegistries.flatMap((registry) => registry.getWebApps().map((app) => app.dispose?.())),
 			);
@@ -1720,6 +1720,9 @@ export class PiboSessionRouter {
 						expectedRevision: binding.revision,
 						...(previousState === "missing" && resolved.state === "bound" ? { mode: "repair" as const } : {}),
 					});
+					if (previousState === "bound" && binding.state === "missing" && !this.portableHistoryProvider) {
+						throw new AgentRuntimeBindingMissingError(piboSession.id, binding.runtimeInstanceId, binding.nativeSessionId);
+					}
 				}
 			}
 			if (binding.state === "missing") {
@@ -1811,7 +1814,7 @@ export class PiboSessionRouter {
 				cwd: workspace,
 				timezone: userSettings.timezone,
 				capabilities: runtimeAdapter.descriptor.capabilities,
-				mcpAdapter: mcpAdapterFromPluginPlan(sessionProfile, this.pluginRegistry.getPluginHost()),
+				mcpAdapter: mcpAdapterFromPluginPlan(sessionProfile, this.capabilityHost.getPluginHost()),
 			});
 			this.runtimeResourceSessions.set(piboSession.id, resources);
 		} catch (error) {
@@ -1853,7 +1856,7 @@ export class PiboSessionRouter {
 				services: {
 					portableTools,
 					resources,
-					pluginRegistry: this.pluginRegistry,
+					capabilityHost: this.capabilityHost,
 					...(runtimeBindingPersistence ? { runtimeBindingPersistence } : {}),
 					compatibility: {
 						persistSession: this.options.persistSession,
@@ -1941,7 +1944,7 @@ export class PiboSessionRouter {
 			piboSession.id,
 			runtimeSession,
 			this.emitOutput,
-			this.pluginRegistry,
+			this.capabilityHost,
 			{
 				forwardLegacyPiEvents: this.options.forwardPiEvents ?? false,
 				onNativeEventTelemetry: this.telemetryRecorder
@@ -2008,8 +2011,8 @@ export class PiboSessionRouter {
 		return session;
 	}
 
-	private resolveAgentRuntimeRegistry(instanceId: string): PiboPluginRegistry {
-		if (this.pluginRegistry.getAgentRuntimeAdapter(instanceId)) return this.pluginRegistry;
+	private resolveAgentRuntimeRegistry(instanceId: string): PiboCapabilityHost {
+		if (this.capabilityHost.getAgentRuntimeAdapter(instanceId)) return this.capabilityHost;
 		throw new Error(`Unknown agent runtime instance "${instanceId}".`);
 	}
 
@@ -2611,7 +2614,7 @@ export class PiboSessionRouter {
 	}
 
 	private resolveChildSession(input: PluginResolveChildSessionInput): PiboSession {
-		const targetProfile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
+		const targetProfile = resolvePiboProfileNameFromCapabilitiesOrDefault(this.capabilityHost, input.profile);
 		const parent = this.resolvePiboSession(input.parentPiboSessionId);
 		const metadata: PiboJsonObject = structuredClone(input.metadata);
 		const parentChatRoomId = typeof parent.metadata?.chatRoomId === "string" ? parent.metadata.chatRoomId : undefined;
@@ -2637,7 +2640,7 @@ export class PiboSessionRouter {
 			return existing;
 		}
 
-		const childProfile = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, targetProfile);
+		const childProfile = createPiboProfileFromCapabilitiesOrDefault(this.capabilityHost, targetProfile);
 		const childSession = this.sessionStore.create({
 			channel: input.channel,
 			kind: input.kind,
@@ -2703,7 +2706,7 @@ export class PiboSessionRouter {
 		this.recordChildOutput(positionedEvent, session);
 		this.telemetryRecorder?.recordOutput(positionedEvent, { session, status: this.sessions.get(positionedEvent.piboSessionId)?.getStatus() });
 		this.signalRegistry.project({ type: "pibo_output", event: positionedEvent, session });
-		this.pluginRegistry.notifyEvent(positionedEvent);
+		this.capabilityHost.notifyEvent(positionedEvent);
 		for (const listener of this.listeners) {
 			try {
 				listener(positionedEvent);

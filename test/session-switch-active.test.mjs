@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -7,8 +8,8 @@ import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/cap
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 
@@ -120,10 +121,10 @@ function createSwitchFixture(firstPromptRelease, observations) {
 			};
 		},
 	};
-	return PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
+	return createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: "test.switch-guard",
 				register(api) {
 					api.registerAgentRuntimeDriver(driver);
@@ -150,7 +151,7 @@ test("session.switch cannot split active and queued turns across native bindings
 	const dataPath = join(root, "pibo.sqlite");
 	const firstPromptRelease = deferred();
 	const observations = { switchCalls: 0, streamingAtSwitch: [], promptBindings: [], getStreaming: undefined };
-	const pluginRegistry = createSwitchFixture(firstPromptRelease, observations);
+	const capabilityHost = createSwitchFixture(firstPromptRelease, observations);
 	let dataStore = new PiboDataStore(dataPath, { payloadRootDir: join(root, "payloads") });
 	let sessionStore = new PiboDataSessionStore(dataStore);
 	const reliabilityStore = new PiboReliabilityStore(join(root, "pibo-events.sqlite"));
@@ -167,7 +168,7 @@ test("session.switch cannot split active and queued turns across native bindings
 			state: "bound",
 		},
 	});
-	const router = new PiboSessionRouter({ pluginRegistry, sessionStore, reliabilityStore, cwd: root, persistSession: true });
+	const router = new PiboSessionRouter({ capabilityHost, sessionStore, reliabilityStore, cwd: root, persistSession: true });
 	const outputs = [];
 	router.subscribe((event) => outputs.push(event));
 

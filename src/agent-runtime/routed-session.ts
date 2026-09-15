@@ -23,7 +23,7 @@ import {
 import { PIBO_PROVIDER_RECOVERY_PROMPT, isPiboProviderFallbackError } from "../core/provider-recovery.js";
 import { normalizeSessionErrorDetails, runtimeSessionErrorDetails } from "../core/session-errors.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../core/thinking.js";
-import type { PiboPluginRegistry } from "../plugins/registry.js";
+import type { PiboCapabilityHost } from "../core/capability-host.js";
 import type { PiboGatewayActionContext } from "../plugins/types.js";
 import { ToolCallMetricsCollector } from "../shared/tool-call-metrics.js";
 import type { ToolMetricTokenCalculation } from "../shared/tool-call-token-settings.js";
@@ -311,7 +311,7 @@ export class RuntimeRoutedSession {
 		private readonly piboSessionId: string,
 		private readonly runtimeSession: AgentRuntimeSession,
 		private readonly emit: PiboEventListener,
-		private readonly pluginRegistry: PiboPluginRegistry,
+		private readonly capabilityHost: PiboCapabilityHost,
 		private readonly options: RuntimeRoutedSessionOptions = {},
 	) {
 		this.toolMetrics = new ToolCallMetricsCollector(options.getToolMetricTokenCalculation);
@@ -1317,7 +1317,7 @@ export class RuntimeRoutedSession {
 	}
 
 	private async runAction(event: PiboExecutionEvent): Promise<unknown> {
-		const gatewayAction = this.pluginRegistry.getGatewayAction(event.action);
+		const gatewayAction = this.capabilityHost.getGatewayAction(event.action);
 		if (!gatewayAction) throw new Error(`Unknown execution action "${event.action}"`);
 		return await gatewayAction.execute(
 			{
@@ -1330,26 +1330,26 @@ export class RuntimeRoutedSession {
 				getContextUsage: () => this.getActionContextUsage(),
 				getActiveModel: () => this.getActiveModel(),
 				getModelCatalog: async () => {
-					const adapter = this.pluginRegistry.getAgentRuntimeAdapter(this.runtimeSession.runtimeInstanceId);
+					const adapter = this.capabilityHost.getAgentRuntimeAdapter(this.runtimeSession.runtimeInstanceId);
 					return adapter?.listModels
 						? await adapter.listModels()
 						: { runtimeInstanceId: this.runtimeSession.runtimeInstanceId, models: [] };
 				},
 				getRuntimeAuthStatus: async () => this.options.getRuntimeAuthStatus
 					? await this.options.getRuntimeAuthStatus()
-					: await this.pluginRegistry.getAgentRuntimeAuthStatus(this.runtimeSession.runtimeInstanceId),
+					: await this.capabilityHost.getAgentRuntimeAuthStatus(this.runtimeSession.runtimeInstanceId),
 				startRuntimeAuth: async (input) => this.options.startRuntimeAuth
 					? await this.options.startRuntimeAuth(input)
-					: await this.pluginRegistry.startAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+					: await this.capabilityHost.startAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				completeRuntimeAuth: async (input) => this.options.completeRuntimeAuth
 					? await this.options.completeRuntimeAuth(input)
-					: await this.pluginRegistry.completeAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+					: await this.capabilityHost.completeAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				cancelRuntimeAuth: async (input) => this.options.cancelRuntimeAuth
 					? await this.options.cancelRuntimeAuth(input)
-					: await this.pluginRegistry.cancelAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+					: await this.capabilityHost.cancelAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				logoutRuntimeAuth: async (input) => this.options.logoutRuntimeAuth
 					? await this.options.logoutRuntimeAuth(input)
-					: await this.pluginRegistry.logoutAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
+					: await this.capabilityHost.logoutAgentRuntimeAuth(this.runtimeSession.runtimeInstanceId, input),
 				getProviderUsage: () => this.getActionProviderUsage(),
 				clearQueue: () => this.clearQueue()+previouslyClearedMessages(event),
 				abort: async () => {

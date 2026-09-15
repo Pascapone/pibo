@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
-import { createPiboProfileFromRegistryOrDefault } from "../dist/plugins/builtin.js";
+import { createPiboProfileFromCapabilitiesOrDefault } from "../dist/plugins/builtin.js";
 import { startTestWebPluginProduct } from "./helpers/web-plugin-product.mjs";
 
 test("web gateway registry loads custom agent profiles before channels start", async () => {
@@ -44,7 +44,7 @@ test("web gateway registry loads custom agent profiles before channels start", a
 		assert.ok(!profileInfos.some((profile) => profile.name === "old-agent"));
 		assert.ok(profileInfos.find((profile) => profile.name === "unity-agent")?.aliases.includes(live.id));
 
-		const profile = createPiboProfileFromRegistryOrDefault(registry, "unity-agent");
+		const profile = createPiboProfileFromCapabilitiesOrDefault(registry, "unity-agent");
 		assert.equal(profile.profileName, "unity-agent");
 		assert.deepEqual(profile.mainModel, { provider: "openai-codex", id: "gpt-5.5" });
 		assert.deepEqual(profile.mainModelFallbacks, [
@@ -141,7 +141,7 @@ test("stale custom agent tool references do not break the profile catalog", asyn
 		const profileInfo = profileInfos.find((profile) => profile.name === agent.profileName);
 		assert.ok(profileInfo);
 		assert.deepEqual(profileInfo.nativeTools, []);
-		assert.doesNotThrow(() => createPiboProfileFromRegistryOrDefault(registry, agent.profileName));
+		assert.doesNotThrow(() => createPiboProfileFromCapabilitiesOrDefault(registry, agent.profileName));
 		assert.ok(warnings.some((warning) => warning.includes(`Skipping unknown tool "retired-tool" for custom agent "${agent.profileName}"`)));
 	} finally {
 		console.warn = originalWarn;

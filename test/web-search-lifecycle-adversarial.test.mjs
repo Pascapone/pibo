@@ -1,8 +1,9 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { RoutedSession } from "../dist/core/routed-session.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 
 function deferred() {
 	let resolve;
@@ -144,7 +145,7 @@ function createHarness({ onPrompt, onRecovery, onAbort } = {}) {
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	routed = new RoutedSession("route:web-search-adversarial", runtime, (event) => events.push(event), registry, false);
 	routed.enableProviderWebSearchObservation();
 

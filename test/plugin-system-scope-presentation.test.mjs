@@ -44,12 +44,13 @@ test("workspace catalog includes only explicit domain modules while system and a
 	assert.equal(plan.contributions.some((entry) => entry.id === "fixture.mixed/control"), false);
 });
 
-test("legacy schema-v1 view hints normalize without invalidating stored default artifacts or forcing settings tabs into catalogs", () => {
-	const legacySettings = { title: "Preferences", exportName: "Preferences", visibility: "infrastructure", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, subviews: [{ id: "settings", title: "Settings", purpose: "settings", settingsScopes: ["app"] }] };
-	const legacyProduct = { title: "Workflows", exportName: "Workflows", visibility: "infrastructure", instance: "singleton", mount: "unmount", stateSchemaVersion: 1 };
-	assert.equal(pluginViewPresentation(legacySettings), "internal");
-	assert.equal(pluginViewPresentation(legacyProduct), "workspace");
-	assert.deepEqual(pluginSettingsScopes(legacyManifest(legacySettings)), ["app"]);
-	assert.deepEqual(pluginSettingsScopes(legacyManifest({ ...legacySettings, subviews: [{ id: "settings", title: "Settings", purpose: "settings", settingsScopes: ["session", "agent"] }] }, { schemaVersion: 1, schema: { type: "object" } })), ["agent", "session"]);
-	assert.deepEqual(validatePluginManifest(legacyManifest(legacySettings)), []);
+test("normal manifest validation rejects legacy view hints while current presentation and settings scopes remain explicit", () => {
+	const currentSettings = { title: "Preferences", exportName: "Preferences", presentation: "internal", instance: "singleton", mount: "unmount", stateSchemaVersion: 1, subviews: [{ id: "settings", title: "Settings", purpose: "settings", settingsScopes: ["app"] }] };
+	const currentProduct = { title: "Workflows", exportName: "Workflows", presentation: "workspace", instance: "singleton", mount: "unmount", stateSchemaVersion: 1 };
+	assert.equal(pluginViewPresentation(currentSettings), "internal");
+	assert.equal(pluginViewPresentation(currentProduct), "workspace");
+	assert.deepEqual(pluginSettingsScopes(legacyManifest(currentSettings)), ["app"]);
+	assert.deepEqual(pluginSettingsScopes(legacyManifest({ ...currentSettings, subviews: [{ id: "settings", title: "Settings", purpose: "settings", settingsScopes: ["session", "agent"] }] }, { schemaVersion: 1, schema: { type: "object" } })), ["agent", "session"]);
+	const { presentation: _presentation, ...legacySettings } = currentSettings;
+	assert.ok(validatePluginManifest(legacyManifest({ ...legacySettings, visibility: "infrastructure" })).some((error) => error.code === "legacy-manifest-field" || error.code === "invalid-view"));
 });

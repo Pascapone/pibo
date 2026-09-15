@@ -66,9 +66,7 @@ export type PluginViewDefinition = {
 	/** Export of the prebuilt browser entry, not a backend module path. */
 	exportName: string;
 	/** Workspace modules are user-openable; internal views are host infrastructure only. */
-	presentation?: "workspace" | "internal";
-	/** @deprecated Legacy presentation hint retained for persisted schema-v1 artifacts. */
-	visibility?: "session" | "infrastructure";
+	presentation: "workspace" | "internal";
 	instance: "singleton" | "multiple";
 	mount: "unmount" | "keep-alive";
 	stateSchemaVersion: number;
@@ -154,15 +152,11 @@ export function qualifyPluginContribution(pluginId: string, contributionId: stri
 	return `${pluginId}/${contributionId}`;
 }
 
-/** Additive schema-v1 compatibility: old artifacts remain loadable until normal package upgrade. */
 export function pluginViewPresentation(view: PluginViewDefinition): "workspace" | "internal" {
-	if (view.presentation) return view.presentation;
-	if (view.visibility === "session") return "workspace";
-	const subviews = view.subviews ?? [];
-	return subviews.length > 0 && subviews.every((subview) => subview.purpose === "settings" || subview.purpose === "context") ? "internal" : "workspace";
+	return view.presentation;
 }
 
-/** Explicit config scopes win; legacy settings subviews retain their declared owner scopes. */
+/** Explicit config scopes win; settings subviews retain their declared owner scopes. */
 export function pluginSettingsScopes(manifest: PluginManifest): PluginSettingsScope[] {
 	if (manifest.config?.scopes?.length) return [...manifest.config.scopes];
 	const declared = new Set(manifest.contributions.flatMap((contribution) => contribution.view?.subviews ?? [])

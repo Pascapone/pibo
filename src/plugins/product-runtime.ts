@@ -10,7 +10,8 @@ import type { PluginConsumerCollector } from "./operations.js";
 import { PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation } from "./manifest.js";
 import { provideCoreUserResources } from "../core/user-resources.js";
-import { verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverPlan } from "./cutover.js";
+import { provideCoreCapabilities } from "../core/capabilities.js";
+import { isPibo4LegacyAggregatePluginId, pibo4LegacyAggregateOwners, verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverPlan } from "./cutover.js";
 
 /** Product wiring exposes core services without manufacturing a plugin installation. */
 export async function startPluginProductRuntime(options: {
@@ -38,6 +39,19 @@ export async function startPluginProductRuntime(options: {
 	const artifactRoot = options.artifactRoot ?? piboHomePath("plugins", "artifacts");
 	const host = options.host;
 	const initialState = host.inspect();
+	const activeLegacyInstallations = data.plugins.listInstallations().filter((installation) => isPibo4LegacyAggregatePluginId(installation.pluginId) && installation.enabled && installation.state !== "uninstalled");
+	if (activeLegacyInstallations.length && !cutover) {
+		if (ownsData) data.close();
+		throw new Error(`Legacy aggregate plugin installations require a prepared Pibo 4 cutover before startup: ${activeLegacyInstallations.map((entry) => entry.pluginId).join(", ")}. Restore the old package if necessary, run @pasko70/pibo-cutover, then retry with cutoverPlanPath`);
+	}
+	if (cutover) {
+		const preparedOwners = new Set(pibo4LegacyAggregateOwners(cutover));
+		const unpreparedOwners = activeLegacyInstallations.filter((installation) => !preparedOwners.has(installation.pluginId));
+		if (unpreparedOwners.length) {
+			if (ownsData) data.close();
+			throw new Error(`Prepared cutover does not include active legacy owners: ${unpreparedOwners.map((entry) => entry.pluginId).join(", ")}`);
+		}
+	}
 	if (initialState.state !== "idle" && initialState.state !== "active") {
 		if (ownsData) data.close();
 		throw new Error(`Plugin host is ${initialState.state}; recover or stop it before product startup`);
@@ -67,6 +81,7 @@ export async function startPluginProductRuntime(options: {
 		host.provideCoreService({ id: PLUGIN_MANAGEMENT_SERVICE, version: "1.0.0", value: manager }),
 		host.provideCoreService({ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", value: Object.freeze({ ...options.productOptions }) }),
 		...(options.readSessionPlan ? [host.provideCoreService({ id: PLUGIN_SESSION_PLAN_SERVICE, version: "1.0.0", value: options.readSessionPlan })] : []),
+		provideCoreCapabilities(host),
 		provideCoreUserResources(host, options.productOptions?.userResources),
 	];
 	if (options.productOptions?.web) {
@@ -96,6 +111,12 @@ export async function startPluginProductRuntime(options: {
 				}
 				if (!installation) throw new Error(`Cutover did not create installation ${target.pluginId}`);
 				if (["installed", "pending-activation", "failed"].includes(installation.state)) await manager.activate(target.pluginId, { expectedRevision: installation.stateRevision });
+			}
+			for (const pluginId of pibo4LegacyAggregateOwners(cutover)) {
+				const legacy = data.plugins.getInstallation(pluginId);
+				if (!legacy || legacy.state === "uninstalled") continue;
+				if (host.inspect().plugins.some((plugin) => plugin.pluginId === pluginId)) throw new Error(`Legacy aggregate ${pluginId} is already active in the host; stop it before completing the Pibo 4 cutover`);
+				data.plugins.putInstallation({ ...legacy, enabled: false, state: "uninstalled", pendingArtifact: undefined, diagnostic: "Superseded by prepared Pibo 4 package cutover", updatedAt: new Date().toISOString() }, legacy.stateRevision);
 			}
 		}
 		if (options.installDefaultPlugins !== false) {

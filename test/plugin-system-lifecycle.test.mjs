@@ -139,10 +139,10 @@ test('host rejects missing or cyclic contribution dependencies before any setup'
 	assert.equal(effects, 0);
 });
 
-test('legacy facade reads host-owned tools directly and sees teardown without a copied catalog', async () => {
-	const { PiboPluginRegistry } = await import('../dist/plugins/registry.js');
+test('capability host reads PluginHost-owned tools directly and sees teardown without a copied catalog', async () => {
+	const { PiboCapabilityHost } = await import('../dist/core/capability-host.js');
 	const host = new PluginHost();
-	const facade = new PiboPluginRegistry({ host });
+	const facade = new PiboCapabilityHost({ host });
 	const c = { id: 'tool', kind: 'tool', name: 'owned', scope: 'agent', required: false, defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'Fixture' } };
 	await host.start({ plugins: [plugin('a', ctx => { ctx.register('tool', { name: 'owned', description: 'Fixture', enabled: true }); }, { contributions: [c] })] });
 	assert.equal(facade.getCapabilityCatalog().nativeTools.find(t => t.name === 'owned').pluginId, 'a');
@@ -151,67 +151,9 @@ test('legacy facade reads host-owned tools directly and sees teardown without a 
 	assert.equal(facade.getCapabilityCatalog().nativeTools.some(t => t.name === 'owned'), false);
 });
 
-test('legacy registration failure rolls back maps and immediately silences its listener; retry and cleanup are owned', async () => {
-	const { PiboPluginRegistry } = await import('../dist/plugins/registry.js');
-	const facade = new PiboPluginRegistry();
-	let broken = true; let events = 0; let retainedApi;
-	const p = { id: 'a', register(api) {
-		retainedApi = api;
-		api.registerTool({ name: 'fixture', pluginId: 'spoofed' });
-		api.onEvent(() => { events++; });
-		api.registerContextFile({ key: 'owned', path: '/fixture/context.md' });
-		if (broken) throw new Error('partial');
-	} };
-	assert.throws(() => facade.registerPlugin(p), /partial/);
-	facade.notifyEvent({ type: 'fixture' });
-	assert.equal(events, 0);
-	assert.equal(facade.getCapabilityCatalog().nativeTools.length, 0);
-	broken = false; facade.registerPlugin(p);
-	await Promise.resolve(); await Promise.resolve();
-	facade.notifyEvent({ type: 'fixture' }); assert.equal(events, 1);
-	assert.equal(facade.getCapabilityCatalog().nativeTools[0].pluginId, 'a');
-	await facade.disposePlugins();
-	assert.equal(facade.getCapabilityCatalog().nativeTools.length, 0);
-	assert.equal(facade.getCapabilityCatalog().contextFiles.length, 0);
-	assert.throws(() => retainedApi.registerTool({ name: 'late' }), /disposed/);
-});
-
-test('legacy runtime driver/instance registrations roll back synchronously and are released at the owner boundary', async () => {
-	const { PiboPluginRegistry } = await import('../dist/plugins/registry.js');
-	const { createFakeAgentRuntimeDriver } = await import('../dist/agent-runtime/testing/fake-adapter.js');
-	const facade = new PiboPluginRegistry();
-	const driver = createFakeAgentRuntimeDriver({ adapterId: 'fixture-runtime' });
-	let broken = true;
-	const p = { id: 'runtime-fixture', register(api) {
-		api.registerAgentRuntimeDriver(driver);
-		api.registerAgentRuntimeInstance({ id: 'fixture', adapterId: 'fixture-runtime' });
-		if (broken) throw new Error('after runtime registration');
-	} };
-	assert.throws(() => facade.registerPlugin(p), /after runtime registration/);
-	assert.deepEqual(facade.getAgentRuntimeInstanceIds(), []);
-	broken = false; facade.registerPlugin(p);
-	assert.deepEqual(facade.getAgentRuntimeInstanceIds(), ['fixture']);
-	await facade.disposePlugins();
-	assert.deepEqual(facade.getAgentRuntimeInstanceIds(), []);
-	facade.registerPlugin(p);
-	await facade.disposePlugins();
-});
-
-test('legacy asynchronous registration cannot mutate the catalog after the registration boundary', async () => {
-	const { PiboPluginRegistry } = await import('../dist/plugins/registry.js');
-	const facade = new PiboPluginRegistry();
-	assert.throws(() => facade.registerPlugin({ id: 'a', async register(api) {
-		api.registerTool({ name: 'early' });
-		await Promise.resolve();
-		api.registerTool({ name: 'late' });
-	} }), /must be synchronous/);
-	await Promise.resolve(); await Promise.resolve();
-	assert.equal(facade.getCapabilityCatalog().nativeTools.length, 0);
-});
-
-test('legacy facade does not run tool factories during inventory inspection', async () => {
-	const { PiboPluginRegistry } = await import('../dist/plugins/registry.js');
-	const facade = new PiboPluginRegistry(); let executions = 0;
+test('capability inventory does not run tool factories', async () => {
+	const { PiboCapabilityHost } = await import('../dist/core/capability-host.js');
+	const facade = new PiboCapabilityHost(); let executions = 0;
 	facade.registerTool({ name: 'dynamic', createDefinition() { executions++; throw new Error('must not execute'); } });
 	assert.equal(facade.getCapabilityCatalog().nativeTools[0].portable, false);
 	assert.equal(executions, 0);

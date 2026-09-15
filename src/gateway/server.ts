@@ -11,8 +11,8 @@ import { dirname, join } from "node:path";
 import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import type { PiboOutputEvent } from "../core/events.js";
-import { createPiboProfileFromRegistryOrDefault, resolvePiboProfileNameFromRegistryOrDefault } from "../plugins/builtin.js";
-import { PiboPluginRegistry } from "../plugins/registry.js";
+import { createPiboProfileFromCapabilitiesOrDefault, resolvePiboProfileNameFromCapabilitiesOrDefault } from "../plugins/builtin.js";
+import { PiboCapabilityHost } from "../core/capability-host.js";
 import { PiboSessionRouter } from "../core/session-router.js";
 import { createLoopMessagePreflight } from "../loops/store.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
@@ -40,7 +40,7 @@ export type GatewayServerOptions = {
 	authoritativeRuntime?: boolean;
 	/** Stable identifier included in recovery diagnostics. */
 	runtimeInstanceId?: string;
-	pluginRegistry?: PiboPluginRegistry;
+	capabilityHost?: PiboCapabilityHost;
 	sessionStore?: PiboSessionStore;
 	sessionDbPath?: string;
 	/** Shared pibo.sqlite path for sessions, plugin state and product projections. */
@@ -248,10 +248,10 @@ async function createGatewaySessionStore(options: GatewayServerOptions): Promise
 	return new PiboDataSessionStore(targetPath);
 }
 
-function registeredProfileConsumers(registry: PiboPluginRegistry, pluginId: string): PluginConsumer[] {
+function registeredProfileConsumers(registry: PiboCapabilityHost, pluginId: string): PluginConsumer[] {
 	const consumers: PluginConsumer[] = [];
 	for (const info of registry.getProfileInfos()) {
-		const profile = createPiboProfileFromRegistryOrDefault(registry, info.name);
+		const profile = createPiboProfileFromCapabilitiesOrDefault(registry, info.name);
 		const entry = profile.pluginSelection?.plugins.find((candidate) => candidate.pluginId === pluginId);
 		if (!entry) continue;
 		consumers.push({
@@ -265,7 +265,7 @@ function registeredProfileConsumers(registry: PiboPluginRegistry, pluginId: stri
 }
 
 export class PiboGatewayServer {
-	private readonly pluginRegistry: PiboPluginRegistry;
+	private readonly capabilityHost: PiboCapabilityHost;
 	private readonly ownsPluginRegistry: boolean;
 	private readonly runtimeInstanceId: string;
 	private sessionStore?: PiboSessionStore;
@@ -284,8 +284,8 @@ export class PiboGatewayServer {
 	private resourceReaper?: ResourceReaperService;
 
 	constructor(private readonly options: GatewayServerOptions = {}) {
-		this.ownsPluginRegistry = options.pluginRegistry === undefined;
-		this.pluginRegistry = options.pluginRegistry ?? PiboPluginRegistry.create();
+		this.ownsPluginRegistry = options.capabilityHost === undefined;
+		this.capabilityHost = options.capabilityHost ?? PiboCapabilityHost.create();
 		this.runtimeInstanceId = options.runtimeInstanceId ?? `gateway:${process.pid}:${randomUUID()}`;
 	}
 
@@ -312,14 +312,14 @@ export class PiboGatewayServer {
 			: this.options.agentStorePath
 				? new CustomAgentStore(this.options.agentStorePath)
 				: createDefaultCustomAgentStore();
-		const host = this.pluginRegistry.getPluginHost();
+		const host = this.capabilityHost.getPluginHost();
 		const catalog = () => {
 			const installations = this.pluginData!.plugins.listInstallations();
 			return { schemaVersion: 1 as const, revision: installations.reduce((sum, installation) => sum + installation.stateRevision, 0), installations };
 		};
 		const collectProfiles = profileConsumerCollector(this.pluginAgentStore, catalog);
 		const collectLive: PluginConsumerCollector = async (pluginId) => {
-			const consumers = [...(this.router?.collectPluginConsumers(pluginId) ?? []), ...registeredProfileConsumers(this.pluginRegistry, pluginId)];
+			const consumers = [...(this.router?.collectPluginConsumers(pluginId) ?? []), ...registeredProfileConsumers(this.capabilityHost, pluginId)];
 			for (const entry of host.contributions.list<PluginOwnedConsumerCollector>(PLUGIN_CONSUMER_COLLECTOR_RESOURCE)) {
 				consumers.push(...await entry.value(pluginId));
 			}
@@ -344,7 +344,7 @@ export class PiboGatewayServer {
 			},
 		});
 		const installations = this.pluginData.plugins.listInstallations();
-		const capabilityCatalog = this.pluginRegistry.getCapabilityCatalog();
+		const capabilityCatalog = this.capabilityHost.getCapabilityCatalog();
 		const serviceState = catalogPluginServices(host, installations);
 		const migrationResults = await migrateLegacyAgentsAtStartup({
 			agents: this.pluginAgentStore,
@@ -358,7 +358,7 @@ export class PiboGatewayServer {
 			backupRoot: piboHomePath("plugins", "migration-backups", "pibo-4", "agents"),
 			...serviceState,
 			resolveRuntime: (instanceId) => {
-				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(instanceId);
+				const adapter = this.capabilityHost.getAgentRuntimeAdapter(instanceId);
 				if (!adapter?.enabled) throw new Error(`Stored agent runtime instance "${instanceId}" is unavailable during Pibo 4.0 migration`);
 				return { adapterId: adapter.descriptor.id, instanceId: adapter.instanceId, capabilities: adapter.descriptor.capabilities as unknown as import("../plugins/manifest.js").PluginJsonObject };
 			},
@@ -372,7 +372,7 @@ export class PiboGatewayServer {
 		this.router = new PiboSessionRouter({
 			pluginRuntime: this.pluginProduct.runtime,
 			persistSession: this.options.persistSession,
-			pluginRegistry: this.pluginRegistry,
+			capabilityHost: this.capabilityHost,
 			sessionStore: this.sessionStore,
 			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
 			goalStorePath: this.options.loopStorePath,
@@ -382,7 +382,7 @@ export class PiboGatewayServer {
 		await this.pluginProduct.recover();
 		this.unsubscribe = this.router.subscribe((event) => this.broadcastRouterEvent(event));
 		this.server = createServer((socket) => this.handleSocket(socket));
-		await this.pluginRegistry.getAuthService()?.start?.();
+		await this.capabilityHost.getAuthService()?.start?.();
 
 		await new Promise<void>((resolve, reject) => {
 			this.server!.once("error", reject);
@@ -410,7 +410,7 @@ export class PiboGatewayServer {
 		await this.resourceReaper?.stop();
 		this.resourceReaper = undefined;
 		await this.stopChannels();
-		await this.pluginRegistry.getAuthService()?.stop?.();
+		await this.capabilityHost.getAuthService()?.stop?.();
 
 		this.unsubscribe?.();
 		this.unsubscribe = undefined;
@@ -429,19 +429,20 @@ export class PiboGatewayServer {
 
 		await this.router?.disposeAll();
 		this.router = undefined;
+		await this.capabilityHost.disposeAgentRuntimeAuth();
 		await this.pluginProduct?.dispose();
 		this.pluginProduct = undefined;
 		this.pluginAgentStore?.close();
 		this.pluginAgentStore = undefined;
 
 		const ownedPluginRegistries = this.ownsPluginRegistry
-			? [this.pluginRegistry]
+			? [this.capabilityHost]
 			: [];
 		for (const registry of ownedPluginRegistries) {
 			for (const app of registry.getWebApps()) await app.dispose?.();
 		}
 		await Promise.allSettled(
-			[this.pluginRegistry]
+			[this.capabilityHost]
 				.map(async (registry) => await registry.disposeSpeechProviders()),
 		);
 
@@ -549,7 +550,7 @@ export class PiboGatewayServer {
 
 	private async startChannels(): Promise<void> {
 		const context = this.createChannelContext();
-		for (const channel of this.pluginRegistry.getChannels()) {
+		for (const channel of this.capabilityHost.getChannels()) {
 			if (channel.auth.mode === "none") {
 				console.error(`Warning: channel "${channel.name}" starts without auth`);
 			}
@@ -559,8 +560,8 @@ export class PiboGatewayServer {
 	}
 
 	private validateChannels(): void {
-		for (const channel of this.pluginRegistry.getChannels()) {
-			if (channel.auth.mode === "required" && !this.pluginRegistry.getAuthService()) {
+		for (const channel of this.capabilityHost.getChannels()) {
+			if (channel.auth.mode === "required" && !this.capabilityHost.getAuthService()) {
 				throw new Error(`Channel "${channel.name}" requires auth, but no auth service is registered`);
 			}
 		}
@@ -575,14 +576,14 @@ export class PiboGatewayServer {
 
 	private createChannelContext(): PiboChannelContext {
 		return {
-			getService: <T>(id: string) => this.pluginRegistry.getPluginHost().services.get<T>(id),
+			getService: <T>(id: string) => this.capabilityHost.getPluginHost().services.get<T>(id),
 			emit: (event) => this.requireRouter().emit(event),
 			subscribe: (listener) => this.requireRouter().subscribe(listener),
 			getSession: (id) => this.requireSessionStore().get(id),
 			createSession: (input) => {
-				const profile = resolvePiboProfileNameFromRegistryOrDefault(this.pluginRegistry, input.profile);
-				const profileContext = createPiboProfileFromRegistryOrDefault(this.pluginRegistry, profile);
-				const runtimeAdapter = this.pluginRegistry.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
+				const profile = resolvePiboProfileNameFromCapabilitiesOrDefault(this.capabilityHost, input.profile);
+				const profileContext = createPiboProfileFromCapabilitiesOrDefault(this.capabilityHost, profile);
+				const runtimeAdapter = this.capabilityHost.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
 				if (!runtimeAdapter) throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
 				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
 				return this.requireSessionStore().create({
@@ -614,7 +615,7 @@ export class PiboGatewayServer {
 				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
 				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
 				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
-				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				const adapter = this.capabilityHost.getAgentRuntimeAdapter(binding.runtimeInstanceId);
 				if (!adapter) {
 					return {
 						runtimeInstanceId: binding.runtimeInstanceId,
@@ -648,7 +649,7 @@ export class PiboGatewayServer {
 				if (!session) throw new Error(`Pibo session "${piboSessionId}" was not found.`);
 				const binding = this.requireRouter().getSessionRuntimeBinding(piboSessionId) ?? session.runtimeBinding;
 				if (!binding) throw new Error(`Pibo session "${piboSessionId}" has no runtime binding.`);
-				const adapter = this.pluginRegistry.getAgentRuntimeAdapter(binding.runtimeInstanceId);
+				const adapter = this.capabilityHost.getAgentRuntimeAdapter(binding.runtimeInstanceId);
 				if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
 					throw new Error(`Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history.`);
 				}
@@ -673,43 +674,43 @@ export class PiboGatewayServer {
 			snapshotSignalStatuses: () => this.requireRouter().snapshotSignalStatuses(),
 			subscribeSignalTree: (rootPiboSessionId, listener) => this.requireRouter().subscribeSignalTree(rootPiboSessionId, listener),
 			subscribeSignalStatuses: (listener) => this.requireRouter().subscribeSignalStatuses(listener),
-			getGatewayActions: () => this.pluginRegistry.getGatewayActionInfos(),
-			getProfiles: () => this.pluginRegistry.getProfileInfos(),
-			createProfile: (name) => this.pluginRegistry.createProfile(name),
-			getCapabilityCatalog: () => this.pluginRegistry.getCapabilityCatalog(),
-			getTranscriptionProviderInfos: () => this.pluginRegistry.getTranscriptionProviderInfos(),
-			transcribe: (providerId, input) => this.pluginRegistry.transcribe(providerId, input),
-			getSpeechProviderIds: () => this.pluginRegistry.getSpeechProviderIds(),
-			getSpeechProviderInfos: () => this.pluginRegistry.getSpeechProviderInfos(),
-			startSpeechSession: (providerId, input, options) => this.pluginRegistry.startSpeechSession(providerId, input, options),
-			speakSpeechSession: (sessionId, input) => this.pluginRegistry.speakSpeechSession(sessionId, input),
-			stopSpeechSession: (sessionId) => this.pluginRegistry.stopSpeechSession(sessionId),
-			inspectAgentRuntimeInstances: () => this.pluginRegistry.inspectAgentRuntimeInstances(),
+			getGatewayActions: () => this.capabilityHost.getGatewayActionInfos(),
+			getProfiles: () => this.capabilityHost.getProfileInfos(),
+			createProfile: (name) => this.capabilityHost.createProfile(name),
+			getCapabilityCatalog: () => this.capabilityHost.getCapabilityCatalog(),
+			getTranscriptionProviderInfos: () => this.capabilityHost.getTranscriptionProviderInfos(),
+			transcribe: (providerId, input) => this.capabilityHost.transcribe(providerId, input),
+			getSpeechProviderIds: () => this.capabilityHost.getSpeechProviderIds(),
+			getSpeechProviderInfos: () => this.capabilityHost.getSpeechProviderInfos(),
+			startSpeechSession: (providerId, input, options) => this.capabilityHost.startSpeechSession(providerId, input, options),
+			speakSpeechSession: (sessionId, input) => this.capabilityHost.speakSpeechSession(sessionId, input),
+			stopSpeechSession: (sessionId) => this.capabilityHost.stopSpeechSession(sessionId),
+			inspectAgentRuntimeInstances: () => this.capabilityHost.inspectAgentRuntimeInstances(),
 			getAgentRuntimeAuthStatus: (runtimeInstanceId) => this.requireRouter().getAgentRuntimeAuthStatus(runtimeInstanceId),
 			startAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().startAgentRuntimeAuth(runtimeInstanceId, input),
 			completeAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().completeAgentRuntimeAuth(runtimeInstanceId, input),
 			cancelAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().cancelAgentRuntimeAuth(runtimeInstanceId, input),
 			logoutAgentRuntimeAuth: (runtimeInstanceId, input) => this.requireRouter().logoutAgentRuntimeAuth(runtimeInstanceId, input),
-			validateAgentRuntimeProfile: (profile, workspace) => this.pluginRegistry.validateAgentRuntimeProfile(profile, workspace),
-			getLoopStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),
-			getLoopStopConditionInfos: () => this.pluginRegistry.getLoopStopConditionInfos(),
-			getRalphStopConditionDefinitions: () => this.pluginRegistry.getLoopStopConditionDefinitions(),
-			getRalphStopConditionInfos: () => this.pluginRegistry.getLoopStopConditionInfos(),
+			validateAgentRuntimeProfile: (profile, workspace) => this.capabilityHost.validateAgentRuntimeProfile(profile, workspace),
+			getLoopStopConditionDefinitions: () => this.capabilityHost.getLoopStopConditionDefinitions(),
+			getLoopStopConditionInfos: () => this.capabilityHost.getLoopStopConditionInfos(),
+			getRalphStopConditionDefinitions: () => this.capabilityHost.getLoopStopConditionDefinitions(),
+			getRalphStopConditionInfos: () => this.capabilityHost.getLoopStopConditionInfos(),
 			upsertProfile: (profile) => this.requireUserResources().upsertProfile(profile),
 			removeProfile: (name) => this.requireUserResources().removeProfile(name),
 			upsertContextFile: (contextFile) => this.requireUserResources().upsertContextFile(contextFile),
 			removeContextFile: (key) => this.requireUserResources().removeContextFile(key),
 			registerSkill: (skill) => this.requireUserResources().upsertSkill(skill),
 			unregisterSkill: (name) => this.requireUserResources().removeSkill(name),
-			emitProductEvent: (event) => this.pluginRegistry.emitProductEvent(event),
-			subscribeProductEvents: (listener) => this.pluginRegistry.onProductEvent(listener),
-			auth: this.pluginRegistry.getAuthService(),
-			getWebApps: () => this.pluginRegistry.getWebApps(),
+			emitProductEvent: (event) => this.capabilityHost.emitProductEvent(event),
+			subscribeProductEvents: (listener) => this.capabilityHost.onProductEvent(listener),
+			auth: this.capabilityHost.getAuthService(),
+			getWebApps: () => this.capabilityHost.getWebApps(),
 		};
 	}
 
 	private requireUserResources(): PiboUserResourcesService {
-		return this.pluginRegistry.getPluginHost().services.require<PiboUserResourcesService>(PIBO_USER_RESOURCES_SERVICE);
+		return this.capabilityHost.getPluginHost().services.require<PiboUserResourcesService>(PIBO_USER_RESOURCES_SERVICE);
 	}
 
 	private requireRouter(): PiboSessionRouter {

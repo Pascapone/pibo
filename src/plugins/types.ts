@@ -17,9 +17,6 @@ import type {
 import type { CompactionResult } from "@earendil-works/pi-coding-agent";
 import type { ContextUsage } from "@earendil-works/pi-coding-agent";
 import type { PiboThinkingLevel } from "../core/thinking.js";
-import type { PiboChannel } from "../channels/types.js";
-import type { PiboAuthService } from "../auth/types.js";
-import type { PiboWebApp } from "../web/types.js";
 import type {
 	ContextFileProfile,
 	BuiltinToolsMode,
@@ -31,17 +28,12 @@ import type {
 	SkillProfile,
 	SubagentProfile,
 	ToolProfile,
-	ToolProfileRegistration,
 } from "../core/profiles.js";
 import type { PiboProviderUsageStatus } from "../auth/openai-codex-usage.js";
-import type { PiboTranscriptionProvider } from "../transcription/types.js";
-import type { PiboSpeechProvider } from "../speech/types.js";
 import type { PiboLoopStopConditionDefinition, PiboLoopStopConditionInfo } from "../loops/types.js";
 import type {
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
-	AgentRuntimeDriver,
-	AgentRuntimeInstanceDefinition,
 	AgentRuntimeInstanceInfo,
 	AgentRuntimeModelCatalog,
 	CancelAgentRuntimeAuthInput,
@@ -234,36 +226,3 @@ export type PiboGatewayActionInfo = {
 
 export type PiboPluginEventListener = (event: PiboOutputEvent) => void;
 export type PiboProductEventListener = (event: PiboProductEvent) => void;
-
-export type PiboPluginApi = {
-	registerAgentRuntimeDriver<TConfig>(driver: AgentRuntimeDriver<TConfig>): void;
-	registerAgentRuntimeInstance(instance: AgentRuntimeInstanceDefinition): void;
-	registerTool(tool: ToolProfileRegistration): void;
-	registerTools(tools: readonly ToolProfileRegistration[]): void;
-	registerSubagent(subagent: SubagentProfile): void;
-	registerSubagents(subagents: readonly SubagentProfile[]): void;
-	registerSkill(skill: SkillProfile): void;
-	registerContextFile(contextFile: ContextFileProfile): void;
-	upsertContextFile(contextFile: ContextFileProfile): void;
-	removeContextFile(key: string): void;
-	registerProfile(profile: PiboProfileDefinition): void;
-	upsertProfile(profile: PiboProfileDefinition): void;
-	registerGatewayAction(action: PiboGatewayAction): void;
-	registerChannel(channel: PiboChannel): void;
-	registerAuthService(service: PiboAuthService): void;
-	registerTranscriptionProvider(provider: PiboTranscriptionProvider): void;
-	registerSpeechProvider(provider: PiboSpeechProvider): void;
-	registerWebApp(app: PiboWebApp): void;
-	registerLoopStopCondition(condition: PiboLoopStopConditionDefinition): void;
-	/** @deprecated Use registerLoopStopCondition. */
-	registerRalphStopCondition(condition: PiboLoopStopConditionDefinition): void;
-	onEvent(listener: PiboPluginEventListener): void;
-	emitProductEvent(event: PiboProductEventInput): PiboProductEvent;
-	onProductEvent(listener: PiboProductEventListener): () => void;
-};
-
-export type PiboPlugin = {
-	id: string;
-	name?: string;
-	register(api: PiboPluginApi): void;
-};

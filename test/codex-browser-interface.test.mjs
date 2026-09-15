@@ -7,7 +7,7 @@ import test from "node:test";
 import { InitialSessionContext } from "../dist/core/profiles.js";
 import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { PluginHost } from "../dist/plugins/host.js";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import { createAgentPluginSelection } from "../dist/plugins/selection.js";
@@ -32,9 +32,9 @@ async function productRegistry(t) {
 	const root = await mkdtemp(join(tmpdir(), "codex-browser-plugin-"));
 	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const host = new PluginHost();
-	const registry = PiboPluginRegistry.create({ host });
+	const registry = PiboCapabilityHost.create({ host });
 	const product = await startPluginProductRuntime({ host, data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [] });
-	t.after(async () => { await product.dispose(); await registry.disposePlugins(); data.close(); await rm(root, { recursive: true, force: true }); });
+	t.after(async () => { await product.dispose(); data.close(); await rm(root, { recursive: true, force: true }); });
 	return { registry, product, data };
 }
 

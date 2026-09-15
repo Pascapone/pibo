@@ -78,6 +78,9 @@ export type PreparedYieldedRunExecution = {
 };
 
 export class PiboRunResourceLimitError extends Error {
+	static [Symbol.hasInstance](value: unknown): boolean {
+		return value instanceof Error && value.name === "PiboRunResourceLimitError";
+	}
 	constructor(message: string, readonly resources: PiboRunResourceUsage) {
 		super(message);
 		this.name = "PiboRunResourceLimitError";

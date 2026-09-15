@@ -17,7 +17,7 @@ import { pluginBrowserRoute, pluginBrowserCatalog, handlePluginBrowserRoute } fr
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 function fixture(session = 'ps_A') {
- const contribution = { id:'notes', kind:'view', scope:'agent', required:false, defaultEnabled:true, schemaVersion:1, context:{kind:'none',reason:'UI'}, view:{title:'Notes',exportName:'Notes',visibility:'session',instance:'singleton',mount:'unmount',stateSchemaVersion:1,subviews:[{id:'settings',title:'Settings',purpose:'settings',settingsScopes:['session']}]}};
+ const contribution = { id:'notes', kind:'view', scope:'agent', required:false, defaultEnabled:true, schemaVersion:1, context:{kind:'none',reason:'UI'}, view:{title:'Notes',exportName:'Notes',presentation:'workspace',instance:'singleton',mount:'unmount',stateSchemaVersion:1,subviews:[{id:'settings',title:'Settings',purpose:'settings',settingsScopes:['session']}]}};
  const installation = {pluginId:'example.notes',revision:'sha256:r1',version:'1.0.0',contentHash:'abc',state:'active',enabled:true,stateRevision:1,source:{kind:'builtin',name:'notes'},createdAt:'2026-09-12',manifest:{schemaVersion:1,id:'example.notes',name:'Notes',version:'1.0.0',sdk:'^1.0.0',entrypoints:{browser:'browser/entry.js'},contributions:[contribution]}};
  const catalog = pluginBrowserCatalog([installation], 1);
  const entry = {id:'example.notes/notes',pluginId:installation.pluginId,pluginRevision:installation.revision,contribution,config:{},required:false,selectionReason:'explicit',dependencyPath:[]};

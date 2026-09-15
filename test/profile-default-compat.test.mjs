@@ -2,20 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import {
-	createPiboProfileFromRegistryOrDefault,
-	resolvePiboProfileNameFromRegistryOrDefault,
+	createPiboProfileFromCapabilitiesOrDefault,
+	resolvePiboProfileNameFromCapabilitiesOrDefault,
 } from "../dist/plugins/builtin.js";
-import { createDefaultPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
+import { createDefaultPiboCapabilityHost } from "./helpers/capability-fixtures.mjs";
 
 test("legacy default profile requests resolve to the current default profile", () => {
-	const registry = createDefaultPiboPluginRegistry();
+	const registry = createDefaultPiboCapabilityHost();
 
-	assert.equal(resolvePiboProfileNameFromRegistryOrDefault(registry, "default"), "base");
-	assert.equal(createPiboProfileFromRegistryOrDefault(registry, "default").profileName, "base");
+	assert.equal(resolvePiboProfileNameFromCapabilitiesOrDefault(registry, "default"), "base");
+	assert.equal(createPiboProfileFromCapabilitiesOrDefault(registry, "default").profileName, "base");
 });
 
 test("non-default agent profile requests remain unchanged", () => {
-	const registry = createDefaultPiboPluginRegistry();
+	const registry = createDefaultPiboCapabilityHost();
 	registry.upsertProfile({
 		name: "unity-agent",
 		create() {
@@ -23,6 +23,6 @@ test("non-default agent profile requests remain unchanged", () => {
 		},
 	});
 
-	assert.equal(resolvePiboProfileNameFromRegistryOrDefault(registry, "unity-agent"), "unity-agent");
-	assert.equal(createPiboProfileFromRegistryOrDefault(registry, "unity-agent").profileName, "unity-agent");
+	assert.equal(resolvePiboProfileNameFromCapabilitiesOrDefault(registry, "unity-agent"), "unity-agent");
+	assert.equal(createPiboProfileFromCapabilitiesOrDefault(registry, "unity-agent").profileName, "unity-agent");
 });

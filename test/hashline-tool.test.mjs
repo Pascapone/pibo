@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { createPiboRuntime } from "../dist/core/runtime.js";
+import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 import {
 	HASHLINE_TOOL_NAME,
@@ -16,7 +17,7 @@ async function createProductRegistry(t) {
 	const product = await startTestPluginProduct("pibo-hashline-product-");
 	const registry = product.createDefaultRegistry();
 	t.after(async () => {
-		await registry.disposePlugins();
+
 		await product.dispose();
 	});
 	return registry;
@@ -49,7 +50,8 @@ test("hashline formats text reads as LINE#HASH:CONTENT with pagination preserved
 
 test("selecting hashline removes built-in read from the effective Pi runtime", async (t) => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-hashline-runtime-"));
-	const registry = await createProductRegistry(t);
+	const product = await startTestPluginProduct("pibo-hashline-runtime-product-");
+	const registry = product.createDefaultRegistry();
 	registry.upsertProfile({
 		name: "hashline-agent",
 		create(context) {
@@ -58,22 +60,15 @@ test("selecting hashline removes built-in read from the effective Pi runtime", a
 				.createSession();
 		},
 	});
-
-	const runtime = await createPiboRuntime({
-		cwd,
-		profile: registry.createProfile("hashline-agent"),
-		persistSession: false,
-		modelDefaults: {},
-	});
-	try {
-		const activeTools = new Set(runtime.session.getActiveToolNames());
-		assert.equal(activeTools.has(HASHLINE_TOOL_NAME), true);
-		assert.equal(activeTools.has("read"), false);
-		assert.equal(activeTools.has("bash"), true);
-		assert.equal(activeTools.has("edit"), true);
-		assert.equal(activeTools.has("write"), true);
-	} finally {
-		await runtime.dispose();
-		rmSync(cwd, { recursive: true, force: true });
-	}
+	const store = new InMemoryPiboSessionStore();
+	store.create({ id: "ps_hashline", channel: "test", kind: "chat", profile: "hashline-agent", workspace: cwd });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, pluginRuntime: product.runtime, sessionStore: store, cwd });
+	t.after(async () => { await router.disposeAll(); await product.dispose(); rmSync(cwd, { recursive: true, force: true }); });
+	await router.emit({ type: "execution", piboSessionId: "ps_hashline", action: "status" });
+	const activeTools = new Set(router.sessions.get("ps_hashline").runtime.session.getActiveToolNames());
+	assert.equal(activeTools.has(HASHLINE_TOOL_NAME), true);
+	assert.equal(activeTools.has("read"), false);
+	assert.equal(activeTools.has("bash"), true);
+	assert.equal(activeTools.has("edit"), true);
+	assert.equal(activeTools.has("write"), true);
 });

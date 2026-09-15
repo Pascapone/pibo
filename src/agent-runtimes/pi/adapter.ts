@@ -837,7 +837,7 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					&& runtime.session.sessionManager.buildSessionContext().messages.length > 0,
 			},
 		};
-		const gatewayActions = input.services?.pluginRegistry ?? { getGatewayAction: () => undefined };
+		const gatewayActions = input.services?.capabilityHost ?? { getGatewayAction: () => undefined };
 		return new PiAgentRuntimeSession(
 			this.instanceId,
 			input.piboSession.id,

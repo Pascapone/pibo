@@ -498,7 +498,6 @@ export class PiboToolMcpBridge {
 				isError: true,
 			};
 		}
-		const preparedInput = tool.prepareInput ? tool.prepareInput(input) : input;
 		const toolCallId = String(extra.requestId);
 		const executionDefaults = this.options.resolveExecutionContext
 			? await this.options.resolveExecutionContext(scope)
@@ -520,6 +519,7 @@ export class PiboToolMcpBridge {
 				}).catch(() => {}));
 			};
 		try {
+			const preparedInput = tool.prepareInput ? tool.prepareInput(input) : input;
 			const result = await tool.execute(
 				toolCallId,
 				preparedInput,

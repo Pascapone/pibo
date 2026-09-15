@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { completePiboCompactionSummary } from "../dist/core/compaction-prompt.js";
@@ -8,8 +9,8 @@ import {
 } from "../dist/core/provider-recovery.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { classifySessionErrorMessage } from "../dist/core/session-errors.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 
 function retrySettings({ enabled = true, baseDelayMs = 0, maxRetryDelayMs = 60_000 } = {}) {
 	return {
@@ -105,7 +106,7 @@ function createRoutedRecoveryHarness({
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 	return { routed, events, order, get recoveryCalls() { return recoveryCalls; }, get abortCalls() { return abortCalls; } };
 }

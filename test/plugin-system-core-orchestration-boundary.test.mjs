@@ -29,7 +29,11 @@ test("core routing imports only generic child and yielded-run orchestration cont
 });
 
 test("run and delegation packages own controller and reminder construction", async () => {
-	const packaged = await source("src/plugins/packaged-control-tools.ts");
+	const packaged = [
+		await source("src/plugins/packaged-run-control.ts"),
+		await source("src/plugins/packaged-goal-loops.ts"),
+		await source("src/plugins/packaged-agent-delegation.ts"),
+	].join("\n");
 	const delegation = await source("src/subagents/controller.ts");
 	assert.match(packaged, /createPiboDelegationController\(providerContext\.services/);
 	assert.match(packaged, /formatPiboRunReminderMessage/);

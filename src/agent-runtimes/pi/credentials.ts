@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import type { AuthResult, Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
@@ -10,12 +11,10 @@ type PiAuthStorageModule = {
 let authStorageModulePromise: Promise<PiAuthStorageModule> | undefined;
 
 async function loadPiAuthStorageModule(): Promise<PiAuthStorageModule> {
-	authStorageModulePromise ??= import(
-		new URL(
-			"./core/auth-storage.js",
-			import.meta.resolve("@earendil-works/pi-coding-agent"),
-		).href
-	) as Promise<PiAuthStorageModule>;
+	const vendored = new URL("./vendor/pi-auth-storage.mjs", import.meta.url);
+	authStorageModulePromise ??= (existsSync(vendored)
+		? import(vendored.href)
+		: import(new URL("./core/auth-storage.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href)) as Promise<PiAuthStorageModule>;
 	return await authStorageModulePromise;
 }
 

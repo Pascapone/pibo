@@ -3,7 +3,7 @@ import { PiboDataStore } from "../data/pibo-store.js";
 import { piboHomePath } from "../core/pibo-home.js";
 import { preparePluginSdkResolution } from "../plugins/backend-loader.js";
 import { PluginHost } from "../plugins/host.js";
-import { PiboPluginRegistry } from "../plugins/registry.js";
+import { PiboCapabilityHost } from "../core/capability-host.js";
 import { verifyPluginArtifact } from "../plugins/sources.js";
 import { createStagedPluginDefinition } from "../plugins/staged-definition.js";
 
@@ -23,7 +23,7 @@ export async function withInstalledRuntimeAdapter<T>(
 		await verifyPluginArtifact(installation);
 		await preparePluginSdkResolution(piboHomePath("plugins", "artifacts"));
 		await host.start({ plugins: [createStagedPluginDefinition(installation)] });
-		const adapter = PiboPluginRegistry.create({ host }).getAgentRuntimeAdapter(instanceId);
+		const adapter = PiboCapabilityHost.create({ host }).getAgentRuntimeAdapter(instanceId);
 		return adapter ? await use(adapter) : undefined;
 	} finally {
 		await host.stop().catch(() => undefined);

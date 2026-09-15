@@ -6,7 +6,7 @@ import { PiboDataStore } from "../../dist/data/pibo-store.js";
 import { profileFromPluginPlan } from "../../dist/agent-runtime/plugin-plan.js";
 import { PluginHost } from "../../dist/plugins/host.js";
 import { startPluginProductRuntime } from "../../dist/plugins/product-runtime.js";
-import { PiboPluginRegistry } from "../../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../../dist/core/capability-host.js";
 import { createAgentPluginSelectionForProfile } from "../../dist/plugins/selection.js";
 
 export async function startTestPluginProduct(prefix = "pibo-test-plugin-product-") {
@@ -23,10 +23,10 @@ export async function startTestPluginProduct(prefix = "pibo-test-plugin-product-
 		host,
 		runtime: product.runtime,
 		createDefaultRegistry() {
-			return PiboPluginRegistry.create({ host });
+			return PiboCapabilityHost.create({ host });
 		},
 		createRegistry(plugins = []) {
-			return PiboPluginRegistry.create({ host, plugins });
+			return PiboCapabilityHost.create({ host, plugins });
 		},
 		materializeProfile(registry, profile, piboSessionId) {
 			const selected = profile.pluginSelection ? profile : new InitialSessionContext({

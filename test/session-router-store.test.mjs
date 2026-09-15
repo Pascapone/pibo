@@ -1,16 +1,18 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import test, { after } from "node:test";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
+import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { SqlitePiboSessionStore } from "../dist/sessions/sqlite-store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
@@ -19,12 +21,12 @@ const pluginProduct = await startTestPluginProduct("pibo-session-router-product-
 after(() => pluginProduct.dispose());
 
 function createRouter(options = {}) {
-	const pluginRegistry = options.pluginRegistry ?? pluginProduct.createDefaultRegistry();
-	const usesProductHost = pluginRegistry.getPluginHost() === pluginProduct.host;
+	const capabilityHost = options.capabilityHost ?? pluginProduct.createDefaultRegistry();
+	const usesProductHost = capabilityHost.getPluginHost() === pluginProduct.host;
 	const router = new PiboSessionRouter({
 		...(usesProductHost ? { pluginRuntime: pluginProduct.runtime } : {}),
 		...options,
-		pluginRegistry,
+		capabilityHost,
 	});
 	if (usesProductHost) {
 		const disposeAll = router.disposeAll.bind(router);
@@ -32,7 +34,7 @@ function createRouter(options = {}) {
 			try {
 				await disposeAll();
 			} finally {
-				await pluginRegistry.disposePlugins();
+
 			}
 		};
 	}
@@ -43,19 +45,21 @@ const retiredWord = String.fromCharCode(111, 119, 110, 101, 114);
 const retiredPartitionField = `${retiredWord}Scope`;
 
 function createTestRegistry(actionName, execute) {
-	return PiboPluginRegistry.create({
-		host: pluginProduct.host,
-		plugins: [
-			definePiboPlugin({
+	return createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: `test.${actionName}`,
 				register(api) {
+					api.registerAgentRuntimeDriver(PI_AGENT_RUNTIME_DRIVER);
+					api.registerAgentRuntimeInstance({ id: "pi", adapterId: "pi" });
 					api.registerProfile({
 						name: "test-profile",
 						create() {
 							return new InitialSessionContextBuilder("test-profile").withBuiltinTools("disabled").createSession();
 						},
 					});
-					api.registerGatewayAction({ name: actionName, execute });
+					api.upsertGatewayAction({ name: actionName, execute });
 				},
 			}),
 		],
@@ -271,7 +275,7 @@ test("session router creates a visible branch Pibo session for clone operations"
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 	});
 
@@ -324,7 +328,7 @@ test("snapshot fork persistence keeps the active source runtime attached", async
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 	});
 
@@ -397,7 +401,7 @@ test("forking a named delegated session preserves lineage and title without copy
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 	});
 
@@ -466,7 +470,7 @@ test("session router discards a derived native handle when branch persistence fa
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 	});
 	const resetCachedSession = router.resetCachedSession.bind(router);
@@ -512,7 +516,7 @@ test("session router reconciles a branch that persisted exactly before create th
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 	});
 	try {
@@ -559,7 +563,7 @@ test("session router compensates an uninspectable commit before allowing a retry
 			cancelled: false,
 		};
 	});
-	const router = createRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	const router = createRouter({ persistSession: false, sessionStore: store, capabilityHost: registry, profile: registry.createProfile("test-profile") });
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
@@ -592,7 +596,7 @@ test("session router compensates mismatched post-commit branches before rejectin
 		current: { piSessionId: "22222222-2222-4222-8222-222222222222", leafId: "new-leaf", cwd: "/workspace" },
 		cancelled: false,
 	}));
-	const router = createRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+	const router = createRouter({ persistSession: false, sessionStore: store, capabilityHost: registry, profile: registry.createProfile("test-profile") });
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_source", action: "session.clone" }),
@@ -629,7 +633,7 @@ test("session router reports reconciliation cleanup failure without rebinding th
 	};
 	const makeRouter = () => {
 		const registry = createTestRegistry("session.clone", executeClone);
-		return createRouter({ persistSession: false, sessionStore: store, pluginRegistry: registry, profile: registry.createProfile("test-profile") });
+		return createRouter({ persistSession: false, sessionStore: store, capabilityHost: registry, profile: registry.createProfile("test-profile") });
 	};
 	let router = makeRouter();
 	try {
@@ -686,7 +690,7 @@ test("session router updates a Pibo session before emitting switch results", asy
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 	});
 	let sessionAtResult;
@@ -757,7 +761,7 @@ test("session router evicts only idle routed runtimes and preserves yielded runs
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 		routedSessionIdleTimeoutMs: 100,
 	});
@@ -788,7 +792,7 @@ test("idle runtime eviction keeps durable session signals reopenable", async () 
 	const router = createRouter({
 		persistSession: false,
 		sessionStore: store,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		profile: registry.createProfile("test-profile"),
 		routedSessionIdleTimeoutMs: 20,
 	});
@@ -1242,10 +1246,10 @@ test("kill_all cancels child sessions and yielded runs recursively", async () =>
 
 test("session router keeps the persisted runtime instance when the profile default changes", async () => {
 	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "frozen-fake" });
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: "test.frozen-runtime",
 				register(api) {
 					api.registerAgentRuntimeDriver(fakeDriver);
@@ -1274,7 +1278,7 @@ test("session router keeps the persisted runtime instance when the profile defau
 		profile: "mutable-profile",
 		runtimeBinding: { runtimeInstanceId: "frozen-a", adapterId: "frozen-fake", state: "unbound" },
 	});
-	const router = createRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = createRouter({ persistSession: false, capabilityHost: registry, sessionStore: store });
 	try {
 		const status = await router.emit({ type: "execution", piboSessionId: "ps_frozen_runtime", action: "status" });
 		assert.equal(status.type, "execution_result");
@@ -1293,10 +1297,10 @@ test("session router persists live binding changes after a runtime turn settles"
 			bindingPatchAfterPrompt: { metadata: { durable: true } },
 		},
 	});
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: "test.binding-sync-runtime",
 				register(api) {
 					api.registerAgentRuntimeDriver(fakeDriver);
@@ -1324,7 +1328,7 @@ test("session router persists live binding changes after a runtime turn settles"
 		profile: "binding-sync-profile",
 		runtimeBinding: { runtimeInstanceId: "binding-sync", adapterId: "binding-sync-fake", state: "unbound" },
 	});
-	const router = createRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = createRouter({ persistSession: false, capabilityHost: registry, sessionStore: store });
 	try {
 		await router.emit({ type: "message", piboSessionId: "ps_binding_sync", id: "binding-sync-turn", text: "go", source: "user" });
 		await waitFor(() => store.get("ps_binding_sync")?.runtimeBinding?.metadata?.durable === true);
@@ -1404,7 +1408,7 @@ test("session router marks a missing bound Pi transcript and refuses an empty re
 	try {
 		await assert.rejects(
 			() => router.emit({ type: "execution", piboSessionId: "ps_missing_pi", action: "status" }),
-			(error) => error?.name === "AgentRuntimeUnavailableError" && /durable Pibo portable history is unavailable/.test(error.message),
+			(error) => error?.name === "AgentRuntimeBindingMissingError",
 		);
 		const stored = store.get("ps_missing_pi");
 		assert.equal(stored.piSessionId, "77777777-7777-4777-8777-777777777777");

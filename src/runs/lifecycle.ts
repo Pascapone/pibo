@@ -3,6 +3,9 @@ export type PiboRunTimeoutPhase = "startup" | "lifetime";
 export const PIBO_RUN_CANCELLATION_SETTLEMENT_TIMEOUT_MS = 15_000;
 
 export class PiboRunExecutionTimeoutError extends Error {
+	static [Symbol.hasInstance](value: unknown): boolean {
+		return value instanceof Error && value.name === "PiboRunExecutionTimeoutError";
+	}
 	constructor(message: string, readonly timeoutPhase: PiboRunTimeoutPhase) {
 		super(message);
 		this.name = "PiboRunExecutionTimeoutError";
@@ -10,6 +13,9 @@ export class PiboRunExecutionTimeoutError extends Error {
 }
 
 export class PiboRunCancellationError extends Error {
+	static [Symbol.hasInstance](value: unknown): boolean {
+		return value instanceof Error && value.name === "PiboRunCancellationError";
+	}
 	constructor(message: string, options?: ErrorOptions) {
 		super(message, options);
 		this.name = "PiboRunCancellationError";
@@ -17,6 +23,9 @@ export class PiboRunCancellationError extends Error {
 }
 
 export class PiboRunCancelledError extends Error {
+	static [Symbol.hasInstance](value: unknown): boolean {
+		return value instanceof Error && value.name === "PiboRunCancelledError";
+	}
 	constructor(message = "Yielded run was cancelled.", options?: ErrorOptions) {
 		super(message, options);
 		this.name = "PiboRunCancelledError";

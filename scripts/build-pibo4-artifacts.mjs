@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { build } from "esbuild";
 
@@ -57,7 +57,45 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 	await mkdir(packageRoot, { recursive: true });
 	const backendEntry = join(generatedRoot, `${packageSuffix}-backend.ts`);
 	await writeFile(backendEntry, `export { ${backendExport} as setup } from ${JSON.stringify(resolve(root, backendSource))};\n`);
-	await build({ entryPoints: [backendEntry], outfile: join(packageRoot, "backend.mjs"), bundle: true, platform: "node", format: "esm", target: "node24", packages: "bundle", sourcemap: false, legalComments: "none", logLevel: "warning" });
+	await build({
+		entryPoints: [backendEntry],
+		outfile: join(packageRoot, "backend.mjs"),
+		bundle: true,
+		platform: "node",
+		format: "esm",
+		target: "node24",
+		packages: "bundle",
+		banner: { js: 'import { createRequire as __piboCreateRequire } from "node:module"; const require = __piboCreateRequire(import.meta.url);' },
+		sourcemap: false,
+		legalComments: "none",
+		logLevel: "warning",
+	});
+	if (packageSuffix === "browser-tools") {
+		const vendor = join(packageRoot, "vendor");
+		await mkdir(vendor, { recursive: true });
+		await cp(resolve(root, "node_modules/acorn/dist/acorn.js"), join(vendor, "acorn.cjs"));
+		await cp(resolve(root, "node_modules/acorn-walk/dist/walk.js"), join(vendor, "acorn-walk.cjs"));
+		const context = join(packageRoot, "context");
+		await mkdir(context, { recursive: true });
+		await cp(resolve(root, "context/pibo-native-tooling.md"), join(context, "pibo-native-tooling.md"));
+	}
+	if (packageSuffix === "runtime-pi") {
+		const vendor = join(packageRoot, "vendor");
+		await mkdir(vendor, { recursive: true });
+		await build({
+			entryPoints: [resolve(root, "node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js")],
+			outfile: join(vendor, "pi-auth-storage.mjs"),
+			bundle: true,
+			platform: "node",
+			format: "esm",
+			target: "node24",
+			packages: "bundle",
+			banner: { js: 'import { createRequire as __piboCreateRequire } from "node:module"; const require = __piboCreateRequire(import.meta.url);' },
+			sourcemap: false,
+			legalComments: "none",
+			logLevel: "warning",
+		});
+	}
 	if (browserExports.length) {
 		const browserDir = join(packageRoot, "browser");
 		await mkdir(browserDir, { recursive: true });
@@ -81,7 +119,7 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 	}
 	manifest.entrypoints = { ...manifest.entrypoints, backend: "backend.mjs" };
 	await writeFile(join(packageRoot, "pibo.plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-	await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ name: `@pasko70/pibo-plugin-${packageSuffix}`, version: manifest.version, type: "module", files: ["pibo.plugin.json", "backend.mjs", "browser"] }, null, 2)}\n`);
+	await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ name: `@pasko70/pibo-plugin-${packageSuffix}`, version: manifest.version, type: "module", files: ["pibo.plugin.json", "backend.mjs", "browser", ...(packageSuffix === "browser-tools" ? ["context"] : []), ...(["browser-tools", "runtime-pi"].includes(packageSuffix) ? ["vendor"] : [])] }, null, 2)}\n`);
 }
 
 const standardSet = { schemaVersion: 1, core: "@pasko70/pibo", standard: "@pasko70/pibo-standard", plugins: packages.map(([suffix, manifestFactory]) => ({ package: `@pasko70/pibo-plugin-${suffix}`, pluginId: manifestFactory().id, version: manifestFactory().version })) };

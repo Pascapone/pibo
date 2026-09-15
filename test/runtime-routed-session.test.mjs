@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
@@ -6,8 +7,8 @@ import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PIBO_PROVIDER_RECOVERY_PROMPT } from "../dist/core/provider-recovery.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 function delay(ms) {
@@ -38,10 +39,10 @@ function createFakeRuntimeFixture(routerOptions = {}, script) {
 			],
 		})),
 	});
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: "test.router-fake",
 				register(api) {
 					api.registerAgentRuntimeDriver(fakeDriver);
@@ -75,7 +76,7 @@ function createFakeRuntimeFixture(routerOptions = {}, script) {
 		store,
 		router: new PiboSessionRouter({
 			persistSession: false,
-			pluginRegistry: registry,
+			capabilityHost: registry,
 			sessionStore: store,
 			...routerOptions,
 		}),
@@ -170,7 +171,7 @@ test("generic routed session preserves output identities across successful compa
 		"ps_compaction",
 		runtimeSession,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 	);
 	try {
 		routed.enqueueMessage({
@@ -245,7 +246,7 @@ test("generic model switching preserves Pibo reasoning when a runtime reapplies 
 		"ps_reasoning_reset",
 		runtimeSession,
 		() => {},
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 	);
 	try {
 		assert.deepEqual(await routed.setModel(targetModel), targetModel);
@@ -317,7 +318,7 @@ test("generic routed orchestration tries ordered provider fallbacks and restores
 		"ps_fallback",
 		runtimeSession,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		{ modelFallbacks: [fallbackOne, fallbackTwo] },
 	);
 	try {
@@ -361,7 +362,7 @@ test("provider fallback does not retry context or runtime failures", async () =>
 		"ps_no_fallback",
 		runtimeSession,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		{ modelFallbacks: [{ provider: "anthropic", id: "claude-fallback" }] },
 	);
 	try {
@@ -517,7 +518,7 @@ test("fork identity reads and transitions reject queued or active routed work", 
 		"ps_fork_race",
 		runtimeSession,
 		() => {},
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		{
 			async onSessionOperation() {
 				persistenceStarted = true;
@@ -640,7 +641,7 @@ test("running-safe fork controls snapshot completed history without interrupting
 		"ps_running_fork",
 		runtimeSession,
 		() => {},
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		{ onSessionOperation: async (result) => persistedOperations.push(structuredClone(result)) },
 	);
 	try {
@@ -722,7 +723,7 @@ test("fork-candidate page reads serialize accepted message drain behind OMP-styl
 		"ps_omp_candidate_race",
 		runtimeSession,
 		(event) => outputs.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		{ onStateChange: (state) => routedStates.push(state) },
 	);
 	try {
@@ -806,10 +807,10 @@ test("adapter-shared auth mutations recycle every affected configured runtime se
 			return adapter;
 		},
 	};
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: "test.router-shared-auth-fake",
 				register(api) {
 					api.registerAgentRuntimeDriver(authDriver);
@@ -847,7 +848,7 @@ test("adapter-shared auth mutations recycle every affected configured runtime se
 			workspace: process.cwd(),
 		});
 	}
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore: store });
 	try {
 		await router.getSessionStatusSnapshot("ps_router_shared_a");
 		await router.getSessionStatusSnapshot("ps_router_shared_b");
@@ -908,10 +909,10 @@ test("runtime login and model menus use the active adapter's real auth status wi
 			});
 		},
 	};
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			coreCapabilitiesSetup,
+			defineTestCapabilitySetup({
 				id: "test.router-auth-fake",
 				register(api) {
 					api.registerAgentRuntimeDriver(authDriver);
@@ -940,7 +941,7 @@ test("runtime login and model menus use the active adapter's real auth status wi
 		profile: "router-auth-profile",
 		workspace: process.cwd(),
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore: store });
 	try {
 		const login = await router.emit({ type: "execution", piboSessionId: "ps_router_auth_fake", action: "login" });
 		assert.equal(login.result.runtimeInstanceId, "router-auth-fake");

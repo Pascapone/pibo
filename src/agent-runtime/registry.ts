@@ -83,9 +83,14 @@ function boundedAuthText(value: unknown, label: string, maxLength: number): stri
 }
 
 function safeAdapterAuthError(error: unknown, operation: string): AgentRuntimeAuthError {
-	if (error instanceof AgentRuntimeAuthError) {
-		const code = /^[a-z][a-z0-9._-]{0,63}$/.test(error.code) ? error.code : "runtime_auth_failed";
-		return new AgentRuntimeAuthError(code, redactAgentRuntimeAuthText(error.message), error.retryable === true);
+	const shaped = error && typeof error === "object" ? error as { name?: unknown; code?: unknown; message?: unknown; retryable?: unknown } : undefined;
+	if (error instanceof AgentRuntimeAuthError || (
+		shaped?.name === "AgentRuntimeAuthError"
+		&& typeof shaped.code === "string"
+		&& typeof shaped.message === "string"
+	)) {
+		const code = /^[a-z][a-z0-9._-]{0,63}$/.test(String(shaped?.code)) ? String(shaped?.code) : "runtime_auth_failed";
+		return new AgentRuntimeAuthError(code, redactAgentRuntimeAuthText(String(shaped?.message)), shaped?.retryable === true);
 	}
 	return new AgentRuntimeAuthError(
 		"runtime_auth_failed",

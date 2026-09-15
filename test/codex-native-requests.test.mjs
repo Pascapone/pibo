@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,8 +16,8 @@ import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-nati
 import { codexRuntimeRequestActions } from "../dist/agent-runtimes/codex-native/gateway-actions.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/codex-app-server-thread-fake.mjs", import.meta.url));
@@ -326,8 +327,8 @@ test("Codex approval and structured-input requests flow through generic routed s
 	const profileName = "codex-native-router-requests-profile";
 	const piboSessionId = "ps_codex_router_requests";
 	const config = runtimeConfig(root, true);
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-router-requests",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -353,7 +354,7 @@ test("Codex approval and structured-input requests flow through generic routed s
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});

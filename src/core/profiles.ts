@@ -19,6 +19,7 @@ export type ToolProfile = {
 	direct?: boolean;
 	yieldable?: boolean;
 	providerBacked?: boolean;
+	portable?: boolean;
 	pluginId?: string;
 	replacesBuiltinTools?: readonly string[];
 	definition?: PiboToolDefinition;

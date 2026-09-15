@@ -164,7 +164,7 @@ test("Pi runtime adapter preserves device, API-key, status, logout, and shared-s
 		assert.equal((await registry.getAgentRuntimeAuthStatus("pi")).find((status) => status.id === "anthropic")?.configured, false);
 		await registry.disposeAgentRuntimeAuth();
 	} finally {
-		await registry?.disposePlugins();
+
 		await product?.dispose();
 		globalThis.fetch = previousFetch;
 		if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;

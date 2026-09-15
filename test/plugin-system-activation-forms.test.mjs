@@ -12,7 +12,7 @@ import { profileFromPluginPlan } from '../dist/agent-runtime/plugin-plan.js';
 import { buildAgentPluginCatalog } from '../dist/apps/chat/chat-capability-routes.js';
 
 const noContext = { kind: 'none', reason: 'fixture' };
-const view = (id, scope = 'app') => ({ id, kind: 'view', title: id, scope, required: scope === 'app', defaultEnabled: true, schemaVersion: 1, context: noContext, view: { title: id, exportName: 'View', visibility: scope === 'app' ? 'infrastructure' : 'session', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1 } });
+const view = (id, scope = 'app') => ({ id, kind: 'view', title: id, scope, required: scope === 'app', defaultEnabled: true, schemaVersion: 1, context: noContext, view: { title: id, exportName: 'View', presentation: scope === 'app' ? 'internal' : 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1 } });
 const tool = (id, extra = {}) => ({ id, kind: 'tool', name: id, title: id, scope: 'agent', required: false, defaultEnabled: true, schemaVersion: 1, context: noContext, ...extra });
 
 async function source(root, manifest, registrations) {

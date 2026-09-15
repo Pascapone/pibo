@@ -68,13 +68,15 @@ for (const path of ['../outside.js', '/absolute.js', 'dist/../../escape.js', 'di
 	assert.ok(validatePluginManifest(manifest).some(error => error.code === 'invalid-entrypoint'));
 });
 
-test('manifest rejects unresolved entries and validates fixed-session view/settings metadata', () => {
+test('manifest rejects unresolved entries and validates current view/settings metadata', () => {
 	const manifest = fixture();
 	assert.ok(validatePluginManifest(manifest, { files: [] }).some(error => error.code === 'missing-entrypoint'));
-	manifest.contributions[0].view = { title: 'Notes', exportName: 'Notes', visibility: 'session', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, subviews: [{ id: 'settings', title: 'Settings', purpose: 'settings', settingsScopes: ['app', 'agent', 'session'] }] };
+	manifest.contributions[0].view = { title: 'Notes', exportName: 'Notes', presentation: 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, subviews: [{ id: 'settings', title: 'Settings', purpose: 'settings', settingsScopes: ['app', 'agent', 'session'] }] };
 	assert.deepEqual(validatePluginManifest(manifest), []);
-	manifest.contributions[0].view.visibility = 'infrastructure';
+	manifest.contributions[0].view.presentation = 'internal';
 	assert.ok(validatePluginManifest(manifest).some(error => error.code === 'invalid-view-scope'));
+	manifest.contributions[0].view = { ...manifest.contributions[0].view, presentation: 'workspace', visibility: 'session' };
+	assert.ok(validatePluginManifest(manifest).some(error => error.code === 'legacy-manifest-field'));
 });
 
 test('manifest: supported version ranges do not coerce invalid or prerelease versions', () => {

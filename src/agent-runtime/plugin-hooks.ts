@@ -77,10 +77,12 @@ export async function runPluginHooks(hooks: readonly RuntimePluginHook[], phase:
 }
 
 export function wrapPluginToolHooks(tool: PiboToolDefinition, hooks: readonly RuntimePluginHook[], scope: Omit<PluginHookScope, "toolName" | "toolCallId" | "signal">): PiboToolDefinition {
+	const prepare = (value: unknown): unknown => tool.prepareInput ? tool.prepareInput(value) : value;
 	return { ...tool, async execute(toolCallId, input, signal, onUpdate, context) {
 		const executionScope = { ...scope, toolName: tool.name, toolCallId, signal };
-		const transformed = await runPluginHooks(hooks, "pre-tool", input as PluginJsonValue, executionScope, (value) => Value.Check(tool.inputSchema, value));
-		const result = await tool.execute(toolCallId, transformed, signal, onUpdate, context);
+		const prepared = prepare(input);
+		const transformed = await runPluginHooks(hooks, "pre-tool", prepared as PluginJsonValue, executionScope, (value) => Value.Check(tool.inputSchema, value));
+		const result = await tool.execute(toolCallId, prepare(transformed), signal, onUpdate, context);
 		return await runPluginHooks(hooks, "post-tool", result as unknown as PluginJsonValue, executionScope, (value) => {
 			if (!value || typeof value !== "object" || !Array.isArray((value as PiboToolResult).content)) return false;
 			return !tool.outputSchema || Value.Check(tool.outputSchema, (value as PiboToolResult).structuredContent);

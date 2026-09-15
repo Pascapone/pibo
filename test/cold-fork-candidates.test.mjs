@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,8 +9,8 @@ import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake
 import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 const persisted = [{ entryId: "past", text: "persisted user" }];
@@ -34,7 +35,7 @@ async function routerFixture(run, { read = async () => persisted, state = "bound
 		};
 		return adapter;
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin, definePiboPlugin({
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 		id: "test.cold-fork",
 		register(api) {
 			api.registerAgentRuntimeDriver(driver);
@@ -48,7 +49,7 @@ async function routerFixture(run, { read = async () => persisted, state = "bound
 	const store = new InMemoryPiboSessionStore();
 	store.create({ id: "ps_cold_fork", channel: "test", kind: "chat", profile: "cold-fork",
 		runtimeBinding: { runtimeInstanceId: "cold-fork", adapterId: "cold-fork-fake", nativeSessionId: "native", state } });
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore: store });
 	try { await run({ router, store, opens: () => opens }); }
 	finally { await router.disposeAll(); }
 }

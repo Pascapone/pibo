@@ -275,7 +275,10 @@ export class PiboPortableToolService {
 	}
 
 	private serviceMessageHandler(record: SessionRecord, kind: string): PluginSessionServiceMessageHandler | undefined {
-		const handlers = (record.providerToolSets ?? []).flatMap((set) => set.serviceMessages ?? []).filter((handler) => handler.kind === kind);
+		const handlers = [
+			...(record.input.sessionToolProviders ?? []).flatMap((binding) => binding.provider.serviceMessages ?? []),
+			...(record.providerToolSets ?? []).flatMap((set) => set.serviceMessages ?? []),
+		].filter((handler) => handler.kind === kind);
 		if (handlers.length > 1) throw new Error(`Session service-message handler conflict for ${kind}`);
 		return handlers[0];
 	}

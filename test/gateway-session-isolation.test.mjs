@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,12 +7,12 @@ import test from "node:test";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 
 function createRegistry() {
-	return PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	return createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 }
 
 function seedRunningTurn(root) {
@@ -66,7 +67,7 @@ test("persistSession false uses an in-memory store and leaves the external Pibo 
 				port: 0,
 				startChannels: false,
 				persistSession: false,
-				pluginRegistry: registry,
+				capabilityHost: registry,
 				loopStorePath: join(root, "isolated-loops.sqlite"),
 				resourceReaper: false,
 			});
@@ -112,7 +113,7 @@ test("an embedded gateway with an explicit live store is non-authoritative by de
 			port: 0,
 			startChannels: false,
 			persistSession: false,
-			pluginRegistry: createRegistry(),
+			capabilityHost: createRegistry(),
 			sessionStore: fixture.sessionStore,
 			loopStorePath: join(root, "isolated-loops.sqlite"),
 			resourceReaper: false,
@@ -138,7 +139,7 @@ test("an explicitly authoritative gateway recovers interrupted state from its su
 			persistSession: false,
 			authoritativeRuntime: true,
 			runtimeInstanceId: "test-authoritative-runtime",
-			pluginRegistry: createRegistry(),
+			capabilityHost: createRegistry(),
 			sessionStore: fixture.sessionStore,
 			loopStorePath: join(root, "isolated-loops.sqlite"),
 			resourceReaper: false,

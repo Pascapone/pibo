@@ -12,30 +12,39 @@ function sourceFiles(root) {
 
 test("Pibo 4 production source has no executable legacy plugin composition entry points", () => {
 	const forbidden = [
-		"createDefaultPiboPluginRegistry",
-		"createGatewayProducerPiboPluginRegistry",
-		"createWebPiboPluginRegistry",
+		"createDefaultPiboCapabilityHost",
+		"createGatewayProducerPiboCapabilityHost",
+		"createWebPiboCapabilityHost",
 		"createPiboLoopPlugin",
 		"createPiboUserProfileResourcePlugins",
-		"piboCorePlugin",
+		"coreCapabilitiesSetup",
 		"currentLoopService",
 		"getPiboLoopService",
 		"configurePiboGoalToolStorePath",
 		"compatibilityRuntimeRegistry",
 		"createDefaultPiboSessionStore",
+		"PiboPluginRegistry",
+		"PiboPluginApi",
+		"definePiboPlugin",
+		"registerPlugin(",
+		"createApi(",
 	];
 	const findings = [];
 	for (const path of sourceFiles("src")) {
 		const text = readFileSync(path, "utf8");
 		for (const symbol of forbidden) if (text.includes(symbol)) findings.push(`${path}: ${symbol}`);
-		if (path !== "src/plugins/registry.ts" && /definePiboPlugin|\.registerPlugin\(/.test(text)) findings.push(`${path}: executable legacy plugin registration`);
 		if (/export (?:const \w*Plugin\s*=|function createPibo\w+Plugin\b)/.test(text)) findings.push(`${path}: exported legacy plugin constructor`);
 	}
 	assert.deepEqual(findings, []);
 	assert.equal(existsSync("src/plugins/user-profile-resources.ts"), false);
 	assert.equal(existsSync("src/plugins/openai-chatgpt-transcription.ts"), false);
 	assert.equal(existsSync("src/plugins/openai-transcription.ts"), false);
-	assert.doesNotMatch(readFileSync("src/index.ts", "utf8"), /createLegacyPiRuntimeSessionBinding/);
+	assert.equal(existsSync("src/plugins/registry.ts"), false);
+	assert.equal(existsSync("src/plugins/registry-projection.ts"), false);
+	assert.doesNotMatch(readFileSync("src/index.ts", "utf8"), /createLegacyPiRuntimeSessionBinding|PiboPluginApi|PiboPlugin,/);
+	const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+	assert.equal(Object.keys(packageJson.exports).some((key) => key === "./*" || key.startsWith("./plugin-builtin/")), false);
+	assert.equal(existsSync("scripts/write-plugin-builtin-declarations.mjs"), false);
 });
 
 test("Runtime Request ownership is supplied by Codex Native rather than Core", () => {

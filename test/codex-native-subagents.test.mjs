@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, applyTestCapabilitySetup } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +11,7 @@ import { CODEX_NATIVE_ADAPTER_ID } from "../dist/agent-runtimes/codex-native/ada
 import { parseCodexNativeRuntimeConfig } from "../dist/agent-runtimes/codex-native/config.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { definePiboPlugin } from "../dist/plugins/registry.js";
+
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
@@ -72,7 +73,7 @@ async function listFixtureMcpTools(client, threadId) {
 async function createRegistry(root, registerProfiles, childDriver) {
 	const product = await startTestPluginProduct(`pibo-codex-subagents-${basename(root)}-`);
 	const registry = product.createDefaultRegistry();
-	registry.registerPlugin(definePiboPlugin({
+	applyTestCapabilitySetup(registry, defineTestCapabilitySetup({
 		id: `test.codex-subagents.${basename(root)}`,
 		register(api) {
 			api.registerAgentRuntimeInstance({
@@ -142,7 +143,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		pluginRuntime: product.runtime,
 		sessionStore: store,
 		reliabilityStore,
@@ -153,7 +154,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	router.subscribe((event) => events.push(event));
 	t.after(async () => {
 		await router.disposeAll();
-		await registry.disposePlugins();
+
 		await product.dispose();
 		reliabilityStore.close();
 		await rm(root, { recursive: true, force: true });
@@ -315,7 +316,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		pluginRuntime: product.runtime,
 		sessionStore: store,
 		reliabilityStore,
@@ -326,7 +327,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	router.subscribe((event) => events.push(event));
 	t.after(async () => {
 		await router.disposeAll();
-		await registry.disposePlugins();
+
 		await product.dispose();
 		reliabilityStore.close();
 		await rm(root, { recursive: true, force: true });

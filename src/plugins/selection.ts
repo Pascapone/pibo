@@ -83,7 +83,7 @@ export function createAgentPluginSelectionForProfile(installations: readonly Plu
 		if (entry) (entry.contributionConfig ??= {}).adapter = { selectedServers: [...profile.mcpServers] };
 	}
 	if (profile.toolPackages.runControl !== undefined) setFamily("pibo.run-control", profile.toolPackages.runControl);
-	if (profile.toolPackages.goalControl !== undefined) setFamily("pibo.goal-control", profile.toolPackages.goalControl);
+	setFamily("pibo.goal-control", profile.toolPackages.goalControl !== false);
 	setFamily("pibo.agent-delegation", profile.subagents.some((subagent) => subagent.enabled !== false));
 	if (profile.toolPackages.codexCompat === true) setFamily("pibo.codex-compat", true);
 	const diagnostics = validateAgentPluginSelection(selection);

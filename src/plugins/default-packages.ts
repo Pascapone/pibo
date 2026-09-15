@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { cp, readFile, rm } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { FACT_COUNT_STOP_CONDITION, GOAL_STATUS_STOP_CONDITION, MAX_ITERATIONS_STOP_CONDITION, PROMISE_COMPLETE_STOP_CONDITION } from "../loops/stopping.js";
@@ -6,16 +6,13 @@ import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 import type { PluginContribution, PluginInstallation, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
-import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PIBO_USER_RESOURCES_SERVICE } from "./product-services.js";
+import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
 
-export const CORE_PLUGIN_ID = "pibo.core";
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
 export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
-export const WEB_PRODUCT_PLUGIN_ID = "pibo.web-product";
 export const PREVIEW_PLUGIN_ID = "pibo.preview";
 export const CRON_PLUGIN_ID = "pibo.cron";
 export const WORKFLOWS_PLUGIN_ID = "pibo.workflows";
-export const USER_RESOURCES_PLUGIN_ID = "pibo.user-resources";
 export const WEB_ANNOTATIONS_PLUGIN_ID = "pibo.web-annotations";
 export const CODE_RUNTIME_PLUGIN_ID = "pibo.code-runtime";
 export const FILE_EDITING_PLUGIN_ID = "pibo.file-editing";
@@ -31,8 +28,6 @@ export const CODEX_NATIVE_RUNTIME_PLUGIN_ID = "pibo.runtime-codex-native";
 export const OMP_RUNTIME_PLUGIN_ID = "pibo.runtime-omp";
 export const BUILTIN_PROFILES_PLUGIN_ID = "pibo.builtin-profiles";
 export const MCP_CLI_PLUGIN_ID = "pibo.mcp-cli";
-export const PRODUCT_UI_PLUGIN_ID = "pibo.product-ui";
-export const STANDARD_SHELL_PLUGIN_ID = "pibo.standard-shell";
 const DEFAULT_PACKAGE_VERSION = "1.0.0";
 const WEB_ANNOTATION_TOOL_NAMES = [
 	"web_annotations_list",
@@ -42,8 +37,6 @@ const WEB_ANNOTATION_TOOL_NAMES = [
 	"web_annotations_resolve",
 	"web_annotations_dismiss",
 ] as const;
-const CORE_SKILL_NAMES = ["pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json"] as const;
-const CORE_ACTION_NAMES = ["status", "compact", "session_id", "clear_queue", "abort", "kill", "kill_all", "dispose", "thinking", "fast_mode", "session.current", "session.list", "session.fork_candidates", "session.fork", "session.clone", "session.tree", "session.tree_navigate", "session.switch", "login", "model", "login.start", "login.complete", "login.apikey", "login.cancel", "login.status", "logout"] as const;
 const BROWSER_TOOL_NAMES = [
 	"browser_use_open_tabs",
 	"browser_use_take_screenshot",
@@ -66,22 +59,6 @@ function transcriptionPackageManifest(id: string, name: string): PluginManifest 
 
 export const openAiChatGptTranscriptionPackageManifest = () => transcriptionPackageManifest(CHATGPT_TRANSCRIPTION_PLUGIN_ID, "ChatGPT Subscription Transcription");
 export const openAiTranscriptionPackageManifest = () => transcriptionPackageManifest(OPENAI_TRANSCRIPTION_PLUGIN_ID, "OpenAI Transcription");
-
-export function webProductPackageManifest(): PluginManifest {
-	return {
-		schemaVersion: 1,
-		id: WEB_PRODUCT_PLUGIN_ID,
-		name: "Pibo Web Product",
-		version: DEFAULT_PACKAGE_VERSION,
-		sdk: "^1.0.0",
-		entrypoints: { backend: "backend.mjs" },
-		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
-		contributions: [
-			{ id: "cron-channel", kind: "channel", name: "cron", title: "Cron channel", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Cron feature infrastructure." } },
-			{ id: "preview-app", kind: "web-app", name: "session-live-previews", title: "Session live previews", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Preview feature infrastructure." } },
-		],
-	};
-}
 
 export function previewPackageManifest(): PluginManifest {
 	return {
@@ -123,39 +100,6 @@ export function workflowsPackageManifest(): PluginManifest {
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		contributions: [productView("view", "Workflows", "WorkflowsView", "workflows")],
-	};
-}
-
-export function userResourcesPackageManifest(): PluginManifest {
-	return {
-		schemaVersion: 1,
-		id: USER_RESOURCES_PLUGIN_ID,
-		name: "Pibo User Resources",
-		version: DEFAULT_PACKAGE_VERSION,
-		sdk: "^1.0.0",
-		entrypoints: { backend: "backend.mjs" },
-		services: { provides: [{ id: PIBO_USER_RESOURCES_SERVICE, version: "1.0.0" }], requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
-		contributions: [
-			systemContribution("skill-provider", "resource-provider", "user-skills"),
-			systemContribution("context-file-provider", "resource-provider", "user-context-files"),
-			systemContribution("profile-provider", "resource-provider", "custom-agent-profiles"),
-			{ ...systemContribution("context-files-web-app", "web-app", "context-files"), required: false },
-		],
-	};
-}
-
-export function corePackageManifest(): PluginManifest {
-	return {
-		schemaVersion: 1,
-		id: CORE_PLUGIN_ID,
-		name: "Pibo Core",
-		version: DEFAULT_PACKAGE_VERSION,
-		sdk: "^1.0.0",
-		entrypoints: { backend: "backend.mjs" },
-		contributions: [
-			...CORE_SKILL_NAMES.map((name): PluginContribution => ({ id: `skill-${name}`, kind: "skill", name, title: name, scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "skill", description: `Built-in ${name} guidance.`, loading: "progressive" } })),
-			...CORE_ACTION_NAMES.map((name): PluginContribution => ({ id: `action-${name}`, kind: "gateway-action", name, title: name, scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Product gateway action; no model context." } })),
-		],
 	};
 }
 
@@ -350,7 +294,7 @@ export function codexCompatPackageManifest(): PluginManifest {
 		id: CODEX_COMPAT_PLUGIN_ID,
 		name: "Pibo Codex Compatibility",
 		sessionTools: true,
-		tools: ["apply_patch", "view_image", "codex_image_generation"].map((name) => toolContribution(name, { runtime: { adapterIds: ["pi"] }, context: { kind: "context", stage: "tools", description: "Pi-backed Codex compatibility contribution.", loading: "runtime" } })),
+		tools: ["apply_patch", "view_image", "codex_image_generation"].map((name) => toolContribution(name, { runtime: { adapterIds: ["pi"] }, context: { kind: "context", stage: "tools", description: name === "codex_image_generation" ? "Generate or edit images through the ChatGPT/Codex backend API." : "Pi-backed Codex compatibility contribution.", loading: "runtime" } })),
 		extra: [{ id: "base-prompt", kind: "system-prompt-transformer", name: "Codex Base Prompt", title: "Codex Base Prompt", scope: "agent", required: false, defaultEnabled: false, schemaVersion: 1, context: { kind: "context", stage: "base-prompt", description: "Codex compatibility system-prompt transformation for compatible adapters.", loading: "eager" } }],
 	});
 }
@@ -443,34 +387,6 @@ function productView(id: string, title: string, exportName: string, chatRoute?: 
 	};
 }
 
-export function productUiPackageManifest(): PluginManifest {
-	return {
-		schemaVersion: 1,
-		id: PRODUCT_UI_PLUGIN_ID,
-		name: "Pibo Product Views",
-		version: DEFAULT_PACKAGE_VERSION,
-		sdk: "^1.0.0",
-		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
-		contributions: [
-			productView("workflows", "Workflows", "WorkflowsView", "workflows"),
-			productView("cron", "Cron", "CronView", "cron"),
-			productView("loops", "Loops", "LoopsView", "loops"),
-		],
-	};
-}
-
-export function standardShellPackageManifest(): PluginManifest {
-	return {
-		schemaVersion: 1,
-		id: STANDARD_SHELL_PLUGIN_ID,
-		name: "Pibo Standard Shell",
-		version: DEFAULT_PACKAGE_VERSION,
-		sdk: "^1.0.0",
-		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
-		contributions: [{ id: "shell", kind: "shell-provider", name: "standard", title: "Pibo Standard Shell", scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Product shell; no model context." } }],
-	};
-}
-
 export function mcpCliPackageManifest(): PluginManifest {
 	return {
 		schemaVersion: 1,
@@ -490,13 +406,12 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "core" | "user-resources" | "preview" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "agent-delegation" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli" | "product-ui";
+	backendModule: "preview" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "agent-delegation" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
 
 const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
-	{ manifest: corePackageManifest, backendExport: "setupCore", backendModule: "core" },
 	{ manifest: previewPackageManifest, backendExport: "setupPreview", backendModule: "preview", webOnly: true, browserModules: [{ exports: "PreviewView", asset: "pibo-plugin-preview.js" }] },
 	{ manifest: cronPackageManifest, backendExport: "setupCron", backendModule: "cron", webOnly: true, browserModules: [{ exports: "CronView", asset: "pibo-plugin-cron.js" }] },
 	{ manifest: workflowsPackageManifest, backendExport: "setupWorkflows", backendModule: "workflows", browserModules: [{ exports: "WorkflowsView", asset: "pibo-plugin-workflows.js" }] },
@@ -520,14 +435,18 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 ];
 
 async function materializeDefaultPackage(artifactRoot: string, descriptor: DefaultPackageDescriptor): Promise<{ manifest: PluginManifest; source: string }> {
-	const manifest = descriptor.manifest();
-	const source = join(artifactRoot, "default-sources", manifest.id, manifest.version);
-	await mkdir(source, { recursive: true, mode: 0o700 });
-	await Promise.all([
-		writeFile(join(source, "pibo.plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 }),
-		writeFile(join(source, "backend.mjs"), `export { ${descriptor.backendExport} as setup } from "@pasko70/pibo/plugin-builtin/${descriptor.backendModule}";\n`, { mode: 0o600 }),
-		...(descriptor.browserModules ? [writeFile(join(source, "browser.mjs"), `${descriptor.browserModules.map((entry) => `export { ${entry.exports} } from "/apps/chat/assets/${entry.asset}?v=${manifest.version}";`).join("\n")}\n`, { mode: 0o600 })] : []),
-	]);
+	const expected = descriptor.manifest();
+	const packageSuffix = descriptor.backendModule === "profiles" ? "standard-profiles" : descriptor.backendModule;
+	const builtSource = resolve(process.cwd(), "dist", "pibo4-artifacts", packageSuffix);
+	const source = join(artifactRoot, "default-sources", expected.id, expected.version);
+	await rm(source, { recursive: true, force: true });
+	try {
+		await cp(builtSource, source, { recursive: true, force: true });
+	} catch (error) {
+		throw new Error(`Standard plugin artifact ${packageSuffix} is unavailable. Build or install @pasko70/pibo-standard before starting the Standard composition.`, { cause: error });
+	}
+	const manifest = JSON.parse(await readFile(join(source, "pibo.plugin.json"), "utf8")) as PluginManifest;
+	if (manifest.id !== expected.id || manifest.version !== expected.version) throw new Error(`Built Standard artifact ${packageSuffix} does not match ${expected.id}@${expected.version}`);
 	return { manifest, source };
 }
 

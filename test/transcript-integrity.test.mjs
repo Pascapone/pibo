@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -6,8 +7,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { RoutedSession } from "../dist/core/routed-session.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import {
 	PIBO_TRANSCRIPT_INTEGRITY_ENTRY_TYPE,
 	claimPiboTranscriptIntegrityContinuation,
@@ -200,7 +201,7 @@ test("routed load recovery performs one autonomous continuation before the next 
 		"ps-transcript-integrity",
 		runtime,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		false,
 	);
 

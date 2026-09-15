@@ -6,8 +6,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { inspectPiboProfile } from "../dist/core/runtime.js";
 import { normalizeAssistantUsageEvent } from "../dist/core/routed-session.js";
+import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { goalActiveTimeSeconds, goalBudgetTokens, goalElapsedWallClockSeconds } from "../dist/loops/accounting.js";
 import { buildLoopTurnPrompt } from "../dist/loops/prompts.js";
 import { getEffectiveLoopStopPolicy } from "../dist/loops/stopping.js";
@@ -51,23 +52,27 @@ test("Goal budget token accounting follows the persisted basis", () => {
 	assert.equal(goalBudgetTokens({ type: "assistant_usage", piboSessionId: "ps_usage", totalTokens: Number.NaN, cacheReadTokens: 2 }, "total"), 0);
 });
 
-test("goal tool package is enabled by default or disabled as one profile capability", async () => {
+test("goal tool package is enabled by default or disabled as one profile capability", async (t) => {
 	const cwd = mkdtempSync(join(tmpdir(), "pibo-goal-profile-"));
 	const product = await startTestPluginProduct("pibo-goal-tools-product-");
 	const registry = product.createDefaultRegistry();
-	try {
-		for (const [enabled, expected] of [[undefined, true], [true, true], [false, false]]) {
-			const builder = new InitialSessionContextBuilder(`goal-${enabled}`);
-			const legacyProfile = enabled === undefined ? builder.createSession() : builder.withToolPackages({ goalControl: enabled }).createSession();
-			const profile = product.materializeProfile(registry, legacyProfile, `ps_${enabled}`);
-			const inspection = await inspectPiboProfile({ cwd, profile, persistSession: false, modelDefaults: {}, sessionContext: { piboSessionId: `ps_${enabled}`, piboRoomId: "room_goal" } });
-			const active = new Set(inspection.tools.filter((tool) => tool.active).map((tool) => tool.name));
-			for (const name of ["get_goal", "create_goal", "update_goal"]) assert.equal(active.has(name), expected, `${name} enabled=${enabled}`);
-		}
-	} finally {
-		await registry.disposePlugins();
-		await product.dispose();
-		rmSync(cwd, { recursive: true, force: true });
+	const store = new InMemoryPiboSessionStore();
+	for (const [label, enabled] of [["default", undefined], ["enabled", true], ["disabled", false]]) {
+		registry.upsertProfile({
+			name: `goal-${label}`,
+			create() {
+				const builder = new InitialSessionContextBuilder(`goal-${label}`);
+				return enabled === undefined ? builder.createSession() : builder.withToolPackages({ goalControl: enabled }).createSession();
+			},
+		});
+		store.create({ id: `ps_goal_${label}`, channel: "test", kind: "chat", profile: `goal-${label}`, workspace: cwd });
+	}
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, pluginRuntime: product.runtime, sessionStore: store, cwd });
+	t.after(async () => { await router.disposeAll(); await product.dispose(); rmSync(cwd, { recursive: true, force: true }); });
+	for (const [label, expected] of [["default", true], ["enabled", true], ["disabled", false]]) {
+		await router.emit({ type: "execution", piboSessionId: `ps_goal_${label}`, action: "status" });
+		const active = new Set(router.sessions.get(`ps_goal_${label}`).runtime.session.getActiveToolNames());
+		for (const name of ["get_goal", "create_goal", "update_goal"]) assert.equal(active.has(name), expected, `${name} enabled=${label}`);
 	}
 });
 

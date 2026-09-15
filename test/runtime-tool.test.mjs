@@ -296,7 +296,7 @@ test("runtime can be selected by a registered profile and inspection", async (t)
 	const product = await startTestPluginProduct("pibo-runtime-tool-product-");
 	const registry = product.createDefaultRegistry();
 	t.after(async () => {
-		await registry.disposePlugins();
+
 		await product.dispose();
 	});
 	const installation = product.host.inspect().plugins.find((candidate) => candidate.manifest.id === "pibo.code-runtime");

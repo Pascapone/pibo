@@ -233,7 +233,7 @@ test("runtime profile inspection includes selected MCP context", async () => {
 	} finally {
 		await resourceSession?.dispose();
 		await resources?.dispose();
-		await registry?.disposePlugins();
+
 		await product?.dispose();
 		if (previousConfigPath === undefined) {
 			delete process.env.MCP_CONFIG_PATH;

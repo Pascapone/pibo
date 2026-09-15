@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,8 +9,8 @@ import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import {
 	CODEX_NATIVE_ADAPTER_ID,
@@ -352,8 +353,8 @@ test("Codex native model catalog and controls flow through routed status and gat
 	const profileName = "codex-native-model-router-profile";
 	const piboSessionId = "ps_codex_model_router";
 	const config = runtimeConfig(root);
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-model-router",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -380,7 +381,7 @@ test("Codex native model catalog and controls flow through routed status and gat
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});

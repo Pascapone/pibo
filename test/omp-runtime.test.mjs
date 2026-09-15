@@ -18,7 +18,7 @@ import { setOmpModel, readOmpModelCatalog } from "../dist/agent-runtimes/omp/mod
 import { PiboLoopService } from "../dist/loops/service.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
 import { createBuiltInLoopStopConditions } from "../dist/loops/stopping.js";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { nextRuntimeSessionBinding } from "../dist/sessions/runtime-binding.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
@@ -264,7 +264,7 @@ async function assertRawOmpGoalAccounting(t, label, env = {}) {
 			routed = new RuntimeRoutedSession(session.id, runtimeSession, (event) => {
 				outputEvents.push(event);
 				for (const listener of outputListeners) listener(event);
-			}, new PiboPluginRegistry());
+			}, new PiboCapabilityHost());
 			return session;
 		},
 		getSession(id) { return sessions.get(id); },

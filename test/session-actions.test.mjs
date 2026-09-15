@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -11,8 +12,8 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { createPiboRuntime } from "../dist/core/runtime.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 
 function userMessage(text) {
 	return {
@@ -68,7 +69,7 @@ async function createSessionHarness() {
 	const cwd = await mkdtemp(join(tmpdir(), "pibo-session-actions-"));
 	const profile = new InitialSessionContextBuilder("session-actions-test").createSession();
 	const runtime = await createPiboRuntime({ cwd, persistSession: true, profile });
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const events = [];
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
@@ -474,7 +475,7 @@ test("routed session surfaces assistant provider errors with the active event id
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({
@@ -527,7 +528,7 @@ test("routed session suppresses transient assistant errors when a retry settles 
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "event-retry", text: "hello", source: "actor" });
@@ -595,7 +596,7 @@ test("routed session expands context overflow errors with provider details", asy
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({
@@ -653,7 +654,7 @@ test("routed session normalizes assistant thinking events", async () => {
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.activeMessage = {
@@ -735,7 +736,7 @@ test("routed session assigns distinct assistant indexes when provider reuses con
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.activeMessage = {
@@ -811,7 +812,7 @@ test("routed session normalizes tool call events", async () => {
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.activeMessage = {
@@ -1018,7 +1019,7 @@ test("Pi routed sessions re-arm a settled drain for a late run reminder exactly 
 	const order = [];
 	const reminderText = '<pibo_run_notification>{"completed":[{"runId":"run-pi"}]}</pibo_run_notification>';
 	const runtime = createQueuedCompactRuntime(order, [], deferred());
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	let routed;
 	routed = new RoutedSession(
 		"route:test",
@@ -1068,7 +1069,7 @@ test("compact action is serialized between queued messages", async () => {
 	const secondPrompt = deferred();
 	const compactBlock = deferred();
 	const runtime = createQueuedCompactRuntime(order, [firstPrompt, secondPrompt], compactBlock);
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({
@@ -1128,7 +1129,7 @@ test("context guard recovery publishes after prompt return before routed complet
 	const runtime = createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt);
 	const recovery = createPiboAssistantContextGuardRecovery();
 	registerPiboAssistantContextGuardRecovery(runtime.session, recovery);
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-a", text: "A", source: "user" });
@@ -1171,7 +1172,7 @@ test("context guard compaction failure precedes one original-event error and the
 	const runtime = createDelayedContextGuardRuntime(order, agentSettlement, secondPrompt);
 	const recovery = createPiboAssistantContextGuardRecovery();
 	registerPiboAssistantContextGuardRecovery(runtime.session, recovery);
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-a", text: "A", source: "user" });
@@ -1211,7 +1212,7 @@ test("non-compact actions still execute immediately while a message is active", 
 	const firstPrompt = deferred();
 	const compactBlock = deferred();
 	const runtime = createQueuedCompactRuntime(order, [firstPrompt], compactBlock);
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.enqueueMessage({
@@ -1252,7 +1253,7 @@ test("Pi session switching rejects active routed work", async () => {
 		switchCalls += 1;
 		return { cancelled: false };
 	};
-	const routed = new RoutedSession("route:test", runtime, () => {}, PiboPluginRegistry.create({ plugins: [piboCorePlugin] }), false);
+	const routed = new RoutedSession("route:test", runtime, () => {}, createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }), false);
 
 	try {
 		routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-active", text: "active", source: "user" });
@@ -1278,7 +1279,7 @@ test("clear_queue leaves the active long-running message alone and reports only 
 	const interruptions = [];
 	const firstPrompt = deferred();
 	const runtime = createQueuedCompactRuntime([], [firstPrompt], deferred());
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession(
 		"route:test",
 		runtime,
@@ -1331,7 +1332,7 @@ test("dispose aborts and awaits active queue processing before disposing the run
 		assert.equal(promptSettled, true, "runtime disposal must wait for active prompt processing to settle");
 		runtimeDisposed = true;
 	};
-	const routed = new RoutedSession("route:test", runtime, () => {}, PiboPluginRegistry.create({ plugins: [piboCorePlugin] }), false);
+	const routed = new RoutedSession("route:test", runtime, () => {}, createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }), false);
 
 	routed.enqueueMessage({ type: "message", piboSessionId: "route:test", id: "message-active", text: "active", source: "user" });
 	await new Promise((resolve) => setImmediate(resolve));
@@ -1348,7 +1349,7 @@ test("dispose reports active and queued messages as interrupted", async () => {
 	const interruptions = [];
 	const firstPrompt = deferred();
 	const runtime = createQueuedCompactRuntime([], [firstPrompt], deferred());
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession(
 		"route:test",
 		runtime,
@@ -1415,7 +1416,7 @@ test("routed session patches agent.continue to trigger preemptive compaction", a
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	// Verify agent.continue was patched
@@ -1475,7 +1476,7 @@ test("routed session keeps output identities monotonic across compaction", async
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:test", runtime, (event) => events.push(event), registry, false);
 
 	routed.activeMessage = { type: "message", piboSessionId: "route:test", id: "event-1", text: "hello", source: "user" };

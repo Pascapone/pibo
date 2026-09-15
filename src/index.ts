@@ -240,8 +240,6 @@ export type {
 	PiboCapabilityCatalog,
 	PiboContextFileInfo,
 	PiboNativeToolInfo,
-	PiboPlugin,
-	PiboPluginApi,
 	PiboPluginEventListener,
 	PiboProductEvent,
 	PiboProductEventInput,
@@ -256,6 +254,8 @@ export type {
 export { createPiboGatewayToolProfiles } from "./gateway/tool.js";
 export { createPiboRuntime, inspectPiboProfile, runPiboTui } from "./core/runtime.js";
 export type { PiboProfileInspection, PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./core/runtime.js";
+export { PiboCapabilityHost } from "./core/capability-host.js";
+export type { PiboCapabilityHostOptions } from "./core/capability-host.js";
 export { PiboSessionRouter } from "./core/session-router.js";
 export { PiboReliabilityStore, createDefaultPiboReliabilityStore } from "./reliability/store.js";
 export { InMemoryPiboSignalRegistry, createPiboSignalRegistry } from "./signals/registry.js";

@@ -1,9 +1,10 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 
 async function waitUntil(predicate, message) {
 	for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -56,7 +57,7 @@ function createSteeringHarness() {
 		setRebindSession() {},
 		async dispose() {},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("route:steering", runtime, (event) => events.push(event), registry, false);
 	return {
 		routed,

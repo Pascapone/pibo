@@ -44,6 +44,13 @@ const AGGREGATE_TARGETS: Record<string, Record<string, string>> = {
 	"pibo.core": { core: "@pibo/core" },
 };
 
+export function isPibo4LegacyAggregatePluginId(pluginId: string): boolean {
+	return Object.hasOwn(AGGREGATE_TARGETS, pluginId);
+}
+export function pibo4LegacyAggregateOwners(plan: Pibo4CutoverPlan): string[] {
+	return plan.sourceSnapshot.plugins.map((entry) => entry.pluginId).filter(isPibo4LegacyAggregatePluginId).sort();
+}
+
 function canonical(value: unknown): string {
 	if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
 	if (value && typeof value === "object") return `{${Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(",")}}`;

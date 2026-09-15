@@ -112,6 +112,17 @@ export function createRunToolDefinitions(
 ): PiboToolDefinition[] {
 	const toolNames = yieldableTools.map((tool) => tool.name);
 	const argumentsSchema = yieldedToolArgumentsSchema(yieldableTools);
+	const runStartInputSchema = Type.Object({
+		toolName: piboStringEnum(toolNames, { description: "Yieldable tool name to start" }),
+		arguments: argumentsSchema,
+		completionPolicy: Type.Optional(
+			piboStringEnum(["tracked", "detached"], {
+				description:
+					"tracked reminds this agent about completion; detached is fire-and-forget and creates no automatic reminders.",
+				default: "tracked",
+			}),
+		),
+	});
 
 	return [
 		definePiboTool({
@@ -123,17 +134,13 @@ export function createRunToolDefinitions(
 				"Use pibo_run_start to run a yieldable tool in the background. Provide arguments matching the selected toolName schema; invalid arguments create no run. It returns a runId. Use pibo_run_read for completed results and pibo_run_wait/status/list/cancel/ack to manage runs.",
 			executionMode: "parallel",
 			augmentation: { targetToolNames: toolNames },
-			inputSchema: Type.Object({
-				toolName: piboStringEnum(toolNames, { description: "Yieldable tool name to start" }),
-				arguments: argumentsSchema,
-				completionPolicy: Type.Optional(
-					piboStringEnum(["tracked", "detached"], {
-						description:
-							"tracked reminds this agent about completion; detached is fire-and-forget and creates no automatic reminders.",
-						default: "tracked",
-					}),
-				),
-			}),
+			inputSchema: runStartInputSchema,
+			prepareInput(input) {
+				const candidate = input as { toolName?: unknown; arguments?: unknown };
+				if (typeof candidate.toolName !== "string") return input as never;
+				const tool = requireTool(yieldableTools, candidate.toolName);
+				return { ...candidate, arguments: validateYieldedToolArguments(tool, candidate.arguments) } as never;
+			},
 			async execute(toolCallId, params, signal, onUpdate, ctx) {
 				const tool = requireTool(yieldableTools, params.toolName);
 				const toolArguments = validateYieldedToolArguments(tool, params.arguments);

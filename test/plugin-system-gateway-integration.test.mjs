@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CustomAgentStore } from '../dist/apps/chat/agent-store.js';
 import { PiboGatewayServer, migrateSessionRuntimeBindingsAtStartup } from '../dist/gateway/server.js';
-import { PiboPluginRegistry } from '../dist/plugins/registry.js';
+import { PiboCapabilityHost } from '../dist/core/capability-host.js';
 import { InMemoryPiboSessionStore } from '../dist/sessions/store.js';
 import { PLUGIN_MANAGEMENT_SERVICE } from '../dist/plugins/product-services.js';
 import { PiboDataStore } from '../dist/data/pibo-store.js';
@@ -20,15 +20,15 @@ async function tempRoot(t) {
 
 test('gateway owns one product host with ordinary default plugin and complete manager lifecycle', async t => {
   const root = await tempRoot(t);
-  const registry = PiboPluginRegistry.create();
-  t.after(() => registry.disposePlugins());
-  const gateway = new PiboGatewayServer({ pluginRegistry: registry, persistSession: false, startChannels: false, host: '127.0.0.1', port: 0, pluginArtifactRoot: join(root, 'artifacts') });
+  const registry = PiboCapabilityHost.create();
+  const gateway = new PiboGatewayServer({ capabilityHost: registry, persistSession: false, startChannels: false, host: '127.0.0.1', port: 0, pluginArtifactRoot: join(root, 'artifacts') });
+  t.after(() => gateway.stop());
   await gateway.start();
   const host = registry.getPluginHost();
   assert.equal(host.inspect().state, 'active');
   assert.equal(host.inspect().plugins.filter((plugin) => plugin.pluginId === 'pibo.web-annotations').length, 1);
-  assert.equal(host.inspect().plugins.filter((plugin) => plugin.pluginId === 'pibo.core').length, 1);
-  assert.equal(host.inspect().plugins.filter((plugin) => plugin.pluginId === 'pibo.user-resources').length, 1);
+  assert.equal(host.inspect().plugins.some((plugin) => plugin.pluginId === 'pibo.core' || plugin.pluginId === 'pibo.user-resources'), false);
+  assert.equal(registry.getCapabilityCatalog().skills.some((skill) => skill.name === 'pi-agent-harness' && skill.pluginId === undefined), true);
   const manager = host.services.get(PLUGIN_MANAGEMENT_SERVICE);
   assert.equal(manager.diagnose().lifecycleAvailable, true);
   assert.equal(manager.diagnose().consumerCollectorAvailable, true);
@@ -42,9 +42,8 @@ test('gateway startup failure closes the product host and can be stopped again',
   await new Promise((resolve, reject) => { blocker.once('error', reject); blocker.listen(0, '127.0.0.1', resolve); });
   t.after(() => new Promise((resolve) => blocker.close(resolve)));
   const port = blocker.address().port;
-  const registry = PiboPluginRegistry.create();
-  t.after(() => registry.disposePlugins());
-  const gateway = new PiboGatewayServer({ pluginRegistry: registry, persistSession: false, startChannels: false, host: '127.0.0.1', port, pluginArtifactRoot: join(root, 'artifacts') });
+  const registry = PiboCapabilityHost.create();
+    const gateway = new PiboGatewayServer({ capabilityHost: registry, persistSession: false, startChannels: false, host: '127.0.0.1', port, pluginArtifactRoot: join(root, 'artifacts') });
   await assert.rejects(gateway.start(), (error) => error?.code === 'EADDRINUSE');
   assert.equal(registry.getPluginHost().inspect().state, 'idle');
   await gateway.stop();
@@ -55,12 +54,12 @@ test('gateway automatically detects and imports a sibling legacy session databas
   const source = new DatabaseSync(sourcePath);
   source.exec('CREATE TABLE pibo_sessions(id TEXT PRIMARY KEY,pi_session_id TEXT,channel TEXT,kind TEXT,profile TEXT,parent_id TEXT,origin_id TEXT,workspace TEXT,title TEXT,metadata_json TEXT,created_at TEXT,updated_at TEXT)');
   source.prepare('INSERT INTO pibo_sessions VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run('ps_gateway_legacy', 'native-gateway', 'web', 'interactive', 'base', null, null, null, 'Gateway legacy', '{}', '2026-01-01', '2026-01-02'); source.close();
-  const registry = PiboPluginRegistry.create();
-  const gateway = new PiboGatewayServer({ pluginRegistry: registry, startChannels: false, host: '127.0.0.1', port: 0, dataStorePath: targetPath, agentStorePath: join(root, 'agents.sqlite'), loopStorePath: join(root, 'loops.sqlite'), pluginArtifactRoot: join(root, 'artifacts') });
+  const registry = PiboCapabilityHost.create();
+  const gateway = new PiboGatewayServer({ capabilityHost: registry, startChannels: false, host: '127.0.0.1', port: 0, dataStorePath: targetPath, agentStorePath: join(root, 'agents.sqlite'), loopStorePath: join(root, 'loops.sqlite'), pluginArtifactRoot: join(root, 'artifacts') });
   try {
     await gateway.start();
     const data = new PiboDataStore(targetPath); try { assert.equal(data.db.prepare('SELECT title FROM sessions WHERE id=?').get('ps_gateway_legacy').title, 'Gateway legacy'); } finally { data.close(); }
-  } finally { await gateway.stop(); await registry.disposePlugins(); }
+  } finally { await gateway.stop();  }
   const retained = new DatabaseSync(sourcePath, { readOnly: true }); try { assert.equal(retained.prepare('SELECT COUNT(*) AS count FROM pibo_sessions').get().count, 1); } finally { retained.close(); }
 });
 
@@ -72,8 +71,8 @@ test('an archived agent with an unavailable runtime does not block gateway start
   seed.setArchived(archived.id, true);
   const healthy = seed.create({ displayName: 'healthy-runtime-agent', runtimeInstanceId: 'pi', goalControl: false, runControl: false });
   seed.close();
-  const registry = PiboPluginRegistry.create();
-  const gateway = new PiboGatewayServer({ pluginRegistry: registry, persistSession: false, startChannels: false, host: '127.0.0.1', port: 0, agentStorePath, dataStorePath: join(root, 'pibo.sqlite'), pluginArtifactRoot: join(root, 'artifacts') });
+  const registry = PiboCapabilityHost.create();
+  const gateway = new PiboGatewayServer({ capabilityHost: registry, persistSession: false, startChannels: false, host: '127.0.0.1', port: 0, agentStorePath, dataStorePath: join(root, 'pibo.sqlite'), pluginArtifactRoot: join(root, 'artifacts') });
   const errors = [];
   const originalError = console.error;
   console.error = (...args) => errors.push(args.join(' '));
@@ -92,7 +91,7 @@ test('an archived agent with an unavailable runtime does not block gateway start
   } finally {
     console.error = originalError;
     await gateway.stop();
-    await registry.disposePlugins();
+
   }
 });
 

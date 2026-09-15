@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -12,8 +13,8 @@ import { createPiboRuntime } from "../dist/core/runtime.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
 import { getPiAgentRuntimeCompatibilityHandle, PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
 const CODEX_AUTH_CLAIM = "https://api.openai.com/auth";
@@ -244,7 +245,7 @@ test("fast mode sends priority service tier through the HTTP provider request", 
 		};
 		runtime.session.setThinkingLevel("high");
 
-		const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+		const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 		routed = new RoutedSession("route:http-fast", runtime, (event) => events.push(event), registry, false, undefined, false);
 
 		const action = await routed.executeAction({
@@ -328,7 +329,7 @@ test("provider web search SSE events surface as one routed span", async () => {
 			maxTokens: 128000,
 		};
 
-		const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+		const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 		routed = new RoutedSession("route:http-web-search", runtime, (event) => events.push(event), registry, false, undefined, false);
 		routed.enableProviderWebSearchObservation();
 		const fastMode = await routed.executeAction({

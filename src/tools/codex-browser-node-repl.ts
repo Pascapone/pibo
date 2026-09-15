@@ -1,11 +1,17 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
 import { CODEX_BROWSER_NODE_WORKER_SOURCE } from "./codex-browser-node-worker-source.js";
 
 const packageRequire = createRequire(import.meta.url);
-const ACORN_PATH = packageRequire.resolve("acorn");
-const ACORN_WALK_PATH = packageRequire.resolve("acorn-walk");
+function parserPath(vendoredName: string, packageName: string): string {
+	const vendored = fileURLToPath(new URL(`./vendor/${vendoredName}`, import.meta.url));
+	return existsSync(vendored) ? vendored : packageRequire.resolve(packageName);
+}
+const ACORN_PATH = parserPath("acorn.cjs", "acorn");
+const ACORN_WALK_PATH = parserPath("acorn-walk.cjs", "acorn-walk");
 
 export type CodexBrowserBridge = {
 	openTabs(): Promise<unknown>;

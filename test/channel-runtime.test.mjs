@@ -1,19 +1,20 @@
+import { defineTestCapabilitySetup, applyTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
 test("gateway starts plugin channels with router and session session context", async () => {
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const store = new InMemoryPiboSessionStore();
 	let startedSession;
 	let stopped = false;
 
-	registry.registerPlugin(
-		definePiboPlugin({
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.channel",
 			register(api) {
 				api.registerAuthService({
@@ -48,7 +49,7 @@ test("gateway starts plugin channels with router and session session context", a
 	const server = new PiboGatewayServer({
 		port: 0,
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		sessionStore: store,
 	});
 
@@ -62,11 +63,11 @@ test("gateway starts plugin channels with router and session session context", a
 });
 
 test("gateway channel context exposes the concrete depth-adjusted session profile", async () => {
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const store = new InMemoryPiboSessionStore();
 	let childProfile;
-	registry.registerPlugin(
-		definePiboPlugin({
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.channel-runtime-profile",
 			register(api) {
 				api.registerProfile({
@@ -97,7 +98,7 @@ test("gateway channel context exposes the concrete depth-adjusted session profil
 			},
 		}),
 	);
-	const server = new PiboGatewayServer({ port: 0, persistSession: false, pluginRegistry: registry, sessionStore: store });
+	const server = new PiboGatewayServer({ port: 0, persistSession: false, capabilityHost: registry, sessionStore: store });
 	try {
 		await server.start();
 		assert.deepEqual(childProfile.subagents.map((subagent) => subagent.name), ["deeper"]);
@@ -107,11 +108,11 @@ test("gateway channel context exposes the concrete depth-adjusted session profil
 });
 
 test("gateway session deletion awaits live runtime disposal before removing persistence", async () => {
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const store = new InMemoryPiboSessionStore();
 	let channelContext;
-	registry.registerPlugin(
-		definePiboPlugin({
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.channel-delete-runtime",
 			register(api) {
 				api.registerChannel({
@@ -128,7 +129,7 @@ test("gateway session deletion awaits live runtime disposal before removing pers
 	const server = new PiboGatewayServer({
 		port: 0,
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		sessionStore: store,
 	});
 	try {
@@ -145,11 +146,11 @@ test("gateway session deletion awaits live runtime disposal before removing pers
 });
 
 test("gateway stops plugin channels in reverse start order", async () => {
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const events = [];
 
-	registry.registerPlugin(
-		definePiboPlugin({
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.channel-stop-order",
 			register(api) {
 				for (const name of ["a", "b"]) {
@@ -172,7 +173,7 @@ test("gateway stops plugin channels in reverse start order", async () => {
 	const server = new PiboGatewayServer({
 		port: 0,
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		sessionStore: new InMemoryPiboSessionStore(),
 	});
 
@@ -183,10 +184,10 @@ test("gateway stops plugin channels in reverse start order", async () => {
 });
 
 test("gateway rejects required-auth channels without an auth service", async () => {
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 
-	registry.registerPlugin(
-		definePiboPlugin({
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.required-channel",
 			register(api) {
 				api.registerChannel({
@@ -202,7 +203,7 @@ test("gateway rejects required-auth channels without an auth service", async () 
 	const server = new PiboGatewayServer({
 		port: 0,
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		sessionStore: new InMemoryPiboSessionStore(),
 	});
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { productUiPackageManifest, webProductPackageManifest } from '../dist/plugins/default-packages.js';
+import * as defaultPackages from '../dist/plugins/default-packages.js';
 
 test('core workspace routes render without product-view contributions', async () => {
   const [app, coreModel, coreView, browserEntry] = await Promise.all([
@@ -19,7 +19,8 @@ test('core workspace routes render without product-view contributions', async ()
   assert.doesNotMatch(browserEntry, /UserResourcesView|AgentDesignerView|GlobalSettingsView|setupStandardShell/);
 });
 
-test('transitional product packages no longer claim core surfaces', () => {
-  assert.deepEqual(productUiPackageManifest().contributions.map((entry) => entry.id), ['workflows', 'cron', 'loops']);
-  assert.deepEqual(webProductPackageManifest().contributions.map((entry) => entry.id), ['cron-channel', 'preview-app']);
+test('legacy aggregate product manifests are not part of the normal package factory surface', () => {
+  for (const name of ['corePackageManifest', 'userResourcesPackageManifest', 'productUiPackageManifest', 'webProductPackageManifest', 'standardShellPackageManifest']) {
+    assert.equal(defaultPackages[name], undefined, `${name} must remain cutover data only`);
+  }
 });

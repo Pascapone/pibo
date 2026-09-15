@@ -25,116 +25,7 @@
       "types": "./dist/plugins/cutover.d.ts",
       "import": "./dist/plugins/cutover.js"
     },
-    "./plugin-builtin/core": {
-      "types": "./dist/plugins/packaged-core.d.ts",
-      "import": "./dist/plugins/packaged-core.js"
-    },
-    "./plugin-builtin/preview": {
-      "types": "./dist/plugins/packaged-preview.d.ts",
-      "import": "./dist/plugins/packaged-preview.js"
-    },
-    "./plugin-builtin/cron": {
-      "types": "./dist/plugins/packaged-cron.d.ts",
-      "import": "./dist/plugins/packaged-cron.js"
-    },
-    "./plugin-builtin/workflows": {
-      "types": "./dist/plugins/packaged-workflows.d.ts",
-      "import": "./dist/plugins/packaged-workflows.js"
-    },
-    "./plugin-builtin/user-resources": {
-      "types": "./dist/plugins/packaged-user-resources.d.ts",
-      "import": "./dist/plugins/packaged-user-resources.js"
-    },
-    "./plugin-builtin/transcription-openai-chatgpt": {
-      "types": "./dist/plugins/packaged-transcription-openai-chatgpt.d.ts",
-      "import": "./dist/plugins/packaged-transcription-openai-chatgpt.js"
-    },
-    "./plugin-builtin/transcription-openai": {
-      "types": "./dist/plugins/packaged-transcription-openai.d.ts",
-      "import": "./dist/plugins/packaged-transcription-openai.js"
-    },
-    "./plugin-builtin/transcription": {
-      "types": "./dist/plugins/packaged-transcription.d.ts",
-      "import": "./dist/plugins/packaged-transcription.js"
-    },
-    "./plugin-builtin/web-annotations": {
-      "types": "./dist/plugins/packaged-web-annotations.d.ts",
-      "import": "./dist/plugins/packaged-web-annotations.js"
-    },
-    "./plugin-builtin/code-runtime": {
-      "types": "./dist/plugins/packaged-code-runtime.d.ts",
-      "import": "./dist/plugins/packaged-code-runtime.js"
-    },
-    "./plugin-builtin/file-editing": {
-      "types": "./dist/plugins/packaged-file-editing.d.ts",
-      "import": "./dist/plugins/packaged-file-editing.js"
-    },
-    "./plugin-builtin/web-search": {
-      "types": "./dist/plugins/packaged-web-search.d.ts",
-      "import": "./dist/plugins/packaged-web-search.js"
-    },
-    "./plugin-builtin/browser-tools": {
-      "types": "./dist/plugins/packaged-browser-tools.d.ts",
-      "import": "./dist/plugins/packaged-browser-tools.js"
-    },
-    "./plugin-builtin/gateway-tools": {
-      "types": "./dist/plugins/packaged-gateway-tools.d.ts",
-      "import": "./dist/plugins/packaged-gateway-tools.js"
-    },
-    "./plugin-builtin/codex-compat": {
-      "types": "./dist/plugins/packaged-codex-compat.d.ts",
-      "import": "./dist/plugins/packaged-codex-compat.js"
-    },
-    "./plugin-builtin/tool-families": {
-      "types": "./dist/plugins/packaged-tool-families.d.ts",
-      "import": "./dist/plugins/packaged-tool-families.js"
-    },
-    "./plugin-builtin/run-control": {
-      "types": "./dist/plugins/packaged-run-control.d.ts",
-      "import": "./dist/plugins/packaged-run-control.js"
-    },
-    "./plugin-builtin/goal-loops": {
-      "types": "./dist/plugins/packaged-goal-loops.d.ts",
-      "import": "./dist/plugins/packaged-goal-loops.js"
-    },
-    "./plugin-builtin/agent-delegation": {
-      "types": "./dist/plugins/packaged-agent-delegation.d.ts",
-      "import": "./dist/plugins/packaged-agent-delegation.js"
-    },
-    "./plugin-builtin/control-tools": {
-      "types": "./dist/plugins/packaged-control-tools.d.ts",
-      "import": "./dist/plugins/packaged-control-tools.js"
-    },
-    "./plugin-builtin/runtime-pi": {
-      "types": "./dist/plugins/packaged-runtime-pi.d.ts",
-      "import": "./dist/plugins/packaged-runtime-pi.js"
-    },
-    "./plugin-builtin/runtime-codex-native": {
-      "types": "./dist/plugins/packaged-runtime-codex-native.d.ts",
-      "import": "./dist/plugins/packaged-runtime-codex-native.js"
-    },
-    "./plugin-builtin/runtime-omp": {
-      "types": "./dist/plugins/packaged-runtime-omp.d.ts",
-      "import": "./dist/plugins/packaged-runtime-omp.js"
-    },
-    "./plugin-builtin/runtime-adapters": {
-      "types": "./dist/plugins/packaged-runtime-adapters.d.ts",
-      "import": "./dist/plugins/packaged-runtime-adapters.js"
-    },
-    "./plugin-builtin/profiles": {
-      "types": "./dist/plugins/packaged-profiles.d.ts",
-      "import": "./dist/plugins/packaged-profiles.js"
-    },
-    "./plugin-builtin/mcp-cli": {
-      "types": "./dist/plugins/packaged-mcp-cli.d.ts",
-      "import": "./dist/plugins/packaged-mcp-cli.js"
-    },
-    "./plugin-builtin/product-ui": {
-      "types": "./dist/plugins/packaged-product-ui.d.ts",
-      "import": "./dist/plugins/packaged-product-ui.js"
-    },
-    "./package.json": "./package.json",
-    "./*": "./*"
+    "./package.json": "./package.json"
   },
   "workspaces": [
     "packages/workflows"
@@ -192,7 +83,7 @@
     "workflows:typecheck": "npm run typecheck --workspace @pasko70/pibo-workflows",
     "release": "node scripts/release.mjs",
     "release:github": "node scripts/create-github-release.mjs",
-    "build": "npm run clean && npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run plugins:sdk:build && npm run web-ui:build && node scripts/ensure-bin-executable.mjs",
+    "build": "npm run clean && npm run workflows:build && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json && npm run pibo4:artifacts && npm run plugins:sdk:build && npm run web-ui:build && node scripts/ensure-bin-executable.mjs",
     "start": "node dist/bin/pibo.js",
     "test": "npm run build && node scripts/run-test-suite.mjs",
     "docs:validate": "npm run docs:validate:strict",
@@ -210,7 +101,7 @@
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
     "prepack": "npm run build && node scripts/package-shrinkwrap.mjs prepare",
     "postpack": "node scripts/package-shrinkwrap.mjs clean",
-    "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json && node scripts/write-plugin-builtin-declarations.mjs",
+    "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json",
     "pibo4:artifacts": "node scripts/build-pibo4-artifacts.mjs",
     "pibo4:minimal-core": "node scripts/build-pibo4-minimal-core.mjs",
     "pibo4:packages": "npm run pibo4:artifacts && npm run pibo4:minimal-core"

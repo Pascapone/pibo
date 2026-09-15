@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -5,17 +6,17 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
 import {
+	InitialSessionContext,
 	InitialSessionContextBuilder,
 	PiboRuntimeResourceError,
 	PiboRuntimeResourceService,
 	createMinimalAgentRuntimeCapabilities,
 	createPiboRuntime,
-	definePiboPlugin,
-	PiboPluginRegistry,
+	PiboCapabilityHost,
 	PiboSessionRouter,
 	InMemoryPiboSessionStore,
 } from "../dist/index.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PI_AGENT_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/pi/adapter.js";
 import { inspectPiboContextBuild } from "../dist/core/context-build.js";
@@ -89,6 +90,15 @@ function materializedCapabilities() {
 	return capabilities;
 }
 
+function withDelegatedAgentPlan(profile) {
+	return new InitialSessionContext({
+		...profile,
+		effectivePluginPlan: {
+			contributions: [{ contribution: { context: { kind: "context", stage: "subagents" } } }],
+		},
+	});
+}
+
 async function createFixture() {
 	const root = await mkdtemp(join(tmpdir(), "pibo-runtime-resources-"));
 	const workspace = join(root, "workspace");
@@ -127,12 +137,12 @@ test("portable delegated sessions require delivery of generated management conte
 	t.after(async () => rm(root, { recursive: true, force: true }));
 	const service = new PiboRuntimeResourceService({ rootDir: join(root, "generations") });
 	t.after(async () => service.dispose());
-	const profile = new InitialSessionContextBuilder("portable-delegated")
+	const profile = withDelegatedAgentPlan(new InitialSessionContextBuilder("portable-delegated")
 		.withAgentRuntime("portable-runtime")
 		.withAutoContextFiles(false)
 		.withToolPackages({ goalControl: false })
 		.addSubagent({ name: "worker", targetProfile: "base" })
-		.createSession();
+		.createSession());
 	const capabilities = createMinimalAgentRuntimeCapabilities();
 	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
 
@@ -162,7 +172,7 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 	});
 	const generationRoot = join(fixture.root, "generations");
 	const sourceConfigBefore = await readFile(fixture.configPath, "utf8");
-	const profile = new InitialSessionContextBuilder("materialized-profile")
+	const profile = withDelegatedAgentPlan(new InitialSessionContextBuilder("materialized-profile")
 		.withAgentRuntime("external-runtime")
 		.withAutoContextFiles(false)
 		.withToolPackages({ goalControl: false })
@@ -170,7 +180,7 @@ test("runtime resources isolate selected skills, context, MCP config, secrets, a
 		.addContextFile({ key: "selected-context", path: "selected-context.md", source: "managed" })
 		.addSubagent({ name: "worker", description: "Perform delegated work.", targetProfile: "worker-profile" })
 		.withMcpServers(["selected"])
-		.createSession();
+		.createSession());
 	const service = new PiboRuntimeResourceService({
 		rootDir: generationRoot,
 		mcpConfigPath: fixture.configPath,
@@ -815,8 +825,8 @@ test("router gives tools and resources one generation and disposes isolated stat
 	const capabilities = materializedCapabilities();
 	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
 	const driver = createFakeAgentRuntimeDriver({ adapterId: "resource-router", capabilities });
-	const registry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.resource-router",
 			register(api) {
 				api.registerAgentRuntimeDriver(driver);
@@ -848,7 +858,7 @@ test("router gives tools and resources one generation and disposes isolated stat
 	const resourceService = new PiboRuntimeResourceService({ rootDir: join(root, "generations") });
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		sessionStore: store,
 		runtimeResourceService: resourceService,
 	});

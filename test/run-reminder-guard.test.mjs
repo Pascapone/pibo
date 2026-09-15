@@ -1,8 +1,9 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { RuntimeRoutedSession } from "../dist/agent-runtime/routed-session.js";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 
 function waitFor(predicate, timeoutMs = 2_000) {
 	const started = Date.now();
@@ -38,7 +39,7 @@ test("run-reminder turns keep the normal toolset and stop repeated identical too
 		"ps_guard",
 		runtimeSession,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 	);
 
 	routed.enqueueMessage({
@@ -89,7 +90,7 @@ test("run-reminder token guard excludes repeated provider cache reads", async ()
 		"ps_cache_guard",
 		runtimeSession,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 	);
 
 	routed.enqueueMessage({
@@ -127,7 +128,7 @@ test("run-reminder token guard still stops excessive active token usage", async 
 		"ps_active_guard",
 		runtimeSession,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 	);
 
 	routed.enqueueMessage({
@@ -179,7 +180,7 @@ for (const terminalGroup of ["completed", "failed", "timedOut"]) {
 			"ps_reminder_race",
 			runtimeSession,
 			emit,
-			PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+			createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		);
 		const reminderId = `run-reminder-${terminalGroup}`;
 

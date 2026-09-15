@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -15,8 +16,8 @@ import {
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import * as sessionStoreModule from "../dist/sessions/store.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
@@ -946,8 +947,8 @@ test("Codex native first-message branches bind only when their first message bec
 		preview: "hello",
 		turns: seededTurns(),
 	});
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-first-message-branch",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -986,7 +987,7 @@ test("Codex native first-message branches bind only when their first message bec
 	const resources = new PiboRuntimeResourceService({ rootDir: join(root, "resources") });
 	const sourceRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1014,7 +1015,7 @@ test("Codex native first-message branches bind only when their first message bec
 	assert.equal(branch.runtimeBinding.protocol, "codex-app-server-v2");
 	assert.equal(branch.runtimeBinding.protocolVersion, "0.153.2");
 	assert.equal(store.getRuntimeBinding(sourcePiboSessionId).nativeSessionId, "thread-first-message-source");
-	const emptyHistory = await pluginRegistry.requireAgentRuntimeAdapter(instanceId).readHistory({
+	const emptyHistory = await capabilityHost.requireAgentRuntimeAdapter(instanceId).readHistory({
 		binding: branch.runtimeBinding,
 		workspace: root,
 		limit: 20,
@@ -1037,7 +1038,7 @@ test("Codex native first-message branches bind only when their first message bec
 
 	const statusProbeRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1056,7 +1057,7 @@ test("Codex native first-message branches bind only when their first message bec
 
 	const firstUseRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1100,7 +1101,7 @@ test("Codex native first-message branches bind only when their first message bec
 
 	const reopenedRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1132,7 +1133,7 @@ test("Codex native first-message branches bind only when their first message bec
 
 	const raceBranchRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1150,13 +1151,13 @@ test("Codex native first-message branches bind only when their first message bec
 
 	const raceRouterA = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
 	const raceRouterB = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1377,8 +1378,8 @@ test("Codex native router rejects absent and structurally similar non-atomic bin
 	const profileName = "codex-native-no-binding-cas-profile";
 	const piboSessionId = "ps_codex_no_binding_cas";
 	const config = runtimeConfig(root);
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-no-binding-cas",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -1421,7 +1422,7 @@ test("Codex native router rejects absent and structurally similar non-atomic bin
 	};
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: storeWithoutBindingUpdates,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
 	});
@@ -1476,7 +1477,7 @@ test("Codex native router rejects absent and structurally similar non-atomic bin
 	};
 	const nonAtomicRouters = [0, 1].map((index) => new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: structurallySimilarNonAtomicStore,
 		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, `non-atomic-resources-${index}`) }),
 	}));
@@ -1632,8 +1633,8 @@ test("Codex native recovers the exact first turn after a child crashes between n
 		assert.equal(store.getRuntimeBinding(piboSessionId).nativeSessionId, pending.nativeSessionId);
 	}
 
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-crash-recovery",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -1655,7 +1656,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 	const resources = new PiboRuntimeResourceService({ rootDir: join(root, "resources") });
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1719,7 +1720,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 
 	const statusRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1732,7 +1733,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 	for (let restart = 0; restart < 2; restart += 1) {
 		const replayRouter = new PiboSessionRouter({
 			persistSession: false,
-			pluginRegistry,
+			capabilityHost,
 			sessionStore: store,
 			runtimeResourceService: resources,
 		});
@@ -1759,7 +1760,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 
 	const mismatchRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1775,7 +1776,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 
 	const followupRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -1791,7 +1792,7 @@ test("Codex native recovers the exact first turn after a child crashes between n
 	await followupRouter.disposeAll();
 	const laterReplayRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -2384,8 +2385,8 @@ test("Codex native router resumes a durable binding after restart and marks dele
 		preview: "stale rollout index",
 		turns: seededTurns(),
 	});
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-router",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -2428,7 +2429,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 	const resources = new PiboRuntimeResourceService({ rootDir: join(root, "resources") });
 	const firstRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -2441,7 +2442,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 
 	const secondRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -2466,7 +2467,7 @@ test("Codex native router resumes a durable binding after restart and marks dele
 
 	const thirdRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});

@@ -9,15 +9,15 @@ export function setupRunControl(context: PluginSetupContext): void {
 	context.register("session-tools", definePluginSessionToolProvider({
 		phase: "augment",
 		includeNativeTools: true,
+		serviceMessages: [{
+			kind: PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
+			format: (payload, messageContext) => formatPiboRunReminderMessage(payload as PiboRunNotification, messageContext.maxDurationMs),
+			matches: isPiboRunReminderServiceMessage,
+		}],
 		createSession(providerContext) {
 			const controller = providerContext.services.require<PluginYieldedRunControl>(PIBO_SESSION_YIELDED_RUNS_SERVICE);
 			return {
 				tools: registrationsForSelectedTools(providerContext, createRunToolDefinitions(providerContext.availableTools.map((tool) => tool.definition), controller)),
-				serviceMessages: [{
-					kind: PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND,
-					format: (payload, messageContext) => formatPiboRunReminderMessage(payload as PiboRunNotification, messageContext.maxDurationMs),
-					matches: isPiboRunReminderServiceMessage,
-				}],
 			};
 		},
 	}));

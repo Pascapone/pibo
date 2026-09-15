@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, applyTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,10 +13,11 @@ import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
+import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 function deferred() {
 	let resolve;
@@ -68,7 +70,7 @@ function createBlockingRoutedFixture(now) {
 		"ps_queue_admission",
 		runtimeSession,
 		(event) => outputs.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		{ now },
 	);
 	return { routed, release, outputs, prompts };
@@ -174,35 +176,35 @@ test("real routed reminder coalescing keeps persistence, live signals, and trace
 	const ingest = new ChatDataIngestService(dataStore);
 	const roomId = "room_reminder_admission";
 	let now = Date.parse("2026-09-08T17:18:39.509Z");
+	const fakeCapabilities = createMinimalAgentRuntimeCapabilities();
+	fakeCapabilities.tools.piboManaged = { support: "direct" };
 	const fakeDriver = createFakeAgentRuntimeDriver({
 		adapterId: "reminder-integration-fake",
+		capabilities: fakeCapabilities,
 		script: (_input, promptIndex) => promptIndex === 1
 			? { waitForAbort: true }
 			: { events: [{ type: "assistant_message", text: "run state inspected" }] },
 	});
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			piboCorePlugin,
-			definePiboPlugin({
-				id: "test.reminder-integration",
-				register(api) {
-					api.registerAgentRuntimeDriver(fakeDriver);
-					api.registerAgentRuntimeInstance({ id: "reminder-integration-fake", adapterId: "reminder-integration-fake" });
-					api.registerProfile({
-						name: "reminder-integration-profile",
-						create() {
-							return new InitialSessionContextBuilder("reminder-integration-profile")
-								.withAgentRuntime("reminder-integration-fake")
-								.withBuiltinTools("disabled")
-								.withAutoContextFiles(false)
-								.withToolPackages({ goalControl: false })
-								.createSession();
-						},
-					});
+	const product = await startTestPluginProduct("pibo-reminder-admission-product-");
+	const registry = product.createDefaultRegistry();
+	applyTestCapabilitySetup(registry, defineTestCapabilitySetup({
+		id: "test.reminder-integration",
+		register(api) {
+			api.registerAgentRuntimeDriver(fakeDriver);
+			api.registerAgentRuntimeInstance({ id: "reminder-integration-fake", adapterId: "reminder-integration-fake" });
+			api.registerProfile({
+				name: "reminder-integration-profile",
+				create() {
+					return new InitialSessionContextBuilder("reminder-integration-profile")
+						.withAgentRuntime("reminder-integration-fake")
+						.withBuiltinTools("disabled")
+						.withAutoContextFiles(false)
+						.withToolPackages({ goalControl: false, runControl: true })
+						.createSession();
 				},
-			}),
-		],
-	});
+			});
+		},
+	}));
 	const session = sessionStore.create({
 		id: "ps_reminder_integration",
 		runtimeBinding: { runtimeInstanceId: "reminder-integration-fake", adapterId: "reminder-integration-fake", state: "unbound" },
@@ -226,7 +228,8 @@ test("real routed reminder coalescing keeps persistence, live signals, and trace
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
+		pluginRuntime: product.runtime,
 		sessionStore,
 		routedSessionIdleTimeoutMs: false,
 		runtimeQueueNow: () => now,
@@ -320,6 +323,7 @@ test("real routed reminder coalescing keeps persistence, live signals, and trace
 		assert.equal(router.runRegistry.status(session.id, runThree.runId).consumed, false, "delivery must not consume a later completed run");
 	} finally {
 		await router.disposeAll();
+		await product.dispose();
 		dataStore.close();
 		rmSync(root, { recursive: true, force: true });
 	}

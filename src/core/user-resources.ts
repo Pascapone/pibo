@@ -36,7 +36,8 @@ export function provideCoreUserResources(host: PluginHost, options: PiboPluginPr
 		removeContextFile(key) { remove("context-file", key); },
 		upsertSkill(skill) {
 			const declared = host.contributions.list<{ contribution: { kind: string; name?: string; id: string } }>("contribution")
-				.some((entry) => entry.value.contribution.kind === "skill" && (entry.value.contribution.name ?? entry.value.contribution.id) === skill.name);
+				.some((entry) => entry.value.contribution.kind === "skill" && (entry.value.contribution.name ?? entry.value.contribution.id) === skill.name)
+				|| host.contributions.list("resource:skill").some((entry) => entry.key === skill.name && entry.scopeId !== scope.instanceId);
 			if (!declared) upsert("skill", skill.name, skill);
 		},
 		removeSkill(name) { remove("skill", name); },

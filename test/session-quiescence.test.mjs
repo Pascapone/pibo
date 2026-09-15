@@ -1,10 +1,13 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { RoutedSession } from "../dist/core/routed-session.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { formatPiboRunReminderMessage, isPiboRunReminderServiceMessage } from "../dist/runs/reminders.js";
+import { PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND } from "../dist/plugins/runtime.js";
 
 function deferred() {
 	let resolve;
@@ -82,7 +85,17 @@ function createStoredRouter(sessionId = "ps_quiescence", options = {}) {
 		profile: "base",
 		workspace: process.cwd(),
 	});
-	return new PiboSessionRouter({ persistSession: false, sessionStore: store, routedSessionIdleTimeoutMs: false, ...options });
+	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store, routedSessionIdleTimeoutMs: false, ...options });
+	router.portableToolSessions.set(sessionId, {
+		formatServiceMessage(kind, payload, context) {
+			return kind === PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND ? formatPiboRunReminderMessage(payload, context.maxDurationMs) : undefined;
+		},
+		isServiceMessage(kind, message) {
+			return kind === PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND && isPiboRunReminderServiceMessage(message);
+		},
+		async dispose() {},
+	});
+	return router;
 }
 
 test("abort invalidates an already queued run-reminder microtask", async () => {
@@ -767,7 +780,7 @@ test("forced disposal terminates a real routed session after its normal drain st
 		"ps_real_stuck",
 		runtime,
 		() => {},
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		false,
 	);
 	router.sessions.set("ps_real_stuck", routed);
@@ -864,7 +877,7 @@ test("public dispose suppresses late completion from a force-disposed routed tur
 		"ps_public_dispose",
 		runtime,
 		(event) => router.emitOutput(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		false,
 	);
 	router.sessions.set("ps_public_dispose", routed);
@@ -952,7 +965,7 @@ test("forced disposal suppresses deferred message preflight work", async () => {
 		"ps_deferred_preflight",
 		runtime,
 		(event) => router.emitOutput(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		false,
 		undefined,
 		false,
@@ -1050,7 +1063,7 @@ test("forced disposal suppresses deferred queued compaction output", async () =>
 		"ps_deferred_compact",
 		runtime,
 		(event) => router.emitOutput(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		false,
 	);
 	router.sessions.set("ps_deferred_compact", routed);
@@ -1157,7 +1170,7 @@ test("run-reminder turns retain lifecycle-only tools after the final run is read
 		"ps_capability",
 		runtime,
 		(event) => events.push(event),
-		PiboPluginRegistry.create({ plugins: [piboCorePlugin] }),
+		createTestCapabilityHost({ setups: [coreCapabilitiesSetup] }),
 		false,
 	);
 	router.sessions.set("ps_capability", routed);

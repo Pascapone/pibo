@@ -7,7 +7,7 @@ import test from "node:test";
 import {
 	buildCodexCompatSystemPrompt,
 } from "../dist/core/codex-compat.js";
-import { createDefaultPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import {
@@ -18,9 +18,9 @@ import {
 async function productRegistry(t) {
 	const root = await mkdtemp(join(tmpdir(), "codex-compat-plugin-"));
 	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
-	const registry = createDefaultPiboPluginRegistry();
+	const registry = PiboCapabilityHost.create();
 	const product = await startPluginProductRuntime({ host: registry.getPluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [] });
-	t.after(async () => { await product.dispose(); await registry.disposePlugins(); data.close(); await rm(root, { recursive: true, force: true }); });
+	t.after(async () => { await product.dispose(); data.close(); await rm(root, { recursive: true, force: true }); });
 	return registry;
 }
 
@@ -28,12 +28,12 @@ test("ordinary runtime packages expose base and native profiles without retired 
 	const registry = await productRegistry(t);
 	const profile = registry.createProfile("base");
 
-	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
+	assert.deepEqual(registry.getProfileNames(), ["base", "pibo-gateway-producer", "codex-native", "orp"]);
 	assert.equal(profile.profileName, "base");
 	assert.equal(profile.builtinTools, "default");
 	assert.deepEqual(profile.builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.deepEqual(profile.tools, []);
-	assert.deepEqual(profile.skills, []);
+	assert.deepEqual(profile.skills.map((skill) => ({ name: skill.name, kind: skill.kind, pluginId: skill.pluginId })), [{ name: "pi-agent-harness", kind: "builtin", pluginId: undefined }]);
 	assert.deepEqual(profile.contextFiles, []);
 	assert.deepEqual(profile.subagents, []);
 	assert.equal(profile.toolPackages.runControl, undefined);
@@ -46,17 +46,15 @@ test("ordinary installed plugins keep native-tooling and Codex compatibility cap
 	const registry = await productRegistry(t);
 	const catalog = registry.getCapabilityCatalog();
 	const nativeTooling = catalog.contextFiles.find((contextFile) => contextFile.key === "Pibo Native Tooling");
-	const codexBasePrompt = catalog.contextFiles.find((contextFile) => contextFile.key === "Codex Base Prompt");
+	const codexBasePrompt = registry.getPluginHost().contributions.get("contribution", "pibo.codex-compat/base-prompt");
 
 	assert.ok(nativeTooling);
 	assert.equal(nativeTooling.pluginId, "pibo.browser-tools");
 	assert.equal(nativeTooling.pluginName, "Pibo Browser Tools");
 	assert.equal(basename(nativeTooling.path), "pibo-native-tooling.md");
 	assert.equal(existsSync(nativeTooling.path), true);
-	assert.ok(codexBasePrompt);
-	assert.equal(codexBasePrompt.pluginId, "pibo.codex-compat");
-	assert.equal(basename(codexBasePrompt.path), "codex-base-prompt.md");
-	assert.equal(existsSync(codexBasePrompt.path), true);
+	assert.equal(codexBasePrompt?.contribution.kind, "system-prompt-transformer");
+	assert.equal(typeof codexBasePrompt?.value.transform, "function");
 });
 
 test("ordinary installed web-search plugin exposes web_search", async (t) => {

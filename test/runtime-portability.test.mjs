@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,8 +10,8 @@ import {
 	createMinimalAgentRuntimeCapabilities,
 	profileWithRuntimeInstance,
 } from "../dist/index.js";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 import {
 	PORTABLE_HISTORY_HANDOFF_METADATA_KEY,
 	PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY,
@@ -163,8 +164,8 @@ function buildNativeRecoveryRegistry(options = {}) {
 	});
 	const runtimeInstanceId = options.runtimeInstanceId ?? "recovery-runtime";
 	const profileName = options.profileName ?? "recovery-profile";
-	const registry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: `test.native-recovery.${runtimeInstanceId}`,
 			register(api) {
 				api.registerAgentRuntimeDriver(driver);
@@ -219,8 +220,8 @@ function buildRegistry() {
 		capabilities: unavailableCapabilities,
 		diagnostics: [{ severity: "error", code: "runtime_unavailable", message: "The target runtime executable is unavailable." }],
 	});
-	const registry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.runtime-portability",
 			register(api) {
 				api.registerAgentRuntimeDriver(sourceDriver);
@@ -675,7 +676,7 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 	});
 	const ingest = ingestConversation(sessionStore.getDataStore(), created);
 	const { registry, target, unsupported, unavailable } = buildRegistry();
-	let router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	let router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await assert.rejects(
 		() => router.rebindSessionRuntime(created.id, {
 			runtimeInstanceId: "unavailable-runtime",
@@ -709,7 +710,7 @@ test("runtime rebind persists a retry-safe handoff and imports it before opening
 	});
 	await router.disposeAll();
 
-	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await router.getSessionStatusSnapshot(created.id);
 	assert.equal(target.openInputs.length, 1);
 	assert.equal(target.openInputs[0].binding.state, "unbound");
@@ -827,7 +828,7 @@ test("native-first continuation repairs a stale locator and resumes the original
 		},
 	});
 	const created = sessionStore.create(nativeRecoverySession("ps_native_present"));
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	t.after(() => router.disposeAll());
 
 	await router.getSessionStatusSnapshot(created.id);
@@ -862,7 +863,7 @@ test("authoritative native absence reconstructs once in the same runtime from ch
 	const originalModel = structuredClone(created.activeModel);
 	const originalRoom = created.metadata.chatRoomId;
 	const originalTabs = structuredClone(created.metadata.workspaceTabs);
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	t.after(() => router.disposeAll());
 
 	await router.getSessionStatusSnapshot(created.id);
@@ -918,7 +919,7 @@ test("native reconstruction retries the same durable checkpoint after target sta
 		return await originalOpen(input);
 	};
 
-	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /Transient recovery startup failure/);
 	const pending = sessionStore.getRuntimeBinding(created.id);
 	assert.equal(pending.state, "unbound");
@@ -926,7 +927,7 @@ test("native reconstruction retries the same durable checkpoint after target sta
 	const checkpoint = structuredClone(pending.metadata[PORTABLE_HISTORY_HANDOFF_METADATA_KEY].checkpoint);
 	await router.disposeAll();
 
-	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await router.getSessionStatusSnapshot(created.id);
 	assert.deepEqual(adapter.openInputs[1].historyHandoff.history.checkpoint, checkpoint);
 	assert.equal(sessionStore.getRuntimeBinding(created.id).metadata[PORTABLE_HISTORY_LAST_IMPORT_METADATA_KEY].reason, "native-recovery");
@@ -944,7 +945,7 @@ test("auth and transient native inspection failures never trigger reconstruction
 			const { registry, adapter } = buildNativeRecoveryRegistry({ resolveBinding() { throw failure; } });
 			const created = sessionStore.create(nativeRecoverySession(`ps_native_${label}`));
 			ingestConversation(dataStore, created);
-			const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+			const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 			try {
 				await assert.rejects(() => router.getSessionStatusSnapshot(created.id), (error) => error === failure);
 				const preserved = sessionStore.getRuntimeBinding(created.id);
@@ -971,7 +972,7 @@ test("native recovery fails closed for insufficient history, unsupported adapter
 			resolveBinding({ binding }) { return { ...binding, state: "missing" }; },
 		});
 		const created = sessionStore.create(nativeRecoverySession("ps_native_empty"));
-		const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+		const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 		try {
 			await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /no recoverable conversation context/);
 			assert.equal(sessionStore.getRuntimeBinding(created.id).state, "missing");
@@ -992,7 +993,7 @@ test("native recovery fails closed for insufficient history, unsupported adapter
 		const input = nativeRecoverySession("ps_native_unsupported");
 		input.runtimeBinding.state = "missing";
 		const created = sessionStore.create(input);
-		const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+		const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 		try {
 			await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /cannot authoritatively recheck a missing native session/);
 			assert.equal(sessionStore.getRuntimeBinding(created.id).state, "missing");
@@ -1022,7 +1023,7 @@ test("native recovery fails closed for insufficient history, unsupported adapter
 		const created = sessionStore.create(nativeRecoverySession("ps_native_cas"));
 		sessionId = created.id;
 		ingestConversation(dataStore, created);
-		const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+		const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 		try {
 			await assert.rejects(() => router.getSessionStatusSnapshot(created.id), /changed concurrently/);
 			const preserved = sessionStore.getRuntimeBinding(created.id);
@@ -1075,7 +1076,7 @@ test("cross-runtime rebind clears source model selection across restart while sa
 		},
 	});
 	const { registry } = buildRegistry();
-	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 
 	await router.rebindSessionRuntime(crossRuntime.id, {
 		runtimeInstanceId: "target-runtime",
@@ -1106,7 +1107,7 @@ test("cross-runtime rebind clears source model selection across restart while sa
 	dataStore.close();
 	dataStore = new PiboDataStore(databasePath, { payloadRootDir: join(root, "payloads") });
 	sessionStore = new PiboDataSessionStore(dataStore);
-	router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 
 	const reopenedCrossRuntime = await router.getOrCreateSession(crossRuntime.id);
 	const reopenedSameRuntime = await router.getOrCreateSession(sameRuntime.id);
@@ -1129,7 +1130,7 @@ test("runtime rebind quiesces the source before taking its portable-history chec
 	});
 	ingestConversation(sessionStore.getDataStore(), created);
 	const { registry } = buildRegistry();
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await router.getSessionStatusSnapshot(created.id);
 	let releaseReset;
 	let resetStartedResolve;
@@ -1176,7 +1177,7 @@ test("runtime rebind retries the same persisted handoff checkpoint after target 
 	});
 	const ingest = ingestConversation(sessionStore.getDataStore(), created);
 	const { registry, target } = buildRegistry();
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	const pending = await router.rebindSessionRuntime(created.id, {
 		runtimeInstanceId: "target-runtime",
 		expectedRevision: created.runtimeBinding.revision,
@@ -1233,7 +1234,7 @@ test("runtime rebind retries the same persisted handoff checkpoint after target 
 		},
 	}, { expectedRevision: completed.revision });
 	assert.ok(corrupted);
-	const corruptRouter = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	const corruptRouter = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await assert.rejects(
 		() => corruptRouter.getSessionStatusSnapshot(created.id),
 		/refusing to start a contextless target runtime/,
@@ -1253,7 +1254,7 @@ test("runtime rebind retries the same persisted handoff checkpoint after target 
 		},
 	}, { expectedRevision: corruptBinding.revision });
 	assert.ok(mismatched);
-	const mismatchRouter = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, sessionStore });
+	const mismatchRouter = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, sessionStore });
 	await assert.rejects(
 		() => mismatchRouter.getSessionStatusSnapshot(created.id),
 		/targets a different runtime binding/,

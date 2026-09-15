@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { PiboDataStore } from "../../dist/data/pibo-store.js";
 import { PluginHost } from "../../dist/plugins/host.js";
 import { startPluginProductRuntime } from "../../dist/plugins/product-runtime.js";
-import { PiboPluginRegistry } from "../../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../../dist/core/capability-host.js";
 
 export async function startTestWebPluginProduct(options = {}) {
 	const root = await mkdtemp(join(tmpdir(), "pibo-test-web-product-"));
@@ -26,7 +26,7 @@ export async function startTestWebPluginProduct(options = {}) {
 			},
 		},
 	});
-	const registry = PiboPluginRegistry.create({ host });
+	const registry = PiboCapabilityHost.create({ host });
 	return {
 		root,
 		host,

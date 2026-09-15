@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AgentRuntimeContractError } from "../dist/agent-runtime/errors.js";
@@ -10,7 +11,7 @@ import {
 	CODEX_NATIVE_PROFILE_NAME,
 	CODEX_NATIVE_RUNTIME_INSTANCE_ID,
 } from "../dist/plugins/builtin.js";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
@@ -18,7 +19,7 @@ async function createProductRegistry(t) {
 	const product = await startTestPluginProduct("pibo-agent-runtime-registry-");
 	const registry = product.createDefaultRegistry();
 	t.after(async () => {
-		await registry.disposePlugins();
+
 		await product.dispose();
 	});
 	return registry;
@@ -139,8 +140,8 @@ test("runtime inspection rejects a declared model catalog without a listModels i
 
 test("runtime registry rejects profile selections that declared capabilities cannot deliver", async () => {
 	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "partial-runtime" });
-	const registry = PiboPluginRegistry.create({
-		plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [defineTestCapabilitySetup({
 			id: "test.partial-runtime",
 			register(api) {
 				api.registerAgentRuntimeDriver(fakeDriver);
@@ -178,8 +179,8 @@ test("MCP-delivered runtimes reject legacy private tools and explain native-tool
 	const capabilities = createFakeAgentRuntimeDriver({ adapterId: "mcp-template" }).descriptor.capabilities;
 	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
 	capabilities.tools.nativeToolYielding = { support: "unsupported", reason: "The harness does not expose private native tools to Pibo." };
-	const registry = PiboPluginRegistry.create({
-		plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [defineTestCapabilitySetup({
 			id: "test.mcp-runtime",
 			register(api) {
 				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "mcp-runtime", capabilities }));
@@ -239,8 +240,8 @@ test("runtime feature capabilities independently govern context discovery and na
 		enabledByDefault: true,
 		knownFileNames: ["AGENTS.md"],
 	};
-	const registry = PiboPluginRegistry.create({
-		plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [defineTestCapabilitySetup({
 			id: "test.context-runtime",
 			register(api) {
 				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "context-runtime", capabilities }));
@@ -269,8 +270,8 @@ test("runtime feature capabilities independently govern context discovery and na
 
 	const configurableCapabilities = structuredClone(capabilities);
 	configurableCapabilities.nativeSubagents = { supported: true, configurable: true, enabledByDefault: true };
-	const configurableRegistry = PiboPluginRegistry.create({
-		plugins: [definePiboPlugin({
+	const configurableRegistry = createTestCapabilityHost({
+		setups: [defineTestCapabilitySetup({
 			id: "test.native-subagents-runtime",
 			register(api) {
 				api.registerAgentRuntimeDriver(createFakeAgentRuntimeDriver({ adapterId: "native-subagents-runtime", capabilities: configurableCapabilities }));
@@ -296,9 +297,9 @@ test("runtime feature capabilities independently govern context discovery and na
 
 test("plugins register typed runtime drivers and configured instances", () => {
 	const fakeDriver = createFakeAgentRuntimeDriver({ adapterId: "fixture-runtime" });
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			defineTestCapabilitySetup({
 				id: "test.runtime-plugin",
 				register(api) {
 					api.registerAgentRuntimeDriver(fakeDriver);

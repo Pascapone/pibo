@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
 import { handleChatUserSkillRoute, syncChatUserSkills } from "../dist/apps/chat/chat-user-skill-routes.js";
-import { createPiboProfileFromRegistryOrDefault } from "../dist/plugins/builtin.js";
+import { createPiboProfileFromCapabilitiesOrDefault } from "../dist/plugins/builtin.js";
 import { UserSkillManager } from "../dist/user-skills/manager.js";
 import { startTestWebPluginProduct } from "./helpers/web-plugin-product.mjs";
 
@@ -56,7 +56,7 @@ test("web gateway registers user skills before custom agent profiles are used", 
 			chat: { agentStorePath, userSkillGlobalRoot: globalRoot, userSkillWorkspaceRoot: workspaceRoot },
 		});
 		registry = product.registry;
-		const profile = createPiboProfileFromRegistryOrDefault(registry, "unity-agent");
+		const profile = createPiboProfileFromCapabilitiesOrDefault(registry, "unity-agent");
 		const profileSkillNames = profile.skills.map((skill) => skill.name);
 		const catalogSkillByName = new Map(registry.getCapabilityCatalog().skills.map((skill) => [skill.name, skill]));
 

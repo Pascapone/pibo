@@ -1,11 +1,12 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./capability-host.mjs";
 import { InitialSessionContextBuilder } from "../../dist/core/profiles.js";
 import { definePiboCoreContributions } from "../../dist/plugins/builtin.js";
 import { createOpenAiChatGptTranscriptionProvider } from "../../dist/transcription/openai-chatgpt.js";
 import { createOpenAiTranscriptionProvider } from "../../dist/transcription/openai.js";
-import { definePiboPlugin, PiboPluginRegistry } from "../../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../../dist/core/capability-host.js";
 
 /** Test-only bridge for low-level registry tests; production products install ordinary host packages. */
-export const piboCorePlugin = definePiboPlugin({
+export const coreCapabilitiesSetup = defineTestCapabilitySetup({
 	id: "test.pibo-core-legacy-fixture",
 	name: "Pibo Core Test Fixture",
 	register(api) {
@@ -16,7 +17,7 @@ export const piboCorePlugin = definePiboPlugin({
 	},
 });
 
-const transcriptionPlugin = definePiboPlugin({
+const transcriptionPlugin = defineTestCapabilitySetup({
 	id: "test.pibo-transcription-legacy-fixture",
 	name: "Pibo Transcription Test Fixture",
 	register(api) {
@@ -25,7 +26,7 @@ const transcriptionPlugin = definePiboPlugin({
 	},
 });
 
-const gatewayProducerPlugin = definePiboPlugin({
+const gatewayProducerPlugin = defineTestCapabilitySetup({
 	id: "test.pibo-gateway-producer-legacy-fixture",
 	name: "Pibo Gateway Producer Test Fixture",
 	register(api) {
@@ -43,10 +44,10 @@ const gatewayProducerPlugin = definePiboPlugin({
 	},
 });
 
-export function createDefaultPiboPluginRegistry() {
-	return PiboPluginRegistry.create({ plugins: [piboCorePlugin, transcriptionPlugin] });
+export function createDefaultPiboCapabilityHost() {
+	return createTestCapabilityHost({ setups: [coreCapabilitiesSetup, transcriptionPlugin] });
 }
 
-export function createGatewayProducerPiboPluginRegistry() {
-	return PiboPluginRegistry.create({ plugins: [piboCorePlugin, gatewayProducerPlugin, transcriptionPlugin] });
+export function createGatewayProducerPiboCapabilityHost() {
+	return createTestCapabilityHost({ setups: [coreCapabilitiesSetup, gatewayProducerPlugin, transcriptionPlugin] });
 }

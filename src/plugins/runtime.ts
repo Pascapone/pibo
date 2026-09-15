@@ -198,6 +198,8 @@ export type PluginSessionToolProvider = {
 	phase?: "base" | "augment";
 	/** Requests adapter-native yieldable definitions in the augment catalog without naming them. */
 	includeNativeTools?: boolean;
+	/** Package-owned service-message handling available before adapter tool materialization. */
+	serviceMessages?: readonly PluginSessionServiceMessageHandler[];
 	createSession(context: PluginSessionToolProviderContext): PluginSessionToolSet;
 };
 

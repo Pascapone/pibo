@@ -123,18 +123,18 @@ export async function runPluginCli(args: readonly string[], options: { manager: 
 export async function runDefaultPluginCli(args: readonly string[]): Promise<number> {
 	let data: import("../data/pibo-store.js").PiboDataStore | undefined;
 	let agentStore: import("../apps/chat/agent-store.js").CustomAgentStore | undefined;
-	let registry: import("./registry.js").PiboPluginRegistry | undefined;
+	let registry: import("../core/capability-host.js").PiboCapabilityHost | undefined;
 	let product: Awaited<ReturnType<typeof import("./product-runtime.js").startPluginProductRuntime>> | undefined;
 	try {
 		return await runPluginCli(args, { manager: async () => {
 			if (product) return product.manager;
 			const [dataModule, agentStoreModule, builtinModule, registryModule, operationsModule, productModule, productServicesModule] = await Promise.all([
-				import("../data/pibo-store.js"), import("../apps/chat/agent-store.js"), import("./builtin.js"), import("./registry.js"),
+				import("../data/pibo-store.js"), import("../apps/chat/agent-store.js"), import("./builtin.js"), import("../core/capability-host.js"),
 				import("./operations.js"), import("./product-runtime.js"), import("./product-services.js"),
 			]);
 			data = new dataModule.PiboDataStore();
 			agentStore = agentStoreModule.createDefaultCustomAgentStore();
-			registry = registryModule.PiboPluginRegistry.create();
+			registry = registryModule.PiboCapabilityHost.create();
 			const host = registry.getPluginHost();
 			const catalog = () => {
 				const installations = data!.plugins.listInstallations();
@@ -144,7 +144,7 @@ export async function runDefaultPluginCli(args: readonly string[]): Promise<numb
 			const collectLive: import("./operations.js").PluginConsumerCollector = async (pluginId) => {
 				const consumers: import("./operations.js").PluginConsumer[] = [];
 				for (const info of registry!.getProfileInfos()) {
-					const profile = builtinModule.createPiboProfileFromRegistryOrDefault(registry!, info.name);
+					const profile = builtinModule.createPiboProfileFromCapabilitiesOrDefault(registry!, info.name);
 					const entry = profile.pluginSelection?.plugins.find((candidate) => candidate.pluginId === pluginId);
 					if (entry) consumers.push({ kind: "profile", id: info.name, usage: entry.enabled ? "optional" : "historical", revision: entry.revision });
 				}
@@ -163,7 +163,6 @@ export async function runDefaultPluginCli(args: readonly string[]): Promise<numb
 		} });
 	} finally {
 		await product?.dispose();
-		await registry?.disposePlugins();
 		agentStore?.close();
 		data?.close();
 	}

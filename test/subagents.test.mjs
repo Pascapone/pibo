@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, applyTestCapabilitySetup } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -37,7 +38,7 @@ import {
 	PIBO_AGENT_OBSERVATION_TOOL_SUMMARY_MAX_BYTES,
 	piboAgentObservationToolSummary,
 } from "../dist/subagents/observations.js";
-import { definePiboPlugin } from "../dist/plugins/registry.js";
+
 import { PIBO_SESSION_YIELDED_RUNS_SERVICE } from "../dist/plugins/runtime.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { findCliToolEntry, getInstalledCliToolContextFile } from "../dist/tools/registry.js";
@@ -46,14 +47,14 @@ import { PiboPortableToolService } from "../dist/tools/session-service.js";
 import { startTestPluginProduct } from "./helpers/plugin-product.mjs";
 
 const pluginProduct = await startTestPluginProduct("pibo-subagents-product-");
-const pluginRegistry = pluginProduct.createDefaultRegistry();
-const createUnmaterializedProfile = pluginRegistry.createProfile.bind(pluginRegistry);
-pluginRegistry.createProfile = (name, context) => {
+const capabilityHost = pluginProduct.createDefaultRegistry();
+const createUnmaterializedProfile = capabilityHost.createProfile.bind(capabilityHost);
+capabilityHost.createProfile = (name, context) => {
 	const profile = createUnmaterializedProfile(name, context);
-	return profile.pluginSelection ? profile : pluginProduct.materializeProfile(pluginRegistry, profile);
+	return profile.pluginSelection ? profile : pluginProduct.materializeProfile(capabilityHost, profile);
 };
 after(async () => {
-	await pluginRegistry.disposePlugins();
+
 	await pluginProduct.dispose();
 });
 
@@ -125,7 +126,7 @@ const noopRunToolController = {
 
 async function createSelectedRunControlRuntime(profile, runToolController) {
 	const piboSessionId = `ps_run_${Math.random().toString(36).slice(2)}`;
-	const selected = pluginProduct.materializeProfile(pluginRegistry, profile, piboSessionId);
+	const selected = pluginProduct.materializeProfile(capabilityHost, profile, piboSessionId);
 	const generation = pluginProduct.runtime.reserve(selected, {
 		adapterId: "pi",
 		instanceId: "pi",
@@ -179,9 +180,9 @@ function createYieldedSubagentFixture(suffix, script) {
 	const childProfile = `subagent-${suffix}-child-profile`;
 	const parentId = `ps_${suffix}_parent`;
 	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script });
-	const registry = pluginRegistry;
-	registry.registerPlugin(
-		definePiboPlugin({
+	const registry = capabilityHost;
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 				id: `test.subagent-${suffix}`,
 				register(api) {
 					api.registerAgentRuntimeDriver(childDriver);
@@ -220,7 +221,7 @@ function createYieldedSubagentFixture(suffix, script) {
 		profile: parentProfile,
 		runtimeBinding: { piboSessionId: parentId, runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
 	});
-	return { adapterId, parentId, registry, store, router: new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, pluginRuntime: pluginProduct.runtime, sessionStore: store }) };
+	return { adapterId, parentId, registry, store, router: new PiboSessionRouter({ persistSession: false, capabilityHost: registry, pluginRuntime: pluginProduct.runtime, sessionStore: store }) };
 }
 
 async function yieldedSubagentTools(fixture) {
@@ -237,8 +238,8 @@ let inspectionSequence = 0;
 async function inspectProductProfile(profile, options = {}) {
 	inspectionSequence += 1;
 	const piboSessionId = `ps_subagent_inspection_${inspectionSequence}`;
-	const effectiveProfile = pluginProduct.materializeProfile(pluginRegistry, profile, piboSessionId);
-	const adapter = pluginRegistry.requireAgentRuntimeAdapter(effectiveProfile.runtimeInstanceId);
+	const effectiveProfile = pluginProduct.materializeProfile(capabilityHost, profile, piboSessionId);
+	const adapter = capabilityHost.requireAgentRuntimeAdapter(effectiveProfile.runtimeInstanceId);
 	const resourceRoot = mkdtempSync(join(tmpdir(), "pibo-subagent-inspection-resources-"));
 	const resources = new PiboRuntimeResourceService({
 		rootDir: resourceRoot,
@@ -901,9 +902,9 @@ test("run start prepares selected delegated input before admission and persists 
 });
 
 test("profiles can expose subagents as active router tools", async () => {
-	const registry = pluginRegistry;
-	registry.registerPlugin(
-		definePiboPlugin({
+	const registry = capabilityHost;
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.subagents",
 			register(api) {
 				api.registerSubagent({
@@ -986,7 +987,7 @@ test("profiles can expose subagents as active router tools", async () => {
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		pluginRuntime: pluginProduct.runtime,
 		sessionStore: store,
 	});
@@ -1054,9 +1055,9 @@ test("profile inspection distinguishes configured subagent overrides from effect
 });
 
 test("router omits subagent tools that have reached their max depth", async () => {
-	const registry = pluginRegistry;
-	registry.registerPlugin(
-		definePiboPlugin({
+	const registry = capabilityHost;
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 			id: "test.subagent-depth-tools",
 			register(api) {
 				api.registerSubagents([
@@ -1099,7 +1100,7 @@ test("router omits subagent tools that have reached their max depth", async () =
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry: registry,
+		capabilityHost: registry,
 		pluginRuntime: pluginProduct.runtime,
 		sessionStore: store,
 	});
@@ -1168,7 +1169,7 @@ test("agents controller emits a parent link event before waiting for the child r
 		profile: "base",
 		metadata: { chatRoomId: "room_parent" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	const events = [];
 	router.subscribe((event) => events.push(event));
 	router.emitMessageAndWaitForReply = async (event) => ({
@@ -1222,7 +1223,7 @@ test("subagent runner freezes per-subagent model, thinking, and runtime override
 	});
 	const router = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		pluginRuntime: pluginProduct.runtime,
 		sessionStore: store,
 		modelDefaults: { subagent: { provider: "default-provider", id: "default-subagent" } },
@@ -1313,7 +1314,7 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		const controller = createRouterAgentsController(router, "ps_parent");
 		await assert.rejects(controller.sendMessage({
@@ -1366,7 +1367,7 @@ test("subagent runner rejects invalid or cancelled requests before creating a ch
 test("agents controller requires bounded Unicode names and updates reused titles", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	router.emitMessageAndWaitForReply = async (event) => ({
 		type: "assistant_message",
 		piboSessionId: event.piboSessionId,
@@ -1423,7 +1424,7 @@ test("named sends reuse and upgrade existing legacy child sessions", async () =>
 			subagentToolName: "pibo_subagent_explorer",
 		},
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	router.emitMessageAndWaitForReply = async (event) => ({
 		type: "assistant_message",
 		piboSessionId: event.piboSessionId,
@@ -1455,7 +1456,7 @@ test("named child titles survive PiboDataSessionStore reopen and remain reusable
 	let childId;
 	let firstStore = new PiboDataSessionStore(dbPath);
 	firstStore.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
-	let firstRouter = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: firstStore });
+	let firstRouter = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: firstStore });
 	firstRouter.emitMessageAndWaitForReply = async (event) => ({
 		type: "assistant_message",
 		piboSessionId: event.piboSessionId,
@@ -1478,7 +1479,7 @@ test("named child titles survive PiboDataSessionStore reopen and remain reusable
 	}
 
 	let reopenedStore = new PiboDataSessionStore(dbPath);
-	let reopenedRouter = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: reopenedStore });
+	let reopenedRouter = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: reopenedStore });
 	reopenedRouter.emitMessageAndWaitForReply = async (event) => ({
 		type: "assistant_message",
 		piboSessionId: event.piboSessionId,
@@ -1513,7 +1514,7 @@ test("agents controller lists, filters observations, kills owned children, and d
 		kind: "chat",
 		profile: "base",
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	router.emitMessageAndWaitForReply = async (event) => ({
 		type: "assistant_message",
 		piboSessionId: event.piboSessionId,
@@ -1790,7 +1791,7 @@ test("agent observation auto cursors return messages once and history rereads wi
 		parentId: "ps_auto_parent",
 		metadata: { subagentName: "worker", threadKey: "auto" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		router.emitOutput({
 			type: "assistant_message",
@@ -1878,7 +1879,7 @@ test("agent observation fallback cursors remain bounded for compatibility stores
 	});
 	store.getAgentObservationAutoCursor = undefined;
 	store.advanceAgentObservationAutoCursor = undefined;
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		router.recordChildOutput({
 			type: "assistant_message",
@@ -1908,7 +1909,7 @@ test("agent observation polling is cursor-safe in descending order and reports r
 		parentId: "ps_parent",
 		metadata: { subagentName: "worker", threadKey: "retained" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		for (let index = 1; index <= 5_002; index += 1) {
 			router.emitOutput({
@@ -1963,7 +1964,7 @@ test("agent kill retries subtree cleanup after a partial failure", async () => {
 		parentId: "ps_parent",
 		metadata: { subagentName: "worker", threadKey: "cleanup" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_child", action: "status" });
 		assert.equal(router.sessions.has("ps_child"), true);
@@ -1991,7 +1992,7 @@ test("descendant traversal is cycle-safe for corrupt stored session graphs", asy
 	store.create({ id: "ps_a", channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: "ps_c" });
 	store.create({ id: "ps_b", channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: "ps_a" });
 	store.create({ id: "ps_c", channel: "pibo.subagents", kind: "subagent", profile: "base", parentId: "ps_b" });
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		assert.deepEqual(router.descendantSessionIds("ps_a"), ["ps_b", "ps_c"]);
 	} finally {
@@ -2004,9 +2005,9 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 		adapterId: "subagent-abort-child",
 		script: { waitForAbort: true },
 	});
-	const registry = pluginRegistry;
-	registry.registerPlugin(
-		definePiboPlugin({
+	const registry = capabilityHost;
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 				id: "test.subagent-parent-abort",
 				register(api) {
 					api.registerAgentRuntimeDriver(childDriver);
@@ -2045,7 +2046,7 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 		profile: "subagent-abort-parent",
 		runtimeBinding: { piboSessionId: "ps_abort_parent", runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "status" });
 		const runtime = router.sessions.get("ps_abort_parent").runtime;
@@ -2149,9 +2150,9 @@ test("killing an active delegated agent cancels its parent-owned yielded run dur
 	const childProfile = "subagent-active-kill-child-profile";
 	const parentId = "ps_active_kill_parent";
 	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script: { waitForAbort: true } });
-	const registry = pluginRegistry;
-	registry.registerPlugin(
-		definePiboPlugin({
+	const registry = capabilityHost;
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 				id: "test.subagent-active-kill",
 				register(api) {
 					api.registerAgentRuntimeDriver(childDriver);
@@ -2180,7 +2181,7 @@ test("killing an active delegated agent cancels its parent-owned yielded run dur
 	);
 	let sessionStore = new PiboDataSessionStore(sessionsPath);
 	let reliabilityStore = new PiboReliabilityStore(reliabilityPath);
-	let router = new PiboSessionRouter({ pluginRegistry: registry, pluginRuntime: pluginProduct.runtime, sessionStore, reliabilityStore });
+	let router = new PiboSessionRouter({ capabilityHost: registry, pluginRuntime: pluginProduct.runtime, sessionStore, reliabilityStore });
 	try {
 		sessionStore.create({
 			id: parentId,
@@ -2210,7 +2211,7 @@ test("killing an active delegated agent cancels its parent-owned yielded run dur
 		reliabilityStore.close();
 		sessionStore = new PiboDataSessionStore(sessionsPath);
 		reliabilityStore = new PiboReliabilityStore(reliabilityPath);
-		router = new PiboSessionRouter({ pluginRegistry: registry, pluginRuntime: pluginProduct.runtime, sessionStore, reliabilityStore });
+		router = new PiboSessionRouter({ capabilityHost: registry, pluginRuntime: pluginProduct.runtime, sessionStore, reliabilityStore });
 		assert.equal(reliabilityStore.getRun(runId).status, "cancelled");
 	} finally {
 		await router.disposeAll().catch(() => undefined);
@@ -2225,9 +2226,9 @@ test("cancelling a queued delegated run leaves the active request on the shared 
 		adapterId: "subagent-targeted-cancel-child",
 		script: { waitForAbort: true },
 	});
-	const registry = pluginRegistry;
-	registry.registerPlugin(
-		definePiboPlugin({
+	const registry = capabilityHost;
+	applyTestCapabilitySetup(registry,
+		defineTestCapabilitySetup({
 				id: "test.subagent-targeted-cancel",
 				register(api) {
 					api.registerAgentRuntimeDriver(childDriver);
@@ -2266,7 +2267,7 @@ test("cancelling a queued delegated run leaves the active request on the shared 
 		profile: "subagent-targeted-cancel-parent",
 		runtimeBinding: { piboSessionId: "ps_targeted_cancel_parent", runtimeInstanceId: "pi", adapterId: "pi", state: "unbound" },
 	});
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry: registry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost: registry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_targeted_cancel_parent", action: "status" });
 		const runtime = router.sessions.get("ps_targeted_cancel_parent").runtime;
@@ -2368,7 +2369,7 @@ test("delegated run cancellation is bounded when an adapter never settles its ac
 test("yielded delegated run read returns the complete final message and request identity", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	const firstBlock = `complete:${"x".repeat(6_000)}`;
 	const secondBlock = `${"y".repeat(6_000)}:end`;
 	const normalizedFinal = normalizePiEvent("ps_child", {
@@ -2423,7 +2424,7 @@ test("yielded delegated run read returns the complete final message and request 
 test("bounded run waits do not cancel delegated agents and explicit cancellation preserves thread reuse", async () => {
 	const store = new InMemoryPiboSessionStore();
 	store.create({ id: "ps_parent", channel: "pibo.test", kind: "chat", profile: "base" });
-	const router = new PiboSessionRouter({ persistSession: false, pluginRegistry, pluginRuntime: pluginProduct.runtime, sessionStore: store });
+	const router = new PiboSessionRouter({ persistSession: false, capabilityHost, pluginRuntime: pluginProduct.runtime, sessionStore: store });
 	const emitted = [];
 	const cancellations = [];
 	router.emit = async (event) => {

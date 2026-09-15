@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,8 +10,8 @@ import { exerciseAgentRuntimeAdapterContract } from "../dist/agent-runtime/testi
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { InMemoryPiboSessionStore, createPiboSession } from "../dist/sessions/store.js";
 import {
 	CODEX_NATIVE_ADAPTER_ID,
@@ -415,8 +416,8 @@ test("Codex native events flow through generic routed orchestration with correla
 	const profileName = "codex-native-router-turn-profile";
 	const piboSessionId = "ps_codex_router_turn";
 	const config = runtimeConfig(root);
-	const pluginRegistry = PiboPluginRegistry.create({
-		plugins: [piboCorePlugin, definePiboPlugin({
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
 			id: "test.codex-native-router-turn",
 			register(api) {
 				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
@@ -442,7 +443,7 @@ test("Codex native events flow through generic routed orchestration with correla
 	const resources = new PiboRuntimeResourceService({ rootDir: join(root, "resources") });
 	const firstRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});
@@ -485,7 +486,7 @@ test("Codex native events flow through generic routed orchestration with correla
 
 	const secondRouter = new PiboSessionRouter({
 		persistSession: false,
-		pluginRegistry,
+		capabilityHost,
 		sessionStore: store,
 		runtimeResourceService: resources,
 	});

@@ -1,7 +1,8 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { createServer, request as createHttpRequest } from "node:http";
 import test from "node:test";
-import { PiboPluginRegistry, definePiboPlugin } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboGatewayServer } from "../dist/gateway/server.js";
 import { startOpenAiCodexRealtimeCallProxy } from "../dist/speech/openai-codex-realtime-call-proxy.js";
 import { createOpenAiCodexSpeechProvider } from "../dist/speech/openai-codex.js";
@@ -107,12 +108,12 @@ test("plugins register discoverable speech providers and route sessions", async 
 			};
 		},
 	};
-	const plugin = definePiboPlugin({
+	const plugin = defineTestCapabilitySetup({
 		id: "test.speech",
 		name: "Test Speech Plugin",
 		register(api) { api.registerSpeechProvider(provider); },
 	});
-	const registry = PiboPluginRegistry.create({ plugins: [plugin] });
+	const registry = createTestCapabilityHost({ setups: [plugin] });
 
 	assert.deepEqual(await registry.getSpeechProviderInfos(), [{
 		id: "fixture-speech",
@@ -133,7 +134,7 @@ test("plugins register discoverable speech providers and route sessions", async 
 		{ type: "speak", sessionId: "session-fixture", input: { text: "hello" } },
 		{ type: "stop", sessionId: "session-fixture" },
 	]);
-	assert.throws(() => PiboPluginRegistry.create({ plugins: [plugin, definePiboPlugin({
+	assert.throws(() => createTestCapabilityHost({ setups: [plugin, defineTestCapabilitySetup({
 		id: "test.speech.duplicate",
 		register(api) { api.registerSpeechProvider(provider); },
 	})] }), /Duplicate speech provider/);
@@ -165,7 +166,7 @@ test("speech admission reserves pending capacity and releases rejected, failed, 
 			};
 		},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({ setups: [defineTestCapabilitySetup({
 		id: "test.barrier-speech",
 		register(api) { api.registerSpeechProvider(provider); },
 	})] });
@@ -227,7 +228,7 @@ test("duplicate provider session ids close only the unpublished owner", async ()
 			};
 		},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({ setups: [defineTestCapabilitySetup({
 		id: "test.duplicate-speech",
 		register(api) { api.registerSpeechProvider(provider); },
 	})] });
@@ -256,9 +257,9 @@ test("an abort returns promptly while a non-cooperative startup remains capacity
 			return await startup.promise;
 		},
 	};
-	const registry = PiboPluginRegistry.create({
+	const registry = createTestCapabilityHost({
 		maxActiveSpeechSessions: 1,
-		plugins: [definePiboPlugin({
+		setups: [defineTestCapabilitySetup({
 			id: "test.late-cleanup-speech",
 			register(api) { api.registerSpeechProvider(provider); },
 		})],
@@ -302,7 +303,7 @@ test("abort at provider-result publication closes the unpublished handle exactly
 			};
 		},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({ setups: [defineTestCapabilitySetup({
 		id: "test.publication-abort-speech",
 		register(api) { api.registerSpeechProvider(provider); },
 	})] });
@@ -330,7 +331,7 @@ test("speak and stop share one close attempt even when process close throws", as
 			};
 		},
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({ setups: [defineTestCapabilitySetup({
 		id: "test.close-race-speech",
 		register(api) { api.registerSpeechProvider(provider); },
 	})] });
@@ -361,11 +362,11 @@ test("gateway disposal aborts and drains provider startup before provider dispos
 		},
 		async dispose() { providerDisposeCalls += 1; },
 	};
-	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({
+	const registry = createTestCapabilityHost({ setups: [defineTestCapabilitySetup({
 		id: "test.gateway-dispose-speech",
 		register(api) { api.registerSpeechProvider(provider); },
 	})] });
-	const gateway = new PiboGatewayServer({ host: "127.0.0.1", port: 0, startChannels: false, persistSession: false, pluginRegistry: registry });
+	const gateway = new PiboGatewayServer({ host: "127.0.0.1", port: 0, startChannels: false, persistSession: false, capabilityHost: registry });
 	await gateway.start();
 	const start = registry.startSpeechSession(provider.id, { offerSdp: OFFER_SDP, text: "dispose" });
 	await startupEntered.promise;
@@ -393,9 +394,9 @@ test("idle expiry and restart disposal close every published session exactly onc
 				};
 			},
 		};
-		return PiboPluginRegistry.create({
+		return createTestCapabilityHost({
 			speechSessionIdleTimeoutMs: 1,
-			plugins: [definePiboPlugin({ id: "test.restart-speech", register(api) { api.registerSpeechProvider(provider); } })],
+			setups: [defineTestCapabilitySetup({ id: "test.restart-speech", register(api) { api.registerSpeechProvider(provider); } })],
 		});
 	};
 	const first = createRegistry();

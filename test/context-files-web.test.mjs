@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -7,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { createPiboContextFilesPlugin } from "./helpers/context-files-legacy-fixture.mjs";
 import { ContextFileMetadataStore, hashContextFileContent } from "../dist/plugins/context-files-store.js";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { createWebHostChannel } from "../dist/web/channel.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 
@@ -35,8 +36,8 @@ function createFakeAuthService() {
 
 async function startContextFilesHost(setup, createContextFilesPlugin = createPiboContextFilesPlugin) {
 	const sessions = new InMemoryPiboSessionStore();
-	const registry = PiboPluginRegistry.create({
-		plugins: [
+	const registry = createTestCapabilityHost({
+		setups: [
 			{
 				id: "test.context",
 				register(api) {
@@ -521,7 +522,7 @@ test("context files refuses to migrate storage owned by another live gateway", a
 			rmSync(join(root, "gateway-fallback.pid"), { force: true });
 			writeFileSync(join(root, pidFile), String(owner.pid), "utf8");
 			assert.throws(
-				() => PiboPluginRegistry.create({ plugins: [createPiboContextFilesPlugin()] }),
+				() => createTestCapabilityHost({ setups: [createPiboContextFilesPlugin()] }),
 				/owned by the active gateway process.*isolated PIBO_HOME/,
 			);
 		}

@@ -1,3 +1,4 @@
+import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -14,8 +15,8 @@ import { PiboGatewayServer } from "../dist/gateway/server.js";
 import { PiboLoopService } from "../dist/loops/service.js";
 import { createLoopMessagePreflight, PiboLoopStore } from "../dist/loops/store.js";
 import { createPiboGoalToolDefinitions } from "../dist/loops/tools.js";
-import { piboCorePlugin } from "./helpers/plugin-legacy-fixtures.mjs";
-import { PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 
 function toolsByName(store, getActiveMessage) {
 	return Object.fromEntries(createPiboGoalToolDefinitions({ piboSessionId: "ps_goal", piboRoomId: "room_goal", profileName: "goal-agent", getActiveMessage }, { store }).map((tool) => [tool.name, tool]));
@@ -31,7 +32,7 @@ test("RoutedSession revalidates queued Loop authority before message_started", a
 	const profile = new InitialSessionContextBuilder("loop-preflight-test").createSession();
 	const runtime = await createPiboRuntime({ cwd, persistSession: false, profile });
 	const events = [];
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("ps_goal", runtime, (event) => events.push(event), registry, false, undefined, false, undefined, undefined, undefined, undefined, () => ({ allowed: false, code: "loop_continuation_invalidated", reason: "Goal is complete" }));
 	try {
 		routed.enqueueMessage({ type: "message", piboSessionId: "ps_goal", id: "loop_msg_stale", source: "service", text: "Continue working toward the active Pibo loop goal.", provenance: { kind: "loop-run", jobId: "loop_old", runId: "lrun_old" } });
@@ -57,7 +58,7 @@ test("Pi routed requests remain cancellable during asynchronous message prefligh
 	const preflightStarted = new Promise((resolve) => { markPreflightStarted = resolve; });
 	const preflightGate = new Promise((resolve) => { releasePreflight = resolve; });
 	const events = [];
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("ps_goal", runtime, (event) => events.push(event), registry, false, undefined, false, undefined, undefined, undefined, undefined, async () => {
 		markPreflightStarted();
 		await preflightGate;
@@ -88,7 +89,7 @@ test("RoutedSession contains preflight exceptions and continues draining queued 
 	const profile = new InitialSessionContextBuilder("loop-preflight-error-test").createSession();
 	const runtime = await createPiboRuntime({ cwd, persistSession: false, profile });
 	const events = [];
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	let preflightCalls = 0;
 	const routed = new RoutedSession("ps_goal", runtime, (event) => events.push(event), registry, false, undefined, false, undefined, undefined, undefined, undefined, () => {
 		preflightCalls += 1;
@@ -138,7 +139,7 @@ test("Loop message provenance survives queue, start, and finish events", async (
 	const runtime = await createPiboRuntime({ cwd, persistSession: false, profile });
 	runtime.session.prompt = async () => {};
 	const events = [];
-	const registry = PiboPluginRegistry.create({ plugins: [piboCorePlugin] });
+	const registry = createTestCapabilityHost({ setups: [coreCapabilitiesSetup] });
 	const routed = new RoutedSession("ps_goal", runtime, (event) => events.push(event), registry, false, undefined, false, undefined, undefined, undefined, undefined, () => ({ allowed: true }));
 	const provenance = { kind: "loop-run", jobId: "loop_origin", runId: "lrun_origin" };
 	try {
@@ -339,7 +340,7 @@ test("runtime-routed child and grandchild usage preserve Loop provenance into re
 		});
 		const semanticPiUsage = semanticEventFromPibo(normalizedPiUsage);
 		assert.equal(semanticPiUsage.type, "usage");
-		const child = new RuntimeRoutedSession("ps_child", createUsageRuntime("ps_child", semanticPiUsage), emit, new PiboPluginRegistry());
+		const child = new RuntimeRoutedSession("ps_child", createUsageRuntime("ps_child", semanticPiUsage), emit, new PiboCapabilityHost());
 		const grandchild = new RuntimeRoutedSession("ps_grandchild", createUsageRuntime("ps_grandchild", {
 			type: "usage",
 			usage: {
@@ -351,7 +352,7 @@ test("runtime-routed child and grandchild usage preserve Loop provenance into re
 				totalTokens: 59,
 				costUsd: 0.08,
 			},
-		}), emit, new PiboPluginRegistry());
+		}), emit, new PiboCapabilityHost());
 		routed.push(child, grandchild);
 		child.enqueueMessage({
 			type: "message",

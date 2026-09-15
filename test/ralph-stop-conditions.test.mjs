@@ -1,16 +1,17 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
-import { PiboPluginRegistry, definePiboPlugin } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboRalphCapacityError, PiboRalphService } from "../dist/ralph/service.js";
 import { PiboRalphStore } from "../dist/ralph/store.js";
 import { createBuiltInRalphStopConditions, evaluateRalphStopPolicy, PROMISE_COMPLETE_STOP_TOKEN } from "../dist/ralph/stopping.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
-test("plugin registry exposes registered Ralph stop conditions", () => {
-	const registry = PiboPluginRegistry.create({ plugins: [definePiboPlugin({ id: "test.conditions", register(api) { api.registerRalphStopCondition({ type: "test.stop", name: "Test stop", phases: ["after-run"], evaluate: () => ({ action: "stop-after-run", reason: "test" }) }); } })] });
+test("capability host exposes registered loop stop conditions", () => {
+	const registry = createTestCapabilityHost({ setups: [defineTestCapabilitySetup({ id: "test.conditions", register(api) { api.registerRalphStopCondition({ type: "test.stop", name: "Test stop", phases: ["after-run"], evaluate: () => ({ action: "stop-after-run", reason: "test" }) }); } })] });
 	const infos = registry.getRalphStopConditionInfos();
 	assert.equal(infos.length, 1);
 	assert.equal(infos[0].type, "test.stop");

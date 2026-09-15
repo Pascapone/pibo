@@ -149,7 +149,7 @@ export type AgentRuntimeOpenServices = {
 	portableTools?: PiboPortableToolSession;
 	resources?: PiboRuntimeResourceSession;
 	/** Read-through projection over the one product PluginHost; adapters must not create their own registry. */
-	pluginRegistry?: import("../plugins/registry.js").PiboPluginRegistry;
+	capabilityHost?: import("../core/capability-host.js").PiboCapabilityHost;
 	runtimeBindingPersistence?: AgentRuntimeBindingPersistence;
 	telemetry?: unknown;
 	compatibility?: unknown;

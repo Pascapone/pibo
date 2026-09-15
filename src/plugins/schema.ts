@@ -250,15 +250,13 @@ export function validatePluginManifest(value: unknown, options: PluginManifestVa
 		if (c.view !== undefined) {
 			const v = c.view;
 			const presentationValid = isPluginRecord(v) && ["workspace", "internal"].includes(String(v.presentation));
-			const legacyVisibilityValid = isPluginRecord(v) && ["session", "infrastructure"].includes(String(v.visibility));
-			if (!isPluginRecord(v) || typeof v.title !== "string" || !v.title || typeof v.exportName !== "string" || !v.exportName || (!presentationValid && !legacyVisibilityValid) || !["singleton", "multiple"].includes(String(v.instance)) || !["unmount", "keep-alive"].includes(String(v.mount)) || !Number.isSafeInteger(v.stateSchemaVersion) || Number(v.stateSchemaVersion) < 1) fail("invalid-view", "Invalid browser view contract", at);
+			if (!isPluginRecord(v) || typeof v.title !== "string" || !v.title || typeof v.exportName !== "string" || !v.exportName || !presentationValid || !["singleton", "multiple"].includes(String(v.instance)) || !["unmount", "keep-alive"].includes(String(v.mount)) || !Number.isSafeInteger(v.stateSchemaVersion) || Number(v.stateSchemaVersion) < 1) fail("invalid-view", "Invalid browser view contract", at);
 			else {
-				if (v.presentation !== undefined && !presentationValid) fail("invalid-view", "presentation must be workspace or internal", at);
-				if (v.visibility !== undefined && !legacyVisibilityValid) fail("invalid-view", "Legacy visibility must be session or infrastructure", at);
+				if (v.visibility !== undefined) fail("legacy-manifest-field", "Legacy view.visibility is accepted only by the versioned import or cutover path", at);
 				if (v.subviewNavigation !== undefined && !["host", "renderer"].includes(String(v.subviewNavigation))) fail("invalid-view", "subviewNavigation must be host or renderer", at);
 				if (!isPluginRecord(m.entrypoints) || !m.entrypoints.browser) fail("missing-browser-entrypoint", "Views require a prebuilt browser entrypoint", at);
 				if (v.stateSchema !== undefined) diagnostics.push(...validatePluginConfigSchema(v.stateSchema, [root, ...at, "view", "stateSchema"]));
-				if ((v.presentation === "internal" || v.presentation === undefined && v.visibility === "infrastructure") && c.scope !== "app") fail("invalid-view-scope", "Internal views must be app-scoped", at);
+				if (v.presentation === "internal" && c.scope !== "app") fail("invalid-view-scope", "Internal views must be app-scoped", at);
 				if (v.subviews !== undefined) {
 					const subIds = new Set<string>();
 					if (!Array.isArray(v.subviews)) fail("invalid-subview", "subviews must be an array", at);

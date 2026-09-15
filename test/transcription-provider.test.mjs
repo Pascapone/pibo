@@ -1,6 +1,7 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PiboPluginRegistry, definePiboPlugin } from "../dist/plugins/registry.js";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { createOpenAiChatGptTranscriptionProvider } from "../dist/transcription/openai-chatgpt.js";
 import { createOpenAiTranscriptionProvider } from "../dist/transcription/openai.js";
 import { PiboTranscriptionError } from "../dist/transcription/types.js";
@@ -15,14 +16,14 @@ test("plugins register discoverable and replaceable transcription providers", as
 			return { text: `bytes:${input.audio.bytes.byteLength}`, model: "fixture-model" };
 		},
 	};
-	const plugin = definePiboPlugin({
+	const plugin = defineTestCapabilitySetup({
 		id: "test.transcription",
 		name: "Test Transcription Plugin",
 		register(api) {
 			api.registerTranscriptionProvider(provider);
 		},
 	});
-	const registry = PiboPluginRegistry.create({ plugins: [plugin] });
+	const registry = createTestCapabilityHost({ setups: [plugin] });
 
 	assert.deepEqual(await registry.getTranscriptionProviderInfos(), [{
 		id: "test-transcriber",
@@ -40,7 +41,7 @@ test("plugins register discoverable and replaceable transcription providers", as
 		model: "fixture-model",
 	});
 
-	assert.throws(() => PiboPluginRegistry.create({ plugins: [plugin, definePiboPlugin({
+	assert.throws(() => createTestCapabilityHost({ setups: [plugin, defineTestCapabilitySetup({
 		id: "test.transcription.duplicate",
 		register(api) { api.registerTranscriptionProvider(provider); },
 	})] }), /Duplicate transcription provider/);

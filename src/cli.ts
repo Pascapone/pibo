@@ -16,11 +16,11 @@ import { parsePiboThinkingLevel } from "./core/thinking.js";
 import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
 async function resolveCliProfile(profileName?: string) {
-	const { createPiboProfileFromRegistryOrDefault } = await import("./plugins/builtin.js");
+	const { createPiboProfileFromCapabilitiesOrDefault } = await import("./plugins/builtin.js");
 	const { profileFromPluginPlan } = await import("./agent-runtime/plugin-plan.js");
 	const { startPluginProductRuntime } = await import("./plugins/product-runtime.js");
-	const { PiboPluginRegistry } = await import("./plugins/registry.js");
-	const registry = PiboPluginRegistry.create();
+	const { PiboCapabilityHost } = await import("./core/capability-host.js");
+	const registry = PiboCapabilityHost.create();
 	const product = await startPluginProductRuntime({
 		host: registry.getPluginHost(),
 		collectConsumers: async () => [],
@@ -28,7 +28,7 @@ async function resolveCliProfile(profileName?: string) {
 	});
 	try {
 		const materializePreview = (targetProfile?: string) => {
-			const selected = createPiboProfileFromRegistryOrDefault(registry, targetProfile);
+			const selected = createPiboProfileFromCapabilitiesOrDefault(registry, targetProfile);
 			if (!selected.pluginSelection) return selected;
 			const adapter = registry.requireAgentRuntimeAdapter(selected.runtimeInstanceId);
 			const plan = product.runtime.preview(selected, {
@@ -43,12 +43,10 @@ async function resolveCliProfile(profileName?: string) {
 			profile,
 			resolveSubagentProfile: (targetProfile: string) => materializePreview(targetProfile),
 			dispose: async () => {
-				await registry.disposePlugins();
 				await product.dispose();
 			},
 		};
 	} catch (error) {
-		await registry.disposePlugins();
 		await product.dispose();
 		throw error;
 	}

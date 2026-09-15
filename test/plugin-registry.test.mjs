@@ -1,3 +1,4 @@
+import { defineTestCapabilitySetup, createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -6,8 +7,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
-import { createDefaultPiboPluginRegistry, createGatewayProducerPiboPluginRegistry } from "./helpers/plugin-legacy-fixtures.mjs";
-import { definePiboPlugin, PiboPluginRegistry } from "../dist/plugins/registry.js";
+import { createDefaultPiboCapabilityHost } from "./helpers/capability-fixtures.mjs";
+import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 import { findCliToolEntry, listInstalledCliToolAgentContexts } from "../dist/tools/registry.js";
 import { getToolPythonRuntimePaths } from "../dist/tools/python-runtime.js";
@@ -41,11 +42,11 @@ async function withPiboHome(piboHome, run) {
 	}
 }
 
-test("default plugin registry builds core and installed package capabilities without retired aliases", async (t) => {
-	const registry = await startProductRegistry(t, createDefaultPiboPluginRegistry);
+test("capability host projects Core resources and installed package capabilities without retired aliases", async (t) => {
+	const registry = await startProductRegistry(t, createDefaultPiboCapabilityHost);
 	const catalog = registry.getCapabilityCatalog();
 
-	assert.deepEqual(registry.getProfileNames(), ["base", "codex-native", "orp"]);
+	assert.deepEqual(registry.getProfileNames(), ["base", "pibo-gateway-producer", "codex-native", "orp"]);
 	assert.deepEqual(registry.createProfile("base").builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.ok(catalog.nativeTools.some((tool) => (
 		tool.name === "web_search" && tool.pluginId === "pibo.web-search" && tool.hasDefinition === false
@@ -55,7 +56,7 @@ test("default plugin registry builds core and installed package capabilities wit
 	assert.ok(catalog.nativeTools.some((tool) => (
 		tool.name === "codex_image_generation" && tool.pluginId === "pibo.codex-compat" && tool.hasDefinition === true
 	)));
-	assert.deepEqual(registry.getChannels().map((channel) => channel.name), []);
+	assert.deepEqual(registry.getChannels().map((channel) => channel.name), ["pibo.loop"]);
 	assert.deepEqual(
 		registry.getCapabilityCatalog().skills
 			.filter((skill) => skill.kind === "builtin")
@@ -188,11 +189,16 @@ test("default plugin registry builds core and installed package capabilities wit
 			description: "Remove stored credentials for a provider on the active runtime.",
 			slashCommands: [],
 		},
+		{
+			name: "goal",
+			description: "Create or update the session Goal Loop. Use /goal pause or /goal resume to control it.",
+			slashCommands: ["goal"],
+		},
 	]);
 });
 
-test("gateway producer profile composes with the installed gateway tool package only through its parked registry", async (t) => {
-	const registry = await startProductRegistry(t, createGatewayProducerPiboPluginRegistry);
+test("gateway producer profile composes from the installed gateway tool package", async (t) => {
+	const registry = await startProductRegistry(t, createDefaultPiboCapabilityHost);
 	const gatewayProducer = registry.createProfile("gateway-producer");
 
 	assert.equal(gatewayProducer.profileName, "pibo-gateway-producer");
@@ -227,7 +233,7 @@ test("capability catalog exposes installed pibo tool context hints", async () =>
 		assert.match(graphifyContext?.snippet ?? "", /GRAPH_REPORT\.md/);
 		assert.match(ralphContext?.snippet ?? "", /pibo ralph templates/);
 		assert.match(ralphContext?.snippet ?? "", /pibo tools guide ralph ralph/);
-		assert.equal(Object.hasOwn(createDefaultPiboPluginRegistry().getCapabilityCatalog(), "piboTools"), false);
+		assert.equal(Object.hasOwn(createDefaultPiboCapabilityHost().getCapabilityCatalog(), "piboTools"), false);
 
 		rmSync(paths.rootDir, { recursive: true, force: true });
 		rmSync(graphifyPaths.rootDir, { recursive: true, force: true });
@@ -235,7 +241,7 @@ test("capability catalog exposes installed pibo tool context hints", async () =>
 });
 
 test("capability catalog keeps user skills separate from plugin skills", () => {
-	const registry = createDefaultPiboPluginRegistry();
+	const registry = createDefaultPiboCapabilityHost();
 
 	registry.registerSkill({ name: "personal-helper", path: "/tmp/personal-helper/SKILL.md", kind: "user" });
 
@@ -253,9 +259,9 @@ test("capability catalog keeps user skills separate from plugin skills", () => {
 
 test("plugins can register profiles, gateway actions, and event listeners", async () => {
 	const observed = [];
-	const registry = PiboPluginRegistry.create({
-		plugins: [
-			definePiboPlugin({
+	const registry = createTestCapabilityHost({
+		setups: [
+			defineTestCapabilitySetup({
 				id: "test.plugin",
 				name: "Test Plugin",
 				register(api) {
@@ -356,7 +362,7 @@ test("plugins can register profiles, gateway actions, and event listeners", asyn
 
 test("product events add metadata, preserve explicit fields, and isolate listeners", () => {
 	const observed = [];
-	const registry = PiboPluginRegistry.create();
+	const registry = createTestCapabilityHost();
 	const unsubscribeFirst = registry.onProductEvent((event) => {
 		observed.push({ listener: "first", id: event.id, type: event.type });
 	});
@@ -400,12 +406,12 @@ test("product events add metadata, preserve explicit fields, and isolate listene
 	assert.deepEqual(registry.getEventErrors(), ["product listener failed", "product listener failed"]);
 });
 
-test("plugin registry rejects duplicate registrations", () => {
+test("capability host rejects duplicate Core registrations", () => {
 	assert.throws(
 		() =>
-			PiboPluginRegistry.create({
-				plugins: [
-					definePiboPlugin({
+			createTestCapabilityHost({
+				setups: [
+					defineTestCapabilitySetup({
 						id: "duplicate",
 						register(api) {
 							api.registerTool({ name: "same_tool" });
@@ -419,9 +425,9 @@ test("plugin registry rejects duplicate registrations", () => {
 
 	assert.throws(
 		() =>
-			PiboPluginRegistry.create({
-				plugins: [
-					definePiboPlugin({
+			createTestCapabilityHost({
+				setups: [
+					defineTestCapabilitySetup({
 						id: "duplicate-slash",
 						register(api) {
 							api.registerGatewayAction({
@@ -443,9 +449,9 @@ test("plugin registry rejects duplicate registrations", () => {
 
 	assert.throws(
 		() =>
-			PiboPluginRegistry.create({
-				plugins: [
-					definePiboPlugin({
+			createTestCapabilityHost({
+				setups: [
+					defineTestCapabilitySetup({
 						id: "duplicate-auth",
 						register(api) {
 							const service = {
@@ -468,9 +474,9 @@ test("plugin registry rejects duplicate registrations", () => {
 
 	assert.throws(
 		() =>
-			PiboPluginRegistry.create({
-				plugins: [
-					definePiboPlugin({
+			createTestCapabilityHost({
+				setups: [
+					defineTestCapabilitySetup({
 						id: "web-route-conflict",
 						register(api) {
 							api.registerWebApp({

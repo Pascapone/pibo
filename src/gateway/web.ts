@@ -1,7 +1,7 @@
 import { CHAT_WEB_APP_NAME, type ChatWebAppOptions } from "../apps/chat/web-app.js";
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import type { ContextFilesPluginOptions } from "../plugins/context-files.js";
-import { PiboPluginRegistry } from "../plugins/registry.js";
+import { PiboCapabilityHost } from "../core/capability-host.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
 import { loadPiboConfig } from "../config/config.js";
 import { PiboGatewayServer, resolveGatewayResourceReaperOptions, type GatewayServerOptions } from "./server.js";
@@ -194,12 +194,12 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 	let server: PiboGatewayServer;
 	try {
 		resolvedOptions = resolveWebGatewayServerOptions(options);
-		const pluginRegistry = resolvedOptions.pluginRegistry ?? PiboPluginRegistry.create();
+		const capabilityHost = resolvedOptions.capabilityHost ?? PiboCapabilityHost.create();
 		const useDevAuth = resolveWebGatewayAuthMode(resolvedOptions) === "dev-auth";
 		server = new PiboGatewayServer({
 			...resolvedOptions,
 			authoritativeRuntime: resolvedOptions.authoritativeRuntime ?? true,
-			pluginRegistry,
+			capabilityHost,
 			resourceReaper: resolveGatewayResourceReaperOptions(resolvedOptions),
 			loopStorePath: resolvedOptions.chat?.ralphStorePath,
 			dataStorePath: resolvedOptions.chat?.dataStorePath,

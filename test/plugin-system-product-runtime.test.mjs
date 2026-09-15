@@ -6,12 +6,12 @@ import { tmpdir } from 'node:os';
 import { PiboDataStore } from '../dist/data/pibo-store.js';
 import { PluginHost } from '../dist/plugins/host.js';
 import { PluginManager } from '../dist/plugins/manager.js';
-import { PiboPluginRegistry } from '../dist/plugins/registry.js';
+import { PiboCapabilityHost } from '../dist/core/capability-host.js';
 import { createAgentPluginSelection } from '../dist/plugins/selection.js';
 import { InitialSessionContext } from '../dist/core/profiles.js';
 import { profileFromPluginPlan } from '../dist/agent-runtime/plugin-plan.js';
 import { startPluginProductRuntime } from '../dist/plugins/product-runtime.js';
-import { builtinProfilesPackageManifest, productUiPackageManifest } from '../dist/plugins/default-packages.js';
+import { builtinProfilesPackageManifest } from '../dist/plugins/default-packages.js';
 import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PIBO_USER_RESOURCES_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE } from '../dist/plugins/product-services.js';
 import { WebAnnotationStore } from '../dist/web-annotations/index.js';
 
@@ -30,17 +30,22 @@ async function stagedInstallation(t, data, root) {
 async function stagedLegacyProductUi(data, artifactRoot, { enabled = true } = {}) {
   const source = join(artifactRoot, 'default-sources', 'pibo.product-ui', '1.0.0');
   await mkdir(source, { recursive: true });
-  const current = productUiPackageManifest();
+  const legacyView = (id, title, exportName) => ({
+    id, kind: 'view', title, scope: 'app', required: true, defaultEnabled: true, schemaVersion: 1,
+    context: { kind: 'none', reason: 'legacy product view' },
+    view: { title, exportName, presentation: 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, stateSchema: { type: 'object', additionalProperties: true } },
+  });
   const manifest = {
-    ...current,
-    contributions: [
-      ...current.contributions,
-      { id: 'agent-designer', kind: 'view', title: 'Agent Designer', scope: 'app', required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'legacy product view' }, view: { title: 'Agent Designer', exportName: 'AgentDesignerView', presentation: 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, stateSchema: { type: 'object', additionalProperties: true } } },
-      { id: 'settings', kind: 'view', title: 'Settings', scope: 'app', required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'legacy product view' }, view: { title: 'Settings', exportName: 'GlobalSettingsView', presentation: 'workspace', instance: 'singleton', mount: 'unmount', stateSchemaVersion: 1, stateSchema: { type: 'object', additionalProperties: true }, subviews: [{ id: 'general', title: 'General', purpose: 'content' }] } },
-    ],
+    schemaVersion: 1,
+    id: 'pibo.product-ui',
+    name: 'Legacy Pibo Product Views',
+    version: '1.0.0',
+    sdk: '^1.0.0',
+    entrypoints: { backend: 'backend.mjs', browser: 'browser.mjs' },
+    contributions: [legacyView('workflows', 'Workflows', 'WorkflowsView'), legacyView('cron', 'Cron', 'CronView'), legacyView('loops', 'Loops', 'LoopsView'), legacyView('agent-designer', 'Agent Designer', 'AgentDesignerView'), { ...legacyView('settings', 'Settings', 'GlobalSettingsView'), view: { ...legacyView('settings', 'Settings', 'GlobalSettingsView').view, subviews: [{ id: 'general', title: 'General', purpose: 'content' }] } }],
   };
   await writeFile(join(source, 'pibo.plugin.json'), JSON.stringify(manifest));
-  await writeFile(join(source, 'backend.mjs'), 'export { setupProductUi as setup } from "@pasko70/pibo/plugin-builtin/product-ui";\n');
+  await writeFile(join(source, 'backend.mjs'), 'export function setup(context) { context.register("settings", {}); }\n');
   await writeFile(join(source, 'browser.mjs'), 'export { AgentDesignerView, GlobalSettingsView, WorkflowsView, CronView, LoopsView } from "/apps/chat/assets/pibo-builtin-plugin.js?v=1.0.0";\n');
   const manager = new PluginManager({ store: data.plugins, artifactRoot });
   await manager.install({ kind: 'local', path: source }, { expectedRevision: 0 });
@@ -67,12 +72,13 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.ok(annotations.artifactPath);
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/web_annotations_list').contribution.kind, 'tool');
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/annotations').contribution.view.exportName, 'WebAnnotationsView');
-  for (const pluginId of ['pibo.core', 'pibo.preview', 'pibo.cron', 'pibo.workflows', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp']) {
+  assert.equal(data.plugins.getInstallation('pibo.core'), undefined, 'Core capabilities are host-owned, not a plugin installation');
+  for (const pluginId of ['pibo.preview', 'pibo.cron', 'pibo.workflows', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp']) {
     const installation = data.plugins.getInstallation(pluginId);
     assert.equal(installation.state, 'active', `${pluginId} should be an ordinary active installation`);
     assert.equal(installation.source.kind, 'local');
   }
-  const projection = PiboPluginRegistry.create({ host });
+  const projection = PiboCapabilityHost.create({ host });
   assert.deepEqual(projection.getAgentRuntimeInstanceIds().sort(), ['codex-native', 'omp-native', 'pi']);
   assert.deepEqual(projection.getProfileNames(), ['base', 'pibo-gateway-producer', 'codex-native', 'orp']);
   assert.ok(projection.getWebApps().some((app) => app.name === 'web-annotations'));
@@ -130,7 +136,7 @@ test('Core exposes auth, base Web, Chat, and user resources with zero plugin ins
     },
   });
   t.after(() => product.dispose());
-  const registry = PiboPluginRegistry.create({ host });
+  const registry = PiboCapabilityHost.create({ host });
   assert.deepEqual(data.plugins.listInstallations(), []);
   assert.equal(registry.getAuthService()?.name, 'dev-auth');
   assert.ok(registry.getChannels().some((channel) => channel.name === 'web-host'));
@@ -150,7 +156,7 @@ test('user resources are Core-owned without an installation and support dynamic 
   resources.upsertSkill({ name: 'skill-creator', path: join(root, 'shadow.md'), enabled: true, kind: 'user' });
   resources.upsertContextFile({ key: 'fixture-context', label: 'Fixture context', path: join(root, 'context.md') });
   resources.upsertProfile({ name: 'fixture-profile', aliases: ['fixture-alias'], create: () => new InitialSessionContext({ profileName: 'fixture-profile' }) });
-  const projection = PiboPluginRegistry.create({ host });
+  const projection = PiboCapabilityHost.create({ host });
   assert.equal(projection.getCapabilityCatalog().skills.find((skill) => skill.name === 'fixture-skill')?.kind, 'user');
   assert.equal(projection.getCapabilityCatalog().skills.find((skill) => skill.name === 'skill-creator')?.kind, 'builtin');
   assert.equal(projection.getCapabilityCatalog().contextFiles.some((file) => file.key === 'fixture-context'), true);
@@ -162,7 +168,7 @@ test('user resources are Core-owned without an installation and support dynamic 
   assert.equal(host.inspect().state, 'idle');
 });
 
-test('split defaults preserve an active legacy Product UI installation for versioned migration', async t => {
+test('normal startup rejects an active legacy Product UI installation until prepared cutover', async t => {
   const root = await mkdtemp(join(tmpdir(), 'plugin-product-default-upgrade-')); t.after(() => rm(root, { recursive: true, force: true }));
   const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
   const artifactRoot = join(root, 'artifacts');
@@ -170,18 +176,14 @@ test('split defaults preserve an active legacy Product UI installation for versi
   assert.ok(legacy.manifest.contributions.some((contribution) => contribution.id === 'settings'));
 
   const host = new PluginHost();
-  const product = await startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [], includeWebProduct: true });
-  t.after(() => product.dispose());
-
+  await assert.rejects(startPluginProductRuntime({ host, data, artifactRoot, collectConsumers: async () => [], includeWebProduct: true }), /require a prepared Pibo 4 cutover/);
   const retained = data.plugins.getInstallation('pibo.product-ui');
   assert.equal(retained.revision, legacy.revision);
   assert.equal(retained.state, 'active');
   assert.equal(retained.enabled, true);
   assert.equal(retained.manifest.contributions.some((contribution) => contribution.id === 'settings'), true);
-  assert.equal(host.contributions.get('contribution', 'pibo.product-ui/settings').installation.revision, legacy.revision);
-  assert.equal(data.plugins.getInstallation('pibo.workflows').state, 'active');
-  assert.equal(data.plugins.getInstallation('pibo.cron').state, 'active');
-  assert.equal(data.plugins.getInstallation('pibo.preview').state, 'active');
+  assert.equal(host.inspect().state, 'idle');
+  assert.equal(data.plugins.getInstallation('pibo.workflows'), undefined);
 });
 
 test('disabled managed defaults remain pinned and are not silently re-enabled or upgraded', async t => {
@@ -230,7 +232,8 @@ test('AP11 Web Annotations survives failed activation and exact reinstall withou
   await mkdir(brokenSource);
   await writeFile(join(brokenSource, 'pibo.plugin.json'), JSON.stringify({ ...original.manifest, version: '1.0.1' }));
   await writeFile(join(brokenSource, 'backend.mjs'), `export function setup(context) { context.register('web_annotations_list', { name: 'web_annotations_list', description: 'partial fixture' }); throw new Error('AP11 activation fixture'); }\n`);
-  await writeFile(join(brokenSource, 'browser.mjs'), 'export const WebAnnotationsView = () => null; export const BuildContextView = () => null;\n');
+  await mkdir(join(brokenSource, 'browser'));
+  await writeFile(join(brokenSource, 'browser/index.js'), 'export const WebAnnotationsView = () => null; export const BuildContextView = () => null;\n');
   await product.manager.install({ kind: 'local', path: brokenSource }, { expectedRevision: original.stateRevision });
   const pending = data.plugins.getInstallation('pibo.web-annotations');
   assert.equal(pending.state, 'pending-activation');

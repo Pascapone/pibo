@@ -1,3 +1,4 @@
+import { createTestCapabilityHost, defineTestCapabilitySetup } from "./helpers/capability-host.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Type } from 'typebox';
@@ -14,7 +15,7 @@ import { createFakeAgentRuntimeDriver } from '../dist/agent-runtime/testing/fake
 import { pluginOnlyPiServicesOptions, pluginOnlyPiSettings } from '../dist/agent-runtimes/pi/plugin-discovery.js';
 import { createAgentSessionServices, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { fixture } from './plugin-system-management-helpers.mjs';
-import { PiboPluginRegistry, definePiboPlugin } from '../dist/plugins/registry.js';
+import { PiboCapabilityHost } from '../dist/core/capability-host.js';
 import { PiboSessionRouter } from '../dist/core/session-router.js';
 import { InMemoryPiboSessionStore } from '../dist/sessions/store.js';
 import { createMinimalAgentRuntimeCapabilities } from '../dist/agent-runtime/capabilities.js';
@@ -122,7 +123,7 @@ test('real router reserves before async adapter setup, pins active config, captu
   const capabilities = createMinimalAgentRuntimeCapabilities(); capabilities.tools.piboManaged = { support: 'direct' }; capabilities.context = { support: 'direct' };
   const driver = createFakeAgentRuntimeDriver({ adapterId: 'runtime-test', capabilities });
   let profileSelectionRevision = 1;
-  const registry = PiboPluginRegistry.create({ host, plugins: [definePiboPlugin({ id: 'test.runtime-provider', register(api) {
+  const registry = createTestCapabilityHost({ host, setups: [defineTestCapabilitySetup({ id: 'test.runtime-provider', register(api) {
     api.registerAgentRuntimeDriver(driver); api.registerAgentRuntimeInstance({ id: 'runtime-test', adapterId: 'runtime-test' });
     api.registerProfile({ name: 'runtime-test-profile', create() { return new InitialSessionContext({ profileName: 'runtime-test-profile', runtimeInstanceId: 'runtime-test', pluginSelection: selection, pluginSelectionRevision: profileSelectionRevision, builtinTools: 'disabled', autoContextFiles: false, toolPackages: { goalControl: false } }); } });
   } })] });
@@ -141,7 +142,7 @@ test('real router reserves before async adapter setup, pins active config, captu
   const historicalPlan = resolveRuntimePluginPlan({ profile: historicalProfile, runtime: { adapterId: 'runtime-test', instanceId: 'runtime-test', capabilities }, catalog: { schemaVersion: 1, revision: 1, installations: [installation] }, kind: 'generation', piboSessionId: 'ps_router_plugin', generation: 'g_historical' });
   f.store.putGenerationSnapshot({ piboSessionId: 'ps_router_plugin', generationId: 'g_historical', plan: historicalPlan, createdAt: '2026-09-12T00:00:00Z' });
   profileSelectionRevision = 2;
-  const router = new PiboSessionRouter({ pluginRegistry: registry, pluginRuntime: coordinator, sessionStore: store, persistSession: false });
+  const router = new PiboSessionRouter({ capabilityHost: registry, pluginRuntime: coordinator, sessionStore: store, persistSession: false });
   try {
     const idleCurrent = await router.readPluginSessionPlan('ps_router_plugin', 'current');
     const historicalActual = await router.readPluginSessionPlan('ps_router_plugin', 'actual');
