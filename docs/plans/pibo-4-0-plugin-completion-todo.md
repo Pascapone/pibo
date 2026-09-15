@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T09:26:18Z"
+  at: "2026-09-15T11:29:56Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -33,11 +33,11 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build, Feature-/UI-/Cachetests und 20 unabhängig packbare Artefakte | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F05 – Runtimepakete und Runtime Requests abschließen | abgeschlossen | getrennte Runtimepakete; unveränderte Pi→Codex- und dauerhafte Codex-Binding-Parität im F08-Lauf | lokal akzeptiert in F10 | reale Provider-/Pibo2-Evidenz bleibt separat |
-| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Commit `51bcfcef`; ausführbarer pluginfreier Core ohne Erweiterungsskills, ausführbare Standard-App mit genau 20 Plugins, Offline- und Candidate-Installer geprüft | lokal akzeptiert in F10 | Publish bleibt separate Aktion |
+| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Commit `bb010a72`; content-addressed Assembly mit Core, Cutover, Standard und 20 Plugins; Offlineinstallation geprüft | lokal akzeptiert in F10 | Publish bleibt separate Aktion |
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | lokal akzeptiert in F10 | Pibo2-Upgrade bleibt separat |
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
-| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `51bcfcef`; serielle Vollsuite, ausführbarer Offline-Core und Standard, Gateway 5/5 sowie aktuelle headful Standard-Evidenz | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
+| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `bb010a72`; real gepackter Standard-Cutover mit DB-/Session-/Chat-Retention und Restart, Vollsuite und Gateway grün | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
 
 # Erledigter Einstieg
 
@@ -199,10 +199,11 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 | N-024 | Der bisherige Root-`npm pack`-Test verlangte Featuremodule im Paket, obwohl `@pasko70/pibo` als Minimal-Core festgelegt ist; der Releasewrapper publizierte tatsächlich den breiten Root. | F06/F10 | behoben in `746b990c`: Root ist privat, Release publiziert nur Core/Cutover/20 Plugins/Standard aus getrennten Verzeichnissen, und der hermetische Test verbietet nacktes `npm publish` |
 | N-025 | Der generierte `@pasko70/pibo`-Tarball enthielt weder `bin/pibo` noch `dist/bin/pibo.js`, Gateway-/Chat-Web-Delivery oder einen echten App-Start. Der bisherige Clean-Test importierte nur `startPluginProductRuntime`; damit war die Aussage einer installierbaren Minimal-Core-App nicht belegt. | F06/F10 | behoben in `8ad776f1`; ausführbarer runtimefreier Core, leere diagnostische Plan-/Preview-Pfade, physische Closure, Offline-Installation aller 23 Tarballs und Candidate-Installer geprüft |
 | N-026 | `@pasko70/pibo-standard` exportierte nur `package-set.json`, während der einzige ausführbare Core-Einstiegspunkt stets `installDefaultPlugins: false` verwendete. Zugleich meldete der pluginfreie Core Standard-/Runtime-/Loop-/Docker-Skills als eigene eingebaute Ressourcen. Die erste Vollsuite zeigte zusätzlich eine User-Skill-Doppelregistrierung und einen Signal-/Persistenz-Wettlauf. | F06/F10 | behoben in `51bcfcef`: generischer Kompositionsbootstrap, selbständige Standard-App mit 20 gebündelten Plugins, plugin-eigene Skillpfade, verzögerte User-Resource-Materialisierung und Lesezeitpunkt-basierter Fehlerstatus; Vollsuite und Gateway grün |
+| N-027 | Der reale Pibo2-Stagingpfad konnte einen vorbereiteten `cutoverPlanPath` nicht über die gepackte Standard-CLI/Gateway-Komposition ausführen; Zielpfade waren lokal, der Candidate enthielt keinen Prepare-Runner und negative Auswahlzustände wären vom Standardbootstrap überschrieben worden. | F06/F07/F10 | behoben in `bb010a72141ea32059e992c8e9fad54fe111bd3e`: 23-Artefakt-Assembly, ausgelieferter Cutover-Runner, checksum-gebundene Zielauflösung, explizites `--cutover-plan`, Zustandserhalt, Receipt und idempotenter Restart mit retained Session-/Chatdaten |
 
 # Abnahmestand
 
-F00 bis F10 sind für den lokalen Code-/Paketkandidaten `51bcfcef4653328823e79a0f2386b786fcf003d9` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
+F00 bis F10 sind für den lokalen Code-/Paketkandidaten `bb010a72141ea32059e992c8e9fad54fe111bd3e` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
 
 # Aktivität und Entscheidungen
 
@@ -212,6 +213,7 @@ F00 bis F10 sind für den lokalen Code-/Paketkandidaten `51bcfcef4653328823e79a0
 - F09 abgeschlossen: aktuelle Spezifikationen und Pläne auf den F08-Commit abgeglichen, externe Entwicklung und Betrieb dokumentiert, OMP-Grenze präzisiert und `examples/plugins/hello-pibo` im Worker gebaut, importiert, inspiziert, installiert, aktiviert und gepackt. Strikte OKF-Prüfung und Dokumentationstests sind grün.
 - N-025 geschlossen und F06/F10 erneut lokal abgeschlossen: Kandidat `8ad776f1` liefert den ausführbaren Minimal-Core mit CLI, Gateway, Chat, Workern, fünf Core-Ansichten, Profil `core`, `pibo.runtime-unassigned`, leeren diagnostischen Pluginplänen und physisch ausgeschlossenen Runtime-/Featureimplementierungen.
 - N-026 geschlossen: Kandidat `51bcfcef4653328823e79a0f2386b786fcf003d9` liefert `@pasko70/pibo-standard` als einzelne offline installierbare App mit `pibo`/`pibo-standard`, Core und genau 20 gebündelten Pluginpaketen. Erststart und Wiederstart aktivieren 20/20 Pakete; der Minimal-Core meldet null Skills, Standard-Skills besitzen `pibo.builtin-profiles` und Web Annotations seinen Fachowner. User Resources werden erst nach Pluginaktivierung materialisiert, und Signalfehler bleiben bis zur echten Lesebestätigung sichtbar. Pakettests 10/10, Ursachen-Suiten 31/31, serielle Vollsuite 3.046 Tests mit 3.036 Pässen, 0 Fehlern und 10 Skips, Gatewayintegration 5/5 sowie headful Mobile/Desktop mit fehlerfreien CDP-Neuladungen sind grün. Pibo2, reale All-Runtime-Modellabnahme, Push, PR, Deployment, Merge, Release, Publish und Controller-Gateway-Mutation bleiben ausgeschlossen.
+- N-027 geschlossen: Kandidat `bb010a72141ea32059e992c8e9fad54fe111bd3e` liefert das 38.289.291-Byte-Candidate-Assembly mit SHA-256 `359a5a2d4f1b6e31b0d02c4914a645ec2aaf354c1f9f57994030c5e82616d6c4`. Der reale gepackte CLI/Gateway-Test bereitet mit dem enthaltenen `pibo4-cutover` vor, startet Standard mit dem Plan, erhält 17 aktive, zwei deaktivierte und ein deinstalliertes Ziel sowie vier ersetzte Legacy-Aggregate, Receipt, Session und Chatnachricht und bestätigt denselben Zustand beim Restart. Vollsuite: 3.047/3.037/0/10; Gateway: 5/5.
 
 ## 2026-09-14
 
