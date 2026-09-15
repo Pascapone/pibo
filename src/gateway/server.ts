@@ -33,6 +33,7 @@ import {
 import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 import { piboHomePath } from "../core/pibo-home.js";
 import { provideCoreWebProduct } from "../core/web-product.js";
+import type { Pibo4CutoverArtifactBinding } from "../plugins/cutover-contract.js";
 import type { PluginSourceInput } from "../plugins/sources.js";
 
 export type GatewayServerOptions = {
@@ -64,6 +65,11 @@ export type GatewayServerOptions = {
 	installDefaultPlugins?: boolean;
 	/** Generic executable-composition sources installed and activated before persisted plugins are restored. */
 	bootstrapPluginSources?: readonly PluginSourceInput[];
+	requirePreparedCutover?: boolean;
+	cutoverPlanPath?: string;
+	cutoverArtifactBindings?: readonly Pibo4CutoverArtifactBinding[];
+	verifyCutoverSourceArtifact?: boolean;
+	currentCoreVersion?: string;
 };
 
 type GatewayQueuedFrame = {
@@ -346,6 +352,11 @@ export class PiboGatewayServer {
 			includeWebProduct: this.options.includeWebProduct,
 			installDefaultPlugins: this.options.installDefaultPlugins,
 			bootstrapPluginSources: this.options.bootstrapPluginSources,
+			requirePreparedCutover: this.options.requirePreparedCutover,
+			cutoverPlanPath: this.options.cutoverPlanPath,
+			cutoverArtifactBindings: this.options.cutoverArtifactBindings,
+			verifyCutoverSourceArtifact: this.options.verifyCutoverSourceArtifact,
+			currentCoreVersion: this.options.currentCoreVersion,
 			provideWebProduct: provideCoreWebProduct,
 			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
 			readSessionPlan: (piboSessionId, kind) => {

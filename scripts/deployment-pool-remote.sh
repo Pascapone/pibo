@@ -45,13 +45,13 @@ case "$command_name" in
 		tmp_dir="$(mktemp -d)"
 		trap 'rm -rf "$tmp_dir"' EXIT
 		cd "$root_dir"
-		npm run pibo4:packages >/dev/null
-		npm pack --ignore-scripts --pack-destination "$tmp_dir" ./dist/pibo4-standard-package >/dev/null
+		commit="$(git rev-parse HEAD)"
+		PIBO_SOURCE_COMMIT="$commit" npm run pibo4:packages >/dev/null
+		npm pack --ignore-scripts --pack-destination "$tmp_dir" ./dist/pibo4-candidate-assembly >/dev/null
 		mapfile -t archives < <(find "$tmp_dir" -maxdepth 1 -type f -name '*.tgz' -print)
 		[[ "${#archives[@]}" -eq 1 ]] || { echo "npm pack did not produce exactly one archive" >&2; exit 1; }
 		archive="${archives[0]}"
 		sha256="$(sha256sum "$archive" | cut -d' ' -f1)"
-		commit="$(git rev-parse HEAD)"
 		remote_archive="/root/.pibo/compute-pool/inbox/${sha256}.tgz"
 		ssh -o BatchMode=yes "$host" "install -d -m 0700 /root/.pibo/compute-pool/inbox"
 		if ! ssh -o BatchMode=yes "$host" "test -f '$remote_archive' && test \"\$(sha256sum '$remote_archive' | cut -d' ' -f1)\" = '$sha256'"; then

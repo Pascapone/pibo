@@ -13,11 +13,11 @@ await mkdir(packageRoot, { recursive: true });
 await mkdir(generatedRoot, { recursive: true });
 
 const entries = {
-	index: ["src/plugins/sdk.ts", "src/plugins/host.ts", "src/plugins/runtime.ts", "src/plugins/product-runtime.ts"],
+	index: ["src/plugins/sdk.ts", "src/plugins/host.ts", "src/plugins/runtime.ts", "src/plugins/cutover-contract.ts", "src/plugins/product-runtime.ts"],
 	"plugin-sdk": ["src/plugins/sdk.ts"],
 	"plugin-host": ["src/plugins/host.ts"],
 	"plugin-runtime": ["src/plugins/runtime.ts"],
-	"plugin-cutover": ["src/plugins/cutover.ts"],
+	"plugin-cutover": ["src/plugins/cutover-contract.ts"],
 	"product-runtime": ["src/plugins/product-runtime.ts"],
 };
 for (const [name, sources] of Object.entries(entries)) {
@@ -130,10 +130,12 @@ async function copyDeclaration(relativePath) {
 		if (!child.startsWith("../") && child.endsWith(".d.ts")) await copyDeclaration(child);
 	}
 }
-for (const entry of ["plugins/sdk.d.ts", "plugins/host.d.ts", "plugins/runtime.d.ts", "plugins/cutover.d.ts"]) await copyDeclaration(entry);
-await writeFile(join(declarationTarget, "product-runtime.d.ts"), `import type { PluginHost } from "./plugins/host.js";\nexport type PluginSourceInput = { kind: "local"; path: string } | { kind: "package"; path: string; name: string; version: string; integrity?: string };\nexport declare function startPluginProductRuntime(options: { host: PluginHost; artifactRoot?: string; collectConsumers?: (...args: any[]) => any; readSessionPlan?: (...args: any[]) => any; productOptions?: Record<string, unknown>; installDefaultPlugins?: boolean; bootstrapPluginSources?: readonly PluginSourceInput[]; includeWebProduct?: boolean; requirePreparedCutover?: boolean; cutoverPlanPath?: string; currentCoreVersion?: string }): Promise<{ manager: any; runtime: any; data: any; dispose(): Promise<void> }>;\n`);
-await writeFile(join(declarationTarget, "executable-cli.d.ts"), `import type { PluginSourceInput } from "./product-runtime.js";\nexport type PiboExecutableComposition = { productName?: string; gatewayDescription?: string; defaultProfile?: string; registerRuntimeUnassignedProfile?: boolean; bootstrapPluginSources?: readonly PluginSourceInput[] };\nexport declare function runPiboCoreCli(argv?: string[], composition?: PiboExecutableComposition): Promise<void>;\n`);
-await writeFile(join(declarationTarget, "index.d.ts"), `export * from "./plugins/sdk.js";\nexport * from "./plugins/host.js";\nexport * from "./plugins/runtime.js";\nexport * from "./plugins/cutover.js";\nexport * from "./product-runtime.js";\n`);
+for (const entry of ["plugins/sdk.d.ts", "plugins/host.d.ts", "plugins/runtime.d.ts"]) await copyDeclaration(entry);
+await mkdir(join(declarationTarget, "plugins"), { recursive: true });
+await writeFile(join(declarationTarget, "plugins/cutover-contract.d.ts"), `export type Pibo4LegacyPackageState = "active" | "disabled" | "uninstalled";\nexport interface Pibo4LegacyPackageSelection { pluginId: string; state: Pibo4LegacyPackageState; contributions?: Record<string, boolean> }\nexport interface Pibo4LegacyCutoverSnapshot { schemaVersion: 1; plugins: Pibo4LegacyPackageSelection[] }\nexport interface Pibo4PackedCoordinate { package: string; version: string; path: string; contentHash?: string }\nexport interface Pibo4CutoverArtifactBinding extends Pibo4PackedCoordinate { contentHash: string }\nexport interface Pibo4CutoverTarget extends Pibo4PackedCoordinate { pluginId: string; state: Pibo4LegacyPackageState; legacyOwners: string[]; contentHash: string }\nexport interface Pibo4CutoverPlan { schemaVersion: 1; id: string; state: "prepared"; source: Pibo4PackedCoordinate & { package: "@pasko70/pibo"; contentHash: string }; sourceSnapshot: Pibo4LegacyCutoverSnapshot; sourceSnapshotHash: string; targetCore: Pibo4PackedCoordinate & { package: "@pasko70/pibo"; contentHash: string }; targets: Pibo4CutoverTarget[]; supersededOwners: string[]; planHash: string }\nexport declare function verifyPreparedPibo4Cutover(planPath: string, options?: { targetArtifacts?: readonly Pibo4CutoverArtifactBinding[]; verifySourceArtifact?: boolean }): Promise<Pibo4CutoverPlan>;\nexport declare function writePibo4CutoverReceipt(planPath: string, plan: Pibo4CutoverPlan): Promise<string>;\n`);
+await writeFile(join(declarationTarget, "product-runtime.d.ts"), `import type { PluginHost } from "./plugins/host.js";\nimport type { Pibo4CutoverArtifactBinding } from "./plugins/cutover-contract.js";\nexport type PluginSourceInput = { kind: "local"; path: string } | { kind: "package"; path: string; name: string; version: string; integrity?: string };\nexport declare function startPluginProductRuntime(options: { host: PluginHost; artifactRoot?: string; collectConsumers?: (...args: any[]) => any; readSessionPlan?: (...args: any[]) => any; productOptions?: Record<string, unknown>; installDefaultPlugins?: boolean; bootstrapPluginSources?: readonly PluginSourceInput[]; includeWebProduct?: boolean; requirePreparedCutover?: boolean; cutoverPlanPath?: string; cutoverArtifactBindings?: readonly Pibo4CutoverArtifactBinding[]; verifyCutoverSourceArtifact?: boolean; currentCoreVersion?: string }): Promise<{ manager: any; runtime: any; data: any; dispose(): Promise<void> }>;\n`);
+await writeFile(join(declarationTarget, "executable-cli.d.ts"), `import type { Pibo4CutoverArtifactBinding } from "./plugins/cutover-contract.js";\nimport type { PluginSourceInput } from "./product-runtime.js";\nexport type PiboExecutableComposition = { productName?: string; gatewayDescription?: string; defaultProfile?: string; registerRuntimeUnassignedProfile?: boolean; bootstrapPluginSources?: readonly PluginSourceInput[]; cutoverArtifactBindings?: readonly Pibo4CutoverArtifactBinding[]; verifyCutoverSourceArtifact?: boolean };\nexport declare function runPiboCoreCli(argv?: string[], composition?: PiboExecutableComposition): Promise<void>;\n`);
+await writeFile(join(declarationTarget, "index.d.ts"), `export * from "./plugins/sdk.js";\nexport * from "./plugins/host.js";\nexport * from "./plugins/runtime.js";\nexport * from "./plugins/cutover-contract.js";\nexport * from "./product-runtime.js";\n`);
 
 const pkg = {
 	name: "@pasko70/pibo",
@@ -147,7 +149,7 @@ const pkg = {
 		"./plugin-sdk": { types: "./types/plugins/sdk.d.ts", import: "./plugin-sdk.js" },
 		"./plugin-host": { types: "./types/plugins/host.d.ts", import: "./plugin-host.js" },
 		"./plugin-runtime": { types: "./types/plugins/runtime.d.ts", import: "./plugin-runtime.js" },
-		"./plugin-cutover": { types: "./types/plugins/cutover.d.ts", import: "./plugin-cutover.js" },
+		"./plugin-cutover": { types: "./types/plugins/cutover-contract.d.ts", import: "./plugin-cutover.js" },
 		"./product-runtime": { types: "./types/product-runtime.d.ts", import: "./product-runtime.js" },
 		"./executable-cli": { types: "./types/executable-cli.d.ts", import: "./dist/core/executable-cli.js" },
 		"./package.json": "./package.json",
@@ -160,7 +162,7 @@ await writeFile(join(packageRoot, "package.json"), `${JSON.stringify(pkg, null, 
 const cutoverRoot = resolve(root, "dist/pibo4-cutover-package");
 await rm(cutoverRoot, { recursive: true, force: true });
 await mkdir(join(cutoverRoot, "bin"), { recursive: true });
-await cp(join(packageRoot, "plugin-cutover.js"), join(cutoverRoot, "index.js"));
+await build({ entryPoints: [resolve(root, "src/plugins/cutover.ts")], outfile: join(cutoverRoot, "index.js"), bundle: true, platform: "node", format: "esm", target: "node24", packages: "bundle", sourcemap: false, legalComments: "none", logLevel: "warning" });
 await writeFile(join(cutoverRoot, "bin/pibo4-cutover.js"), `#!/usr/bin/env node\nimport { readFile } from "node:fs/promises";\nimport { resolve } from "node:path";\nimport { preparePibo4Cutover } from "../index.js";\nconst inputPath = process.argv[2];\nif (!inputPath) { console.error("Usage: pibo4-cutover <input.json>"); process.exit(2); }\nconst input = JSON.parse(await readFile(resolve(inputPath), "utf8"));\nconst plan = await preparePibo4Cutover(input);\nconsole.log(JSON.stringify({ id: plan.id, planHash: plan.planHash, outputPath: resolve(input.outputPath), targets: plan.targets.length }));\n`);
 await chmod(join(cutoverRoot, "bin/pibo4-cutover.js"), 0o755);
 await writeFile(join(cutoverRoot, "package.json"), `${JSON.stringify({ name: "@pasko70/pibo-cutover", version: releaseVersion, type: "module", main: "./index.js", bin: { "pibo4-cutover": "./bin/pibo4-cutover.js" }, exports: { ".": "./index.js", "./package.json": "./package.json" }, files: ["index.js", "bin"] }, null, 2)}\n`);

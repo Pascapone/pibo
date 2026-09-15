@@ -209,8 +209,13 @@ test("Minimal-Core physical closure excludes runtime, feature-tool, and first-pa
 	assert.equal(files.some((path) => basename(path).startsWith("first-party-subview-")), false);
 	assert.equal(files.some((path) => path.endsWith("/backend.mjs") || path.endsWith("/browser.mjs") || path.endsWith("/pibo.plugin.json")), false);
 	const executableSource = (await Promise.all(files.filter((path) => path.endsWith(".js") && !path.includes("/dist/apps/")).map((path) => readFile(path, "utf8")))).join("\n");
-	for (const token of ["PI_AGENT_RUNTIME_DRIVER", "CODEX_NATIVE_AGENT_RUNTIME_DRIVER", "OMP_AGENT_RUNTIME_DRIVER", "createPiboDelegationController", "createPiboGoalToolDefinitions", "formatPiboRunReminderMessage", "CodexBrowserSessionController", "saveCodexGeneratedImage"]) {
+	for (const token of ["PI_AGENT_RUNTIME_DRIVER", "CODEX_NATIVE_AGENT_RUNTIME_DRIVER", "OMP_AGENT_RUNTIME_DRIVER", "createPiboDelegationController", "createPiboGoalToolDefinitions", "formatPiboRunReminderMessage", "CodexBrowserSessionController", "saveCodexGeneratedImage", "preparePibo4Cutover"]) {
 		assert.equal(executableSource.includes(token), false, token);
+	}
+	const genericCompositionSource = `${await readFile(join(packageRoot, "plugin-cutover.js"), "utf8")}\n${await readFile(join(packageRoot, "product-runtime.js"), "utf8")}`;
+	const packageSet = JSON.parse(await readFile("dist/pibo4-artifacts/standard-package-set.json", "utf8"));
+	for (const identity of ["pibo.product-ui", "pibo.web-product", "pibo.user-resources", "pibo.core", ...packageSet.plugins.flatMap((entry) => [entry.package, entry.pluginId])]) {
+		assert.equal(genericCompositionSource.includes(JSON.stringify(identity)), false, identity);
 	}
 });
 
@@ -326,7 +331,7 @@ test("content-addressed Candidate installer accepts and reuses the executable St
 	assert.equal(first.reused, false);
 	assert.equal(first.packageVersion, "4.0.0-beta.1");
 	assert.equal(first.runtimePath, join(config.artifactRoot, first.sha256, "runtime"));
-	assert.equal(first.binaryPath, join(first.runtimePath, "node_modules/.bin/pibo"));
+	assert.equal(first.binaryPath, join(first.runtimePath, "node_modules/@pasko70/pibo-standard/bin/pibo.js"));
 	assert.equal(existsSync(first.binaryPath), true);
 	const version = await execFileAsync(first.binaryPath, ["--version"], { env: { ...process.env, HOME: join(root, "home"), PIBO_HOME: join(root, "home") } });
 	assert.equal(version.stdout.trim(), "4.0.0-beta.1");
@@ -336,10 +341,10 @@ test("content-addressed Candidate installer accepts and reuses the executable St
 	assert.equal(second.binaryPath, first.binaryPath);
 });
 
-test("deployment-pool artifact upload packs the generated executable Standard app rather than Core or the private repository root", async () => {
+test("deployment-pool artifact upload packs the generated Candidate assembly rather than Core, Standard alone, or the private repository root", async () => {
 	const script = await readFile("scripts/deployment-pool-remote.sh", "utf8");
 	assert.match(script, /npm run pibo4:packages/);
-	assert.match(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-standard-package/);
-	assert.doesNotMatch(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-core-package/);
+	assert.match(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-candidate-assembly/);
+	assert.doesNotMatch(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-(?:core|standard)-package/);
 	assert.doesNotMatch(script, /npm pack --pack-destination "\$tmp_dir"\s*>/);
 });

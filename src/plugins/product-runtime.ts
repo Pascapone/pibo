@@ -11,7 +11,7 @@ import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_
 import type { PluginInstallation } from "./manifest.js";
 import { prepareCoreUserResources } from "../core/user-resources.js";
 import { provideCoreCapabilities } from "../core/capabilities.js";
-import { isPibo4LegacyAggregatePluginId, pibo4LegacyAggregateOwners, verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverPlan } from "./cutover.js";
+import { verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverArtifactBinding, type Pibo4CutoverPlan } from "./cutover-contract.js";
 
 /** Product wiring exposes core services without manufacturing a plugin installation. */
 export async function startPluginProductRuntime(options: {
@@ -27,13 +27,18 @@ export async function startPluginProductRuntime(options: {
 	includeWebProduct?: boolean;
 	requirePreparedCutover?: boolean;
 	cutoverPlanPath?: string;
+	cutoverArtifactBindings?: readonly Pibo4CutoverArtifactBinding[];
+	verifyCutoverSourceArtifact?: boolean;
 	currentCoreVersion?: string;
 	provideWebProduct?: (host: PluginHost, options: NonNullable<PiboPluginProductOptions["web"]>) => () => void | Promise<void>;
 }) {
 	let cutover: Pibo4CutoverPlan | undefined;
 	if (options.requirePreparedCutover || options.cutoverPlanPath) {
 		if (!options.cutoverPlanPath) throw new Error("Pibo 4 cutover is required. Run the cutover preparation tool against the retained old package and pass cutoverPlanPath before starting Minimal-Core");
-		cutover = await verifyPreparedPibo4Cutover(options.cutoverPlanPath);
+		cutover = await verifyPreparedPibo4Cutover(options.cutoverPlanPath, {
+			targetArtifacts: options.cutoverArtifactBindings,
+			verifySourceArtifact: options.verifyCutoverSourceArtifact,
+		});
 		if (!options.currentCoreVersion || options.currentCoreVersion !== cutover.targetCore.version) throw new Error(`Prepared cutover targets @pasko70/pibo@${cutover.targetCore.version}, but the starting Minimal-Core version is ${options.currentCoreVersion ?? "unknown"}; install the exact prepared core tarball`);
 		if (options.installDefaultPlugins !== false) throw new Error("Prepared cutover requires installDefaultPlugins=false so disabled or uninstalled legacy features cannot be re-enabled by defaults");
 	}
@@ -42,13 +47,13 @@ export async function startPluginProductRuntime(options: {
 	const artifactRoot = options.artifactRoot ?? piboHomePath("plugins", "artifacts");
 	const host = options.host;
 	const initialState = host.inspect();
-	const activeLegacyInstallations = data.plugins.listInstallations().filter((installation) => isPibo4LegacyAggregatePluginId(installation.pluginId) && installation.enabled && installation.state !== "uninstalled");
+	const activeLegacyInstallations = data.plugins.listInstallations().filter((installation) => installation.source.kind === "builtin" && installation.enabled && installation.state !== "uninstalled");
 	if (activeLegacyInstallations.length && !cutover) {
 		if (ownsData) data.close();
-		throw new Error(`Legacy aggregate plugin installations require a prepared Pibo 4 cutover before startup: ${activeLegacyInstallations.map((entry) => entry.pluginId).join(", ")}. Restore the old package if necessary, run @pasko70/pibo-cutover, then retry with cutoverPlanPath`);
+		throw new Error(`Legacy built-in plugin installations require a prepared Pibo 4 cutover before startup: ${activeLegacyInstallations.map((entry) => entry.pluginId).join(", ")}. Restore the old package if necessary, run the packaged cutover preparation command, then retry with cutoverPlanPath`);
 	}
 	if (cutover) {
-		const preparedOwners = new Set(pibo4LegacyAggregateOwners(cutover));
+		const preparedOwners = new Set([...cutover.supersededOwners, ...cutover.targets.map((target) => target.pluginId)]);
 		const unpreparedOwners = activeLegacyInstallations.filter((installation) => !preparedOwners.has(installation.pluginId));
 		if (unpreparedOwners.length) {
 			if (ownsData) data.close();
@@ -106,23 +111,33 @@ export async function startPluginProductRuntime(options: {
 		if (initialState.state === "idle") await host.start({ plugins: [] });
 		if (cutover) {
 			for (const target of cutover.targets.filter((entry) => entry.state !== "active")) {
-				const existing = data.plugins.getInstallation(target.pluginId);
+				let existing = data.plugins.getInstallation(target.pluginId);
 				if (existing?.enabled || (existing && !["installed", "uninstalled"].includes(existing.state))) throw new Error(`Prepared cutover preserves ${target.pluginId} as ${target.state}, but the target store already has it enabled in ${existing.state}; disable or uninstall that target explicitly before retrying`);
+				const source = { kind: "package" as const, path: target.path, name: target.package, version: target.version };
+				const inspected = await manager.inspect(source);
+				if (inspected.manifest.id !== target.pluginId || inspected.manifest.version !== target.version) throw new Error(`Prepared artifact ${target.package}@${target.version} does not match disabled or uninstalled target ${target.pluginId}; cutover refused`);
+				if (!existing || existing.contentHash !== inspected.contentHash || (target.state === "disabled" && existing.state === "uninstalled")) {
+					const installed = await manager.install(source, { expectedRevision: existing?.stateRevision ?? 0 });
+					existing = installed.installation;
+				}
+				if (!existing) throw new Error(`Cutover did not materialize preserved target ${target.pluginId}`);
+				if (target.state === "uninstalled" && existing.state !== "uninstalled") {
+					existing = data.plugins.putInstallation({ ...existing, enabled: false, state: "uninstalled", updatedAt: new Date().toISOString() }, existing.stateRevision);
+				}
 			}
 			for (const target of cutover.targets.filter((entry) => entry.state === "active")) {
 				const source = { kind: "package" as const, path: target.path, name: target.package, version: target.version };
 				const inspected = await manager.inspect(source);
 				if (inspected.manifest.id !== target.pluginId || inspected.manifest.version !== target.version) throw new Error(`Prepared artifact ${target.package}@${target.version} resolved as ${inspected.manifest.id}@${inspected.manifest.version}; cutover refused`);
 				let installation = data.plugins.getInstallation(target.pluginId);
-				if (installation && installation.contentHash !== inspected.contentHash) throw new Error(`Target store already contains a different ${target.pluginId} artifact; retain both sources and reconcile before cutover`);
-				if (!installation || installation.state === "uninstalled") {
+				if (!installation || installation.state === "uninstalled" || installation.contentHash !== inspected.contentHash) {
 					const installed = await manager.install(source, { expectedRevision: installation?.stateRevision ?? 0 });
 					installation = installed.installation;
 				}
 				if (!installation) throw new Error(`Cutover did not create installation ${target.pluginId}`);
 				if (["installed", "pending-activation", "failed"].includes(installation.state)) await manager.activate(target.pluginId, { expectedRevision: installation.stateRevision });
 			}
-			for (const pluginId of pibo4LegacyAggregateOwners(cutover)) {
+			for (const pluginId of cutover.supersededOwners) {
 				const legacy = data.plugins.getInstallation(pluginId);
 				if (!legacy || legacy.state === "uninstalled") continue;
 				if (host.inspect().plugins.some((plugin) => plugin.pluginId === pluginId)) throw new Error(`Legacy aggregate ${pluginId} is already active in the host; stop it before completing the Pibo 4 cutover`);

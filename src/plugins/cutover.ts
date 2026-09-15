@@ -1,44 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { pluginErrorMessage } from "./store.js";
+import type {
+	Pibo4CutoverPlan,
+	Pibo4CutoverTarget,
+	Pibo4LegacyCutoverSnapshot,
+	Pibo4LegacyPackageState,
+	Pibo4PackedCoordinate,
+} from "./cutover-contract.js";
 
-export type Pibo4LegacyPackageState = "active" | "disabled" | "uninstalled";
-export interface Pibo4LegacyPackageSelection {
-	pluginId: string;
-	state: Pibo4LegacyPackageState;
-	contributions?: Record<string, boolean>;
-}
-export interface Pibo4LegacyCutoverSnapshot {
-	schemaVersion: 1;
-	plugins: Pibo4LegacyPackageSelection[];
-}
-export interface Pibo4PackedCoordinate {
-	package: string;
-	version: string;
-	path: string;
-	contentHash?: string;
-}
-export interface Pibo4CutoverTarget extends Pibo4PackedCoordinate {
-	pluginId: string;
-	state: Pibo4LegacyPackageState;
-	legacyOwners: string[];
-	contentHash: string;
-}
-export interface Pibo4CutoverPlan {
-	schemaVersion: 1;
-	id: string;
-	state: "prepared";
-	source: Pibo4PackedCoordinate & { package: "@pasko70/pibo"; contentHash: string };
-	sourceSnapshot: Pibo4LegacyCutoverSnapshot;
-	sourceSnapshotHash: string;
-	targetCore: Pibo4PackedCoordinate & { package: "@pasko70/pibo"; contentHash: string };
-	targets: Pibo4CutoverTarget[];
-	planHash: string;
-}
+export * from "./cutover-contract.js";
 
 const AGGREGATE_TARGETS: Record<string, Record<string, string>> = {
-	"pibo.product-ui": { workflows: "pibo.workflows", cron: "pibo.cron", loops: "pibo.goal-loops", "agent-designer": "@pibo/core", settings: "@pibo/core", "user-resources": "@pibo/core" },
+	"pibo.product-ui": { workflows: "pibo.workflows", cron: "pibo.cron", loops: "pibo.goal-control", "agent-designer": "@pibo/core", settings: "@pibo/core", "user-resources": "@pibo/core" },
 	"pibo.web-product": { "preview-app": "pibo.preview", "cron-channel": "pibo.cron" },
 	"pibo.user-resources": { resources: "@pibo/core" },
 	"pibo.core": { core: "@pibo/core" },
@@ -48,7 +22,7 @@ export function isPibo4LegacyAggregatePluginId(pluginId: string): boolean {
 	return Object.hasOwn(AGGREGATE_TARGETS, pluginId);
 }
 export function pibo4LegacyAggregateOwners(plan: Pibo4CutoverPlan): string[] {
-	return plan.sourceSnapshot.plugins.map((entry) => entry.pluginId).filter(isPibo4LegacyAggregatePluginId).sort();
+	return [...plan.supersededOwners];
 }
 
 function canonical(value: unknown): string {
@@ -117,6 +91,7 @@ export async function preparePibo4Cutover(options: {
 	if (!/^4\./.test(options.targetCore.version)) throw new Error(`Cutover target must be Pibo 4, received ${options.targetCore.version}`);
 	const sourceSnapshot = JSON.parse(JSON.stringify(options.snapshot)) as Pibo4LegacyCutoverSnapshot;
 	const mapped = targetStates(sourceSnapshot);
+	const supersededOwners = sourceSnapshot.plugins.map((entry) => entry.pluginId).filter(isPibo4LegacyAggregatePluginId).sort();
 	const [sourceValue, targetCoreValue] = await Promise.all([withVerifiedHash(options.source), withVerifiedHash(options.targetCore)]);
 	const source = sourceValue as Pibo4PackedCoordinate & { package: "@pasko70/pibo"; contentHash: string };
 	const targetCore = targetCoreValue as Pibo4PackedCoordinate & { package: "@pasko70/pibo"; contentHash: string };
@@ -128,28 +103,8 @@ export async function preparePibo4Cutover(options: {
 		targets.push({ ...verified, pluginId, state: selection.state, legacyOwners: [...selection.owners].sort() });
 	}
 	const sourceSnapshotHash = sha256(canonical(sourceSnapshot));
-	const unsigned = { schemaVersion: 1 as const, id: `pibo4-cutover:${source.contentHash.slice(7, 23)}:${sourceSnapshotHash.slice(7, 23)}`, state: "prepared" as const, source, sourceSnapshot, sourceSnapshotHash, targetCore, targets };
+	const unsigned = { schemaVersion: 1 as const, id: `pibo4-cutover:${source.contentHash.slice(7, 23)}:${sourceSnapshotHash.slice(7, 23)}`, state: "prepared" as const, source, sourceSnapshot, sourceSnapshotHash, targetCore, targets, supersededOwners };
 	const plan: Pibo4CutoverPlan = { ...unsigned, planHash: sha256(canonical(unsigned)) };
 	await writePrivateJsonAtomic(options.outputPath, plan);
 	return plan;
-}
-
-export async function verifyPreparedPibo4Cutover(planPath: string): Promise<Pibo4CutoverPlan> {
-	let plan: Pibo4CutoverPlan;
-	try { plan = JSON.parse(await readFile(resolve(planPath), "utf8")) as Pibo4CutoverPlan; }
-	catch (error) { throw new Error(`Pibo 4 cutover is required but no readable prepared plan exists at ${resolve(planPath)}. Run the Pibo 4 cutover preparation tool before replacing the old package. ${pluginErrorMessage(error, "Read failed")}`); }
-	const { planHash, ...unsigned } = plan;
-	if (plan.schemaVersion !== 1 || plan.state !== "prepared" || plan.sourceSnapshotHash !== sha256(canonical(plan.sourceSnapshot)) || planHash !== sha256(canonical(unsigned))) throw new Error("Pibo 4 cutover plan is invalid or changed; restore the retained source and prepare a new plan before activation");
-	if (plan.targetCore.package !== "@pasko70/pibo" || !/^4\./.test(plan.targetCore.version)) throw new Error("Pibo 4 cutover plan does not target a supported Minimal-Core package");
-	for (const coordinate of [plan.source, plan.targetCore, ...plan.targets]) {
-		const actual = await fileHash(coordinate.path);
-		if (actual !== coordinate.contentHash) throw new Error(`Pibo 4 cutover artifact changed or is missing: ${coordinate.package}@${coordinate.version}. Restore the exact prepared tarball before activation`);
-	}
-	return plan;
-}
-
-export async function writePibo4CutoverReceipt(planPath: string, plan: Pibo4CutoverPlan): Promise<string> {
-	const receiptPath = `${resolve(planPath)}.complete`;
-	await writePrivateJsonAtomic(receiptPath, { schemaVersion: 1, planId: plan.id, planHash: plan.planHash, completedTargets: plan.targets.filter((entry) => entry.state === "active").map((entry) => ({ pluginId: entry.pluginId, contentHash: entry.contentHash })) });
-	return receiptPath;
 }

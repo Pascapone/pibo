@@ -38,7 +38,7 @@ test("cutover preparation maps aggregate owners, preserves negative states, and 
 			"pibo.preview": { package: "@pasko70/pibo-plugin-preview", version: "1.0.0", path: preview },
 			"pibo.cron": { package: "@pasko70/pibo-plugin-cron", version: "1.0.0", path: cron },
 			"pibo.workflows": { package: "@pasko70/pibo-plugin-workflows", version: "1.0.0", path: workflows },
-			"pibo.goal-loops": { package: "@pasko70/pibo-plugin-goal-loops", version: "1.0.0", path: loops },
+			"pibo.goal-control": { package: "@pasko70/pibo-plugin-goal-loops", version: "1.0.0", path: loops },
 		},
 		snapshot: { schemaVersion: 1, plugins: [
 			{ pluginId: "pibo.web-product", state: "active", contributions: { "preview-app": true, "cron-channel": false } },
@@ -46,7 +46,7 @@ test("cutover preparation maps aggregate owners, preserves negative states, and 
 		] },
 		outputPath: planPath,
 	});
-	assert.deepEqual(plan.targets.map(({ pluginId, state }) => [pluginId, state]), [["pibo.cron", "disabled"], ["pibo.goal-loops", "disabled"], ["pibo.preview", "active"], ["pibo.workflows", "active"]]);
+	assert.deepEqual(plan.targets.map(({ pluginId, state }) => [pluginId, state]), [["pibo.cron", "disabled"], ["pibo.goal-control", "disabled"], ["pibo.preview", "active"], ["pibo.workflows", "active"]]);
 	assert.deepEqual(plan.sourceSnapshot.plugins.map(({ pluginId, state }) => [pluginId, state]), [["pibo.web-product", "active"], ["pibo.product-ui", "active"]]);
 	assert.equal((await verifyPreparedPibo4Cutover(planPath)).planHash, plan.planHash);
 	const betaPlan = await preparePibo4Cutover({
@@ -98,7 +98,7 @@ test("actual packed 3.6.2 installation prepares before replacement and activates
 	const coreTarball = await npmPack(resolve("dist/pibo4-core-package"), tarballs);
 	await extractPackage(cutoverTarball, cutoverInstall);
 	const artifacts = {};
-	for (const [pluginId, suffix] of [["pibo.preview", "preview"], ["pibo.cron", "cron"], ["pibo.workflows", "workflows"], ["pibo.goal-loops", "goal-loops"], ["pibo.web-search", "web-search"]]) {
+	for (const [pluginId, suffix] of [["pibo.preview", "preview"], ["pibo.cron", "cron"], ["pibo.workflows", "workflows"], ["pibo.goal-control", "goal-loops"], ["pibo.web-search", "web-search"]]) {
 		const tarball = await npmPack(resolve("dist/pibo4-artifacts", suffix), tarballs);
 		const pkg = JSON.parse(await readFile(join("dist/pibo4-artifacts", suffix, "package.json"), "utf8"));
 		artifacts[pluginId] = { package: pkg.name, version: pkg.version, path: tarball };
@@ -133,7 +133,7 @@ test("actual packed 3.6.2 installation prepares before replacement and activates
 	await execFileAsync(process.execPath, [join(cutoverInstall, "bin/pibo4-cutover.js"), conflictInputPath], { cwd: project });
 	const prepared = JSON.parse(await readFile(planPath, "utf8"));
 	assert.deepEqual(prepared.targets.filter((entry) => entry.state === "active").map((entry) => entry.pluginId), ["pibo.preview", "pibo.workflows"]);
-	assert.deepEqual(prepared.targets.filter((entry) => entry.state !== "active").map((entry) => [entry.pluginId, entry.state]), [["pibo.cron", "disabled"], ["pibo.goal-loops", "disabled"], ["pibo.web-search", "uninstalled"]]);
+	assert.deepEqual(prepared.targets.filter((entry) => entry.state !== "active").map((entry) => [entry.pluginId, entry.state]), [["pibo.cron", "disabled"], ["pibo.goal-control", "disabled"], ["pibo.web-search", "uninstalled"]]);
 
 	await rm(oldInstall, { recursive: true, force: true });
 	await extractPackage(coreTarball, oldInstall);
@@ -147,14 +147,14 @@ test("actual packed 3.6.2 installation prepares before replacement and activates
 		const host = new PluginHost();
 		const product = await startPluginProductRuntime({ host, artifactRoot: ${JSON.stringify(join(home, "plugins", "artifacts"))}, collectConsumers: async () => [], installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: ${JSON.stringify(planPath)}, currentCoreVersion: "4.0.0-beta.1" });
 		assert.deepEqual(host.inspect().plugins.map((entry) => entry.pluginId).sort(), ["pibo.preview", "pibo.workflows"]);
-		assert.deepEqual(product.data.plugins.listInstallations().map((entry) => entry.pluginId).sort(), ["pibo.preview", "pibo.workflows"]);
+		assert.deepEqual(product.data.plugins.listInstallations().map((entry) => [entry.pluginId, entry.state, entry.enabled]).sort(([left], [right]) => left.localeCompare(right)), [["pibo.cron", "installed", false], ["pibo.goal-control", "installed", false], ["pibo.preview", "active", true], ["pibo.web-search", "uninstalled", false], ["pibo.workflows", "active", true]]);
 		assert.equal(await readFile(${JSON.stringify(retainedData)}, "utf8"), '{"profile":"keep","disabled":["cron","web-search"]}\\n');
 		await access(${JSON.stringify(`${planPath}.complete`)});
 		await product.dispose();
 		const restartedHost = new PluginHost();
 		const restarted = await startPluginProductRuntime({ host: restartedHost, artifactRoot: ${JSON.stringify(join(home, "plugins", "artifacts"))}, collectConsumers: async () => [], installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: ${JSON.stringify(planPath)}, currentCoreVersion: "4.0.0-beta.1" });
 		assert.deepEqual(restartedHost.inspect().plugins.map((entry) => entry.pluginId).sort(), ["pibo.preview", "pibo.workflows"]);
-		assert.equal(restarted.data.plugins.listInstallations().length, 2);
+		assert.equal(restarted.data.plugins.listInstallations().length, 5);
 		await restarted.dispose();
 		await assert.rejects(startPluginProductRuntime({ host: new PluginHost(), artifactRoot: ${JSON.stringify(join(home, "plugins", "artifacts"))}, collectConsumers: async () => [], installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: ${JSON.stringify(conflictPlanPath)}, currentCoreVersion: "4.0.0-beta.1" }), /preserves pibo.preview as disabled/);
 	`;

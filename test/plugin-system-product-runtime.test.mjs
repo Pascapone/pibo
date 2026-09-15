@@ -50,7 +50,7 @@ async function stagedLegacyProductUi(data, artifactRoot, { enabled = true } = {}
   const manager = new PluginManager({ store: data.plugins, artifactRoot });
   await manager.install({ kind: 'local', path: source }, { expectedRevision: 0 });
   const installed = data.plugins.getInstallation(manifest.id);
-  return data.plugins.putInstallation({ ...installed, enabled, state: enabled ? 'active' : 'installed', updatedAt: new Date().toISOString() }, installed.stateRevision);
+  return data.plugins.putInstallation({ ...installed, source: { kind: 'builtin', name: manifest.id }, enabled, state: enabled ? 'active' : 'installed', updatedAt: new Date().toISOString() }, installed.stateRevision);
 }
 
 test('product runtime starts persisted plugins and publishes one manager/host/session-plan service', async t => {

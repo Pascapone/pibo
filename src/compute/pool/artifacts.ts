@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
-import { lstat, mkdir, readFile, readdir, readlink, rename, rm, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, readlink, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -12,10 +12,39 @@ const PACKAGE_RELATIVE_PATHS = [
 	"node_modules/@pasko70/pibo/package.json",
 ] as const;
 const BINARY_RELATIVE_PATHS = [
-	"node_modules/.bin/pibo",
 	"node_modules/@pasko70/pibo-standard/bin/pibo.js",
+	"node_modules/.bin/pibo",
 	"node_modules/@pasko70/pibo/dist/bin/pibo.js",
 ] as const;
+
+interface CandidateAssemblyArtifact {
+	role: "core" | "cutover" | "standard" | "plugin";
+	package: string;
+	version: string;
+	file: string;
+	bytes: number;
+	sha256: string;
+}
+
+interface CandidateAssemblyManifest {
+	schemaVersion: 1;
+	sourceCommit: string;
+	application: {
+		package: string;
+		version: string;
+		binary: string;
+		command: string[];
+		cutoverCommand: string[];
+	};
+	cutover: {
+		package: string;
+		version: string;
+		binary: string;
+		command: string[];
+		sourceArtifact: "external-retained";
+	};
+	artifacts: CandidateAssemblyArtifact[];
+}
 
 function installedBinaryPath(runtimePath: string): string | undefined {
 	for (const relativePath of BINARY_RELATIVE_PATHS) {
@@ -54,16 +83,26 @@ export async function ensureDeploymentArtifact(input: {
 	}
 	await mkdir(input.config.artifactRoot, { recursive: true, mode: 0o700 });
 	const staging = resolve(input.config.artifactRoot, `.staging-${sha256}-${process.pid}`);
+	const stagingRuntime = resolve(staging, "runtime");
 	await rm(staging, { recursive: true, force: true });
-	await mkdir(resolve(staging, "runtime"), { recursive: true, mode: 0o700 });
-	await writeFile(resolve(staging, "runtime", "package.json"), '{"name":"pibo-deployment-pool-runtime","private":true}\n', { mode: 0o600 });
+	await mkdir(stagingRuntime, { recursive: true, mode: 0o700 });
+	await writeFile(resolve(stagingRuntime, "package.json"), '{"name":"pibo-deployment-pool-runtime","private":true}\n', { mode: 0o600 });
 	try {
-		await execFileAsync("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", archivePath], {
-			cwd: resolve(staging, "runtime"),
-			maxBuffer: 20 * 1024 * 1024,
-		});
-		if (!installedBinaryPath(resolve(staging, "runtime"))) throw new Error("Installed package does not contain the Pibo binary");
-		await writeFile(resolve(staging, "manifest.json"), `${JSON.stringify({ sha256, source: basename(archivePath), installedAt: new Date().toISOString() }, null, 2)}\n`, { mode: 0o600 });
+		const assembly = await readCandidateAssemblyManifest(archivePath);
+		if (assembly) await installCandidateAssembly({ archivePath, staging, runtimePath: stagingRuntime, manifest: assembly });
+		else {
+			await execFileAsync("npm", ["install", "--offline", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", archivePath], {
+				cwd: stagingRuntime,
+				maxBuffer: 20 * 1024 * 1024,
+			});
+		}
+		if (!installedBinaryPath(stagingRuntime)) throw new Error("Installed package does not contain the Pibo binary");
+		await writeFile(resolve(staging, "manifest.json"), `${JSON.stringify({
+			sha256,
+			source: basename(archivePath),
+			installedAt: new Date().toISOString(),
+			assembly: assembly ? { sourceCommit: assembly.sourceCommit, application: assembly.application, cutover: assembly.cutover, artifacts: assembly.artifacts } : undefined,
+		}, null, 2)}\n`, { mode: 0o600 });
 		if (existsSync(artifactRoot)) await rm(staging, { recursive: true, force: true });
 		else await rename(staging, artifactRoot);
 	} catch (error) {
@@ -71,6 +110,106 @@ export async function ensureDeploymentArtifact(input: {
 		throw error;
 	}
 	return { ...(await inspectRuntimeArtifact(runtimePath)), sha256, reused: false };
+}
+
+async function readCandidateAssemblyManifest(archivePath: string): Promise<CandidateAssemblyManifest | undefined> {
+	const listing = await execFileAsync("tar", ["-tzf", archivePath], { maxBuffer: 4 * 1024 * 1024 });
+	if (!listing.stdout.split("\n").includes("package/assembly-manifest.json")) return undefined;
+	const extracted = await execFileAsync("tar", ["-xOzf", archivePath, "package/assembly-manifest.json"], { maxBuffer: 4 * 1024 * 1024 });
+	let value: unknown;
+	try {
+		value = JSON.parse(extracted.stdout);
+	} catch {
+		throw new Error("Candidate assembly manifest is not valid JSON");
+	}
+	return validateCandidateAssemblyManifest(value);
+}
+
+function validateCandidateAssemblyManifest(value: unknown): CandidateAssemblyManifest {
+	if (!value || typeof value !== "object") throw new Error("Candidate assembly manifest must be an object");
+	const manifest = value as Partial<CandidateAssemblyManifest>;
+	if (manifest.schemaVersion !== 1) throw new Error("Unsupported Candidate assembly manifest schema");
+	if (typeof manifest.sourceCommit !== "string" || !/^(?:[0-9a-f]{40}|unknown)$/.test(manifest.sourceCommit)) {
+		throw new Error("Candidate assembly source commit is invalid");
+	}
+	if (!manifest.application || typeof manifest.application !== "object") throw new Error("Candidate assembly application contract is missing");
+	if (typeof manifest.application.package !== "string" || !manifest.application.package) throw new Error("Candidate assembly application package is invalid");
+	if (typeof manifest.application.version !== "string" || !manifest.application.version) throw new Error("Candidate assembly application version is invalid");
+	if (typeof manifest.application.binary !== "string" || !isSafeRelativePath(manifest.application.binary)) throw new Error("Candidate assembly application binary is invalid");
+	if (!Array.isArray(manifest.application.command) || manifest.application.command.length < 3 || manifest.application.command.some((entry) => typeof entry !== "string" || !entry)) {
+		throw new Error("Candidate assembly start command is invalid");
+	}
+	if (!Array.isArray(manifest.application.cutoverCommand) || manifest.application.cutoverCommand.length < 5 || manifest.application.cutoverCommand.some((entry) => typeof entry !== "string" || !entry)) {
+		throw new Error("Candidate assembly cutover start command is invalid");
+	}
+	if (!manifest.cutover || typeof manifest.cutover !== "object" || typeof manifest.cutover.package !== "string" || typeof manifest.cutover.version !== "string" || typeof manifest.cutover.binary !== "string" || !isSafeRelativePath(manifest.cutover.binary) || !Array.isArray(manifest.cutover.command) || manifest.cutover.command.some((entry) => typeof entry !== "string" || !entry) || manifest.cutover.sourceArtifact !== "external-retained") {
+		throw new Error("Candidate assembly cutover preparation contract is invalid");
+	}
+	if (!Array.isArray(manifest.artifacts)) throw new Error("Candidate assembly artifacts are missing");
+	const artifacts = manifest.artifacts as CandidateAssemblyArtifact[];
+	if (artifacts.length !== 23 || artifacts.filter((entry) => entry.role === "plugin").length !== 20 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
+		throw new Error("Candidate assembly must contain one Core, one Cutover runner, one Standard, and exactly 20 plugin artifacts");
+	}
+	const packages = new Set<string>();
+	const files = new Set<string>();
+	for (const artifact of artifacts) {
+		if (!artifact || !["core", "cutover", "standard", "plugin"].includes(artifact.role)) throw new Error("Candidate assembly artifact role is invalid");
+		if (typeof artifact.package !== "string" || !artifact.package || packages.has(artifact.package)) throw new Error("Candidate assembly artifact package is invalid or duplicated");
+		if (typeof artifact.version !== "string" || !artifact.version) throw new Error(`Candidate assembly version is invalid for ${artifact.package}`);
+		if (typeof artifact.file !== "string" || !/^tarballs\/[^/]+\.tgz$/.test(artifact.file) || files.has(artifact.file)) throw new Error(`Candidate assembly artifact path is invalid for ${artifact.package}`);
+		if (!Number.isSafeInteger(artifact.bytes) || artifact.bytes <= 0) throw new Error(`Candidate assembly byte count is invalid for ${artifact.package}`);
+		if (typeof artifact.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(artifact.sha256)) throw new Error(`Candidate assembly checksum is invalid for ${artifact.package}`);
+		packages.add(artifact.package);
+		files.add(artifact.file);
+	}
+	const applicationArtifact = artifacts.find((entry) => entry.role === "standard");
+	if (!applicationArtifact || applicationArtifact.package !== manifest.application.package || applicationArtifact.version !== manifest.application.version) {
+		throw new Error("Candidate assembly application does not match its Standard artifact");
+	}
+	const cutoverArtifact = artifacts.find((entry) => entry.role === "cutover");
+	if (!cutoverArtifact || cutoverArtifact.package !== manifest.cutover.package || cutoverArtifact.version !== manifest.cutover.version) {
+		throw new Error("Candidate assembly prepare contract does not match its Cutover artifact");
+	}
+	return manifest as CandidateAssemblyManifest;
+}
+
+function isSafeRelativePath(path: string): boolean {
+	return path.length > 0 && !path.startsWith("/") && !path.split("/").some((part) => !part || part === "." || part === "..");
+}
+
+async function installCandidateAssembly(input: {
+	archivePath: string;
+	staging: string;
+	runtimePath: string;
+	manifest: CandidateAssemblyManifest;
+}): Promise<void> {
+	const assemblyRoot = resolve(input.runtimePath, ".pibo-candidate-assembly");
+	await mkdir(assemblyRoot, { recursive: true, mode: 0o700 });
+	await execFileAsync("tar", ["-xzf", input.archivePath, "-C", assemblyRoot, "--strip-components=1"], { maxBuffer: 4 * 1024 * 1024 });
+	const expectedFiles = input.manifest.artifacts.map((entry) => basename(entry.file)).sort();
+	const actualFiles = (await readdir(resolve(assemblyRoot, "tarballs"))).sort();
+	if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) throw new Error("Candidate assembly tarball set does not match its manifest");
+	for (const artifact of input.manifest.artifacts) {
+		const path = resolve(assemblyRoot, artifact.file);
+		const details = await stat(path);
+		if (!details.isFile() || details.size !== artifact.bytes) throw new Error(`Candidate assembly size mismatch for ${artifact.package}`);
+		if (await sha256File(path) !== artifact.sha256) throw new Error(`Candidate assembly checksum mismatch for ${artifact.package}`);
+	}
+	await execFileAsync("npm", [
+		"install",
+		"--offline",
+		"--omit=dev",
+		"--ignore-scripts",
+		"--no-audit",
+		"--no-fund",
+		...input.manifest.artifacts.map((entry) => resolve(assemblyRoot, entry.file)),
+	], { cwd: input.runtimePath, maxBuffer: 64 * 1024 * 1024 });
+	for (const artifact of input.manifest.artifacts) {
+		const packagePath = resolve(input.runtimePath, "node_modules", artifact.package, "package.json");
+		const installed = JSON.parse(await readFile(packagePath, "utf8")) as { name?: unknown; version?: unknown };
+		if (installed.name !== artifact.package || installed.version !== artifact.version) throw new Error(`Installed Candidate package does not match manifest: ${artifact.package}`);
+	}
+	if (!existsSync(resolve(input.runtimePath, input.manifest.application.binary))) throw new Error("Candidate assembly application binary is missing after install");
 }
 
 export async function inspectRuntimeArtifact(runtimePath: string): Promise<DeploymentArtifact> {

@@ -3,6 +3,7 @@ import { ensurePrivatePiboHome } from "./pibo-home.js";
 import { PiboCapabilityHost } from "./capability-host.js";
 import { createRuntimeUnassignedProfile, PIBO_MINIMAL_CORE_PROFILE_NAME } from "./runtime-unassigned.js";
 import { runWebGatewayServer, type WebGatewayAuthMode } from "../gateway/web.js";
+import type { Pibo4CutoverArtifactBinding } from "../plugins/cutover-contract.js";
 import type { PluginSourceInput } from "../plugins/sources.js";
 
 export type PiboExecutableComposition = {
@@ -11,6 +12,8 @@ export type PiboExecutableComposition = {
 	defaultProfile?: string;
 	registerRuntimeUnassignedProfile?: boolean;
 	bootstrapPluginSources?: readonly PluginSourceInput[];
+	cutoverArtifactBindings?: readonly Pibo4CutoverArtifactBinding[];
+	verifyCutoverSourceArtifact?: boolean;
 };
 
 function packageVersion(): string {
@@ -49,6 +52,7 @@ function gatewayHelp(composition: PiboExecutableComposition): string {
 		"  --web-host <host>      HTTP bind host",
 		"  --web-port <port>      HTTP bind port",
 		"  --gateway-port <port>  Agent gateway bind port",
+		"  --cutover-plan <path>  Apply an exact prepared Pibo 4 cutover before startup",
 		"  -h, --help             Show this help",
 	].join("\n");
 }
@@ -73,6 +77,7 @@ function gatewayOptions(args: string[]) {
 	let webHost: string | undefined;
 	let webPort: number | undefined;
 	let gatewayPort: number | undefined;
+	let cutoverPlanPath: string | undefined;
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index]!;
 		if (arg === "--help" || arg === "-h") return { help: true as const };
@@ -101,13 +106,19 @@ function gatewayOptions(args: string[]) {
 			index = gateway.nextIndex;
 			continue;
 		}
+		const cutover = optionValue(args, index, "--cutover-plan");
+		if (cutover) {
+			cutoverPlanPath = cutover.value;
+			index = cutover.nextIndex;
+			continue;
+		}
 		throw new Error(`Unknown gateway:web option '${arg}'`);
 	}
 	if (gatewayPort === undefined && webPort !== undefined) {
 		if (webPort === 65535) throw new Error("--web-port 65535 requires an explicit --gateway-port");
 		gatewayPort = webPort + 1;
 	}
-	return { help: false as const, authMode, webHost, webPort, gatewayPort };
+	return { help: false as const, authMode, webHost, webPort, gatewayPort, cutoverPlanPath };
 }
 
 export async function runPiboCoreCli(argv = process.argv, composition: PiboExecutableComposition = {}): Promise<void> {
@@ -146,6 +157,11 @@ export async function runPiboCoreCli(argv = process.argv, composition: PiboExecu
 		capabilityHost,
 		installDefaultPlugins: false,
 		bootstrapPluginSources: composition.bootstrapPluginSources,
+		requirePreparedCutover: options.cutoverPlanPath !== undefined,
+		cutoverPlanPath: options.cutoverPlanPath,
+		cutoverArtifactBindings: composition.cutoverArtifactBindings,
+		verifyCutoverSourceArtifact: composition.verifyCutoverSourceArtifact,
+		currentCoreVersion: packageVersion(),
 		resourceReaper: false,
 	});
 }

@@ -195,6 +195,7 @@ test("deployment container args use one image, loopback ports, isolated mounts, 
 	assert.ok(args.includes("pibo:latest"));
 	assert.equal(args.some((value) => value.includes("docker.sock")), false);
 	assert.equal(args[args.length - 2], "-lc");
+	assert.match(args.at(-1), /exec node \/opt\/pibo-runtime\/node_modules\/@pasko70\/pibo-standard\/bin\/pibo\.js gateway:web --web-host 0\.0\.0\.0 --web-port 4788 --gateway-port 4789$/);
 });
 
 test("deployment reap selects expired leases and caps retained failures", async () => {
