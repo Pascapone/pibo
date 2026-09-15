@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T11:43:28Z"
+  at: "2026-09-15T11:58:06Z"
 sources:
   - id: "owner-completion"
     resource: "scope:owner decisions 2026-09-14 in Pibo Session ps_c5596e29-e5db-47e8-a736-714f4a1c99cf; independent minimal core; all Pibo extension tools through public plugin contracts; explicit core views; Codex-owned Runtime Requests subject to dependency inspection; OMP maintenance only; remove executable legacy APIs; preserve data through migration; write a plan without implementation"
@@ -27,7 +27,7 @@ sources:
 
 Dieser Plan beschreibt die verbleibende Arbeit bis zum sauberen Plugin-Modell von Pibo 4.0. Der große Umbau ist bereits vorhanden. Jetzt werden die verbliebenen Sonderwege entfernt, der Kern tatsächlich unabhängig ausgeliefert und alle Erweiterungen über denselben öffentlichen Vertrag angebunden.
 
-Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 einschließlich der N-028-Quellversionskorrektur für den festen lokalen Code-/Paketkandidaten `34691ecf95fb9bcfdcde7d896537c9fa1dc1ea9f` implementiert, dokumentiert und lokal abgenommen. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme. Veröffentlichung, Push, PR, Deployment, Merge, Release, Pibo2 und reale All-Runtime-Modellabnahme bleiben separate Aktionen.
+Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 einschließlich der N-029-Standard-Shell-Korrektur für den festen lokalen Code-/Paketkandidaten `eda0911e6bb7722f59f6c203e596f9cc40390f8a` implementiert, dokumentiert und lokal abgenommen. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme. Veröffentlichung, Push, PR, Deployment, Merge, Release, Pibo2 und reale All-Runtime-Modellabnahme bleiben separate Aktionen.
 
 Dieser Plan führt die festgelegten Restentscheidungen aus dem [bisherigen Umbauplan](/plans/unified-plugin-system-rebuild.md) fort. Bei Widersprüchen zu dessen pauschaler Aussage „alle Produktoberflächen sind Plugins“, zur alten Default-Komposition, zu tolerierten Legacy-APIs oder zum OMP-Ausbau ist **dieser Plan maßgeblich**. Sonstige Anforderungen, insbesondere Daten-, Kontext- und UI-Parität, bleiben bestehen. Das [bisherige Ausführungsprotokoll](/plans/unified-plugin-system-execution.md) bleibt Nachweis vergangener Arbeit; alte offene Checkboxen bedeuten nicht automatisch, dass deren Implementierung erneut erforderlich ist.
 
@@ -444,7 +444,7 @@ Stand 2026-09-15: Die aktuelle [Pluginpaket-Spezifikation](/specs/product/plugin
 ## F10 – Integrierte Abschlussabnahme
 
 - [x] Vorgeschalteten Verpackungsreview auflösen: Der Root-Workspace ist kein npm-Releaseartefakt; der echte Wrapper publiziert ausschließlich getrennte Minimal-Core-/Cutover-/Plugin-/Standardpakete. Commit `746b990c`, Paketbuild und 14/14 fokussierte Paket-/Releaseprüfungen belegen die Grenze; keine Veröffentlichung wurde ausgeführt.
-- [x] Commit- und paketgenauen lokalen Kandidaten festgelegt: `34691ecf95fb9bcfdcde7d896537c9fa1dc1ea9f`; Core, Cutover und Standard `4.0.0-beta.1`; 20 Pluginpakete `1.0.0`; das lokale Candidate-Assembly enthält alle 23 Tarballs checksum-gebunden.
+- [x] Commit- und paketgenauen lokalen Kandidaten festgelegt: `eda0911e6bb7722f59f6c203e596f9cc40390f8a`; Core, Cutover und Standard `4.0.0-beta.1`; 20 Pluginpakete `1.0.0`; das lokale Candidate-Assembly enthält alle 23 Tarballs checksum-gebunden.
 - [x] Abschlussmatrix aus Abschnitt 8 mit bestehenden Tests, gezielten Ergänzungen und ausdrücklich begrenzter Fixture-Evidenz belegt.
 - [x] Relevante Desktop-/Mobile-Flows einschließlich des installierten Minimal-Core headful geprüft. Pibo2 bleibt aufgrund der Arbeitsanweisung außerhalb dieses lokalen Abschlusslaufs und wird als separate Release-Evidenz ausgewiesen.
 - [x] Aktuelle vollständige relevante Regressionssuite ausgeführt: der serielle Lauf ohne den separat begrenzten Gatewaytest ergab 3.046 Tests, 3.036 Pässe, 0 Fehler und 10 Skips; die Gatewayintegration bestand anschließend 5/5 und beendete den Testprozess sauber.
@@ -453,6 +453,7 @@ Stand 2026-09-15: Die aktuelle [Pluginpaket-Spezifikation](/specs/product/plugin
 - [x] N-026 integriert: Kandidat `51bcfcef4653328823e79a0f2386b786fcf003d9` ergänzt den ausführbaren Standard-Only-Offlinepfad mit genau 20 Plugins, entfernt Erweiterungsskills aus Core und behebt die beiden in der Vollsuite gefundenen Start-/Signalreihenfolgen.
 - [x] N-027 integriert: Kandidat `bb010a72141ea32059e992c8e9fad54fe111bd3e` liefert Core, Cutover, Standard und 20 Plugins als content-addressed Offline-Assembly. Der ausgelieferte Prepare-Runner und `pibo-standard gateway:web --cutover-plan` lösen die gebündelten Zielartefakte per Prüfsumme auf, erhalten aktive/deaktivierte/deinstallierte Zustände, Receipt, Sessions und Chatdaten und sind beim Wiederstart idempotent.
 - [x] N-028 integriert: Kandidat `34691ecf95fb9bcfdcde7d896537c9fa1dc1ea9f` akzeptiert im ausschließlich externen Cutover-Prepare-Paket exakt semantische 1.x-, 2.x-, 3.x-Quellen sowie 4.0.0-alpha/beta/rc-Prereleases. Der reale Quellstand `@pasko70/pibo@1.7.2` ist damit checksum-gebunden vorbereitbar; falsche Paketidentität, malformed SemVer, 4.x stable/newer, 5.x und 0.x bleiben abgelehnt.
+- [x] N-029 integriert: Kandidat `eda0911e6bb7722f59f6c203e596f9cc40390f8a` behandelt `pibo.standard-shell` ausschließlich im externen Cutover-Mapping als durch `@pasko70/pibo-standard` ersetzten Kompositionsowner. Es wird kein Pluginartefakt und kein Target erzeugt; der vorhandene generische `supersededOwners`-Pfad tombstoned den Altowner beim Start und Wiederstart.
 
 Stand 2026-09-15: Die kanonische serielle Regression ohne den separat begrenzten Gatewaytest umfasst nach N-027 3.047 Tests, 3.037 Pässe, 0 Fehler und 10 Skips. Die separat mit harter Grenze ausgeführte Gatewayintegration bestand 5/5 und hinterließ keinen Testprozess. Typecheck, Root-Emit, Chat-UI-Build und `npm run build` einschließlich Core-/Standardpaketen sind grün. Die fokussierten Paketprüfungen bestanden 10/10; die drei Ursachen-Suiten für Signalstatus, User-Skill-Ownership und Product Runtime bestanden 31/31. Der echte installierte Core-Tarball startet mit null Plugins und null Skills. Der echte installierte Standard-Tarball startete und startete erneut mit genau 20 aktiven Paketen. Headful Mobile 390×844 und Desktop 1280×800 zeigten die Standard-Pluginverwaltung mit 20 `ACTIVE`-Einträgen; die finalen CDP-Neuladungen meldeten keine fehlgeschlagenen Netzwerkanfragen oder Konsolenfehler. Belege: `/tmp/n026-standard-plugins-mobile.png`, `/tmp/n026-standard-plugins-desktop.png`, `/tmp/n026-standard-plugins-cdp.json` und `/tmp/n026-standard-plugins-desktop.json`.
 

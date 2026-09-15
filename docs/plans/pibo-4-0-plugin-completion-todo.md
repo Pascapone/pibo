@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T11:43:28Z"
+  at: "2026-09-15T11:58:06Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -37,7 +37,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | lokal akzeptiert in F10 | Pibo2-Upgrade bleibt separat |
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
-| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `34691ecf`; realer `1.7.2`-Quellstand plus gepackter Standard-Cutover, fokussierte Deliveryprüfungen grün | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
+| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `eda0911e`; realer `1.7.2`-Standard-Shell-Cutover und 20 tatsächliche Plugins, fokussierte Deliveryprüfungen grün | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
 
 # Erledigter Einstieg
 
@@ -201,10 +201,11 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 | N-026 | `@pasko70/pibo-standard` exportierte nur `package-set.json`, während der einzige ausführbare Core-Einstiegspunkt stets `installDefaultPlugins: false` verwendete. Zugleich meldete der pluginfreie Core Standard-/Runtime-/Loop-/Docker-Skills als eigene eingebaute Ressourcen. Die erste Vollsuite zeigte zusätzlich eine User-Skill-Doppelregistrierung und einen Signal-/Persistenz-Wettlauf. | F06/F10 | behoben in `51bcfcef`: generischer Kompositionsbootstrap, selbständige Standard-App mit 20 gebündelten Plugins, plugin-eigene Skillpfade, verzögerte User-Resource-Materialisierung und Lesezeitpunkt-basierter Fehlerstatus; Vollsuite und Gateway grün |
 | N-027 | Der reale Pibo2-Stagingpfad konnte einen vorbereiteten `cutoverPlanPath` nicht über die gepackte Standard-CLI/Gateway-Komposition ausführen; Zielpfade waren lokal, der Candidate enthielt keinen Prepare-Runner und negative Auswahlzustände wären vom Standardbootstrap überschrieben worden. | F06/F07/F10 | behoben in `bb010a72141ea32059e992c8e9fad54fe111bd3e`: 23-Artefakt-Assembly, ausgelieferter Cutover-Runner, checksum-gebundene Zielauflösung, explizites `--cutover-plan`, Zustandserhalt, Receipt und idempotenter Restart mit retained Session-/Chatdaten |
 | N-028 | Der reale vorhandene Quell-Tarball ist `@pasko70/pibo@1.7.2`; die Prepare-Grenze akzeptierte irrtümlich nur 3.x und 4.0-Prereleases. | F06/F07/F10 | behoben in `34691ecf95fb9bcfdcde7d896537c9fa1dc1ea9f`: strikte SemVer-Grenze akzeptiert 1.x/2.x/3.x und 4.0.0-alpha/beta/rc, prüft weiterhin Paketidentität und exakte Bytes und lehnt 4.x stable/newer sowie malformed Versionen ab |
+| N-029 | Der reale 1.7.2-Snapshot enthält `pibo.standard-shell`, obwohl Standard absichtlich kein Pluginartefakt ist; die Vorbereitung verlangte daher ein unmögliches Target. | F06/F07/F10 | behoben in `eda0911e6bb7722f59f6c203e596f9cc40390f8a`: externer One-time-Cutover ordnet den Altowner der Standardkomposition zu, erzeugt kein Target und tombstoned ihn über `supersededOwners`; packed Standard behält genau 20 reale Pluginzustände |
 
 # Abnahmestand
 
-F00 bis F10 sind für den lokalen Code-/Paketkandidaten `34691ecf95fb9bcfdcde7d896537c9fa1dc1ea9f` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
+F00 bis F10 sind für den lokalen Code-/Paketkandidaten `eda0911e6bb7722f59f6c203e596f9cc40390f8a` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
 
 # Aktivität und Entscheidungen
 
