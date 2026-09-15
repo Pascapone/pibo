@@ -7,7 +7,7 @@ status: "stable"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-15T02:06:30Z"
+  at: "2026-09-15T03:35:09Z"
 sources:
   - resource: "scope:Public plugin SDK, CLI help, example package, and tests at d37dea0c7870e426e35911b574af1af07dfa7cd2"
 ---
@@ -99,7 +99,20 @@ Build candidate artifacts with:
 npm run pibo4:packages
 ```
 
-The output contains Minimal-Core, Standard composition, the separate cutover tool, and 20 independently packable first-party artifacts.
+The output contains Minimal-Core at `dist/pibo4-core-package`, Standard at `dist/pibo4-standard-package`, the separate cutover tool at `dist/pibo4-cutover-package`, and 20 independently packable first-party artifacts below `dist/pibo4-artifacts`.
+
+The repository root is a private build workspace. Its broad `dist/` tree is not the `@pasko70/pibo` release package and must not be used as npm delivery evidence. `node scripts/release.mjs --version <version> --publish-npm` publishes only the generated Minimal-Core, Cutover, each listed plugin artifact, and Standard package. It verifies every package name and version plus the exact Standard dependency pins before the first publish. A bare root `npm publish` is intentionally blocked by the root `prepublishOnly` guard; `private: true` also marks that the manifest is workspace-only.
+
+For pre-publication review, pack each generated directory rather than the repository root:
+
+```bash
+npm pack --ignore-scripts ./dist/pibo4-core-package
+npm pack --ignore-scripts ./dist/pibo4-cutover-package
+npm pack --ignore-scripts ./dist/pibo4-artifacts/preview
+npm pack --ignore-scripts ./dist/pibo4-standard-package
+```
+
+The release sequence is not atomic across npm packages. If a later publish fails, stop, record the packages already published, and resume only after reconciling their immutable versions; never rebuild different bytes under an already published version.
 
 # Upgrade from the monolith
 

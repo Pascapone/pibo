@@ -8,7 +8,7 @@ authority: "directive"
 superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
   by: "openai/codex"
-  at: "2026-09-12T13:45:00Z"
+  at: "2026-09-15T03:35:09Z"
 sources:
   - id: "foundation-relocation-source"
     resource: "https://github.com/Pascapone/pibo/blob/2aef244301f5d181624662fdad53e18e83e80bd9/docs/ops/vscode-extension-release.md"
@@ -19,6 +19,8 @@ sources:
     relation: "Originally byte-identical after Foundation relocation; current body adds a retirement notice."
 ---
 > **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
+>
+> **Current npm boundary (September 15, 2026):** Do not follow the historical root `npm publish` instructions below. The repository root is private. Pibo 4 npm releases use `scripts/release.mjs`, which publishes only generated Minimal-Core, Cutover, individual plugin, and Standard package directories. See the [plugin development and operations guide](/project/guides/plugin-development-and-operations.md#choose-minimal-or-standard-installation).
 
 # Pibo VS Code Extension Release Runbook
 

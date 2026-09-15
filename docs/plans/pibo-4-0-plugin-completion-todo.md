@@ -33,11 +33,11 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | offen bis F10 | F04-Featurepakete trennen |
 | F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build, Feature-/UI-/Cachetests und 20 unabhängig packbare Artefakte | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
 | F05 – Runtimepakete und Runtime Requests abschließen | abgeschlossen | getrennte Runtimepakete; unveränderte Pi→Codex- und dauerhafte Codex-Binding-Parität im F08-Lauf | offen bis F10 | F10-Gesamtabnahme |
-| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; gepackte Clean-Install- und Importclosure-Prüfung | offen bis F10 | F10-Gesamtabnahme |
+| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; getrennte Packs, Clean-Install, Importclosure und echter Releasepfad ab `746b990c` geprüft | offen bis F10 | F10-Gesamtabnahme |
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | offen bis F10 | F10-Gesamtabnahme |
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | offen bis F10 | F10-Gesamtabnahme |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | offen bis F10 | F10-Gesamtabnahme |
-| F10 – Integrierte Abschlussabnahme | in Arbeit | lokaler Kandidat wird nach F09-Commit festgelegt | offen | gemäß Detailaufgaben |
+| F10 – Integrierte Abschlussabnahme | in Arbeit | vorgeschalteter Paketreview in `746b990c` gelöst; 14/14 Paket-/Releasetests grün | offen | Kandidat nach verbleibenden lokalen Gates festlegen |
 
 # Erledigter Einstieg
 
@@ -118,8 +118,9 @@ Nachweise: F08-Commit `d37dea0c`; serieller F08-Lauf 105/105; unveränderte Test
 - [x] F06-05: Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
 - [x] F06-06: Gepackten 3.6.2-/Beta-Monolithen über einen versionierten Cutover-Plan auf gepackten Minimal-Core plus exakt benötigte Artefakte aktualisieren; unvorbereiteter Direktwechsel bleibt fail-closed.
 - [x] F06-07: Gepackten Minimal-Core per Importgraph und Artefaktinhalt beweisen: keine Run-/Delegation-Featurecontroller, Toolnamen oder konkreten Reminder-/Metadatenimplementierungen in seiner Closure (N-022).
+- [x] F06-08: Tatsächlichen npm-Releasepfad vom privaten Root-Workspace trennen; Minimal-Core, Cutover, alle 20 Plugins und Standard aus ihren generierten Verzeichnissen einzeln prüfen und publizieren (N-024).
 
-Nachweise: `/tmp/pibo4-f06-package-boundaries.md`, `/tmp/pibo4-f07-cutover.md`; `npm run pibo4:packages`; `test/pibo4-packed-distribution.test.mjs`; tatsächlicher gepackter 3.6.2-zu-Minimal-Core-Cutover in `test/pibo4-cutover.test.mjs`; fokussierte Host-/SDK-/Provider-/Manager-/Product-Runtime-Suiten.
+Nachweise: Commit `746b990c`; `/tmp/pibo4-f06-package-boundaries.md`, `/tmp/pibo4-f07-cutover.md`; `npm run pibo4:packages`; 14/14 Paket-/Releaseprüfungen; `test/pibo4-packed-distribution.test.mjs`; `test/npm-package-contents.test.mjs`; `test/release-script.test.mjs`; tatsächlicher gepackter 3.6.2-zu-Minimal-Core-Cutover in `test/pibo4-cutover.test.mjs`; fokussierte Host-/SDK-/Provider-/Manager-/Product-Runtime-Suiten. Der Root bleibt nur privater Build-/Deployment-Workspace und ist kein npm-Delivery-Beweis.
 
 ## F07 – Migration an neue Eigentümer und Paketgrenzen anpassen
 
@@ -155,13 +156,14 @@ Nachweise: [Pluginpaket-Spezifikation](/specs/product/plugin-profile-catalog.md)
 
 ## F10 – Integrierte Abschlussabnahme
 
+- [x] F10-00: Verpackungsreview vor Abnahme klären: irreführenden Root-Pack-Nachweis entfernen, Root-Publish sperren und den echten Releasewrapper auf getrennte Minimal-Core-/Cutover-/Plugin-/Standardpakete begrenzen. Gelöst in `746b990c`; 14/14 fokussierte Paket-/Releaseprüfungen grün, keine Veröffentlichung ausgeführt.
 - [ ] F10-01: Einen commit- und paketgenauen Kandidaten mit dokumentierten Core-/Pluginversionen festlegen.
 - [ ] F10-02: Die Abschlussmatrix aus Abschnitt 8 mit bestehenden Tests und gezielten Ergänzungen belegen.
 - [ ] F10-03: Relevante Desktop-/Mobile-Flows headful prüfen und auf Pibo2 denselben Kandidaten abnehmen.
 - [ ] F10-04: Aktuelle vollständige relevante Regressionssuite einmal zum integrierten Abschluss ausführen; Altfehler, Scope-Ausnahmen und neue Fehler getrennt ausweisen.
 - [ ] F10-05: Planstatus und normative Dokumentation auf belegte Implementierung setzen; keine alten Testzahlen neu etikettieren.
 
-Nachweise: offen.
+Nachweise: F10-00 durch Commit `746b990c`, `/tmp/f10-packaging-build.log` und `/tmp/f10-packaging-final-tests.log`; übrige F10-Abnahme offen.
 
 # Neue Befunde und Zusatzaufgaben
 
@@ -190,6 +192,7 @@ Nachweise: offen.
 | N-021 | Dependency-Expansion darf `globallyActive` nicht als Erlaubnis verwenden, um eine explizite Agent-Deaktivierung zu überstimmen; gespeicherte und effektive Nutzerwahl müssen übereinstimmen. | F02/F07 | behoben und fokussiert geprüft; aktuelle Snapshots trennen unentschiedene Defaults von expliziten Entscheidungen, Legacy-Snapshots fallen sicher auf explizite Booleans zurück, Plan-Diagnosen benennen Tool-, Agent-Plugin-, globale und Runtime-Blockaden |
 | N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Run-/Delegation-Controller konstruiert, den Delegation-Toolnamen importiert oder konkrete Reminder-/Metadaten formatiert. | F02/F04/F06 | behoben; Pakete besitzen Fachlogik und der gepackte Minimal-Core-Audit schließt Controller, Toolnamen und Reminderimplementierungen physisch aus |
 | N-023 | Frischer Standardstart scheiterte, weil ein Pluginprofil ein provider-backed Tool noch als ausführbar registriertes Legacy-Tool auflösen wollte. | F03/F06 | behoben; Profile können deklarierte provider-backed Toolmetadaten generisch aus aktiven Manifesten projizieren, frischer isolierter Docker-Gatewaystart und Profilinventur bestanden |
+| N-024 | Der bisherige Root-`npm pack`-Test verlangte Featuremodule im Paket, obwohl `@pasko70/pibo` als Minimal-Core festgelegt ist; der Releasewrapper publizierte tatsächlich den breiten Root. | F06/F10 | behoben in `746b990c`: Root ist privat, Release publiziert nur Core/Cutover/20 Plugins/Standard aus getrennten Verzeichnissen, und der hermetische Test verbietet nacktes `npm publish` |
 
 # Abnahmestand
 
@@ -216,4 +219,5 @@ F08 und F09 sind lokal abgeschlossen. A-C40-01 bis A-C40-16 werden im festen F10
 - F04 abgeschlossen: Preview, Cron und Workflows besitzen getrennte Backendpakete; alle Featureansichten liegen in getrennten Browserentries. Feature-Routen werden über `metadata.chatRoute` auf installierte Beiträge aufgelöst, interne Navigation über `subviewNavigation` statt Host-Allowlist gesteuert, Preview/Web Annotations sind keine Core-Sessiontools mehr. Root-Emit, Chat-UI-Typecheck/-Build und 39 Feature-/UI-/Cachetests sind grün; F06 übernimmt self-contained Paketartefakte und die physische Closure.
 - F05 teilweise umgesetzt: Pi, Codex Native und OMP verwenden getrennte Setupmodule. Codex Native besitzt Runtime-Request-Antwortaktionen, runtimegeeignete Workspace-View und Browserentry; der feste Core-Sessiontool-Eintrag ist entfernt, Inline-Chat/SSE bleiben auf derselben Pending-Queue. Debug lädt Adapter generisch aus dem aktiv installierten Runtimepaket. Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Tests sind grün. Alte Pi-Kompatibilitätsimports in Core-/Chat-/Root-Flächen halten F05-01/F05-05 bis F08 offen.
 - F06 abgeschlossen: `npm run pibo4:packages` baut Minimal-Core, Standard, Cutover und 20 eigenständig packbare Feature-/Runtimeartefakte. Ein Clean-Consumer startete nur aus dem Core-Tarball mit null Plugins und aktivierte anschließend gepacktes Preview. Import- und Inhaltsaudit schließen konkrete Runtime-, Run- und Delegationsimplementierungen aus dem Core aus.
+- F06-Releasegrenze am 2026-09-15 nach Review korrigiert: Der vorherige Root-Pack-Test und das nackte Root-`npm publish` widersprachen der Minimal-Core-Entscheidung. Commit `746b990c` macht den Root privat, bindet die Zielversion an die generierten Core-/Cutover-/Standardartefakte, publiziert alle 23 Pakete getrennt und prüft 14/14 Paket-/Releasefälle. F10 war bis zu dieser Korrektur ausdrücklich angehalten.
 - F07 abgeschlossen: Das tatsächliche gepackte `@pasko70/pibo@3.6.2` wurde erst nach einem separaten, content-hashgebundenen Vorbereitungsplan durch gepackten Minimal-Core ersetzt. Nur aktive Zielartefakte wurden installiert; deaktivierte/deinstallierte Ziele blieben aus. Wiederstart, unveränderte Benutzerdaten, Beta-Quelle, Journal-/Konfliktpfade sowie Core-/Plugin-Tabzuordnung sind mit 83/83 fokussierten Tests belegt.

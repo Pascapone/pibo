@@ -2,6 +2,8 @@
 
 ## 2026-09-15
 
+- **Pibo 4 npm release boundary correction**: Resolved the F10 packaging review at commit `746b990c`. The repository root is now a private build workspace rather than npm delivery evidence. The release wrapper versions, verifies, and publishes only generated Minimal-Core, Cutover, 20 independent plugin packages, and Standard; its hermetic test records every publish target and rejects a naked root publish. Replaced the misleading Root-pack assertions with actual Minimal-Core tarball/import checks and added separate Standard/Cutover packing evidence. Fourteen focused package/release tests passed locally in the isolated Docker worker; no npm publication or release was performed.
+
 - **Pibo 4 plugin delivery reconciliation**: Replaced the retired Registry contract with the current capability-host, immutable package, profile-selection, public SDK, safe lifecycle, prepared-cutover, and no-legacy-delivery specification at commit `d37dea0c`. Updated App Context, Web host, Loop, transcription, and speech ownership references. Added the [plugin development and operations guide](/project/guides/plugin-development-and-operations.md) and an independently buildable Hello Pibo example covering public imports, inspection, activation, update, diagnosis, configuration, and uninstall.
 
 ## 2026-09-14

@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-15T02:06:30Z"
+  at: "2026-09-15T03:35:09Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "d37dea0c7870e426e35911b574af1af07dfa7cd2"
+  commit: "746b990cd861f26d09e4a46be9e0972dadee0b7e"
   requirements:
     - id: "PROD-REG-001"
       status: "implemented"
@@ -114,6 +114,7 @@ traceability:
       sources:
         - path: "package.json"
         - path: "scripts/build-pibo4-artifacts.mjs"
+        - path: "scripts/build-pibo4-minimal-core.mjs"
       tests:
         - path: "test/plugin-system-v4-source-audit.test.mjs"
           name: "Pibo 4 production source has no executable legacy plugin composition entry points"
@@ -123,6 +124,33 @@ traceability:
         - "package exports: ./plugin-sdk, ./plugin-host, ./plugin-runtime, ./product-runtime, ./plugin-cutover"
       failures:
         - "Production delivery exposes neither wildcard plugin exports nor plugin-builtin or legacy registry composition entrypoints."
+      confidence: "high"
+    - id: "PROD-REG-008"
+      status: "implemented"
+      sources:
+        - path: "package.json"
+          symbol: "private"
+        - path: "package.json"
+          symbol: "scripts.prepublishOnly"
+        - path: "scripts/release.mjs"
+          symbol: "pibo4ReleasePackages"
+        - path: "scripts/build-pibo4-artifacts.mjs"
+          symbol: "releaseVersion"
+        - path: "scripts/build-pibo4-minimal-core.mjs"
+          symbol: "releaseVersion"
+      tests:
+        - path: "test/npm-package-contents.test.mjs"
+          name: "repository root refuses direct npm publication"
+        - path: "test/npm-package-contents.test.mjs"
+          name: "generated Minimal-Core tarball excludes repository and feature implementation surfaces"
+        - path: "test/release-script.test.mjs"
+          name: "release publishes only generated Minimal-Core, Cutover, plugin, and Standard packages"
+        - path: "test/pibo4-packed-distribution.test.mjs"
+          name: "standard artifact set maps every package to one exact plugin id and version"
+      public:
+        - "release artifacts: @pasko70/pibo, @pasko70/pibo-cutover, @pasko70/pibo-plugin-*, @pasko70/pibo-standard"
+      failures:
+        - "The repository root is marked private and its prepublish guard rejects direct publication. Release aborts on wrong artifact identities, versions, duplicate package names, or inconsistent Standard pins before npm publication. Publication is sequential and not atomic across packages."
       confidence: "high"
 ---
 
@@ -141,6 +169,7 @@ Core product services, Session routing, individual tool semantics, Web rendering
 - Agent profiles select installed contributions explicitly. Runtime requirements, service dependencies, direct visibility, yieldability, portability, and built-in replacement metadata remain independent properties.
 - External packages compile and run through documented package subpaths without importing repository internals.
 - Pibo 4 cutover verifies the retained old package and exact target artifacts before Minimal-Core replaces legacy aggregate delivery.
+- The repository root is a private build workspace, not an npm release package. Its prepublish guard rejects direct publication. The release wrapper publishes only the generated Minimal-Core, Cutover, individual plugin, and Standard directories after identity, version, and dependency-pin verification.
 
 # Requirements and invariants
 
@@ -172,6 +201,10 @@ Minimal-Core SHALL reject active legacy aggregate installations unless an exact 
 
 Production source and packed Core SHALL not expose the retired registry API, wildcard plugin exports, `plugin-builtin` delivery, aggregate first-party factories, or a second executable registration path. Isolated data migration readers and historical test fixtures MAY retain legacy shapes but SHALL NOT participate in normal composition.
 
+## Requirement: PROD-REG-008: Physical npm release boundary
+
+The repository root SHALL remain marked private and its prepublish guard SHALL reject direct publication as `@pasko70/pibo`. The npm release path SHALL build, verify, and publish the generated Minimal-Core, Cutover, every package listed by Standard, and Standard itself from separate package directories. Minimal-Core SHALL exclude first-party feature implementations; Standard SHALL pin the exact Core and plugin versions. Any identity, version, duplicate-name, or pin mismatch SHALL fail before the first publish.
+
 # Interfaces and ownership
 
 Public package boundaries:
@@ -196,19 +229,21 @@ The capability host owns registration truth. `PluginManager` owns durable packag
 # Known limits
 
 - Pibo does not install arbitrary package dependencies during safe plugin installation. Distributed artifacts must contain their runtime closure and use only supported public peers.
-- First-party package publication, remote registry policy, signing, and release promotion remain release-process concerns rather than runtime behavior.
+- npm publication is sequential rather than transactional. A failure after one or more packages publish requires an operator to reconcile the immutable published versions before resuming.
+- Remote registry policy, signing, and release promotion remain release-process concerns rather than runtime behavior.
 - Real-provider and Pibo2 acceptance are not implied by the local source and test traceability in this specification.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
+Source symbols and named tests are bound through commit `746b990cd861f26d09e4a46be9e0972dadee0b7e`, including the F08 capability cutover at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
-Focused verification at that commit included:
+Focused verification included:
 
 - TypeScript compilation and Pibo 4 artifact construction.
 - The serial F08 source, manifest, runtime, browser, and parity set: 105 tests passed, 0 failed.
 - The isolated gateway integration set: 5 tests passed, 0 failed, with process cleanup confirmed.
 - The Pi-to-Codex yielded-argument parity and durable Codex binding restart/deletion tests passed without weakening their assertions.
+- The Pibo 4 package build completed, and 14 focused package/release tests packed the generated Core, all first-party plugins, Cutover, and Standard; the hermetic release test recorded only generated-directory publish targets and no root `npm publish`.
 
 # Related concepts
 
