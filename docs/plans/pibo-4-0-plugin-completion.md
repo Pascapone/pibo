@@ -27,7 +27,7 @@ sources:
 
 Dieser Plan beschreibt die verbleibende Arbeit bis zum sauberen Plugin-Modell von Pibo 4.0. Der große Umbau ist bereits vorhanden. Jetzt werden die verbliebenen Sonderwege entfernt, der Kern tatsächlich unabhängig ausgeliefert und alle Erweiterungen über denselben öffentlichen Vertrag angebunden.
 
-Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F09 lokal implementiert und dokumentiert; F10 prüft den festen lokalen Kandidaten. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme. Veröffentlichung, Push, PR, Deployment, Merge und Release bleiben separate Aktionen.
+Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 für den festen lokalen Kandidaten `b30a1e03` implementiert, dokumentiert und lokal abgenommen. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme. Veröffentlichung, Push, PR, Deployment, Merge, Release, Pibo2 und reale All-Runtime-Modellabnahme bleiben separate Aktionen.
 
 Dieser Plan führt die festgelegten Restentscheidungen aus dem [bisherigen Umbauplan](/plans/unified-plugin-system-rebuild.md) fort. Bei Widersprüchen zu dessen pauschaler Aussage „alle Produktoberflächen sind Plugins“, zur alten Default-Komposition, zu tolerierten Legacy-APIs oder zum OMP-Ausbau ist **dieser Plan maßgeblich**. Sonstige Anforderungen, insbesondere Daten-, Kontext- und UI-Parität, bleiben bestehen. Das [bisherige Ausführungsprotokoll](/plans/unified-plugin-system-execution.md) bleibt Nachweis vergangener Arbeit; alte offene Checkboxen bedeuten nicht automatisch, dass deren Implementierung erneut erforderlich ist.
 
@@ -437,13 +437,17 @@ Stand 2026-09-15: Die aktuelle [Pluginpaket-Spezifikation](/specs/product/plugin
 ## F10 – Integrierte Abschlussabnahme
 
 - [x] Vorgeschalteten Verpackungsreview auflösen: Der Root-Workspace ist kein npm-Releaseartefakt; der echte Wrapper publiziert ausschließlich getrennte Minimal-Core-/Cutover-/Plugin-/Standardpakete. Commit `746b990c`, Paketbuild und 14/14 fokussierte Paket-/Releaseprüfungen belegen die Grenze; keine Veröffentlichung wurde ausgeführt.
-- [ ] Einen commit- und paketgenauen Kandidaten mit dokumentierten Core-/Pluginversionen festlegen.
-- [ ] Die Abschlussmatrix aus Abschnitt 8 mit bestehenden Tests und gezielten Ergänzungen belegen.
-- [ ] Relevante Desktop-/Mobile-Flows headful prüfen. Pibo2-Abnahme bleibt aufgrund der aktuellen Arbeitsanweisung außerhalb dieses lokalen Abschlusslaufs und wird als separate Release-Evidenz ausgewiesen.
-- [ ] Aktuelle vollständige relevante Regressionssuite einmal zum integrierten Abschluss ausführen; Altfehler, Scope-Ausnahmen und neue Fehler getrennt ausweisen.
-- [ ] Planstatus und normative Dokumentation auf belegte Implementierung setzen; keine alten Testzahlen neu etikettieren.
+- [x] Commit- und paketgenauen lokalen Kandidaten festgelegt: `b30a1e03`; Core, Cutover und Standard `4.0.0-beta.1`; 20 Pluginpakete `1.0.0`; Standard pinnt genau diese Versionen.
+- [x] Abschlussmatrix aus Abschnitt 8 mit bestehenden Tests, gezielten Ergänzungen und ausdrücklich begrenzter Fixture-Evidenz belegt.
+- [x] Relevante Desktop-/Mobile-Flows headful geprüft. Pibo2-Abnahme bleibt aufgrund der aktuellen Arbeitsanweisung außerhalb dieses lokalen Abschlusslaufs und wird als separate Release-Evidenz ausgewiesen.
+- [x] Aktuelle vollständige relevante Regressionssuite ausgeführt: sechs serielle Gruppen ohne den separat begrenzten Gatewaytest ergaben 3.040 Tests, 3.030 Pässe, 0 Fehler und 10 Skips; die Gatewayintegration bestand anschließend 5/5 und beendete den Testprozess sauber.
+- [x] Planstatus und normative Dokumentation auf belegte Implementierung gesetzt; historische und aktuelle Zahlen bleiben getrennt.
 
-**Fertig, wenn:** Jede Zusage hat aktuelle Evidenz oder eine ausdrücklich vereinbarte Einschränkung. Abhängigkeiten: F00–F09. Release/Tag/Publish bleiben getrennte spätere Aktionen.
+Stand 2026-09-15: Kandidat `b30a1e03` baut nach dem Releasegrenzen-Commit `746b990c` und der Dokumentationskorrektur `0a1a45ed`. Finaler Typecheck und Schrittbuild sind grün; `npm run pibo4:packages` erzeugt Core/Cutover/Standard `4.0.0-beta.1` sowie 20 Pluginpakete `1.0.0`. Die kanonische Regression ohne Gatewaytest lief in sechs seriellen Gruppen mit 3.040 Tests, 3.030 Pässen, 0 Fehlern und 10 Skips. Die separat mit harter Grenze ausgeführte Gatewayintegration bestand 5/5 und hinterließ keinen `node --test`-Prozess; eine bekannte nicht blockierende `MaxListenersExceededWarning` bleibt sichtbar. Strikte OKF-Prüfung und 86 Dokumentationstests sind grün. Headful Browser-Use/CDP-Evidenz belegt Desktop-Session-Sidebar, leeren neuen Workspace, Picker, Settings als Sessiontab, gezielten Refresh sowie die responsive mobile Settings-Darstellung. Die Nachweise liegen unter `/tmp/f10-*` und `/tmp/f10-{desktop,mobile}-*.png`.
+
+Die lokale Abnahme verwendet kontrollierte Runtime-/Request-Fixtures, wo externe Providerzugänge nicht Teil des Laufs waren. Sie ist keine npm-Veröffentlichung, kein Release, keine Pibo2-Abnahme und kein realer All-Runtime-Modellnachweis.
+
+**Fertig, wenn:** Jede Zusage hat aktuelle Evidenz oder eine ausdrücklich vereinbarte Einschränkung. Für den lokalen Kandidaten erfüllt; Release/Tag/Publish, Pibo2 und reale externe Providerabnahme bleiben getrennte spätere Aktionen.
 
 # 8. Validierungsphilosophie und Abschlussmatrix
 
@@ -469,6 +473,17 @@ Während der Implementierung: relevante fokussierte Prüfungen, nötige Typechec
 | A-C40-14 | OMP installieren und normalen bestehenden Betrieb nutzen | Plugin funktionsfähig; keine neue Recovery-/Cross-Runtime-Garantie verlangt. |
 | A-C40-15 | Gepackte Minimal-/Standardartefakte und öffentliche Exports prüfen | Keine Legacy-Ausführung und keine versteckten Featureabhängigkeiten im Kern. |
 | A-C40-16 | Dokumentation und Beispiel aus frischer Umgebung verwenden | Öffentlicher Installations-/Entwicklerweg funktioniert; Beschreibungen stimmen mit Kandidat überein. |
+
+Lokale Evidenzzuordnung für `b30a1e03`:
+
+- A-C40-01, A-C40-02, A-C40-03 und A-C40-15: `test/pibo4-packed-distribution.test.mjs`, `test/npm-package-contents.test.mjs`, `test/plugin-system-install.test.mjs`, `test/plugin-system-uninstall.test.mjs`, `test/plugin-system-v4-source-audit.test.mjs` und `test/release-script.test.mjs`.
+- A-C40-04 bis A-C40-07: Plugin-Auswahl-, Goal-, Run-, Delegation-, Hook-, Lifecycle- und Produkt-Runtime-Tests der kanonischen Suite; die unveränderte Pi→Codex-yielded-Parität bleibt grün.
+- A-C40-08 und A-C40-09: Sessiontab-, Desktoptab-, optimistische Session-, mobile Sidebar- und responsive UI-Tests sowie aktuelle headful Desktop-/Mobile-Evidenz unter `/tmp/f10-{desktop,mobile}-*.png`.
+- A-C40-10: `test/codex-native-requests.test.mjs`, `test/chat-runtime-request-stream.test.mjs` und zugehörige Chat-UI-Requesttests; kontrollierte lokale Request-Evidenz, kein neuer externer Modellturn.
+- A-C40-11 und A-C40-12: `test/pibo4-cutover.test.mjs`, `test/plugin-system-migration-journal.test.mjs`, automatische Legacy-Session-/Browsermigration und Konflikt-/Recoverytests.
+- A-C40-13: bestehende Pi-/Codex-Router-, Binding-, Restart- und Portabilitytests; insbesondere die unveränderte dauerhafte Codex-Binding-Parität mit persistiertem `missing`.
+- A-C40-14: `test/omp-runtime.test.mjs`, `test/omp-resources.test.mjs` und bestehende Portability-Grenzen; kein Anspruch auf neue OMP-Recovery.
+- A-C40-16: ausführbares `examples/plugins/hello-pibo`, strikte OKF-Prüfung und 86 Dokumentationstests.
 
 Für fachliche Refactorings dienen bestehende Runtime-, Context-, Session-, Plugin-, Tool- und UI-Tests als Ausgangspunkt. Ein bloßer Source-Stringtest beweist keine unabhängige Paketierung; ein Healthcheck beweist weder Migration noch funktionierende Tool-Ausführung. Neue externe Paketfixtures sollen allgemeine Verträge prüfen, nicht eine kopierte First-Party-Allowlist.
 

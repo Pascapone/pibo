@@ -27,17 +27,17 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 
 | Paket | Umsetzung | Fokussiert geprüft | Integriert akzeptiert | Nächster Schritt |
 |---|---|---|---|---|
-| F00 – Abhängigkeiten und Paketgrenzen festziehen | abgeschlossen | Quellen-/Importaudit abgeschlossen | offen bis F10 | F01-Verträge implementieren |
-| F01 – Öffentliche Host-Dienste und Tool-Verträge vervollständigen | abgeschlossen | Typecheck, SDK-Build und 42 fokussierte Tests | offen bis F10 | F02-Toolfamilien migrieren |
-| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen | Root-Emit, SDK-Build, Provider-/Auswahltests und physischer F06-07-Minimal-Core-Ausschluss | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
-| F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | offen bis F10 | F04-Featurepakete trennen |
-| F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build, Feature-/UI-/Cachetests und 20 unabhängig packbare Artefakte | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
-| F05 – Runtimepakete und Runtime Requests abschließen | abgeschlossen | getrennte Runtimepakete; unveränderte Pi→Codex- und dauerhafte Codex-Binding-Parität im F08-Lauf | offen bis F10 | F10-Gesamtabnahme |
-| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; getrennte Packs, Clean-Install, Importclosure und echter Releasepfad ab `746b990c` geprüft | offen bis F10 | F10-Gesamtabnahme |
-| F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | offen bis F10 | F10-Gesamtabnahme |
-| F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | offen bis F10 | F10-Gesamtabnahme |
-| F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | offen bis F10 | F10-Gesamtabnahme |
-| F10 – Integrierte Abschlussabnahme | in Arbeit | vorgeschalteter Paketreview in `746b990c` gelöst; 14/14 Paket-/Releasetests grün | offen | Kandidat nach verbleibenden lokalen Gates festlegen |
+| F00 – Abhängigkeiten und Paketgrenzen festziehen | abgeschlossen | Quellen-/Importaudit abgeschlossen | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
+| F01 – Öffentliche Host-Dienste und Tool-Verträge vervollständigen | abgeschlossen | Typecheck, SDK-Build und 42 fokussierte Tests | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
+| F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen | Root-Emit, SDK-Build, Provider-/Auswahltests und physischer F06-07-Minimal-Core-Ausschluss | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
+| F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
+| F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build, Feature-/UI-/Cachetests und 20 unabhängig packbare Artefakte | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
+| F05 – Runtimepakete und Runtime Requests abschließen | abgeschlossen | getrennte Runtimepakete; unveränderte Pi→Codex- und dauerhafte Codex-Binding-Parität im F08-Lauf | lokal akzeptiert in F10 | reale Provider-/Pibo2-Evidenz bleibt separat |
+| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; getrennte Packs, Clean-Install, Importclosure und echter Releasepfad ab `746b990c` geprüft | lokal akzeptiert in F10 | Publish bleibt separate Aktion |
+| F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | lokal akzeptiert in F10 | Pibo2-Upgrade bleibt separat |
+| F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
+| F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
+| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `b30a1e03`; 3.040/3.030/0/10 plus Gateway 5/5, finale Builds und headful Desktop/Mobile | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
 
 # Erledigter Einstieg
 
@@ -157,13 +157,13 @@ Nachweise: [Pluginpaket-Spezifikation](/specs/product/plugin-profile-catalog.md)
 ## F10 – Integrierte Abschlussabnahme
 
 - [x] F10-00: Verpackungsreview vor Abnahme klären: irreführenden Root-Pack-Nachweis entfernen, Root-Publish sperren und den echten Releasewrapper auf getrennte Minimal-Core-/Cutover-/Plugin-/Standardpakete begrenzen. Gelöst in `746b990c`; 14/14 fokussierte Paket-/Releaseprüfungen grün, keine Veröffentlichung ausgeführt.
-- [ ] F10-01: Einen commit- und paketgenauen Kandidaten mit dokumentierten Core-/Pluginversionen festlegen.
-- [ ] F10-02: Die Abschlussmatrix aus Abschnitt 8 mit bestehenden Tests und gezielten Ergänzungen belegen.
-- [ ] F10-03: Relevante Desktop-/Mobile-Flows headful prüfen und auf Pibo2 denselben Kandidaten abnehmen.
-- [ ] F10-04: Aktuelle vollständige relevante Regressionssuite einmal zum integrierten Abschluss ausführen; Altfehler, Scope-Ausnahmen und neue Fehler getrennt ausweisen.
-- [ ] F10-05: Planstatus und normative Dokumentation auf belegte Implementierung setzen; keine alten Testzahlen neu etikettieren.
+- [x] F10-01: Commit- und paketgenauen lokalen Kandidaten festgelegt: Code-/Paketcommit `b30a1e03`; `@pasko70/pibo`, `@pasko70/pibo-cutover` und `@pasko70/pibo-standard` jeweils `4.0.0-beta.1`; 20 Pluginpakete jeweils `1.0.0`; Standard pinnt genau diese Versionen.
+- [x] F10-02: Abschlussmatrix aus Abschnitt 8 mit der kanonischen Gesamtsuite, gezielten Paket-/Migration-/Lifecycle-/Runtime-/UI-Prüfungen und ausdrücklich begrenzter Fixture-Evidenz belegt.
+- [x] F10-03: Relevante Session-Workspace-Flows im realen headful Browser auf Desktop und Mobile geprüft. Pibo2 bleibt aufgrund der Arbeitsanweisung außerhalb dieses lokalen Abschlusslaufs und ist eine separate Release-Evidenz.
+- [x] F10-04: Vollständige relevante Regression ohne den absichtlich separat begrenzten Gatewaytest in sechs seriellen Gruppen abgeschlossen: 3.040 Tests, 3.030 bestanden, 0 fehlgeschlagen, 10 übersprungen. Gatewayintegration separat: 5/5, sauberer Prozessabschluss; die bekannte nicht blockierende `MaxListenersExceededWarning` bleibt sichtbar.
+- [x] F10-05: Plan, To-do und Log auf den belegten lokalen Abschluss gesetzt; historische und lokale Zahlen bleiben getrennt, Release/Pibo2 werden nicht behauptet.
 
-Nachweise: F10-00 durch Commit `746b990c`, `/tmp/f10-packaging-build.log` und `/tmp/f10-packaging-final-tests.log`; übrige F10-Abnahme offen.
+Nachweise: Commits `746b990c`, `0a1a45ed` und Kandidat `b30a1e03`; `/tmp/f10-full-serial-canonical-summary.log`, `/tmp/f10-gateway-integration.log`, `/tmp/f10-final-typecheck.log`, `/tmp/f10-final-build.log`, `/tmp/f10-final-packages.log`, `/tmp/f10-packaging-final-tests.log`, `/tmp/f10-packaging-doc-final.log`, `/tmp/f10-desktop-session-final.png`, `/tmp/f10-desktop-settings-tab-final.png`, `/tmp/f10-mobile-session-final.png` und `/tmp/f10-mobile-settings-tab-final.png`. Keine npm-Veröffentlichung, kein Push, PR, Merge, Release, Deployment oder Pibo2-Lauf.
 
 # Neue Befunde und Zusatzaufgaben
 
@@ -196,7 +196,7 @@ Nachweise: F10-00 durch Commit `746b990c`, `/tmp/f10-packaging-build.log` und `/
 
 # Abnahmestand
 
-F08 und F09 sind lokal abgeschlossen. A-C40-01 bis A-C40-16 werden im festen F10-Kandidaten geprüft. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
+F00 bis F10 sind für Kandidat `b30a1e03` lokal abgeschlossen. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
 
 # Aktivität und Entscheidungen
 
@@ -204,7 +204,7 @@ F08 und F09 sind lokal abgeschlossen. A-C40-01 bis A-C40-16 werden im festen F10
 
 - F08 abgeschlossen und als `d37dea0c` committed: Capability Host ist die einzige produktive Registrierungsautorität; Registry-/Wildcard-/`plugin-builtin`-/Aggregate-Delivery ist entfernt. TypeScript, 20 Artefakte plus Standard, serieller F08-Lauf 105/105 und isolierte Gatewayintegration 5/5 sind grün.
 - F09 abgeschlossen: aktuelle Spezifikationen und Pläne auf den F08-Commit abgeglichen, externe Entwicklung und Betrieb dokumentiert, OMP-Grenze präzisiert und `examples/plugins/hello-pibo` im Worker gebaut, importiert, inspiziert, installiert, aktiviert und gepackt. Strikte OKF-Prüfung und Dokumentationstests sind grün.
-- F10 begonnen: Nach dem F09-Dokumentationscommit wird ein commit- und paketgenauer lokaler Kandidat fixiert. Pibo2, Push, PR, Deployment, Merge, Release und Controller-Gateway-Mutation bleiben ausgeschlossen.
+- F10 lokal abgeschlossen: Kandidat `b30a1e03` liefert Core/Cutover/Standard `4.0.0-beta.1` und 20 Pluginpakete `1.0.0`. Die kanonische Regression lief ohne Gatewaytest seriell mit 3.040 Tests, 3.030 Pässen, 0 Fehlern und 10 Skips; die separat begrenzte Gatewayintegration bestand 5/5. Finaler Typecheck, Schrittbuild, Pibo4-Paketbuild, strikte OKF-/Dokumentationsprüfungen und aktuelle headful Desktop-/Mobile-Session-Workspace-Flows sind grün. Pibo2, reale All-Runtime-Modellabnahme, Push, PR, Deployment, Merge, Release, Publish und Controller-Gateway-Mutation bleiben ausgeschlossen.
 
 ## 2026-09-14
 
