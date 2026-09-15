@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T22:30:00Z"
+  at: "2026-09-15T02:06:30Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -32,12 +32,12 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen | abgeschlossen | Root-Emit, SDK-Build, Provider-/Auswahltests und physischer F06-07-Minimal-Core-Ausschluss | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
 | F03 – Kernansichten aus Sammelplugins lösen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build und 34 fokussierte Tests | offen bis F10 | F04-Featurepakete trennen |
 | F04 – Featurepakete einschließlich ihrer Oberflächen trennen | abgeschlossen | Root-Emit, Chat-UI-Typecheck/-Build, Feature-/UI-/Cachetests und 20 unabhängig packbare Artefakte | offen bis F10 | F08-Legacyaudit und F10-Gesamtabnahme |
-| F05 – Runtimepakete und Runtime Requests abschließen | teilweise; Requests und Runtime-Setups getrennt | Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Tests | offen bis F10 | verbleibende Pi-Kompatibilitätsimports mit F06/F08 lösen |
-| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; gepackte Clean-Install- und Importclosure-Prüfung | offen bis F10 | F08-Paketaudit und F10-Gesamtabnahme |
-| F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | offen bis F10 | F08-Legacyentfernung und F10-Gesamtabnahme |
-| F08 – Legacy-Delivery vollständig entfernen | offen | offen | offen | gemäß Detailaufgaben |
-| F09 – Dokumentation und Entwicklerweg abschließen | offen | offen | offen | gemäß Detailaufgaben |
-| F10 – Integrierte Abschlussabnahme | offen | offen | offen | gemäß Detailaufgaben |
+| F05 – Runtimepakete und Runtime Requests abschließen | abgeschlossen | getrennte Runtimepakete; unveränderte Pi→Codex- und dauerhafte Codex-Binding-Parität im F08-Lauf | offen bis F10 | F10-Gesamtabnahme |
+| F06 – Minimal- und Standarddistribution bauen | abgeschlossen | Minimal-Core/Standard/Cutover/20 Artefakte gebaut; gepackte Clean-Install- und Importclosure-Prüfung | offen bis F10 | F10-Gesamtabnahme |
+| F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | offen bis F10 | F10-Gesamtabnahme |
+| F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | offen bis F10 | F10-Gesamtabnahme |
+| F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | offen bis F10 | F10-Gesamtabnahme |
+| F10 – Integrierte Abschlussabnahme | in Arbeit | lokaler Kandidat wird nach F09-Commit festgelegt | offen | gemäß Detailaufgaben |
 
 # Erledigter Einstieg
 
@@ -100,14 +100,14 @@ Nachweise: `/tmp/pibo4-f04-n022.md` für F04-07 und `/tmp/pibo4-f04-feature-pack
 
 ## F05 – Runtimepakete und Runtime Requests abschließen
 
-- [ ] F05-01: Pi-/Codex-/OMP-SDKs und Implementierungen aus statischen Core-Imports und Installationsabhängigkeiten entfernen. Separate Setupmodule und generische Debug-Auflösung sind umgesetzt; alte Pi-Kompatibilitätsimports in Core-/Chat-/Root-Flächen bleiben für F06/F08 offen.
+- [x] F05-01: Pi-/Codex-/OMP-SDKs und Implementierungen aus statischen Core-Imports und Installationsabhängigkeiten entfernt; separate Setupmodule, generische Debug-Auflösung und physischer Minimal-Core-Ausschluss sind belegt.
 - [x] F05-02: Runtime Requests gemäß Abschnitt 5 zugeordnet: Codex Native liefert die runtime-/capability-geeignete Workspace-View; Inline-Chat, SSE, Pending-Zustand und Antwortweg bleiben erhalten.
 - [x] F05-03: Antwortaktionen aus `pibo.core` gelöst und als Codex-Native-Beiträge registriert; Core enthält keine Action-Namen oder Parameterparser mehr.
 - [x] F05-04: Session Inspector bleibt unveränderte Kernansicht und verwendet allgemeine Runtime-Inspektion.
-- [ ] F05-05: Pi-/Codex-Wiederaufnahme und vorhandene Reconstruction-/Binding-Verträge erhalten. Fokussierte Ressourcen-/Requestpfade sind grün; vollständige Recovery-Parität wird nach Entfernung der Restimports erneut belegt.
+- [x] F05-05: Pi-/Codex-Wiederaufnahme und vorhandene Reconstruction-/Binding-Verträge erhalten; die unveränderten Pi→Codex-Yield- und dauerhaften Codex-Restart/Löschungsfälle sind nach Entfernung der Restimports grün.
 - [x] F05-06: OMP-Setup getrennt und normaler Runtime-/Ressourcenbetrieb fokussiert geprüft; keine neue Recovery-Garantie eingeführt.
 
-Nachweise: offen.
+Nachweise: F08-Commit `d37dea0c`; serieller F08-Lauf 105/105; unveränderte Tests „a Pi parent yielded subagent request creates and reuses a native Codex child binding“ und „Codex native router resumes a durable binding after restart and marks deletion missing“.
 
 ## F06 – Minimal- und Standarddistribution bauen
 
@@ -135,23 +135,23 @@ Nachweise: `/tmp/pibo4-f07-cutover.md`, `/tmp/pibo4-f07-tests.log`; tatsächlich
 
 ## F08 – Legacy-Delivery vollständig entfernen
 
-- [ ] F08-01: Produktive Registry-Leser auf neue Host-/Service-Abfragen umstellen.
-- [ ] F08-02: Alte Registrierung, Typen, Helper, Übergangsparameter, Wildcard-Exports und ungenutzte alte Entrypoints entfernen.
-- [ ] F08-03: Tests alter API-Flächen mit begründetem Verhaltensersatz migrieren; keine zweite Registry als dauerhafte Testinfrastruktur mitliefern.
-- [ ] F08-04: Paket- und Importaudit über Server, CLI, Browser und Adapter ausführen; dokumentierte Ausnahmen nur für Datenmigration/Core-Ansichten.
-- [ ] F08-05: Keine Legacy-Manifeste im normalen Laufzeitvertrag akzeptieren; notwendige Übersetzungen am Import-/Upgrade-Eingang isolieren.
+- [x] F08-01: Produktive Registry-Leser auf `PiboCapabilityHost`, `CapabilityProjection` und öffentliche Host-/Service-Abfragen umgestellt.
+- [x] F08-02: Alte Registrierung, Typen, Helper, Übergangsparameter, Wildcard-Exports, `plugin-builtin` und ungenutzte Aggregate-Entrypoints entfernt.
+- [x] F08-03: Tests auf echte Capability-Host-/Product-Runtime-Pfade migriert; `test/helpers/capability-host.mjs` bleibt eine Testhilfe und keine ausgelieferte zweite Registry.
+- [x] F08-04: Paket- und Importaudit über Server, CLI, Browser und Adapter ausgeführt; produktive Legacy-Delivery bleibt ausgeschlossen.
+- [x] F08-05: Normale Manifestvalidierung verlangt aktuelle View-Präsentation und weist Legacyfelder ab; Übersetzung bleibt auf Cutover-/Migrationseingänge begrenzt.
 
-Nachweise: offen.
+Nachweise: Commit `d37dea0c` (`Remove legacy plugin delivery surface`); TypeScript-Kompilierung; 20 Artefakte plus Standardkomposition; serieller F08-Lauf **105/105**; isolierte Gatewayintegration **5/5**; `git diff --check`; keine verbleibenden Testprozesse.
 
 ## F09 – Dokumentation und Entwicklerweg abschließen
 
-- [ ] F09-01: Die Matrix in Abschnitt 9 paketweise abarbeiten; implementierte Verträge in aktuelle Specs übertragen.
-- [ ] F09-02: Öffentliche Dienste, Hooks und externe Paketentwicklung mit einem tatsächlich ausführbaren Beispiel erklären.
-- [ ] F09-03: Minimal-/Standardinstallation, Upgrade, Backup, Konfliktreparatur und Deinstallation beschreiben.
-- [ ] F09-04: OMP-Ausnahme und Unterstützungsumfang präzise angeben.
-- [ ] F09-05: Überholte Planaussagen, Indizes und doppelte aktuelle Wahrheiten bereinigen, historische Evidenz erhalten.
+- [x] F09-01: Die Paket-, Capability-, Profil-, App-, Gateway-, Loop- und Medienproviderverträge auf Commit `d37dea0c` abgeglichen.
+- [x] F09-02: Öffentliche SDK-/Host-/Runtime-Dienste und externe Paketentwicklung mit `examples/plugins/hello-pibo` erklärt und ausgeführt.
+- [x] F09-03: Minimal-/Standardinstallation, vorbereiteter 3.6.2-Cutover, Backup, Konfliktreparatur, Update und Deinstallation beschrieben.
+- [x] F09-04: OMP als funktionsfähiges Runtimepaket ohne neue Rekonstruktions-/Cross-Runtime-Garantie präzisiert.
+- [x] F09-05: Überholte Registry-Aussagen korrigiert, Indizes regeneriert und historische Evidenz als historisch belassen.
 
-Nachweise: offen.
+Nachweise: [Pluginpaket-Spezifikation](/specs/product/plugin-profile-catalog.md), [Entwickler-/Betriebsleitfaden](/project/guides/plugin-development-and-operations.md), strikte OKF-Prüfung ohne Fehler/Warnungen, Dokumentationstests grün; Beispiel kompiliert, importiert, inspiziert, installiert, aktiviert und packt im isolierten Worker.
 
 ## F10 – Integrierte Abschlussabnahme
 
@@ -171,12 +171,12 @@ Nachweise: offen.
 | N-002 | First-Party-Artefakte importieren `plugin-builtin/*` aus dem Hauptpaket; Implementierung in unabhängige Artefakte verschieben. | F00/F04/F06 | behoben; 20 self-contained Backends und getrennte Browserartefakte lassen sich unabhängig packen |
 | N-003 | Codex-Compat-Erkennung prüft falschen Toolnamen; durch deklarierte Beiträge ersetzen. | F02 | behoben; ausgewählter `system-prompt-transformer` ersetzt Core-/Pi-Sonderzweige |
 | N-004 | Runtime-Request-Antwortaktionen hängen am bisherigen Core-Sammelplugin. | F05 | behoben; Codex Native besitzt Aktionen, Viewmetadaten und Browserentry, Inlinepfad bleibt runtime-neutral |
-| N-005 | Root-Export `./*` und `plugin-builtin/*` machen interne Implementierung zur Delivery-Fläche. | F01/F06/F08 | offen; explizite Subpaths beschlossen |
+| N-005 | Root-Export `./*` und `plugin-builtin/*` machen interne Implementierung zur Delivery-Fläche. | F01/F06/F08 | behoben; nur explizite öffentliche Plugin-Subpaths bleiben, Source-/Paket-Audit grün |
 | N-006 | Session-Tool-Assembly und Context-Build wählen konkrete Pibo-Toolfamilien nach Namen/Präfix. | F01/F02 | behoben; Materialisierung, Ursprung, direkte/yielded Kataloge und Context Build sind provider-/plangetrieben |
 | N-007 | App, Desktop-Katalog und Browser-Host enthalten konkrete Feature-View-IDs beziehungsweise First-Party-Allowlist. | F03/F04/F07 | im normalen Laufzeitpfad behoben; alte IDs bleiben bis F07 nur als Migrationsinput |
 | N-008 | `pibo.web-product`, `pibo.user-resources` und `pibo.product-ui` besitzen noch ausdrücklich dem Core zugeordnete Flächen. | F03/F04/F06/F07 | normale Owner-Aufteilung behoben; alte Installationen/Module bleiben bis F07/F08 als Cutover-Eingang |
 | N-009 | Pi/Codex/OMP und Featureabhängigkeiten liegen weiterhin im Root-Build und Root-Dependencygraph. | F05/F06 | ausgelieferter Minimal-Core ist physisch frei von Runtime-/Featureimplementierungen; monolithische Quell- und Legacy-Exportflächen bleiben F08 |
-| N-010 | Legacy-Manifesthinweise werden im normalen Schema-v1-Laufzeitpfad interpretiert. | F07/F08 | offen; Übersetzung am Migrationseingang beschlossen |
+| N-010 | Legacy-Manifesthinweise werden im normalen Schema-v1-Laufzeitpfad interpretiert. | F07/F08 | behoben; normale Validierung weist Legacyfelder ab, Übersetzung ist auf Migration/Cutover isoliert |
 | N-011 | Der sichere Plugin-Installer installiert keine npm-Abhängigkeiten; unabhängige Pakete brauchen self-contained Bundles und nur öffentliche SDK-Peers. | F01/F06 | behoben; jedes Artefakt besitzt ein self-contained Backend ohne npm-Laufzeitabhängigkeiten und completed independent `npm pack` |
 | N-012 | Ein zentraler `pibo-builtin-plugin.js`-Browserchunk bindet Core- und Feature-UI samt großer transitiver Closure. | F03/F04/F06 | behoben; getrennte Browserentries, verallgemeinerte Cachegrenze und gepackte Featureartefakte sind belegt |
 | N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | behoben; tatsächlicher gepackter 3.6.2-Ausgangspunkt, vorgeschaltetes Cutoverpaket, exakte Hashzuordnung und fail-closed Direktwechsel geprüft |
@@ -186,16 +186,22 @@ Nachweise: offen.
 | N-017 | Das externe Fixture mit Repo-Symlink belegt F01-API-Nutzbarkeit, aber keine eigenständige Distribution. | F06 | behoben; Clean-Consumer installiert Core- und Preview-Tarballs ohne Symlink oder Quellcheckout |
 | N-018 | Importfreie Installationsprüfung kannte echte Core-Service-Provider nicht und wies externe Pakete vor Aktivierung fälschlich als service-los ab. | F01 | behoben und fokussiert geprüft; Manager liest nur versionierte Core-Service-Metadaten |
 | N-019 | `yieldable` allein unterscheidet kein direkt sichtbares Tool von einem ausschließlich über Run erreichbaren Tool; Delegation würde sonst `pibo_agents_send_message` direkt freigeben. | F02 | behoben; `direct` und `yieldable` sind unabhängige Contribution-Eigenschaften und positiv über Run, Context und MCP geprüft |
-| N-020 | Eine Pi-seitige Legacy-Session-Assembly würde die entfernten First-Party-Namens-/Factory-Sonderfälle als ausführbaren Harnesspfad konservieren. | F02/F08 | Produktionshelper wieder entfernt; Altzustandsvergleich bleibt ausschließlich in `test/helpers/legacy-session-tool-names.mjs`, Delivery-Audit in F08 bleibt offen |
+| N-020 | Eine Pi-seitige Legacy-Session-Assembly würde die entfernten First-Party-Namens-/Factory-Sonderfälle als ausführbaren Harnesspfad konservieren. | F02/F08 | behoben; Altzustandsvergleich bleibt ausschließlich in `test/helpers/legacy-session-tool-names.mjs`, produktive Delivery ist ausgeschlossen |
 | N-021 | Dependency-Expansion darf `globallyActive` nicht als Erlaubnis verwenden, um eine explizite Agent-Deaktivierung zu überstimmen; gespeicherte und effektive Nutzerwahl müssen übereinstimmen. | F02/F07 | behoben und fokussiert geprüft; aktuelle Snapshots trennen unentschiedene Defaults von expliziten Entscheidungen, Legacy-Snapshots fallen sicher auf explizite Booleans zurück, Plan-Diagnosen benennen Tool-, Agent-Plugin-, globale und Runtime-Blockaden |
 | N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Run-/Delegation-Controller konstruiert, den Delegation-Toolnamen importiert oder konkrete Reminder-/Metadaten formatiert. | F02/F04/F06 | behoben; Pakete besitzen Fachlogik und der gepackte Minimal-Core-Audit schließt Controller, Toolnamen und Reminderimplementierungen physisch aus |
 | N-023 | Frischer Standardstart scheiterte, weil ein Pluginprofil ein provider-backed Tool noch als ausführbar registriertes Legacy-Tool auflösen wollte. | F03/F06 | behoben; Profile können deklarierte provider-backed Toolmetadaten generisch aus aktiven Manifesten projizieren, frischer isolierter Docker-Gatewaystart und Profilinventur bestanden |
 
 # Abnahmestand
 
-A-C40-01 bis A-C40-16 aus dem Plan sind offen. Je Szenario werden Commit/Paket, Prüfweg und Ergebnis verlinkt. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt.
+F08 und F09 sind lokal abgeschlossen. A-C40-01 bis A-C40-16 werden im festen F10-Kandidaten geprüft. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
 
 # Aktivität und Entscheidungen
+
+## 2026-09-15
+
+- F08 abgeschlossen und als `d37dea0c` committed: Capability Host ist die einzige produktive Registrierungsautorität; Registry-/Wildcard-/`plugin-builtin`-/Aggregate-Delivery ist entfernt. TypeScript, 20 Artefakte plus Standard, serieller F08-Lauf 105/105 und isolierte Gatewayintegration 5/5 sind grün.
+- F09 abgeschlossen: aktuelle Spezifikationen und Pläne auf den F08-Commit abgeglichen, externe Entwicklung und Betrieb dokumentiert, OMP-Grenze präzisiert und `examples/plugins/hello-pibo` im Worker gebaut, importiert, inspiziert, installiert, aktiviert und gepackt. Strikte OKF-Prüfung und Dokumentationstests sind grün.
+- F10 begonnen: Nach dem F09-Dokumentationscommit wird ein commit- und paketgenauer lokaler Kandidat fixiert. Pibo2, Push, PR, Deployment, Merge, Release und Controller-Gateway-Mutation bleiben ausgeschlossen.
 
 ## 2026-09-14
 

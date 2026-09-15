@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai/codex
-  at: '2026-09-01T20:42:35Z'
+  at: '2026-09-15T02:06:30Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: upstream/dev refresh source and test evidence for SPC-ORCH-003
 implementation:
   state: current
-  baseline_commit: 39090b8850758293e69380a52bb7498d7c955bc2
+  baseline_commit: d37dea0c7870e426e35911b574af1af07dfa7cd2
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: 39090b8850758293e69380a52bb7498d7c955bc2
+  commit: d37dea0c7870e426e35911b574af1af07dfa7cd2
   requirements:
   - id: ORCH-LOOP-001
     status: implemented
@@ -97,7 +97,7 @@ traceability:
     - path: src/cli.ts
       symbol: runPiboCli
     - path: src/gateway/web.ts
-      symbol: createWebPiboPluginRegistry
+      symbol: runWebGatewayServer
     - path: src/apps/chat/loop-api.ts
       symbol: handleChatLoopApiRequest
     - path: src/ralph/service.ts
@@ -165,7 +165,7 @@ The common Loop store and registered Loop service define Goal and Ralph behavior
 
 - **Stable concept:** `SPC-ORCH-003`
 - **Target path:** `docs/specs/orchestration/loops-goals-and-ralph.md`
-- **Authority:** Current upstream source and test evidence at `39090b8850758293e69380a52bb7498d7c955bc2`.
+- **Authority:** Current upstream source and test evidence at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the upstream/dev refresh commit. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -301,7 +301,7 @@ Compatibility aliases do not create a second authority; direct src/ralph tests p
 
 - Exact source evidence:
   - `src/cli.ts:111` — `runPiboCli` (exported_symbol)
-  - `src/gateway/web.ts:175` — `createWebPiboPluginRegistry` (exported_symbol)
+  - `src/gateway/web.ts` — `runWebGatewayServer` (exported_symbol)
   - `src/apps/chat/loop-api.ts:37` — `handleChatLoopApiRequest` (exported_symbol)
   - `src/ralph/service.ts:42` — `PiboRalphService` (type_or_class)
 - Exact named tests:
@@ -349,7 +349,7 @@ Named tests exercise the remaining PiboRalphService, not PiboLoopService; curren
 
 ## Verification boundary
 
-- Source/test baseline: `39090b8850758293e69380a52bb7498d7c955bc2`.
+- Source/test baseline: `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 - Focused inventory: 24 files / 245 top-level declarations; `test/web-channel.test.mjs` is separate cross-boundary evidence with 113 declarations.
 - Requirement traceability: 25 unique requirements across six targets, 15 high confidence and 10 medium confidence, 138 source references, 75 named-test references / 74 unique names.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

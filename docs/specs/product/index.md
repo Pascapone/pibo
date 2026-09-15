@@ -4,6 +4,6 @@
 
 ## Concepts
 
-* [App Context Composition](app-context.md) - Defines the static App Context identity and web plugin composition for one authenticated Pibo product data space&#46;
+* [App Context Composition](app-context.md) - Defines the static App Context identity and Core&#45;owned Web composition for one authenticated Pibo product data space&#46;
 * [Pibo Home, Workspace, Configuration, and Prompts](home-workspace-configuration.md) - Defines Pibo Home resolution and permissions, default workspace selection, supported configuration storage, and base/compaction prompt files&#46;
-* [Plugin Registry, Built&#45;ins, and Default Profiles](plugin-profile-catalog.md) - Defines registry extension points, built&#45;in registrations, default profile selection, and user profile resource registration&#46;
+* [Plugin Packages, Capabilities, and Profiles](plugin-profile-catalog.md) - Defines installed plugin package identity, capability ownership, product composition, profile selection, and public extension boundaries&#46;

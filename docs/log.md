@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-15
+
+- **Pibo 4 plugin delivery reconciliation**: Replaced the retired Registry contract with the current capability-host, immutable package, profile-selection, public SDK, safe lifecycle, prepared-cutover, and no-legacy-delivery specification at commit `d37dea0c`. Updated App Context, Web host, Loop, transcription, and speech ownership references. Added the [plugin development and operations guide](/project/guides/plugin-development-and-operations.md) and an independently buildable Hello Pibo example covering public imports, inspection, activation, update, diagnosis, configuration, and uninstall.
+
 ## 2026-09-14
 
 - **4.0 packed cutover and owner migration**: Completed F06-06 and F07 in the [completion plan](/plans/pibo-4-0-plugin-completion.md) and [todo](/plans/pibo-4-0-plugin-completion-todo.md). A separately packed cutover tool now records the complete legacy selection snapshot and exact source/Core/plugin tarball hashes before Minimal-Core replaces the monolith. Required-cutover startup rejects missing, changed, wrong-version, default-enabling, or conflicting targets before normal activation; it installs only mapped active artifacts and writes an idempotent completion receipt. The actual packed `@pasko70/pibo@3.6.2` path upgraded to packed `4.0.0-beta.1` with Preview and Workflows active while disabled Cron/Goal Loops and uninstalled Web Search stayed absent. Browser-v1 import now translates old Product UI targets to Core or split-plugin owners without inferring Session ownership. Root emit, SDK/package rebuilds, and 83 cutover/migration/selection/context/tab tests passed. Evidence: `/tmp/pibo4-f07-cutover.md` and `/tmp/pibo4-f07-tests.log`.

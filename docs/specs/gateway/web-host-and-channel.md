@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T17:55:23Z"
+  at: "2026-09-15T02:06:30Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d"
+  commit: "d37dea0c7870e426e35911b574af1af07dfa7cd2"
   requirements:
     - id: "WP02-GW-WEB-001"
       status: "implemented"
@@ -41,10 +41,10 @@ traceability:
       sources:
         - path: "src/web/channel.ts"
           symbol: "createWebHostChannel"
-        - path: "src/plugins/registry.ts"
-          symbol: "PiboPluginRegistry"
-        - path: "src/plugins/registry.ts"
-          symbol: "validateWebAppRoutes"
+        - path: "src/core/capability-host.ts"
+          symbol: "PiboCapabilityHost.registerWebApp"
+        - path: "src/core/capability-host.ts"
+          symbol: "PiboCapabilityHost.validateWebAppRoutes"
       tests:
         - path: "test/web-channel.test.mjs"
           name: "web host redirects app links to the canonical auth origin"
@@ -125,7 +125,7 @@ traceability:
         - path: "src/gateway/web.ts"
           symbol: "resolveWebGatewayServerOptions"
         - path: "src/gateway/web.ts"
-          symbol: "createWebPiboPluginRegistry"
+          symbol: "runWebGatewayServer"
         - path: "src/gateway/web.ts"
           symbol: "isLoopbackHost"
         - path: "src/web/auth.ts"
@@ -310,7 +310,8 @@ Implemented public contracts:
 - `PiboChannel`
 - `createWebHostChannel`
 - `WEB_CHANNEL_NAME`
-- `PiboPluginRegistry.validateWebAppRoutes`
+- `PiboCapabilityHost.registerWebApp`
+- `validateWebAppRoutes`
 - `MAX_WEB_REQUEST_BODY_BYTES`
 - `nodeRequestToWebRequest`
 - `readJsonBody`
@@ -319,7 +320,7 @@ Implemented public contracts:
 - `stripSocketPeerHeaderFromResponse`
 - `resolveWebGatewayAuthMode`
 - `resolveWebGatewayServerOptions`
-- `createWebPiboPluginRegistry`
+- `runWebGatewayServer`
 - `isLoopbackHost`
 - `getWebAuthSession`
 - `requireWebSession`
@@ -351,7 +352,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `2b7b2a7c31be0de7b326e5ef6b82f01ea2b51a3d`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
+Source symbols and named tests are bound to commit `d37dea0c7870e426e35911b574af1af07dfa7cd2`. Requirement confidence measures trace quality. WP02-GW-STATUS-006 additionally has 109 focused Docker passes, a full build and all typechecks, plus exact-candidate authenticated/headful Pibo2 acceptance. Its scoped evidence does not expand the older requirements into unrelated platform or authentication acceptance.
 
 Package verification commands:
 

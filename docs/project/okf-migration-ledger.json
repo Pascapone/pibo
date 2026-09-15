@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-14T17:00:00Z",
+  "generated_at": "2026-09-15T02:06:30Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -13992,6 +13992,15 @@
       "file_bytes": 31396,
       "file_sha256": "e65b19acfe7d89b2bf822f158bc85c65d54730e97a2713ea136ead9f7b58c57f",
       "body_sha256": "4170aa1905319075050d462b236211be040565ae935853ba19788eea5e943aba"
+    },
+    {
+      "path": "docs/project/guides/plugin-development-and-operations.md",
+      "state": "conformant",
+      "classification": "plugin development and operations guide",
+      "type": "Guide",
+      "authority": "directive",
+      "status": "stable",
+      "lineage": null
     }
   ]
 }

@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T22:30:00Z"
+  at: "2026-09-15T02:06:30Z"
 sources:
   - id: "owner-completion"
     resource: "scope:owner decisions 2026-09-14 in Pibo Session ps_c5596e29-e5db-47e8-a736-714f4a1c99cf; independent minimal core; all Pibo extension tools through public plugin contracts; explicit core views; Codex-owned Runtime Requests subject to dependency inspection; OMP maintenance only; remove executable legacy APIs; preserve data through migration; write a plan without implementation"
@@ -27,11 +27,11 @@ sources:
 
 Dieser Plan beschreibt die verbleibende Arbeit bis zum sauberen Plugin-Modell von Pibo 4.0. Der große Umbau ist bereits vorhanden. Jetzt werden die verbliebenen Sonderwege entfernt, der Kern tatsächlich unabhängig ausgeliefert und alle Erweiterungen über denselben öffentlichen Vertrag angebunden.
 
-Die nachfolgende Zielarchitektur ist **geplantes Verhalten**, keine Behauptung über bereits fertigen Code. Der Auftraggeber hat am 14. September 2026 die vollständige Umsetzung freigegeben. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) verfolgt F00–F10, neue Befunde und Nachweise. Die ursprüngliche Planänderung führte keine Implementierung aus; der aktuelle Umsetzungsauftrag autorisiert die Arbeit am gesamten Plan einschließlich seiner Validierung. Veröffentlichung und Merge bleiben separate Aktionen.
+Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F09 lokal implementiert und dokumentiert; F10 prüft den festen lokalen Kandidaten. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme. Veröffentlichung, Push, PR, Deployment, Merge und Release bleiben separate Aktionen.
 
 Dieser Plan führt die festgelegten Restentscheidungen aus dem [bisherigen Umbauplan](/plans/unified-plugin-system-rebuild.md) fort. Bei Widersprüchen zu dessen pauschaler Aussage „alle Produktoberflächen sind Plugins“, zur alten Default-Komposition, zu tolerierten Legacy-APIs oder zum OMP-Ausbau ist **dieser Plan maßgeblich**. Sonstige Anforderungen, insbesondere Daten-, Kontext- und UI-Parität, bleiben bestehen. Das [bisherige Ausführungsprotokoll](/plans/unified-plugin-system-execution.md) bleibt Nachweis vergangener Arbeit; alte offene Checkboxen bedeuten nicht automatisch, dass deren Implementierung erneut erforderlich ist.
 
-Arbeitsbasis ist `beta/4.0-plugin-system`, Commit `8817384f465a6cfe7d9cc66b9a11f8d438196aa5`, im bestehenden Worktree `/root/code/pibo/.worktrees/plugin-system-rebuild`. Vor Umsetzung wird der dann aktuelle Beta-Stand erfasst; kein Neustart des Umbaus von einem älteren Development-Stand. Der Controller-Gateway bleibt unangetastet. Code und Laufzeitprüfungen gehören in einen isolierten Docker-Worker, spätere integrierte Nutzerabnahme nach Pibo2.
+Arbeitsbasis ist `beta/4.0-plugin-system`, Ausgangscommit `8817384f465a6cfe7d9cc66b9a11f8d438196aa5`, im bestehenden Worktree `/root/code/pibo/.worktrees/plugin-system-rebuild`. Es gibt keinen Neustart von einem älteren Development-Stand. Der Controller-Gateway bleibt unangetastet. Code und Laufzeitprüfungen laufen im isolierten Docker-Worker. Pibo2 ist für den aktuellen lokalen Abschluss ausdrücklich ausgeschlossen und bleibt separate Release-Evidenz.
 
 # 1. Überblick für Produktverantwortliche
 
@@ -411,21 +411,25 @@ Stand 2026-09-14: Das getrennt packbare Cutover-Werkzeug bewahrt den vollständi
 
 ## F08 – Legacy-Delivery vollständig entfernen
 
-- [ ] Produktive Registry-Leser auf neue Host-/Service-Abfragen umstellen.
-- [ ] Alte Registrierung, Typen, Helper, Übergangsparameter, Wildcard-Exports und ungenutzte alte Entrypoints entfernen.
-- [ ] Tests alter API-Flächen mit begründetem Verhaltensersatz migrieren; keine zweite Registry als dauerhafte Testinfrastruktur mitliefern.
-- [ ] Paket- und Importaudit über Server, CLI, Browser und Adapter ausführen; dokumentierte Ausnahmen nur für Datenmigration/Core-Ansichten.
-- [ ] Keine Legacy-Manifeste im normalen Laufzeitvertrag akzeptieren; notwendige Übersetzungen am Import-/Upgrade-Eingang isolieren.
+- [x] Produktive Registry-Leser auf neue Host-/Service-Abfragen umstellen.
+- [x] Alte Registrierung, Typen, Helper, Übergangsparameter, Wildcard-Exports und ungenutzte alte Entrypoints entfernen.
+- [x] Tests alter API-Flächen mit begründetem Verhaltensersatz migrieren; keine zweite Registry als dauerhafte Testinfrastruktur mitliefern.
+- [x] Paket- und Importaudit über Server, CLI, Browser und Adapter ausführen; dokumentierte Ausnahmen nur für Datenmigration/Core-Ansichten.
+- [x] Keine Legacy-Manifeste im normalen Laufzeitvertrag akzeptieren; notwendige Übersetzungen am Import-/Upgrade-Eingang isolieren.
+
+Stand 2026-09-15: Commit `d37dea0c` ersetzt die Registry durch `PiboCapabilityHost` und `CapabilityProjection`, entfernt Wildcard-/`plugin-builtin`-Delivery sowie Aggregate-Entrypoints und hält Altformen ausschließlich an Migrationseingängen und in Testdaten. TypeScript-Kompilierung, 20 Pibo-4-Artefakte plus Standardkomposition, der serielle F08-Lauf mit 105/105 Tests und die isolierte Gatewayintegration mit 5/5 Tests sind grün.
 
 **Fertig, wenn:** Das ausgelieferte System besitzt einen ausführbaren Erweiterungsvertrag und keinen alten Registrierungsweg. Abhängigkeiten: F01–F07.
 
 ## F09 – Dokumentation und Entwicklerweg abschließen
 
-- [ ] Die Matrix in Abschnitt 9 paketweise abarbeiten; implementierte Verträge in aktuelle Specs übertragen.
-- [ ] Öffentliche Dienste, Hooks und externe Paketentwicklung mit einem tatsächlich ausführbaren Beispiel erklären.
-- [ ] Minimal-/Standardinstallation, Upgrade, Backup, Konfliktreparatur und Deinstallation beschreiben.
-- [ ] OMP-Ausnahme und Unterstützungsumfang präzise angeben.
-- [ ] Überholte Planaussagen, Indizes und doppelte aktuelle Wahrheiten bereinigen, historische Evidenz erhalten.
+- [x] Die Matrix in Abschnitt 9 paketweise abarbeiten; implementierte Verträge in aktuelle Specs übertragen.
+- [x] Öffentliche Dienste, Hooks und externe Paketentwicklung mit einem tatsächlich ausführbaren Beispiel erklären.
+- [x] Minimal-/Standardinstallation, Upgrade, Backup, Konfliktreparatur und Deinstallation beschreiben.
+- [x] OMP-Ausnahme und Unterstützungsumfang präzise angeben.
+- [x] Überholte Planaussagen, Indizes und doppelte aktuelle Wahrheiten bereinigen, historische Evidenz erhalten.
+
+Stand 2026-09-15: Die aktuelle [Pluginpaket-Spezifikation](/specs/product/plugin-profile-catalog.md) ist an `d37dea0c` gebunden. Der [Entwickler-/Betriebsleitfaden](/project/guides/plugin-development-and-operations.md) beschreibt öffentliche Subpaths, Minimal/Standard, Cutover, Recovery, OMP-Grenze und Deinstallation. `examples/plugins/hello-pibo` kompiliert und importiert außerhalb der Produktkomposition, wird importfrei inspiziert, installiert, aktiviert und per `npm pack --dry-run` geprüft. Strikte OKF-Prüfung und Dokumentationstests sind grün.
 
 **Fertig, wenn:** Ein Entwickler ohne Repo-internes Wissen ein Plugin hinzufügen kann und ein Betreiber den Upgrade-/Restore-Weg nachvollziehen kann. Abhängigkeiten: laufend zu F01–F08, endgültige Reconciliation nach Codeabschluss.
 
@@ -433,7 +437,7 @@ Stand 2026-09-14: Das getrennt packbare Cutover-Werkzeug bewahrt den vollständi
 
 - [ ] Einen commit- und paketgenauen Kandidaten mit dokumentierten Core-/Pluginversionen festlegen.
 - [ ] Die Abschlussmatrix aus Abschnitt 8 mit bestehenden Tests und gezielten Ergänzungen belegen.
-- [ ] Relevante Desktop-/Mobile-Flows headful prüfen und auf Pibo2 denselben Kandidaten abnehmen.
+- [ ] Relevante Desktop-/Mobile-Flows headful prüfen. Pibo2-Abnahme bleibt aufgrund der aktuellen Arbeitsanweisung außerhalb dieses lokalen Abschlusslaufs und wird als separate Release-Evidenz ausgewiesen.
 - [ ] Aktuelle vollständige relevante Regressionssuite einmal zum integrierten Abschluss ausführen; Altfehler, Scope-Ausnahmen und neue Fehler getrennt ausweisen.
 - [ ] Planstatus und normative Dokumentation auf belegte Implementierung setzen; keine alten Testzahlen neu etikettieren.
 
@@ -475,7 +479,7 @@ Diese Dateien wurden für den Plan identifiziert, nicht in diesem Planungsschrit
 | Runtime Requests | `test/codex-native-requests.test.mjs`, `test/chat-runtime-request-stream.test.mjs`, `test/chat-ui-runtime-request-stream.test.mjs`, `test/chat-ui-runtime-request-panel.test.mjs` | Anfrage-/Antwort-/SSE-Verhalten, Redaction und UI erhalten; ergänzend Paketinstallation und gemeinsame Inline-/Tab-Quelle prüfen. |
 | Web-Actions und Runtime-Vertrag | `test/web-channel.test.mjs`, `test/output-event-policy.test.mjs`, `test/agent-runtime-registry.test.mjs` | Allgemeines Routing, Ereignisse und Capability-/Control-Konsistenz erhalten. |
 | Plugin-Lifecycle / Komposition | `test/plugin-system-lifecycle.test.mjs`, `test/plugin-system-runtime.test.mjs`, `test/plugin-system-product-runtime.test.mjs` | Gleiche Aktivierungs-/Cleanup-Verträge über öffentliche Host-Fixtures prüfen. |
-| Alte Registry und Delivery | `test/plugin-system-v4-source-audit.test.mjs`, `test/plugin-registry.test.mjs`, `test/helpers/plugin-legacy-fixtures.mjs`, `test/helpers/plugin-product.mjs` | Bisher erlaubte Registry-Ausnahme entfernen; Hilfen auf neuen Host umstellen, Produktverhalten weiter abdecken. |
+| Alte Registry und Delivery | `test/plugin-system-v4-source-audit.test.mjs`, `test/plugin-registry.test.mjs`, `test/helpers/capability-host.mjs`, `test/helpers/plugin-product.mjs` | Registry-Ausnahme ist entfernt; Testhilfen verwenden den Capability Host, Produktverhalten bleibt abgedeckt. |
 | Sessions und Runtime-Lifecycle | `test/runtime-routed-session.test.mjs`, `test/session-actions.test.mjs`, `test/codex-native-turn.test.mjs`, `test/codex-native-thread.test.mjs` | Keine Regression durch neue Dependency-Injection und getrennte Pakete; alte Registrierungs-Setups ersetzen. |
 | OMP-Erhalt und vorhandene Portability | `test/omp-runtime.test.mjs`, `test/omp-resources.test.mjs`, `test/runtime-portability.test.mjs` | Bestehendes Verhalten einschließlich expliziter Unsupported-Grenzen erhalten; keine neue OMP-Recovery-Funktion verlangen. |
 
@@ -487,21 +491,23 @@ Reale Pi-/Codex-Modell- und Request-Pfade werden zum Abschluss begrenzt geprüft
 
 Dieser Plan wird jetzt in `docs/plans/` gespeichert. Aktuelle Specs werden erst geändert, wenn das beschriebene Verhalten tatsächlich implementiert und gegen den jeweiligen Commit geprüft ist. Neue Soll-Zustände werden nicht als bereits geltende Ist-Verträge ausgegeben.
 
-| Dokument / Bereich | Geplante Änderung |
+| Dokument / Bereich | Ergebnis 2026-09-15 |
 |---|---|
-| `docs/plans/unified-plugin-system-rebuild.md` | Vorrang dieses Abschlussplans sichtbar machen; nach Umsetzung alte pauschale Pluginisierung aller Kernansichten und überholte Scope-/Legacy-Aussagen konsolidieren. |
-| `docs/plans/unified-plugin-system-execution.md` | Historische Evidenz behalten; Fortschritt von F00–F10 verlinken; Implementierung, Prüfung und Abnahme auseinanderhalten; OMP-Recovery nicht länger als offenen Pflichtblocker führen. |
-| `docs/specs/product/plugin-profile-catalog.md` | Alte Registry-/Default-Konstruktoren durch wirklichen öffentlichen Plugin-/Profilvertrag ersetzen; Core-Zuständigkeit und externe Beiträge erklären. |
-| `docs/specs/product/app-context.md` | Entfernte Web-Pfade korrigieren; Kernzugang und Datenbesitz von installierbaren Featurebeiträgen unterscheiden. |
-| `docs/specs/resources/external-mcp-and-pi-packages.md` | Aktuelles MCP-Verhalten einem gültigen aktuellen Owner zuordnen; entfallene Pi-Package-Ausführung als Historie/Migration behandeln. Keine benötigten MCP-Verträge beim Archivieren verlieren. |
-| `docs/specs/resources/index.md` | Überholte aktuelle Einstiege nach Übertragung/Archivierung regenerieren. |
-| `docs/specs/web/session-workspace-lifecycle.md` | Gemeinsamen Tab-Lifecycle für Core-/Plugin-Ansichten, generische Beitragssichtbarkeit, Migration alter Ziele und unveränderte Sessionbindung nachziehen. |
-| `docs/specs/gateway/web-host-and-channel.md` | Registry-Eigentümerschaft durch Host-/Service-Verträge ersetzen; Web-Kern und optionalen Channel-/Featureumfang sowie Minimal-Boot beschreiben. |
-| `docs/specs/orchestration/loops-goals-and-ralph.md` | Alte Default-Registry-Traceability ersetzen; Goal-/Loop-Paket besitzt die fachliche Logik, System-/Agent-Scope und Dienstabhängigkeiten. |
-| `docs/specs/resources/transcription-and-speech-providers.md` | Paketierbare Provider und generische Kernverträge statt Registry-basierter Produktannahmen beschreiben. |
-| `docs/specs/runtime/adapter-contract.md` | Runtime-neutrale Request-/Pending-/Control-Verträge und unabhängig paketierbare Adapter festhalten. |
-| `docs/specs/runtime/codex-native-adapter.md` | Codex-eigene Requests, UI-Beiträge, Antwortweg und deklarierte Unterstützung an neue Paketgrenze anpassen. |
-| `docs/specs/runtime/pi-adapter.md`, `docs/specs/runtime/omp-adapter.md` | Tatsächliche Request-Unterstützung und Recovery-Grenzen erhalten; OMP-Erhaltungsumfang ohne neue Featurezusage dokumentieren. |
+| `docs/plans/unified-plugin-system-rebuild.md` | Historischer Gesamtplan bleibt erhalten; dieser Abschlussplan besitzt weiterhin Vorrang für Core-Ansichten, OMP-Grenze und F00–F10. |
+| `docs/plans/unified-plugin-system-execution.md` | Aktuelle F08-/F09-Ownership korrigiert; historische Evidenz und ältere Kandidatenzahlen bleiben klar als historisch markiert. |
+| `docs/specs/product/plugin-profile-catalog.md` | Vollständig auf Capability Host, immutable Pakete, öffentliche Subpaths, Lifecycle, Cutover und entfernte Legacy-Delivery neu gebunden. |
+| `docs/specs/product/app-context.md` | Web-Komposition auf Core-owned `provideCoreWebProduct` und `runWebGatewayServer` korrigiert. |
+| `docs/specs/resources/external-mcp-and-pi-packages.md` | Bereits deprecated; keine aktuelle Pluginautorität und daher keine konkurrierende Ist-Spezifikation. |
+| `docs/specs/resources/index.md` | Geprüft und durch den OKF-Indexer ohne zusätzliche Drift bestätigt. |
+| `docs/specs/web/session-workspace-lifecycle.md` | Bereits commit-gebunden aktuell für Session-owned Core-/Plugin-Tabs, Refresh, Cache und Migration; unverändert validiert. |
+| `docs/specs/gateway/web-host-and-channel.md` | Registry-Traceability durch Capability-Host-/Gateway-Symbole ersetzt. |
+| `docs/specs/orchestration/loops-goals-and-ralph.md` | Gateway-Komposition auf `runWebGatewayServer` und aktuellen Commit nachgezogen; OMP bleibt unabhängig. |
+| `docs/specs/resources/transcription-and-speech-providers.md` | Providerregistrierung und Session-Lifecycle auf `PiboCapabilityHost` sowie aktuellen F08-Nachweis gebunden. |
+| `docs/specs/runtime/adapter-contract.md` | Bereits aktuell für adapterneutrale Binding-/Recovery-Verträge; unverändert validiert. |
+| `docs/specs/runtime/codex-native-adapter.md` | Bereits aktuell für Codex-eigene Requests, Antwortwege und Recovery; unverändert validiert. |
+| `docs/specs/runtime/pi-adapter.md`, `docs/specs/runtime/omp-adapter.md` | Bereits aktuell; OMP dokumentiert normalen Betrieb und explizit fehlende sichere Rekonstruktion. |
+| `docs/project/guides/plugin-development-and-operations.md` | Neu: externe Entwicklung, öffentliche Dienste, Minimal/Standard, Upgrade, Recovery, Konfiguration und Uninstall. |
+| `examples/plugins/hello-pibo` | Neu: tatsächlich gebautes, inspiziertes, installiertes, aktiviertes und packbares externes Beispiel. |
 | `docs/specs/web/context-settings-and-agent-designer.md` | Kernansichten, unabhängige Benutzerressourcen, Plugin-Erweiterungspunkte und Leerzustände ohne Runtime dokumentieren. |
 | `docs/specs/web/app-shell-bootstrap-navigation-and-pwa.md`, `docs/specs/web/streaming-cache-and-live-projection.md` | Core-Shell, Bootstrap, Streaming/Cache und optionale Feature-/Request-Renderer auf neue Komposition abstimmen. |
 | Weitere Tool-, Context-/Build-Context- und Migration-Spezifikationen | Öffentliche Dienste und Owner in den bestehenden Domain-Verträgen nachziehen; verbleibende genaue Pfade in F00 ergänzen. |

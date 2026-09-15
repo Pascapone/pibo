@@ -7,30 +7,30 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T21:32:28Z"
+  at: "2026-09-15T02:06:30Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
     title: "Source and test evidence inspected for SPC-RES-005"
 implementation:
   state: "current"
-  baseline_commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  baseline_commit: "d37dea0c7870e426e35911b574af1af07dfa7cd2"
   package: "WP-03-RESOURCES-SECURITY"
   source_evidence: "performed"
-  focused_test_execution: "performed in Docker: 1,071 affected tests passed; full suite 2,638 passed, 0 failed, 5 skipped"
-  build_and_typecheck_execution: "performed: npm run typecheck and npm run build passed"
+  focused_test_execution: "performed in Docker as part of the bounded F08 serial set: 105 passed, 0 failed"
+  build_and_typecheck_execution: "performed in Docker: TypeScript compilation and Pibo 4 artifact construction passed"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "d37dea0c7870e426e35911b574af1af07dfa7cd2"
   requirements:
     - id: "RES-MED-001"
       status: "implemented"
       sources:
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "registerTranscriptionProvider"
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "getTranscriptionProviderInfos"
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "registerSpeechProvider"
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "getSpeechProviderInfos"
       tests:
         - path: "test/transcription-provider.test.mjs"
@@ -84,11 +84,11 @@ traceability:
     - id: "RES-MED-003"
       status: "implemented"
       sources:
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "startSpeechSession"
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "stopSpeechSession"
-        - path: "src/plugins/registry.ts"
+        - path: "src/core/capability-host.ts"
           symbol: "dispose"
         - path: "src/speech/openai-codex.ts"
           symbol: "createOpenAiCodexSpeechProvider"
@@ -147,13 +147,13 @@ verification:
   performed:
     - evidence_class: "source inspection"
       status: "performed"
-      detail: "Exact source files, symbols, test files, and test names were reconciled to Foundation commit 38bb6e57f118c1543e7263c68d27e5103d3b1262."
+      detail: "Exact source files, symbols, test files, and test names were reconciled to F08 commit d37dea0c7870e426e35911b574af1af07dfa7cd2."
     - evidence_class: "focused tests"
       status: "performed"
-      detail: "The affected-test selection passed 1,071 tests in the isolated worker. The clean full suite passed 2,638 tests with 0 failures and 5 skips."
+      detail: "The bounded serial F08 set passed 105 tests with 0 failures, including transcription and speech provider coverage."
     - evidence_class: "build/package checks"
       status: "performed"
-      detail: "npm run typecheck and npm run build passed; build emitted existing Vite chunk-size warnings only."
+      detail: "TypeScript compilation and construction of the 20 Pibo 4 package artifacts plus Standard composition passed in Docker."
   unperformed:
     - evidence_class: "local real-path/PTY/headful browser validation"
       status: "unperformed"
@@ -182,14 +182,14 @@ This specification records current behavior only. It does not authorize unimplem
 
 # Current behavior and public surfaces
 
-The implementation state is current at the exact accepted Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+The implementation state is current at the exact F08 traceability commit `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
 Implemented behavior:
 - "GET /api/chat/transcription/providers"
 - "POST /api/chat/transcription"
 - "GET /api/chat/speech/providers"
 - "POST and lifecycle routes under /api/chat/speech/sessions"
-- "PiboPluginRegistry registers unique transcription/speech providers, reports configured state without allowing provider probe failure to crash discovery, and routes explicit provider IDs."
+- "PiboCapabilityHost registers unique transcription/speech providers, reports configured state without allowing provider probe failure to crash discovery, and routes explicit provider IDs."
 - "Transcription accepts a required nonempty file up to 25 MiB, sanitizes metadata, maps provider errors, and independently selects API-key or ChatGPT-subscription providers."
 - "Speech bounds text to 32,000 UTF-16 code units and SDP offers to 256,000, reserves pending capacity, rejects duplicate IDs, and applies startup/idle/disposal/abort cleanup exactly once."
 - "Codex realtime speech requires subscription auth, uses an unpredictable loopback proxy route, bounds proxy bodies, and keeps provider session ownership ephemeral."
@@ -216,15 +216,15 @@ Persistence and lifecycle state: Provider registration and ephemeral transcripti
 
 Register unique transcription and speech providers, report configured state safely, and route requests through the independently selected provider ID.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
 **Source traceability:**
-- `src/plugins/registry.ts` — `registerTranscriptionProvider`
-- `src/plugins/registry.ts` — `getTranscriptionProviderInfos`
-- `src/plugins/registry.ts` — `registerSpeechProvider`
-- `src/plugins/registry.ts` — `getSpeechProviderInfos`
+- `src/core/capability-host.ts` — `registerTranscriptionProvider`
+- `src/core/capability-host.ts` — `getTranscriptionProviderInfos`
+- `src/core/capability-host.ts` — `registerSpeechProvider`
+- `src/core/capability-host.ts` — `getSpeechProviderInfos`
 
 **Named test traceability:**
 - `test/transcription-provider.test.mjs` — `plugins register discoverable and replaceable transcription providers`
@@ -240,7 +240,7 @@ Register unique transcription and speech providers, report configured state safe
 
 Bound transcription uploads, speech text/offer inputs, proxy request/response bodies, metadata, and provider error details before or at provider boundaries.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -264,14 +264,14 @@ Bound transcription uploads, speech text/offer inputs, proxy request/response bo
 
 Reserve speech start capacity across pending and active sessions, enforce unique publication, startup/idle bounds, caller abort, and exactly-once close during failure, stop, expiry, or disposal.
 
-**Implementation state:** `implemented_at_baseline` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_at_baseline` at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
 **Confidence:** `high`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
 **Source traceability:**
-- `src/plugins/registry.ts` — `startSpeechSession`
-- `src/plugins/registry.ts` — `stopSpeechSession`
-- `src/plugins/registry.ts` — `dispose`
+- `src/core/capability-host.ts` — `startSpeechSession`
+- `src/core/capability-host.ts` — `stopSpeechSession`
+- `src/core/capability-host.ts` — `dispose`
 - `src/speech/openai-codex.ts` — `createOpenAiCodexSpeechProvider`
 
 **Named test traceability:**
@@ -287,7 +287,7 @@ Reserve speech start capacity across pending and active sessions, enforce unique
 
 Keep provider credentials and raw media ephemeral to backend request/session handling, return only bounded transcript/session responses, and leave any product-history write to WEB-003.
 
-**Implementation state:** `implemented_backend_boundary; end-to-end privacy validation unperformed` at `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+**Implementation state:** `implemented_backend_boundary; end-to-end privacy validation unperformed` at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
 **Confidence:** `medium`. Confidence describes source/test trace quality, not a claim that the package validation suite has passed.
 
@@ -313,7 +313,7 @@ Capability-map status: no dedicated capability-map node; this specification rema
 Exact source files inspected for this owner:
 - "src/apps/chat/chat-speech.ts"
 - "src/apps/chat/chat-transcription.ts"
-- "src/plugins/registry.ts"
+- "src/core/capability-host.ts"
 - "src/speech/openai-codex-realtime-call-proxy.ts"
 - "src/speech/openai-codex.ts"
 - "src/transcription/openai-chatgpt.ts"
@@ -348,7 +348,7 @@ Open evidence gaps carried forward:
 
 # Verification and traceability
 
-All requirement traceability records use exact repository-relative regular files at `38bb6e57f118c1543e7263c68d27e5103d3b1262`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `38bb6e57f118c1543e7263c68d27e5103d3b1262`.
+All requirement traceability records use exact repository-relative regular files at `d37dea0c7870e426e35911b574af1af07dfa7cd2`. The brief and synthesis were generated from a stale baseline, so this package deliberately rebinds operational authority to `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
 
 Performed evidence:
 - Source inspection: performed. Exact source paths, symbols, test paths, test names, ownership seams, and the accepted parent commit were checked.
@@ -356,12 +356,11 @@ Performed evidence:
 Additional evidence boundaries:
 - No browser, real provider, external MCP, real Pi package, Windows ACL/auth-recovery, real-host/systemd/pressure/restart, or Pibo2 evidence is claimed.
 
-Package commands after authoring:
-- `npm run typecheck` — passed
-- `npm run build` — passed, with existing Vite chunk-size warnings
-- Affected-test selection — 1,071 passed, 0 failed in the isolated worker
-- Clean full suite — 2,638 passed, 0 failed, 5 skipped
-- Current migration validator/authoring suite — 84 passed
+Package commands after the F08 reconciliation:
+- TypeScript compilation — passed in Docker
+- Pibo 4 artifact construction — 20 package artifacts plus Standard composition passed
+- Bounded serial F08 set — 105 passed, 0 failed
+- Current documentation validation remains part of F09 acceptance
 
 # Related concepts
 

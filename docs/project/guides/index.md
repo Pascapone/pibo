@@ -6,3 +6,4 @@
 
 * [Pibo Quick Start — CLI &#43; VS Code Extension](pibo-vscode-ext-quickstart.md) - Provides a German&#45;language quick start for installing Pibo and using its VS Code extension&#46;
 * [Pibo on Windows via WSL](pibo-on-windows-via-wsl.md) - Guides Windows users through installing and running Pibo inside WSL2&#46;
+* [Plugin development and operations](plugin-development-and-operations.md) - Shows how to build, inspect, install, activate, update, diagnose, and remove an independent Pibo 4 plugin package&#46;

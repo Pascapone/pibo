@@ -1,17 +1,17 @@
 ---
 type: "Specification"
 title: "App Context Composition"
-description: "Defines the static App Context identity and web plugin composition for one authenticated Pibo product data space."
+description: "Defines the static App Context identity and Core-owned Web composition for one authenticated Pibo product data space."
 tags: ["product", "app-context", "composition", "web"]
 status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-08-30T04:15:54Z"
+  at: "2026-09-15T02:06:30Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "d37dea0c7870e426e35911b574af1af07dfa7cd2"
   requirements:
     - id: "PROD-CTX-001"
       status: "implemented"
@@ -29,9 +29,9 @@ traceability:
       status: "implemented"
       sources:
         - path: "src/gateway/web.ts"
-          symbol: "createWebPiboPluginRegistry"
-        - path: "src/plugins/chat-web.ts"
-          symbol: "createPiboChatWebPlugin"
+          symbol: "runWebGatewayServer"
+        - path: "src/core/web-product.ts"
+          symbol: "provideCoreWebProduct"
       tests:
         - path: "test/web-auth-app-context.test.mjs"
           name: "web auth maps different identities to the same app context context"
@@ -55,13 +55,13 @@ traceability:
 
 # Scope
 
-Own PIBO_APP_CONTEXT and composition of the default registry with the Chat Web plugin for one product data space.
+Own `PIBO_APP_CONTEXT` and composition of the Core-owned authenticated Web product for one product data space.
 
 This specification describes implemented behavior at the traceability commit. Planned changes and behavior owned by related concepts are outside its normative scope.
 
 # Current behavior
 
-- Lifecycle: The App Context object is static and frozen; the web registry is composed before gateway start.
+- Lifecycle: The App Context object is static and frozen; the capability host receives the Core Web product before gateway start.
 - State: Authentication gates access to one shared product context; it does not select a tenant or per-user datastore.
 - Failure: Unauthenticated app requests fail closed before entering App Context routes.
 - Security: Dev-auth selection is an explicit gateway mode and must not be described as normal production authentication.
@@ -75,7 +75,7 @@ The product SHALL expose the frozen PIBO_APP_CONTEXT identity for exactly one sh
 
 ## Requirement: PROD-CTX-002
 
-The web gateway SHALL compose the default Pibo registry and Chat Web plugin before serving app routes.
+The web gateway SHALL compose the Core-owned auth service, Web channel, and Chat application on the product capability host before serving app routes.
 
 ## Requirement: PROD-CTX-003
 
@@ -87,8 +87,8 @@ Implemented public contracts:
 
 - `PiboAppContext`
 - `PIBO_APP_CONTEXT`
-- `createWebPiboPluginRegistry`
-- `createPiboChatWebPlugin`
+- `runWebGatewayServer`
+- `provideCoreWebProduct`
 - `requireWebSession`
 
 Related ownership boundaries:
@@ -112,7 +112,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `d37dea0c7870e426e35911b574af1af07dfa7cd2`. Requirement confidence measures trace quality, not whether a command ran.
 
 Package verification commands:
 

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "org.example.hello-pibo",
+  "name": "Hello Pibo",
+  "version": "1.0.0",
+  "sdk": "^1.0.0",
+  "entrypoints": {
+    "backend": "dist/backend.js",
+    "browser": "dist/browser.js"
+  },
+  "contributions": [
+    {
+      "id": "context",
+      "kind": "context-file",
+      "title": "Hello Pibo context",
+      "scope": "agent",
+      "required": false,
+      "defaultEnabled": true,
+      "schemaVersion": 1,
+      "context": {
+        "kind": "context",
+        "stage": "context",
+        "description": "Adds a short greeting to agent context.",
+        "loading": "eager"
+      }
+    },
+    {
+      "id": "view",
+      "kind": "view",
+      "title": "Hello Pibo",
+      "scope": "app",
+      "required": true,
+      "defaultEnabled": true,
+      "schemaVersion": 1,
+      "context": {
+        "kind": "none",
+        "reason": "Workspace view"
+      },
+      "view": {
+        "title": "Hello Pibo",
+        "exportName": "HelloPiboView",
+        "presentation": "workspace",
+        "instance": "singleton",
+        "mount": "keep-alive",
+        "stateSchemaVersion": 1
+      }
+    }
+  ]
+}
