@@ -130,8 +130,8 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	assert.ok(cutoverArtifact);
 	const cutoverBinary = join(deployment.runtimePath, "node_modules/@pasko70/pibo-cutover/bin/pibo4-cutover.js");
 	assert.equal(existsSync(cutoverBinary), true);
-	const sourcePath = join(preparation, "pibo-3.6.2.tgz");
-	await writeFile(sourcePath, "retained legacy pibo 3.6.2 package bytes\n");
+	const sourcePath = join(preparation, "pibo-1.7.2.tgz");
+	await writeFile(sourcePath, "retained legacy pibo 1.7.2 package bytes\n");
 	const packageSet = JSON.parse(await readFile(join(deployment.runtimePath, "node_modules/@pasko70/pibo-standard/package-set.json"), "utf8"));
 	const targets = new Map(packageSet.plugins.map((entry) => [entry.pluginId, entry]));
 	const targetPluginIds = ["pibo.preview", "pibo.workflows", "pibo.cron", "pibo.goal-control", "pibo.web-search"];
@@ -152,10 +152,11 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const planPath = join(home, "migration", "pibo4-cutover.json");
 	const inputPath = join(root, "cutover-input.json");
 	await writeFile(inputPath, `${JSON.stringify({
-		source: { package: "@pasko70/pibo", version: "3.6.2", path: sourcePath },
+		source: { package: "@pasko70/pibo", version: "1.7.2", path: sourcePath },
 		targetCore: { package: "@pasko70/pibo", version: coreArtifact.version, path: preparedCorePath },
 		artifacts: preparedArtifacts,
 		snapshot: { schemaVersion: 1, plugins: [
+			{ pluginId: "pibo.standard-shell", state: "active" },
 			{ pluginId: "pibo.core", state: "active", contributions: { core: true } },
 			{ pluginId: "pibo.product-ui", state: "active", contributions: { workflows: true, cron: false, loops: false, "agent-designer": true, settings: true, "user-resources": true } },
 			{ pluginId: "pibo.user-resources", state: "active", contributions: { resources: true } },
@@ -169,7 +170,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 
 	const data = new PiboDataStore(join(home, "pibo.sqlite"), { payloadRootDir: join(home, "payloads") });
 	const pluginArtifactRoot = join(home, "plugins", "artifacts");
-	for (const pluginId of ["pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) await stageLegacyInstallation(data, pluginArtifactRoot, pluginId, "active");
+	for (const pluginId of ["pibo.standard-shell", "pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) await stageLegacyInstallation(data, pluginArtifactRoot, pluginId, "active");
 	await stageLegacyInstallation(data, pluginArtifactRoot, "pibo.web-search", "uninstalled");
 	const retainedAt = "2026-09-15T08:00:00.000Z";
 	data.sessions.upsertSession({
@@ -207,7 +208,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	assert.deepEqual({ state: selectedState(firstInstallations, "pibo.cron").state, enabled: selectedState(firstInstallations, "pibo.cron").enabled }, { state: "installed", enabled: false });
 	assert.deepEqual({ state: selectedState(firstInstallations, "pibo.goal-control").state, enabled: selectedState(firstInstallations, "pibo.goal-control").enabled }, { state: "installed", enabled: false });
 	assert.deepEqual({ state: selectedState(firstInstallations, "pibo.web-search").state, enabled: selectedState(firstInstallations, "pibo.web-search").enabled }, { state: "uninstalled", enabled: false });
-	for (const pluginId of ["pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) {
+	for (const pluginId of ["pibo.standard-shell", "pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) {
 		assert.equal(selectedState(firstInstallations, pluginId).state, "uninstalled");
 	}
 	assert.equal(firstInstallations.filter((entry) => packagePluginIds.has(entry.pluginId) && entry.state === "active" && entry.enabled).length, 17);
@@ -216,6 +217,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const receiptFirst = await readFile(receiptPath, "utf8");
 	const receipt = JSON.parse(receiptFirst);
 	assert.equal(receipt.targets.length, 5);
+	assert.deepEqual(receipt.supersededOwners, ["pibo.core", "pibo.product-ui", "pibo.standard-shell", "pibo.user-resources", "pibo.web-product"]);
 	assert.deepEqual(receipt.targets.map((entry) => [entry.pluginId, entry.state]), [
 		["pibo.cron", "disabled"],
 		["pibo.goal-control", "disabled"],

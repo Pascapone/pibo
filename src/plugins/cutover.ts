@@ -12,11 +12,13 @@ import type {
 export * from "./cutover-contract.js";
 
 const AGGREGATE_TARGETS: Record<string, Record<string, string>> = {
+	"pibo.standard-shell": { composition: "@pasko70/pibo-standard" },
 	"pibo.product-ui": { workflows: "pibo.workflows", cron: "pibo.cron", loops: "pibo.goal-control", "agent-designer": "@pibo/core", settings: "@pibo/core", "user-resources": "@pibo/core" },
 	"pibo.web-product": { "preview-app": "pibo.preview", "cron-channel": "pibo.cron" },
 	"pibo.user-resources": { resources: "@pibo/core" },
 	"pibo.core": { core: "@pibo/core" },
 };
+const COMPOSITION_TARGETS = new Set(["@pibo/core", "@pasko70/pibo-standard"]);
 
 export function isPibo4LegacyAggregatePluginId(pluginId: string): boolean {
 	return Object.hasOwn(AGGREGATE_TARGETS, pluginId);
@@ -67,7 +69,7 @@ function targetStates(snapshot: Pibo4LegacyCutoverSnapshot): Map<string, { state
 	if (snapshot.schemaVersion !== 1 || !Array.isArray(snapshot.plugins)) throw new Error("Pibo 4 cutover requires a schemaVersion 1 legacy package snapshot");
 	const targets = new Map<string, { state: Pibo4LegacyPackageState; owners: Set<string> }>();
 	const merge = (target: string, state: Pibo4LegacyPackageState, owner: string) => {
-		if (target === "@pibo/core") return;
+		if (COMPOSITION_TARGETS.has(target)) return;
 		const previous = targets.get(target);
 		if (previous && previous.state !== state) throw new Error(`Legacy selections map ${target} to conflicting ${previous.state}/${state} states; reconcile the legacy snapshot before cutover`);
 		const next = previous ?? { state, owners: new Set<string>() };

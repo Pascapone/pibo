@@ -70,6 +70,26 @@ test("cutover preparation maps aggregate owners, preserves negative states, and 
 	await assert.rejects(preparePibo4Cutover({ source: { package: "@pasko70/pibo", version: "3.6.2", path: source }, targetCore: { package: "@pasko70/pibo", version: "4.0.0-beta.1", path: core }, artifacts: {}, snapshot: { schemaVersion: 1, plugins: [{ pluginId: "unknown.legacy", state: "active" }] }, outputPath: join(root, "unknown.json") }), /No exact Pibo 4 artifact/);
 });
 
+test("cutover preparation supersedes Standard shell through composition without requiring a plugin artifact", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-standard-shell-cutover-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const source = join(root, "pibo-1.7.2.tgz");
+	const core = join(root, "pibo-4.tgz");
+	const planPath = join(root, "cutover.json");
+	await writeFile(source, "real-line source bytes");
+	await writeFile(core, "minimal core bytes");
+	const plan = await preparePibo4Cutover({
+		source: { package: "@pasko70/pibo", version: "1.7.2", path: source },
+		targetCore: { package: "@pasko70/pibo", version: "4.0.0-beta.1", path: core },
+		artifacts: {},
+		snapshot: { schemaVersion: 1, plugins: [{ pluginId: "pibo.standard-shell", state: "active" }] },
+		outputPath: planPath,
+	});
+	assert.deepEqual(plan.targets, []);
+	assert.deepEqual(plan.supersededOwners, ["pibo.standard-shell"]);
+	assert.equal((await verifyPreparedPibo4Cutover(planPath)).planHash, plan.planHash);
+});
+
 test("cutover preparation accepts real pre-4 package lines and rejects unsupported or malformed source versions", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo4-cutover-source-versions-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
