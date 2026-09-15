@@ -61,72 +61,39 @@ test("package documentation link closure detects an excluded transitive target",
 	]);
 });
 
-test("npm package includes runtime assets and closes installed documentation links", async () => {
+test("repository root refuses direct npm publication", async () => {
+	await assert.rejects(
+		execFileAsync("npm", ["publish", "--dry-run"], { cwd: process.cwd(), maxBuffer: 16 * 1024 * 1024 }),
+		(error) => {
+			assert.match(error.stderr, /Refusing to publish the private repository root/);
+			return true;
+		},
+	);
+});
+
+test("generated Minimal-Core tarball excludes repository and feature implementation surfaces", async () => {
+	const workspacePackage = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8"));
+	assert.equal(workspacePackage.private, true, "the repository root is a private build workspace, not an npm release package");
 	const { stdout } = await execFileAsync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-		cwd: process.cwd(),
+		cwd: join(process.cwd(), "dist/pibo4-core-package"),
 		maxBuffer: 16 * 1024 * 1024,
 	});
 	const [report] = JSON.parse(stdout);
+	assert.equal(report.name, "@pasko70/pibo");
 	const files = report.files.map((file) => file.path);
-	const packagedFiles = new Set(files);
-	assert.equal(files.includes("dist/bin/pibo.js"), true);
-	assert.equal(files.some((path) => path.startsWith("dist/apps/chat-ui/")), true);
-	for (const module of ["web-annotations", "tool-families", "control-tools", "runtime-pi", "runtime-codex-native", "runtime-omp", "runtime-adapters", "profiles", "mcp-cli", "preview", "cron", "workflows"]) {
-		assert.equal(files.includes(`dist/plugins/packaged-${module}.js`), true, `npm package must include packaged-${module}.js`);
-		assert.equal(files.includes(`dist/plugins/packaged-${module}.d.ts`), true, `npm package must include packaged-${module}.d.ts`);
+	for (const file of ["index.js", "plugin-sdk.js", "plugin-host.js", "plugin-runtime.js", "plugin-cutover.js", "product-runtime.js", "package.json"]) {
+		assert.equal(files.includes(file), true, `Minimal-Core must include ${file}`);
 	}
-	for (const entry of ["build-context", "cron", "loops", "preview", "runtime-requests", "tool-family", "web-annotations", "workflows"]) {
-		assert.equal(files.includes(`dist/apps/chat-ui/assets/pibo-plugin-${entry}.js`), true, `npm package must include ${entry} browser entry`);
-	}
-	assert.equal(files.some((path) => /(?:^|\/)(?:chat-vscode(?:-web)?|cli-ui|cli-session|local|pi-packages|vscode)(?:\/|\.|-)/.test(path) || path.includes("vscode-artifacts")), false);
-	assert.equal(files.includes(".dockerignore"), false, "packaged image context must retain built dist files");
-	for (const path of [
-		"compute-image/Dockerfile",
-		"compute-image/Dockerfile.dockerignore",
-		"scripts/docker-entrypoint.sh",
-		"scripts/prepare-agent-browser-wrapper.sh",
-		"scripts/prepare-browser-use-wrapper.sh",
-	]) assert.equal(files.includes(path), true, `npm package must include ${path}`);
-	assert.equal(files.includes("docs/README.md"), false, "an incomplete legacy documentation README must not be installed");
-	assert.equal(files.includes("docs/project/README.md"), false, "an incomplete project documentation README must not be installed");
-	for (const path of [
-		"docs/project/installation-profiles.md",
-		"docs/project/guides/pibo-on-windows-via-wsl.md",
-		"docs/project/operations/install-user-host.md",
-		"docs/project/operations/install-developer-host.md",
-		"docs/project/operations/upgrade-user-to-developer-host.md",
-	]) assert.equal(files.includes(path), true, `README-linked installed operation is missing: ${path}`);
-	const operationsIndexPath = "docs/project/operations/index.md";
-	if (packagedFiles.has(operationsIndexPath)) {
-		const operationsIndex = await readFile(join(process.cwd(), operationsIndexPath), "utf8");
-		assert.deepEqual(unresolvedPackagedLinks({ files: packagedFiles, indexPath: operationsIndexPath, markdown: operationsIndex }), []);
-	}
-	const packDirectory = await mkdtemp(join(tmpdir(), "pibo-package-links-"));
-	try {
-		const { stdout: archiveJson } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packDirectory], {
-			cwd: process.cwd(), maxBuffer: 16 * 1024 * 1024,
-		});
-		const [archiveReport] = JSON.parse(archiveJson);
-		const archivePath = join(packDirectory, archiveReport.filename);
-		const archiveFiles = new Set(archiveReport.files.map((file) => file.path));
-		const markdownByPath = new Map();
-		for (const path of archiveFiles) {
-			if (path !== "README.md" && !path.endsWith(".md")) continue;
-			const extracted = await execFileAsync("tar", ["-xOf", archivePath, `package/${path}`], { maxBuffer: 16 * 1024 * 1024 });
-			markdownByPath.set(path, extracted.stdout);
-		}
-		assert.deepEqual(unresolvedDocumentationLinks({ files: archiveFiles, markdownByPath }), []);
-	} finally {
-		await rm(packDirectory, { recursive: true, force: true });
-	}
+	assert.equal(files.some((file) => file.startsWith("dist/") || file.startsWith("docs/") || file.startsWith("compute-image/") || file.startsWith("scripts/")), false);
+	assert.equal(files.some((file) => file.includes("packaged-") || file.includes("plugin-builtin")), false);
 });
 
-test("npm package supports imports from the package root", async () => {
-	const packageDir = await mkdtemp(join(tmpdir(), "pibo-package-root-"));
+test("generated Minimal-Core supports public package imports from its own tarball", async () => {
+	const packageDir = await mkdtemp(join(tmpdir(), "pibo-minimal-core-import-"));
 	const consumerDir = join(packageDir, "consumer");
 	try {
 		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packageDir], {
-			cwd: process.cwd(),
+			cwd: join(process.cwd(), "dist/pibo4-core-package"),
 			maxBuffer: 16 * 1024 * 1024,
 		});
 		const [report] = JSON.parse(stdout);
@@ -139,27 +106,16 @@ test("npm package supports imports from the package root", async () => {
 		const imported = await execFileAsync(process.execPath, [
 			"--input-type=module",
 			"--eval",
-			"import { createDefaultPiboProfile } from '@pasko70/pibo'; console.log(typeof createDefaultPiboProfile)",
+			"import { PluginHost, startPluginProductRuntime } from '@pasko70/pibo'; console.log(typeof PluginHost, typeof startPluginProductRuntime)",
 		], { cwd: consumerDir });
-		assert.equal(imported.stdout.trim(), "function");
+		assert.equal(imported.stdout.trim(), "function function");
 	} finally {
 		await rm(packageDir, { recursive: true, force: true });
 	}
 });
 
-test("npm package ships the unavailable-tool path contract", async () => {
-	const packageDir = await mkdtemp(join(tmpdir(), "pibo-package-tools-contract-"));
-	try {
-		const { stdout } = await execFileAsync("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", packageDir], {
-			cwd: process.cwd(),
-			maxBuffer: 16 * 1024 * 1024,
-		});
-		const [report] = JSON.parse(stdout);
-		const archivePath = join(packageDir, report.filename);
-		const { stdout: packagedToolsCli } = await execFileAsync("tar", ["-xOf", archivePath, "package/dist/tools/index.js"]);
-		assert.match(packagedToolsCli, /CLI_TOOL_NOT_INSTALLED/);
-		assert.match(packagedToolsCli, /Run pibo tools install/);
-	} finally {
-		await rm(packageDir, { recursive: true, force: true });
-	}
+test("built workspace CLI retains the unavailable-tool path contract without treating the workspace pack as release evidence", async () => {
+	const builtToolsCli = await readFile(join(process.cwd(), "dist/tools/index.js"), "utf8");
+	assert.match(builtToolsCli, /CLI_TOOL_NOT_INSTALLED/);
+	assert.match(builtToolsCli, /Run pibo tools install/);
 });

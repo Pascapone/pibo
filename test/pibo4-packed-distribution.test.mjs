@@ -95,7 +95,9 @@ test("every first-party artifact independently packs with exact identity and sel
 	}
 });
 
-test("standard artifact set maps every package to one exact plugin id and version", async () => {
+test("standard artifact set maps every package to one exact plugin id and version", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-standard-pack-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
 	const set = JSON.parse(await readFile("dist/pibo4-artifacts/standard-package-set.json", "utf8"));
 	assert.equal(set.schemaVersion, 1);
 	assert.equal(set.core, "@pasko70/pibo");
@@ -107,4 +109,8 @@ test("standard artifact set maps every package to one exact plugin id and versio
 	assert.equal(standardPackage.name, "@pasko70/pibo-standard");
 	assert.equal(standardPackage.dependencies["@pasko70/pibo"], "4.0.0-beta.1");
 	for (const entry of set.plugins) assert.equal(standardPackage.dependencies[entry.package], entry.version);
+	const standardTarball = await npmPack(resolve("dist/pibo4-standard-package"), root);
+	const cutoverTarball = await npmPack(resolve("dist/pibo4-cutover-package"), root);
+	assert.match(basename(standardTarball), /^pasko70-pibo-standard-/);
+	assert.match(basename(cutoverTarball), /^pasko70-pibo-cutover-/);
 });

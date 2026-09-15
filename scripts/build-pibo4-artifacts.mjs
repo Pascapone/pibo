@@ -3,6 +3,7 @@ import { basename, join, resolve } from "node:path";
 import { build } from "esbuild";
 
 const root = process.cwd();
+const releaseVersion = process.env.PIBO_RELEASE_VERSION?.trim() || "4.0.0-beta.1";
 const outputRoot = resolve(root, "dist/pibo4-artifacts");
 const generatedRoot = resolve(root, "dist/.pibo4-generated");
 const defaults = await import(new URL("../dist/plugins/default-packages.js", import.meta.url));
@@ -131,11 +132,11 @@ await writeFile(join(standardRoot, "package-set.json"), `${JSON.stringify(standa
 await writeFile(join(standardRoot, "index.js"), `import packageSet from "./package-set.json" with { type: "json" };\nexport { packageSet };\n`);
 await writeFile(join(standardRoot, "package.json"), `${JSON.stringify({
 	name: "@pasko70/pibo-standard",
-	version: "4.0.0-beta.1",
+	version: releaseVersion,
 	type: "module",
 	main: "./index.js",
 	exports: { ".": "./index.js", "./package-set.json": "./package-set.json", "./package.json": "./package.json" },
 	files: ["index.js", "package-set.json"],
-	dependencies: Object.fromEntries([["@pasko70/pibo", "4.0.0-beta.1"], ...standardSet.plugins.map((entry) => [entry.package, entry.version])]),
+	dependencies: Object.fromEntries([["@pasko70/pibo", releaseVersion], ...standardSet.plugins.map((entry) => [entry.package, entry.version])]),
 }, null, 2)}\n`);
 console.log(`Built ${packages.length} Pibo 4 plugin package artifacts and the Standard composition in ${outputRoot}`);

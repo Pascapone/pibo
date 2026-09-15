@@ -3,6 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { build } from "esbuild";
 
 const root = process.cwd();
+const releaseVersion = process.env.PIBO_RELEASE_VERSION?.trim() || "4.0.0-beta.1";
 const packageRoot = resolve(root, "dist/pibo4-core-package");
 const generatedRoot = resolve(root, "dist/.pibo4-core-generated");
 await rm(packageRoot, { recursive: true, force: true });
@@ -50,7 +51,7 @@ await writeFile(join(declarationTarget, "index.d.ts"), `export * from "./plugins
 
 const pkg = {
 	name: "@pasko70/pibo",
-	version: "4.0.0-beta.1",
+	version: releaseVersion,
 	type: "module",
 	main: "./index.js",
 	types: "./types/index.d.ts",
@@ -73,7 +74,7 @@ await rm(cutoverRoot, { recursive: true, force: true });
 await mkdir(join(cutoverRoot, "bin"), { recursive: true });
 await cp(join(packageRoot, "plugin-cutover.js"), join(cutoverRoot, "index.js"));
 await writeFile(join(cutoverRoot, "bin/pibo4-cutover.js"), `#!/usr/bin/env node\nimport { readFile } from "node:fs/promises";\nimport { resolve } from "node:path";\nimport { preparePibo4Cutover } from "../index.js";\nconst inputPath = process.argv[2];\nif (!inputPath) { console.error("Usage: pibo4-cutover <input.json>"); process.exit(2); }\nconst input = JSON.parse(await readFile(resolve(inputPath), "utf8"));\nconst plan = await preparePibo4Cutover(input);\nconsole.log(JSON.stringify({ id: plan.id, planHash: plan.planHash, outputPath: resolve(input.outputPath), targets: plan.targets.length }));\n`);
-await writeFile(join(cutoverRoot, "package.json"), `${JSON.stringify({ name: "@pasko70/pibo-cutover", version: "4.0.0-beta.1", type: "module", main: "./index.js", bin: { "pibo4-cutover": "./bin/pibo4-cutover.js" }, exports: { ".": "./index.js", "./package.json": "./package.json" }, files: ["index.js", "bin"] }, null, 2)}\n`);
+await writeFile(join(cutoverRoot, "package.json"), `${JSON.stringify({ name: "@pasko70/pibo-cutover", version: releaseVersion, type: "module", main: "./index.js", bin: { "pibo4-cutover": "./bin/pibo4-cutover.js" }, exports: { ".": "./index.js", "./package.json": "./package.json" }, files: ["index.js", "bin"] }, null, 2)}\n`);
 
 const executableFiles = Object.keys(entries).map((name) => `${name}.js`);
 const forbidden = ["pibo_agents_", "formatPiboRunReminderMessage", "createPiboDelegationController", "PI_AGENT_RUNTIME_DRIVER", "CODEX_NATIVE_AGENT_RUNTIME_DRIVER", "OMP_AGENT_RUNTIME_DRIVER", "CodexBrowserSessionController"];

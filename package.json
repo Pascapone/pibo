@@ -1,6 +1,7 @@
 {
   "name": "@pasko70/pibo",
   "version": "1.7.2",
+  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -99,6 +100,7 @@
     "validate:goal-endurance": "node scripts/goal-endurance-check.mjs",
     "typecheck": "npm run workflows:typecheck && node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.json --noEmit && npm run chat-ui:typecheck && npm run context-files-ui:typecheck",
     "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "prepublishOnly": "node -e \"console.error('Refusing to publish the private repository root; use npm run release -- --version <version> --publish-npm'); process.exit(1)\"",
     "prepack": "npm run build && node scripts/package-shrinkwrap.mjs prepare",
     "postpack": "node scripts/package-shrinkwrap.mjs clean",
     "plugins:sdk:build": "node --max-old-space-size=1200 node_modules/typescript/bin/tsc -p tsconfig.plugin-sdk.json",

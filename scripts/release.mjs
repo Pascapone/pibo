@@ -2,9 +2,11 @@
 // Orchestrate a Pibo release end-to-end.
 //
 // Steps:
-//   1. Bump the version in package.json and package-lock.json.
-//   2. Run the full build.
-//   3. (Optional) Publish the npm package: `npm publish`.
+//   1. Bump the workspace version in package.json and package-lock.json.
+//   2. Run the full build and produce the Pibo 4 release artifacts.
+//   3. (Optional) Publish Minimal-Core, Cutover, each plugin, and Standard from
+//      their generated package directories. The private repository root is
+//      never published.
 //   4. (Optional) Create a GitHub Release.
 //
 // Usage:
@@ -97,6 +99,36 @@ function currentGitTag() {
 	}
 }
 
+function pibo4ReleasePackages(version) {
+	const set = readJson(resolve(root, "dist/pibo4-artifacts/standard-package-set.json"));
+	const pluginPrefix = "@pasko70/pibo-plugin-";
+	const specifications = [
+		{ directory: "dist/pibo4-core-package", name: "@pasko70/pibo", version },
+		{ directory: "dist/pibo4-cutover-package", name: "@pasko70/pibo-cutover", version },
+		...set.plugins.map((entry) => {
+			if (typeof entry.package !== "string" || !entry.package.startsWith(pluginPrefix)) throw new Error(`Invalid Pibo 4 plugin package coordinate: ${entry.package}`);
+			return { directory: `dist/pibo4-artifacts/${entry.package.slice(pluginPrefix.length)}`, name: entry.package, version: entry.version };
+		}),
+		{ directory: "dist/pibo4-standard-package", name: "@pasko70/pibo-standard", version },
+	];
+	const names = new Set();
+	for (const specification of specifications) {
+		const manifest = readJson(resolve(root, specification.directory, "package.json"));
+		if (manifest.name !== specification.name || manifest.version !== specification.version) {
+			throw new Error(`Release artifact ${specification.directory} is ${manifest.name}@${manifest.version}; expected ${specification.name}@${specification.version}`);
+		}
+		if (manifest.private === true) throw new Error(`Release artifact ${specification.name} is private`);
+		if (names.has(manifest.name)) throw new Error(`Duplicate Pibo 4 release package ${manifest.name}`);
+		names.add(manifest.name);
+	}
+	const standard = readJson(resolve(root, "dist/pibo4-standard-package/package.json"));
+	if (standard.dependencies?.["@pasko70/pibo"] !== version) throw new Error(`Standard composition does not pin @pasko70/pibo@${version}`);
+	for (const entry of set.plugins) {
+		if (standard.dependencies?.[entry.package] !== entry.version) throw new Error(`Standard composition does not pin ${entry.package}@${entry.version}`);
+	}
+	return specifications;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const currentRoot = readJson(rootPackageJsonPath);
 const currentLock = readJson(rootPackageLockPath);
@@ -104,8 +136,9 @@ const currentLockedRoot = currentLock.packages?.[""];
 if (currentLock.name !== currentRoot.name || currentLockedRoot?.name !== currentRoot.name) {
 	throw new Error("package-lock.json does not describe the root package");
 }
+if (currentRoot.private !== true) throw new Error("The repository root must remain private; publish only generated Pibo 4 package artifacts");
 
-console.log(`[release] root @pasko70/pibo: ${currentRoot.version} -> ${args.version}`);
+console.log(`[release] private workspace version: ${currentRoot.version} -> ${args.version}`);
 
 if (args.dryRun) {
 	console.log("[release] --dry-run: not writing files or invoking side-effects.");
@@ -119,17 +152,22 @@ currentLock.version = args.version;
 currentLockedRoot.version = args.version;
 writeJson(rootPackageLockPath, currentLock);
 
-console.log(`[release] updated package manifests and root lock metadata`);
+console.log(`[release] updated workspace manifest and root lock metadata`);
 
-runInherit(npmCommand, ["run", "--silent", "build"]);
-console.log(`[release] built package and web UIs`);
+const releaseEnv = { ...process.env, PIBO_RELEASE_VERSION: args.version };
+runInherit(npmCommand, ["run", "--silent", "build"], { env: releaseEnv });
+runInherit(npmCommand, ["run", "--silent", "pibo4:minimal-core"], { env: releaseEnv });
+const releasePackages = pibo4ReleasePackages(args.version);
+console.log(`[release] built and verified ${releasePackages.length} independently publishable Pibo 4 packages`);
 
 if (args.publishNpm) {
-	console.log(`[release] publishing @pasko70/pibo@${args.version} to npm…`);
-	runInherit(npmCommand, ["publish"]);
-	console.log(`[release] published to npm`);
+	for (const artifact of releasePackages) {
+		console.log(`[release] publishing ${artifact.name}@${artifact.version} from ${artifact.directory}…`);
+		runInherit(npmCommand, ["publish", artifact.directory, "--access", "public"], { env: releaseEnv });
+	}
+	console.log(`[release] published ${releasePackages.length} Pibo 4 packages; the private repository root was not published`);
 } else {
-	console.log(`[release] (skipped npm publish; pass --publish-npm to enable)`);
+	console.log(`[release] (skipped npm publication; pass --publish-npm to publish generated Pibo 4 packages)`);
 }
 
 let releaseUrl;
