@@ -1,303 +1,117 @@
 ---
 type: "Specification"
-title: "Embedded VS Code Web Area"
-description: "Defines the implemented Embedded VS Code Web Area contract, including its ownership, source/test/public/failure/accessibility/compatibility boundaries, and explicit evidence limits."
-tags:
-- web
-- chat-web
-status: "deprecated"
+title: "VS Code Web Workspace Plugin"
+description: "Defines the current packaged VS Code Web workspace plugin, same-origin integration metadata, readiness checks, and bounded fallback behavior."
+tags: ["web", "chat-web", "plugins", "vscode"]
+status: "stable"
 authority: "normative"
-superseded_by: "/plans/unified-plugin-system-rebuild.md"
 generated:
-  by: "openai/codex"
-  at: "2026-09-12T13:45:00Z"
+  by: "openai-codex/gpt-6"
+  at: "2026-09-15T21:05:00Z"
 sources:
-  - id: "foundation-source-and-tests"
-    resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+  - id: "integrated-source-and-tests"
+    resource: "scope:Integrated implementation and focused tests at traceability.commit"
+    title: "VS Code Web plugin source, package, and browser evidence"
 implementation:
   state: "current"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
-  package: "WP-06+07-WEB"
-  package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
+  source_commit: "c6e3943096bd45158393d59519b525b4365679c7"
   source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  test_execution: "Focused Preview and VS Code plugin tests passed in the isolated Docker worker; Pibo 4 package and cutover tests passed with 21 plugin packages and 24 total Candidate tarballs."
+  build_execution: "Root build, root typecheck, workflow build, Chat UI production build, and Pibo 4 artifact generation passed in the isolated Docker worker."
+  browser_execution: "Authenticated headful desktop and mobile flows opened VS Code as an ordinary workspace tab and confirmed the unconfigured fallback, tab switching, reload persistence, and persisted close behavior."
+  evidence_limits: "No real code-server or VS Code Web binary was available in the worker. The configured-ready path is covered deterministically by source tests; the live browser run covers the unavailable path. No Pibo2 deployment, production gateway change, publication, push, PR, or release is claimed."
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "c6e3943096bd45158393d59519b525b4365679c7"
   requirements:
-    - id: "WEB-VSCODE-NAVIGATION-001"
+    - id: "WEB-VSCODE-PLUGIN-001"
       status: "implemented"
       sources:
-        - path: "src/apps/chat-ui/src/App.tsx"
-          symbol: "App"
-        - path: "src/apps/chat-ui/src/main.tsx"
-          symbol: "vscodeRoute"
-        - path: "src/apps/chat/web-app.ts"
-          symbol: "resolveChatWebIntegrations"
+        - path: "src/plugins/packaged-vscode-web.ts"
+          symbol: "createPackagedVscodeWebPlugin"
+        - path: "src/plugins/default-packages.ts"
+          symbol: "createDefaultPluginPackages"
+        - path: "src/apps/chat-ui/src/plugins/vscode-view.tsx"
+          symbol: "VscodeWebPluginView"
       tests:
-        - path: "test/chat-ui-main-navigation-current.test.mjs"
-          name: "desktop and mobile main navigation identify the active area"
-        - path: "test/chat-ui-main-navigation-current.test.mjs"
-          name: "main navigation hides VS Code without changing the existing account-label breakpoint"
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "VS Code is packaged as an ordinary workspace plugin with same-origin integration metadata"
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "Preview and VS Code workspace views are ordinary tab entries without Chat routes"
       public:
-        - "/apps/chat/vscode"
-        - "VscodeArea"
-        - "bootstrap.integrations.vscodeWeb"
+        - "pibo.vscode-web"
+        - "pibo.vscode-web/vscode"
+        - "/api/chat/vscode-web"
+        - "Chat Web New Tab menu"
       failures:
-        - "Missing integration hides navigation and direct use must fall back safely."
-        - "Accessibility/responsive boundary: aria-current, mobile menu focus, and account-label breakpoints need headful confirmation."
-        - "Compatibility boundary: The optional integration must not perturb existing navigation when absent."
+        - "Missing or disabled package contributions remove the workspace view instead of synthesizing a Core route."
+        - "An unconfigured integration renders a bounded unavailable state and retry action without claiming IDE readiness."
       confidence: "high"
-    - id: "WEB-VSCODE-FAILURE-002"
+    - id: "WEB-VSCODE-ORIGIN-002"
       status: "implemented"
       sources:
-        - path: "src/apps/chat-ui/src/VscodeArea.tsx"
-          symbol: "vscodeWorkbenchReady"
-        - path: "src/apps/chat-ui/src/VscodeArea.tsx"
-          symbol: "VscodeArea"
-      tests:
-        - path: "test/chat-ui-vscode-area.test.mjs"
-          name: "VS Code area provides a configured-state fallback and trusted IDE iframe controls"
-      public:
-        - "/apps/chat/vscode"
-        - "VscodeArea"
-        - "bootstrap.integrations.vscodeWeb"
-      failures:
-        - "Probe/load/readiness failure yields an alert/retry without exposing a false ready iframe."
-        - "Accessibility/responsive boundary: Loading status, error alert, retry focus, iframe title, aria-hidden, and tabIndex are normative; headful evidence pending."
-        - "Compatibility boundary: Workbench readiness recognizes current standard theme/body signals."
-      confidence: "high"
-    - id: "WEB-VSCODE-EMBED-003"
-      status: "implemented"
-      sources:
-        - path: "src/apps/chat/web-app.ts"
+        - path: "src/plugins/packaged-vscode-web.ts"
+          symbol: "resolveVscodeWebIntegration"
+        - path: "src/plugins/packaged-vscode-web.ts"
+          symbol: "resolveVscodeWebRoute"
+        - path: "src/apps/chat-ui/src/plugins/vscode-view.tsx"
           symbol: "resolveVscodeWebUrl"
-        - path: "src/apps/chat-ui/src/VscodeArea.tsx"
-          symbol: "vscodeWebUrl"
-        - path: "src/apps/chat-ui/src/VscodeArea.tsx"
-          symbol: "VscodeArea"
       tests:
-        - path: "test/chat-ui-vscode-area.test.mjs"
-          name: "VS Code Web helpers validate URLs and standard workbench themes"
-        - path: "test/chat-ui-vscode-area.test.mjs"
-          name: "VS Code area provides a configured-state fallback and trusted IDE iframe controls"
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "VS Code integration rejects cross-origin URLs and preserves the workspace folder"
       public:
-        - "/apps/chat/vscode"
-        - "VscodeArea"
-        - "bootstrap.integrations.vscodeWeb"
+        - "PIBO_VSCODE_WEB_URL"
+        - "PIBO_VSCODE_WEB_WORKSPACE_ROOT"
+        - "/api/chat/vscode-web"
       failures:
-        - "Cross-origin, malformed, or unconfigured URLs fail closed; permissions cannot expand silently."
-        - "Accessibility/responsive boundary: Iframe title and pre-ready focus exclusion require headful checks."
-        - "Compatibility boundary: Configured base-path format is a gateway/Web compatibility contract."
+        - "Malformed, cross-origin, protocol-relative, credential-bearing, or out-of-base URLs fail closed."
+        - "The workspace folder is encoded as a query value and does not expand the approved URL origin or base path."
       confidence: "high"
-    - id: "WEB-VSCODE-BOUNDARY-004"
+    - id: "WEB-VSCODE-READINESS-003"
       status: "implemented"
       sources:
-        - path: "src/apps/chat-ui/src/VscodeArea.tsx"
-          symbol: "VscodeArea"
-        - path: "src/apps/chat/web-app.ts"
-          symbol: "resolveChatWebIntegrations"
-      source_inspected: true
-      follow_up: "During implementation review, grep the resulting spec for extension/webview/sidecar requirements and cross-link any such behavior to its owning VS Code extension specification; headfully validate only the iframe area."
+        - path: "src/apps/chat-ui/src/plugins/vscode-view.tsx"
+          symbol: "vscodeWorkbenchReady"
+        - path: "src/apps/chat-ui/src/plugins/vscode-view.tsx"
+          symbol: "VscodeWebPluginView"
+      tests:
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "VS Code readiness requires a genuine Monaco workbench shell"
       public:
-        - "/apps/chat/vscode"
-        - "VscodeArea"
-        - "bootstrap.integrations.vscodeWeb"
+        - "VS Code workspace tab loading, ready, unavailable, and retry states"
       failures:
-        - "No browser message bridge or extension privilege may be inferred from iframe presence."
-        - "Accessibility/responsive boundary: Only area/iframe accessibility is in scope; extension UI accessibility is not."
-        - "Compatibility boundary: VS Code extension internals require a separate owner and evidence set."
-      confidence: "medium"
+        - "Load, probe, document access, or readiness timeout failures produce an alert and retry control; the iframe remains hidden and non-tabbable until ready."
+        - "Iframe permissions are limited to clipboard read and write; iframe presence grants no extension or sidecar protocol."
+      confidence: "high"
 ---
-> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
 
-# Embedded VS Code Web Area
+# Scope
 
-## Why
+This specification owns the current VS Code Web integration as an ordinary packaged Chat Web workspace plugin. It owns package identity, contribution discovery, integration metadata, same-origin URL construction, iframe readiness, and bounded unavailable/error behavior.
 
-Conditional VS Code navigation, configured/empty/error/ready states, and a constrained same-origin code-server iframe.
+Gateway proxy deployment, code-server lifecycle, operating-system permissions, VS Code extensions, sidecars, and extension webview protocols remain outside this contract.
 
-## Scope
+## Requirement: WEB-VSCODE-PLUGIN-001 VS Code is an ordinary packaged workspace view
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+Standard includes `pibo.vscode-web` as an independent plugin package. When its workspace contribution is installed and enabled, the generic New Tab catalog exposes `VS Code`; it does not require a Core-owned Chat route or main-navigation area. Opening, switching, reload restoration, and closing use the same Session-owned tabset lifecycle as other plugin views.
 
-### In scope
+The view requests authenticated integration metadata from `/api/chat/vscode-web`. An absent configuration is a valid bounded state: the tab remains usable, explains that VS Code Web is unavailable, and offers retry without pretending that an IDE loaded.
 
-- Owns only the Chat Web navigation area, integration readiness UI, same-origin iframe construction, and bounded empty/error behavior.
+## Requirement: WEB-VSCODE-ORIGIN-002 Integration URLs fail closed to the current origin
 
-### Out of scope
+`PIBO_VSCODE_WEB_URL` must resolve to the current Chat Web origin and an approved base path. Cross-origin, protocol-relative, credential-bearing, malformed, and path-escaping values are rejected. When `PIBO_VSCODE_WEB_WORKSPACE_ROOT` is configured, the plugin appends it as an encoded `folder` query value without changing origin authority.
 
-- SPC-GW-003 owns route/proxy mount and code-server availability.
-- SPC-SEC-001 owns authentication/origin policy.
-- VS Code extension, sidecar, extension webview transport, and extension internals are explicitly excluded.
+The integration metadata endpoint returns only the bounded URL and optional workspace folder needed by the browser view. It does not expose filesystem credentials or grant access beyond the separately deployed VS Code Web service.
 
-## Current behavior
+## Requirement: WEB-VSCODE-READINESS-003 Ready means a genuine accessible Monaco workbench
 
-### Routes and state
+The iframe is not considered ready merely because its load event fired. The plugin must be able to inspect the same-origin document and find the standard Monaco workbench shell and editor/theme signals. Before that point, the iframe remains hidden and excluded from tab order. Probe, load, document-access, or timeout failures expose a visible alert and retry action.
 
-The /apps/chat/vscode route and main-navigation entry exist only when bootstrap exposes a configured integration. Folder/workbench query construction stays under the configured same-origin base path.
+The iframe title is stable, and its declared permissions are limited to clipboard read and write. The integration defines no extension bridge, sidecar transport, or extension-internal authentication.
 
-### Cache, stream, files, and media
+# Security and deployment boundary
 
-No independent durable/cache/stream/file/media contract; the iframe consumes the configured code-server Web surface.
+Treat a same-origin VS Code Web service as trusted shell-level access for its operating-system account. A deployment must keep the service behind the authenticated Pibo origin and separately control its filesystem and terminal permissions. This implementation does not start, configure, or proxy code-server by itself.
 
-### Lifecycle and failure
+# Evidence boundary
 
-Unconfigured state is bounded. Configured state probes readiness, waits up to the source-defined window for workbench DOM, exposes retry on error, and keeps the iframe hidden/non-tabbable until ready.
-
-### Security
-
-Only configured same-origin code-server URLs are accepted; iframe permissions are constrained to clipboard read/write. No extension transport is specified.
-
-### Accessibility and responsive behavior
-
-The area has a labeled main region, role=status loading, role=alert error, titled iframe, and hidden/tabIndex state before readiness. No headful iframe/focus/responsive validation ran.
-
-### Compatibility and integration
-
-Standard workbench themes and same-origin paths are recognized. Hiding the integration must not alter existing account-label breakpoint behavior.
-
-## Requirements and invariants
-
-### Requirement: WEB-VSCODE-NAVIGATION-001
-
-The Chat main navigation MUST expose the VS Code area only when bootstrap contains a configured VS Code Web integration, and the route MUST retain current-area semantics without changing unrelated responsive labels.
-
-#### Current
-
-upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
-
-#### Acceptance and boundaries
-
-- Source: `src/apps/chat-ui/src/App.tsx` — `App`; `src/apps/chat-ui/src/main.tsx` — `vscodeRoute`; `src/apps/chat/web-app.ts` — `resolveChatWebIntegrations`
-- Tests: `test/chat-ui-main-navigation-current.test.mjs` — “desktop and mobile main navigation identify the active area”; `test/chat-ui-main-navigation-current.test.mjs` — “main navigation hides VS Code without changing the existing account-label breakpoint”
-- Public surfaces: `/apps/chat/vscode`; `VscodeArea`; `bootstrap.integrations.vscodeWeb`
-- Failure/security boundary: Missing integration hides navigation and direct use must fall back safely.
-- Accessibility/responsive boundary: aria-current, mobile menu focus, and account-label breakpoints need headful confirmation.
-- Compatibility boundary: The optional integration must not perturb existing navigation when absent.
-- Confidence: **high**
-- Verification follow-up: Run navigation tests and headfully verify configured/unconfigured desktop/mobile menus, direct route, refresh, and focus.
-
-### Requirement: WEB-VSCODE-FAILURE-002
-
-The area MUST provide bounded unconfigured, loading, timeout/error, and retry states and MUST keep the iframe hidden and non-tabbable until a standard workbench-ready document is detected.
-
-#### Current
-
-upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
-
-#### Acceptance and boundaries
-
-- Source: `src/apps/chat-ui/src/VscodeArea.tsx` — `vscodeWorkbenchReady`; `src/apps/chat-ui/src/VscodeArea.tsx` — `VscodeArea`
-- Tests: `test/chat-ui-vscode-area.test.mjs` — “VS Code area provides a configured-state fallback and trusted IDE iframe controls”
-- Public surfaces: `/apps/chat/vscode`; `VscodeArea`; `bootstrap.integrations.vscodeWeb`
-- Failure/security boundary: Probe/load/readiness failure yields an alert/retry without exposing a false ready iframe.
-- Accessibility/responsive boundary: Loading status, error alert, retry focus, iframe title, aria-hidden, and tabIndex are normative; headful evidence pending.
-- Compatibility boundary: Workbench readiness recognizes current standard theme/body signals.
-- Confidence: **high**
-- Verification follow-up: Run VS Code area tests with deterministic probe/iframe documents, then headfully test timeout, error, retry, slow load, focus, and ready transitions.
-
-### Requirement: WEB-VSCODE-EMBED-003
-
-Configured iframe URLs MUST resolve beneath the approved same-origin code-server base path, preserve an optional folder target, and grant only the declared clipboard permissions.
-
-#### Current
-
-upstream/dev refresh source and named-test inspection define the current contract. The named tests identify focused evidence and do not expand this requirement into visual, provider, platform, gateway, or Pibo2 acceptance.
-
-#### Acceptance and boundaries
-
-- Source: `src/apps/chat/web-app.ts` — `resolveVscodeWebUrl`; `src/apps/chat-ui/src/VscodeArea.tsx` — `vscodeWebUrl`; `src/apps/chat-ui/src/VscodeArea.tsx` — `VscodeArea`
-- Tests: `test/chat-ui-vscode-area.test.mjs` — “VS Code Web helpers validate URLs and standard workbench themes”; `test/chat-ui-vscode-area.test.mjs` — “VS Code area provides a configured-state fallback and trusted IDE iframe controls”
-- Public surfaces: `/apps/chat/vscode`; `VscodeArea`; `bootstrap.integrations.vscodeWeb`
-- Failure/security boundary: Cross-origin, malformed, or unconfigured URLs fail closed; permissions cannot expand silently.
-- Accessibility/responsive boundary: Iframe title and pre-ready focus exclusion require headful checks.
-- Compatibility boundary: Configured base-path format is a gateway/Web compatibility contract.
-- Confidence: **high**
-- Verification follow-up: Run URL/area tests and add origin/path/query/folder traversal cases; inspect final iframe URL and permissions through CDP in an isolated real path.
-
-### Requirement: WEB-VSCODE-BOUNDARY-004
-
-This specification MUST stop at the embedded same-origin code-server area and MUST NOT define VS Code extension webview messaging, sidecar transport, extension lifecycle, or extension-internal authentication.
-
-#### Current
-
-upstream/dev refresh source inspection defines the current contract. No named test exists in the evidence set, so this requirement remains an explicit source-only gap and makes no focused-test claim.
-
-#### Acceptance and boundaries
-
-- Source: `src/apps/chat-ui/src/VscodeArea.tsx` — `VscodeArea`; `src/apps/chat/web-app.ts` — `resolveChatWebIntegrations`
-- Tests: No named test exists in the upstream/dev refresh evidence set; this requirement remains source-only.
-- Public surfaces: `/apps/chat/vscode`; `VscodeArea`; `bootstrap.integrations.vscodeWeb`
-- Failure/security boundary: No browser message bridge or extension privilege may be inferred from iframe presence.
-- Accessibility/responsive boundary: Only area/iframe accessibility is in scope; extension UI accessibility is not.
-- Compatibility boundary: VS Code extension internals require a separate owner and evidence set.
-- Confidence: **medium**
-- Verification follow-up: During implementation review, grep the resulting spec for extension/webview/sidecar requirements and cross-link any such behavior to its owning VS Code extension specification; headfully validate only the iframe area.
-
-## Interfaces and ownership
-
-**Capability IDs:** None; this concept projects capabilities owned by linked services.
-
-**Public surfaces:**
-
-- /apps/chat/vscode
-- VscodeArea
-- bootstrap.integrations.vscodeWeb
-
-**Non-owned links:**
-
-- SPC-GW-003 owns route/proxy mount and code-server availability.
-- SPC-SEC-001 owns authentication/origin policy.
-- VS Code extension, sidecar, extension webview transport, and extension internals are explicitly excluded.
-
-## Failure and security behavior
-
-- Unconfigured state is bounded. Configured state probes readiness, waits up to the source-defined window for workbench DOM, exposes retry on error, and keeps the iframe hidden/non-tabbable until ready.
-- Only configured same-origin code-server URLs are accepted; iframe permissions are constrained to clipboard read/write. No extension transport is specified.
-
-Web browser state, caches, projections, overlays, annotations, and iframe presence do not grant authorization or become durable product authority.
-
-## Accessibility and responsive behavior
-
-The area has a labeled main region, role=status loading, role=alert error, titled iframe, and hidden/tabIndex state before readiness. No headful iframe/focus/responsive validation ran.
-
-Source-defined DOM, CSS, and ARIA are implementation evidence only. They do not constitute headful focus, keyboard, pointer, zoom, responsive, screen-reader, PWA, iframe, annotation, or settings acceptance.
-
-## Compatibility and integration behavior
-
-Standard workbench themes and same-origin paths are recognized. Hiding the integration must not alter existing account-label breakpoint behavior.
-
-## Known limits
-
-- Evidence gap: No headful configured/unconfigured/loading/error/retry/ready iframe path.
-- Evidence gap: No real same-origin code-server integration or gateway proxy acceptance.
-
-## Reconciled stale claims
-
-- Reject: VS Code navigation is always shown.
-- Reject: An arbitrary external code-server origin may be embedded.
-- Reject: The Chat area specifies VS Code extension webview/sidecar internals.
-- Reject: Source/unit tests prove iframe visual readiness.
-
-## Verification and traceability
-
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
-- Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
-- External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
-- Confidence measures trace quality, not execution of an unclaimed evidence class.
-
-Package verification commands:
-
-- `cd /root/code/pibo-okf-docs && node --test test/chat-ui-vscode-area.test.mjs test/chat-ui-main-navigation-current.test.mjs`
-
-## Related concepts
-
-- SPC-WEB-001
-- SPC-GW-003
-- SPC-SEC-001
+The source commit, focused tests, package/Candidate checks, root build and typecheck, and authenticated headful unavailable-state flows support the implemented claims. The worker did not contain a real VS Code Web server, so a live genuine-workbench ready transition remains deployment acceptance work. No Pibo2 deployment or runtime mutation was performed.

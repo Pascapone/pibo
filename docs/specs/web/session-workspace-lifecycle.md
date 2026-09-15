@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-14T08:10:00Z"
+  at: "2026-09-15T21:05:00Z"
 sources:
   - id: "plugin-ux-plan"
     resource: "/plans/unified-plugin-system-rebuild.md"
@@ -17,14 +17,14 @@ sources:
     title: "Session creation and workspace lifecycle source and named-test evidence"
 implementation:
   state: "current"
-  source_commit: "e901ebcc3b40fc886e42746d5b02d167a0daaebd"
+  source_commit: "c6e3943096bd45158393d59519b525b4365679c7"
   source_evidence: "performed"
-  test_execution: "The route-ownership regression failed before the fix and passed after it; 58 focused Chat UI and plugin browser tests passed in Docker"
-  build_execution: "Chat UI typecheck and production build passed in Docker"
-  browser_execution: "Authenticated headful desktop and mobile switching kept ready-empty and delayed-loading target Sessions empty, restored Session A's three tabs with tab two active, emitted no cross-Session tabset write, and retained one document"
-  evidence_limits: "The current fix was validated only in the isolated worker with automated headful Chromium viewports, not on physical mobile hardware or a packaged/deployed Pibo2 candidate. The earlier Agent Designer creation evidence and optimistic rename checks remain applicable. No full suite, model turn, controller-gateway change, push, PR, release, or publication is claimed."
+  test_execution: "Focused Session-workspace, Preview, VS Code, browser-host, Room-switch, and plugin-selection regressions passed in the isolated Docker worker."
+  build_execution: "Root build, root typecheck, workflow build, Chat UI production build, and Pibo 4 artifact generation passed in the isolated Docker worker."
+  browser_execution: "Authenticated headful desktop and mobile switching preserved Session-owned tabs; Preview, Web Annotations, and VS Code opened as ordinary tabs, survived reload, switched without remount loss, and persisted close behavior."
+  evidence_limits: "The current work was validated only in the isolated worker, not on physical mobile hardware or a packaged/deployed Pibo2 candidate. No real VS Code Web service, model turn, controller-gateway change, push, PR, release, or publication is claimed."
 traceability:
-  commit: "e901ebcc3b40fc886e42746d5b02d167a0daaebd"
+  commit: "c6e3943096bd45158393d59519b525b4365679c7"
   requirements:
     - id: "WEB-SESSION-CREATE-001"
       status: "implemented"
@@ -82,6 +82,10 @@ traceability:
           name: "failed-save and in-flight Session controllers survive bounded cache pruning"
         - path: "test/plugin-system-browser.test.mjs"
           name: "plugin Refresh waits for leave guards and tabset saves, and blocks on failure"
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "Preview and VS Code workspace views are ordinary tab entries without Chat routes"
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "route-less plugin workspace views remain available to the desktop tab catalog"
       public:
         - "Chat Web desktop Session workspace"
         - "Workspace tab Refresh and Close actions"
@@ -91,6 +95,7 @@ traceability:
         - "Close is the explicit panel cleanup boundary, while changing Sessions disposes the departed Session's live panels and browser hosts without discarding unsaved controller state."
         - "Late reads, writes, refreshes, and view starts remain bound to their owning Session and cannot project another Session's tabs or selection."
         - "A route observed by an older Session-selection generation cannot initialize or mutate the newly selected Session while client routing catches up."
+        - "Installed route-less workspace views remain discoverable in the generic New Tab catalog; a missing Chat route is not grounds to hide Preview, VS Code, or a third-party view."
         - "Compatibility boundary: the global browser-v1 key is migration input only and is not a runtime workspace fallback."
       confidence: "high"
 ---
@@ -115,14 +120,16 @@ A real Session owns its `PluginSessionTabset`, tab order, active tab, layout, an
 
 Within one Session, every open real tab has stable mount identity. Selecting another tab marks the prior view inactive and hides its panel without removing its React subtree. Refresh first completes that tab's registered leave/autosave guards and pending tabset saves. Success remounts only the selected panel; failure leaves the existing mount intact. Close runs the applicable guards, removes the tab, and releases its panel resources.
 
+The generic New Tab catalog includes every enabled installed workspace view that is otherwise accessible to the current Session. A workspace view does not need a Chat route to be discoverable. Preview and VS Code therefore use the same open, switch, reload-restoration, and close lifecycle as any other plugin tab.
+
 Changing Sessions disposes the departed Session's live panels and browser hosts. The bounded controller cache may remove only clean, idle controllers; it retains local drafts, CAS conflicts, failed saves, and in-flight reads or writes until they become safely reloadable or receive explicit recovery. Every asynchronous read, save, refresh, and view start remains bound to its Session owner, so late completion cannot replace another Session's tabset, active tab, view state, or selection.
 
 Route reconciliation has the same ownership boundary. A route key is bound to the Session-selection generation that observed it after bootstrap readiness. If Session A's active route is still visible during an A→B render, that older route cannot initialize or edit B's controller, whether B is already ready or completes a delayed load. Once routing changes under the current selection generation, the explicit current route may reconcile normally. Returning to A restores A's stored tab order and active tab rather than deriving them from B or the transient URL.
 
 # Evidence boundary
 
-The source commit, focused before/after regression, 58-test focused Docker set, Chat UI typecheck/build, and authenticated headful switching run support the implemented claims above. In the actual flow, Session A owned Workflows, Settings, and Preview with Settings active; ready-empty B, delayed-loading C, and mobile-switched D remained empty immediately and after 2.5 seconds, while returning to A restored all three tabs and Settings. The browser retained one document/navigation entry with no `pagehide` or `beforeunload`, and no foreign plugin-tab `PUT` occurred.
+The source commit, focused Docker regressions, root build/typecheck, Chat UI build, artifact generation, and authenticated headful switching/tab runs support the implemented claims above. In the actual flow, Session A owned Workflows, Settings, and Preview with Settings active; ready-empty B, delayed-loading C, and mobile-switched D remained empty immediately and after 2.5 seconds, while returning to A restored all three tabs and Settings. The browser retained one document/navigation entry with no `pagehide` or `beforeunload`, and no foreign plugin-tab `PUT` occurred.
 
 Earlier delayed-POST desktop/mobile and deterministic delayed-PATCH evidence continues to support immediate optimistic rename and selection ownership. An earlier bounded Agent Designer run confirmed that its action reached the shared App callback, returned `201`, retained the document, client-routed to the real Session, focused the title editor, and opened an empty workspace. The exact `a32b3466` delayed-POST timing was not repeated through that button because that worker state exposed the designer renderer as unavailable; its callback wiring is covered by focused source tests.
 
-The route-carryover fix was validated against the isolated worker candidate only. This specification does not claim a full repository suite, a package or Pibo2 deployment of `e901ebcc`, release acceptance, a physical-device mobile browser, a model turn, or provider execution.
+The workspace and route-less tab corrections were validated against the isolated worker candidate only. This specification does not claim a Pibo2 deployment of `c6e39430`, release acceptance, a physical-device mobile browser, a model turn, or provider execution.

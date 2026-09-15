@@ -8,8 +8,8 @@ tags:
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-14T14:03:01Z"
+  by: "openai-codex/gpt-6"
+  at: "2026-09-15T21:05:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -22,9 +22,9 @@ implementation:
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  visual_provider_gateway_pibo2_execution: "Settings scrolling was validated headfully at desktop 1440×900 and mobile 390×844 in an isolated worker; provider, production gateway, and Pibo2 execution remain unperformed."
 traceability:
-  commit: "df1c3da6acbf56b70b39a526139ab9f6d2b87b01"
+  commit: "c6e3943096bd45158393d59519b525b4365679c7"
   requirements:
     - id: "WEB-CONFIG-CONTEXT-001"
       status: "implemented"
@@ -142,6 +142,8 @@ traceability:
       tests:
         - path: "test/chat-ui-responsive-tab-modules.test.mjs"
           name: "desktop module tabs use pane-width sidebars and container-responsive content flows"
+        - path: "test/chat-ui-settings-room-regressions.test.mjs"
+          name: "Settings owns a viewport-bounded scroll panel instead of clipping long content"
       source_inspected: true
       follow_up: "Add and run a route/panel matrix test covering all eleven panel IDs, read/write methods, same-origin requirements, scopes, invalidation, and failures; retain focused headful navigation evidence for wide, narrow, and mobile tab containers."
       public:
@@ -310,22 +312,22 @@ Foundation source and named-test inspection define the current contract. The nam
 
 ### Requirement: WEB-CONFIG-SETTINGS-004
 
-Settings MUST expose the implemented panel set—general, plugins, debug, concurrency, previews, transcription, speech, shortcuts, maintenance, skills, and providers—and preserve each subview's declared scope and bootstrap invalidation behavior. Settings and every other first-party tab with stable sections or selectable entities MUST use container-responsive left navigation with a local narrow drawer rather than viewport-only or duplicate top navigation.
+Settings MUST expose the implemented panel set—general, plugins, debug, concurrency, previews, transcription, speech, shortcuts, maintenance, skills, and providers—and preserve each subview's declared scope and bootstrap invalidation behavior. Settings and every other first-party tab with stable sections or selectable entities MUST use container-responsive left navigation with a local narrow drawer rather than viewport-only or duplicate top navigation. The selected Settings panel MUST own a viewport-bounded `h-full min-h-0` scroll region so long content remains reachable without enabling document-level scrolling.
 
 #### Current
 
-Current source and the focused responsive-module regression define the built-in navigation contract. The existing panel, route, scope, and invalidation owners remain unchanged.
+Current source and focused regressions define the built-in navigation and scroll-ownership contract. Authenticated headful desktop and mobile checks confirmed that the selected Settings content, not the page shell, owns vertical scrolling. The existing panel, route, scope, and invalidation owners remain unchanged.
 
 #### Acceptance and boundaries
 
 - Source: `src/apps/chat-ui/src/settings/SettingsView.tsx` — `SettingsView`; `src/apps/chat-ui/src/settings/types.ts` — `SettingsPanel`; `src/apps/chat-ui/src/settings/SettingsSidebar.tsx` — `SettingsSidebar`; `src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx` — `FirstPartySubviewNavigation`; `src/apps/chat-ui/src/responsive-pane-sidebar.tsx` — `ResponsiveTabSidebarPanel`; `src/apps/chat-ui/src/context/ContextFilesView.tsx` — `ContextFilesView`; `src/apps/chat/chat-settings-routes.ts` — `ChatSettingsRoute`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRoute`; `src/apps/chat/chat-settings-routes.ts` — `chatSettingsRouteInvalidatesBootstrapCatalog`; `src/apps/chat/chat-settings-routes.ts` — `handleChatSettingsRoute`
-- Tests: `test/chat-ui-responsive-tab-modules.test.mjs` — “desktop module tabs use pane-width sidebars and container-responsive content flows”
+- Tests: `test/chat-ui-responsive-tab-modules.test.mjs` — “desktop module tabs use pane-width sidebars and container-responsive content flows”; `test/chat-ui-settings-room-regressions.test.mjs` — “Settings owns a viewport-bounded scroll panel instead of clipping long content”
 - Public surfaces: `/api/chat/context-build*`; `/api/chat/agents*`; `/api/chat/agent-folders*`; `/api/chat/catalog*`; `/api/chat/settings*`; `BuildContextView`; `ContextFilesView`; `AgentsView`; `SettingsView`
 - Failure/security boundary: Unknown panels/methods fail explicitly; failed mutations cannot update optimistic settings or stale capability catalogs.
-- Accessibility/responsive boundary: Sidebar current state, form labels/errors, drawer focus return, and container-width transitions require focused headful validation.
+- Accessibility/responsive boundary: Desktop 1440×900 and mobile 390×844 headful checks confirmed that the inner selected panel scrolls to its end while the outer shell remains bounded. Sidebar focus return and screen-reader behavior remain separate acceptance work.
 - Compatibility boundary: Panel IDs/routes are compatibility surfaces; owner specs define each underlying setting. Third-party plugin layout remains renderer-owned.
 - Confidence: **high**
-- Verification follow-up: Add and run a route/panel matrix covering all eleven panel IDs, read/write methods, same-origin requirements, scopes, invalidation, and failures; retain focused wide/narrow/mobile drawer evidence.
+- Verification follow-up: Add and run a route/panel matrix covering all eleven panel IDs, read/write methods, same-origin requirements, scopes, invalidation, and failures; retain focused wide/narrow/mobile drawer evidence and rerun scroll ownership after layout changes.
 
 ### Requirement: WEB-CONFIG-CREDENTIALS-005
 

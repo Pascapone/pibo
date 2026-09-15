@@ -8,8 +8,8 @@ tags:
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-08-30T12:56:45Z"
+  by: "openai-codex/gpt-6"
+  at: "2026-09-15T21:05:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:Foundation 38bb6e57f118c1543e7263c68d27e5103d3b1262"
@@ -22,9 +22,9 @@ implementation:
   source_evidence: "performed"
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  visual_provider_gateway_pibo2_execution: "The packaged Web Annotations workspace view was validated headfully on desktop and mobile in an isolated worker; provider, production gateway, and Pibo2 execution remain unperformed."
 traceability:
-  commit: "38bb6e57f118c1543e7263c68d27e5103d3b1262"
+  commit: "c6e3943096bd45158393d59519b525b4365679c7"
   requirements:
     - id: "WEB-ANNOTATION-BINDING-001"
       status: "implemented"
@@ -149,6 +149,25 @@ traceability:
         - "Accessibility/responsive boundary: Dialog label, expanded/pressed state, initial focus, mobile sizing, scroll, escape/outside close, and shortcut need headful evidence."
         - "Compatibility boundary: Legacy per-Session keys are migration inputs only; current selection is app-global."
       confidence: "medium"
+    - id: "WEB-ANNOTATION-HOST-005"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/plugins/browser-host.tsx"
+          symbol: "getBrowserModule"
+        - path: "src/apps/chat-ui/src/plugins/browser-host.tsx"
+          symbol: "BrowserPluginPanel"
+      tests:
+        - path: "test/plugin-system-preview-vscode-tabs.test.mjs"
+          name: "browser plugin host exposes the shared React Query instance"
+        - path: "test/plugin-system-browser.test.mjs"
+          name: "browser plugin code loads through the host bridge rather than importing React or SDK"
+      public:
+        - "window.__PIBO_BROWSER_PLUGIN_BRIDGE__"
+        - "Packaged Web Annotations workspace views"
+      failures:
+        - "A packaged browser view cannot create a second React Query context or require its own QueryClientProvider."
+        - "Missing host peers fail the browser module load visibly rather than rendering against an incompatible context."
+      confidence: "high"
 ---
 # Web Annotations
 
@@ -158,7 +177,7 @@ Browser target binding, injected overlay lifecycle, bounded annotation storage/a
 
 ## Scope
 
-This specification describes implemented behavior at Foundation traceability commit `38bb6e57f118c1543e7263c68d27e5103d3b1262`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+This specification describes implemented behavior at traceability commit `c6e3943096bd45158393d59519b525b4365679c7`.
 
 ### In scope
 
@@ -175,7 +194,7 @@ This specification describes implemented behavior at Foundation traceability com
 
 ### Routes and state
 
-Same-origin app/API routes bind a Pibo Session to an exact browser target and serve overlay submissions. Selection is app-global local storage; legacy per-Session keys migrate once. Overlay/panel preferences remain browser-local.
+Same-origin app/API routes bind a Pibo Session to an exact browser target and serve overlay submissions. Selection is app-global local storage; legacy per-Session keys migrate once. Overlay/panel preferences remain browser-local. The packaged workspace view consumes the Chat host's shared React Query instance through the browser-plugin bridge.
 
 ### Cache, stream, files, and media
 
@@ -191,7 +210,7 @@ Same-origin JSON mutations, exact Session/target binding, secret redaction, text
 
 ### Accessibility and responsive behavior
 
-Source defines dialog/expanded/pressed labels, initial focus, status/error/empty states, 44px-class mobile controls, bounded scrolling, and responsive cards. No headful browser ran.
+Source defines dialog/expanded/pressed labels, initial focus, status/error/empty states, 44px-class mobile controls, bounded scrolling, and responsive cards. Authenticated headful desktop and mobile checks confirmed the packaged Annotations view renders functional content without a missing QueryClient error; detailed keyboard and screen-reader acceptance remains open.
 
 ### Compatibility and integration
 
@@ -274,6 +293,24 @@ Foundation source inspection defines the current contract. No named test exists 
 - Compatibility boundary: Legacy per-Session keys are migration inputs only; current selection is app-global.
 - Confidence: **medium**
 - Verification follow-up: Add and run storage/UI tests for app-global selection, one-time legacy migration, malformed storage, shortcut changes, panel state, and cross-Session rendering; then validate headfully.
+
+### Requirement: WEB-ANNOTATION-HOST-005
+
+Packaged Web Annotations browser modules MUST consume React, the Plugin SDK, and React Query from the host bridge. The host SHALL provide the same React Query module used by the application's `QueryClientProvider`, preventing duplicate context instances and allowing plugin hooks to resolve the current client. Missing or incompatible peers SHALL fail module loading visibly rather than rendering a broken panel.
+
+#### Current
+
+The packaged host imports React Query once and injects it as `ReactQuery` on `window.__PIBO_BROWSER_PLUGIN_BRIDGE__`. Browser-plugin artifacts bind their external `@tanstack/react-query` import to that module. Authenticated headful desktop and mobile checks rendered the functional Web Annotations view after this correction.
+
+#### Acceptance and boundaries
+
+- Source: `src/apps/chat-ui/src/plugins/browser-host.tsx` — `getBrowserModule`; `src/apps/chat-ui/src/plugins/browser-host.tsx` — `BrowserPluginPanel`
+- Tests: `test/plugin-system-preview-vscode-tabs.test.mjs` — “browser plugin host exposes the shared React Query instance”; `test/plugin-system-browser.test.mjs` — “browser plugin code loads through the host bridge rather than importing React or SDK”
+- Public surfaces: `window.__PIBO_BROWSER_PLUGIN_BRIDGE__`; packaged Web Annotations workspace views
+- Failure/security boundary: Missing peers fail browser-module loading visibly; the bridge grants no API or Session authority.
+- Accessibility/responsive boundary: Desktop and mobile rendering passed; detailed keyboard and screen-reader acceptance remains open.
+- Compatibility boundary: Browser packages must use host-provided peer instances rather than bundling incompatible React contexts.
+- Confidence: **high**
 
 ## Interfaces and ownership
 

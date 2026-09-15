@@ -10,7 +10,6 @@
 * [Chat Streaming Regression Knowledge Base](chat-streaming-regressions.md) - Catalogs known Chat Web streaming regressions, benchmark pitfalls, and diagnostic signals&#46;
 * [Compute Browser Resource Lifecycle Rollout Checklist](compute-browser-resource-rollout-checklist.md) - Guides the safe rollout and verification of compute&#45;worker and browser&#45;resource lifecycle controls&#46;
 * [Compute Browser Resource Operating Model](compute-browser-resource-operating-model.md) - Explains the current ownership and lifecycle model for compute, browser, worktree, and job resources&#46;
-* [Embedded VS Code Web](vscode-web-integration.md) - Explains the current embedded VS Code Web topology, routing, theme, workspace, and security boundaries&#46;
 * [Installation profiles](installation-profiles.md) - Explains supported Pibo installation profiles, ownership boundaries, migration, upgrade, rollback, and recovery&#46;
 * [Isolated Deployment Pool Operations](isolated-deployment-pool-operations.md) - Guides operators through isolated deployment&#45;pool acquisition, validation, cleanup, and recovery&#46;
 * [Minimal Workflow Definition Examples](workflow-definition-examples.md) - Provides current minimal Pibo workflow&#45;definition examples and authoring checks&#46;
@@ -19,6 +18,7 @@
 * [Pibo OKF documentation profile](documentation-profile.md) - Defines Pibo's taxonomy, authority, lifecycle, provenance, migration, and validation rules for the docs bundle&#46;
 * [Pibo Workflows](workflows.md) - Explains the current Pibo Workflows baseline, authoring model, execution direction, and security boundaries&#46;
 * [Session Live Preview operations](session-live-previews.md) - Provides the supported production setup, validation, lifecycle, and rollback procedure for session live previews&#46;
+* [VS Code Web Workspace Plugin](vscode-web-integration.md) - Explains the current packaged VS Code Web plugin, deployment topology, configuration, and security boundary&#46;
 * [Web Annotations Rollout Checklist](web-annotations-rollout-checklist.md) - Guides worker, browser, security, privacy, and deployment validation for Web Annotations&#46;
 * [Web Annotations V1](web-annotations.md) - Explains the Web Annotations V1 user flow, lifecycle, tools, recovery, privacy, and known limits&#46;
 * [Workflow Interface Adapters](workflow-interface-adapters.md) - Explains when and how Pibo workflows use deterministic interface adapters and explicit agentic transformations&#46;

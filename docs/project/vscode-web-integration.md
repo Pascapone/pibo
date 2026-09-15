@@ -1,132 +1,65 @@
 ---
 type: "Reference"
-title: "Embedded VS Code Web"
-description: "Explains the current embedded VS Code Web topology, routing, theme, workspace, and security boundaries."
-tags: ["integration", "vscode", "web"]
-status: "deprecated"
+title: "VS Code Web Workspace Plugin"
+description: "Explains the current packaged VS Code Web plugin, deployment topology, configuration, and security boundary."
+tags: ["integration", "vscode", "web", "plugins"]
+status: "stable"
 authority: "informative"
-superseded_by: "/plans/unified-plugin-system-rebuild.md"
-migration_lineage:
-  source_path: "docs/project/vscode-web-integration.md"
-  source_commit: "debba32a68137205df6351da9f3ae461004ca0c0"
-  baseline_commit: "2aef244301f5d181624662fdad53e18e83e80bd9"
-  baseline_blob_oid: "253e3082ee9c8ba8fd8c921519a38569e96ab76e"
-  source_bytes: 4575
-  source_sha256: "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567"
-  source_body_sha256: "51feb80e8b62b3a02696e7c6166aa9e7c9ba56ba121a9823aec5a856c2afe567"
 generated:
-  by: "openai/codex"
-  at: "2026-09-12T13:45:00Z"
+  by: "openai-codex/gpt-6"
+  at: "2026-09-15T21:05:00Z"
 ---
-> **Retired surface:** This document records the pre-removal implementation. The unified plugin-system rebuild removes the Pibo-owned VS Code extension and embedded code-server product surface; no current package, setup, CLI, or Chat Web support is defined here. See [the rebuild plan](/plans/unified-plugin-system-rebuild.md).
 
-# Embedded VS Code Web
+# VS Code Web Workspace Plugin
 
-Pibo Chat can expose a `VS Code` main-navigation area that embeds a separately running VS Code browser server. The tab is enabled only when the gateway has `PIBO_VSCODE_WEB_URL` configured.
+Pibo Standard includes `pibo.vscode-web`, an ordinary Session workspace plugin. Users open it from the generic New Tab menu. It does not add a Core route or main-navigation area.
 
-## Gateway configuration
+## Configuration
+
+The plugin reads two optional environment values through its authenticated metadata endpoint:
 
 ```bash
 PIBO_VSCODE_WEB_URL=/apps/vscode/
 PIBO_VSCODE_WEB_WORKSPACE_ROOT=/path/to/workspaces
 ```
 
-- `PIBO_VSCODE_WEB_URL` must be a same-origin absolute path beginning with `/`. Cross-origin URLs are rejected so Pibo authentication remains the only public access boundary.
-- `PIBO_VSCODE_WEB_WORKSPACE_ROOT` is optional. When set, it becomes the initial folder opened through VS Code's `folder` URL parameter.
-- VS Code manages folder selection inside the IDE. Pibo does not add a workspace picker or an extra IDE toolbar.
-- The initial folder is a convenience, not a filesystem sandbox. The code-server process account and its operating-system permissions remain the access boundary.
+- `PIBO_VSCODE_WEB_URL` must resolve under the current Chat Web origin. Cross-origin, protocol-relative, credential-bearing, malformed, and path-escaping values are rejected.
+- `PIBO_VSCODE_WEB_WORKSPACE_ROOT` is optional. When present, it becomes the encoded initial `folder` query value.
+- With no valid URL, the workspace tab shows a bounded unavailable state and retry action.
 
-The integration metadata is returned only in authenticated Chat bootstrap responses. When no URL is configured, the navigation item is hidden and a direct `/apps/chat/vscode` visit shows a configuration notice.
+The initial folder is a convenience, not a filesystem sandbox. The VS Code Web process account and operating-system permissions remain authoritative.
 
-## Recommended deployment topology
+## Recommended topology
 
-Run code-server on a loopback-only port and expose it through the same HTTPS origin as Pibo:
+Run code-server or another compatible VS Code Web service on loopback and expose it below the same authenticated HTTPS origin as Pibo:
 
 ```text
 Browser
   -> HTTPS reverse proxy
       -> /apps/chat/*     -> Pibo gateway
-      -> /apps/vscode/*  -> code-server on 127.0.0.1
+      -> /apps/vscode/*   -> VS Code Web on loopback
 ```
 
-The reverse proxy should authorize every VS Code request through Pibo's lightweight authenticated endpoint:
+Protect every proxied IDE request through the Pibo authentication boundary. Do not publish an unauthenticated VS Code Web listener.
 
-```text
-GET /api/chat/auth-check
-```
+The iframe must remain same-origin because the plugin verifies the loaded document. It declares only clipboard read/write permissions and remains hidden and non-tabbable until the document exposes a genuine Monaco workbench shell.
 
-That endpoint returns `204` for an authenticated Pibo session and `401` otherwise.
+## Readiness and recovery
 
-Example nginx locations:
+An iframe load event alone is insufficient. The plugin checks for the standard workbench container and editor/theme signals. Load, probe, document-access, and timeout failures produce an explicit alert. Retry restarts the metadata and iframe readiness sequence.
 
-```nginx
-location = /_pibo_vscode_auth {
-    internal;
-    proxy_pass http://127.0.0.1:4788/api/chat/auth-check;
-    proxy_pass_request_body off;
-    proxy_set_header Content-Length "";
-    proxy_set_header Cookie $http_cookie;
-    proxy_set_header Authorization $http_authorization;
-    proxy_set_header Host 127.0.0.1:4788;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
+A live deployment should validate:
 
-location /apps/vscode/ {
-    auth_request /_pibo_vscode_auth;
-
-    proxy_http_version 1.1;
-    proxy_set_header Host $http_host;
-    proxy_set_header X-Forwarded-Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    proxy_pass http://127.0.0.1:4790/;
-
-    # The IDE is intentionally embedded only by the same Pibo origin.
-    proxy_hide_header X-Frame-Options;
-    add_header Content-Security-Policy "frame-ancestors 'self'" always;
-}
-```
-
-Run code-server without its own login only when both conditions hold:
-
-1. it listens exclusively on loopback; and
-2. every public reverse-proxy request is protected by the Pibo auth check.
-
-Example process arguments:
-
-```bash
-code-server \
-  --bind-addr 127.0.0.1:4790 \
-  --auth none \
-  --disable-telemetry \
-  /path/to/workspaces
-```
-
-## Recommended default theme
-
-The integration accepts VS Code's standard light, dark, and high-contrast themes. To match Pibo's dark shell and avoid a visible color transition during startup, provision the code-server user settings with VS Code's current dark default rather than relying on the browser or operating-system color scheme:
-
-```json
-{
-  "window.autoDetectColorScheme": false,
-  "workbench.colorTheme": "Default Dark Modern"
-}
-```
-
-For the service layout above, store this as `<user-data-dir>/User/settings.json` before starting code-server.
-
-## Large workspace roots
-
-VS Code recursively watches an opened workspace. Hosts with many repositories or dependency trees may need higher Linux inotify limits. Configure these through a normal sysctl drop-in rather than changing them only for the current shell.
+1. the authenticated metadata endpoint;
+2. same-origin proxy and websocket behavior;
+3. loading, ready, error, and retry states;
+4. clipboard behavior;
+5. tab persistence and close behavior;
+6. desktop and mobile layout; and
+7. the VS Code service account's filesystem boundary.
 
 ## Security boundary
 
-The embedded IDE has the filesystem and terminal permissions of its server process. Treat access to the VS Code tab as equivalent to shell access for that operating-system account. Scope the process user and accessible workspace roots accordingly; do not expose an unauthenticated code-server port publicly.
+Access to the embedded IDE is equivalent to shell and filesystem access available to its service account. Treat the proxied service and installed extensions as trusted same-origin code, keep them patched, and scope their operating-system permissions. The Pibo plugin does not define an extension bridge, sidecar protocol, or additional authentication mechanism.
 
-The iframe is an unsandboxed same-origin application so Pibo can inspect workbench readiness and support normal IDE behavior. Treat code-server and its installed extensions as part of Pibo's trusted web origin, keep them patched, and never proxy an untrusted IDE service under that origin.
+The normative contract is [VS Code Web Workspace Plugin](/specs/web/embedded-vscode-area.md).
