@@ -14031,6 +14031,15 @@
       "authority": "normative",
       "status": "stable",
       "lineage": null
+    },
+    {
+      "path": "docs/reports/beta-feedback-pibo2-2026-09-15.md",
+      "state": "conformant",
+      "classification": "Pibo 4 Beta integrated runtime and canonical Pibo2 acceptance evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
     }
   ]
 }
