@@ -1,5 +1,6 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
+import * as ReactQuery from "@tanstack/react-query";
 import * as sdk from "../../../../plugins/sdk";
 import type { EffectivePluginPlan, PluginArtifactEnvelope, PluginBrowserCatalog, PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginHookDescriptor, PluginHookResult, PluginJsonValue, PluginQualifiedId, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
 export type { PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
@@ -27,7 +28,7 @@ export class BrowserPluginHost {
 				if (!effective.some((entry) => entry.id === id)) throw new Error(`Undeclared or disabled browser contribution: ${id}`);
 			};
 			try {
-				Object.assign(globalThis, { __PIBO_BROWSER_PLUGIN_BRIDGE__: Object.freeze({ React, ReactDOM }) });
+				Object.assign(globalThis, { __PIBO_BROWSER_PLUGIN_BRIDGE__: Object.freeze({ React, ReactDOM, ReactQuery }) });
 				const url = new URL(plugin.browserEntry, typeof location === "undefined" ? "http://localhost" : location.origin);
 				if (typeof location !== "undefined" && url.origin !== location.origin) throw new Error("Plugin modules must use authenticated same-origin assets");
 				const module = await this.loader(url.href); scope.assertOpen();

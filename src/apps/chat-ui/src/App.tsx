@@ -145,7 +145,14 @@ import {
 	signalLegacyStatus,
 	signalSnapshotIncludesSession,
 } from "./app-signal-status";
-import { appendSessionRoots, markSessionSubtreeReadInBootstrap, mergeNavigationIntoBootstrap } from "./app-navigation-merge";
+import {
+	appendSessionRoots,
+	markSessionSubtreeReadInBootstrap,
+	mergeNavigationIntoBootstrap,
+	restoreRoomNavigationSnapshot,
+	roomNavigationSnapshot,
+	type RoomNavigationSnapshot,
+} from "./app-navigation-merge";
 import { useAppDeleteActions } from "./app-delete-actions";
 import { roomSummaryStreamUrl, shouldRefreshNavigationFromRoomSummary } from "./room-summary-stream";
 import { selectedSessionBackendId } from "./selected-session-backend";
@@ -452,6 +459,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const roomMutationGenerationRef = useRef(0);
 	const bootstrapRequestId = useRef(0);
 	const navigationInFlightRef = useRef(new Map<string, Promise<NavigationData>>());
+	const roomNavigationSnapshotsRef = useRef(new Map<string, RoomNavigationSnapshot>());
 	const roomSwitchControllerRef = useRef<AbortController | null>(null);
 	const roomSwitchGenerationRef = useRef(0);
 	const activeRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? null;
@@ -462,7 +470,11 @@ export function App({ route }: { route: ChatAppRoute }) {
 		bootstrap?.room,
 	);
 	const selectedRoomArchived = selectedRoom ? isArchivedRoom(selectedRoom) : false;
-	const loadingSelectedRoom = Boolean(loadingRoomId && loadingRoomId === selectedRoomId);
+	const loadingSelectedRoom = Boolean(
+		loadingRoomId
+		&& loadingRoomId === selectedRoomId
+		&& !roomNavigationSnapshotsRef.current.has(loadingRoomId),
+	);
 	const optimisticTitleIntentsBySessionId = useMemo(() => Object.values(optimisticSessionTitleIntents).reduce<Record<string, OptimisticSessionTitleIntent>>((bySessionId, intent) => {
 		bySessionId[intent.piboSessionId] = intent;
 		return bySessionId;
@@ -483,6 +495,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 
 	useEffect(() => {
 		bootstrapRef.current = bootstrap;
+		if (bootstrap?.selectedRoomId) {
+			roomNavigationSnapshotsRef.current.set(bootstrap.selectedRoomId, roomNavigationSnapshot(bootstrap));
+		}
 	}, [bootstrap]);
 
 	useEffect(() => {
@@ -919,7 +934,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			});
 		};
 
-		if (shouldSkipRouteSelectionLoad({ bootstrap, creatingSession: creatingSessionRef.current, route })) return;
+		if (loadingRoomId || shouldSkipRouteSelectionLoad({ bootstrap, creatingSession: creatingSessionRef.current, route })) return;
 
 		const loadRouteData = bootstrap ? loadNavigation : loadBootstrap;
 		const clearBootstrapError = () => {
@@ -964,7 +979,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 					.catch(reportBootstrapError);
 			});
 		return () => { cancelled = true; };
-	}, [bootstrap, loadBootstrap, loadNavigation, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
+	}, [bootstrap, loadBootstrap, loadNavigation, loadingRoomId, navigateToSelectedSession, route.area, routePiboSessionId, routeRoomId]);
 
 	useEffect(() => {
 		if (!selectedRoomId && !selectedPiboSessionId) return;
@@ -1470,41 +1485,48 @@ export function App({ route }: { route: ChatAppRoute }) {
 		roomCreationOwnerRef.current = null;
 		const navigationOptions = { ...options, closeMobileSidebar: false };
 		const storedPiboSessionId = readStoredSelection().sessionsByRoom?.[roomId];
+		const cachedNavigation = roomNavigationSnapshotsRef.current.get(roomId);
 		const generation = roomSwitchGenerationRef.current + 1;
 		roomSwitchGenerationRef.current = generation;
 		roomSwitchControllerRef.current?.abort();
 		const controller = new AbortController();
 		roomSwitchControllerRef.current = controller;
 		flushSync(() => {
+			if (cachedNavigation && bootstrapRef.current) {
+				const cachedBootstrap = overlayCurrentSignals(restoreRoomNavigationSnapshot(bootstrapRef.current, cachedNavigation));
+				bootstrapRef.current = cachedBootstrap;
+				setBootstrap(cachedBootstrap);
+			}
 			setSelectedRoomId(roomId);
-			setSelectedPiboSessionId(storedPiboSessionId ?? null);
+			setSelectedPiboSessionId(storedPiboSessionId ?? cachedNavigation?.selectedPiboSessionId ?? null);
 			setNewSessionProfileRoomId(null);
 			setLoadingRoomId(roomId);
 			closeMobileSidebar();
 		});
+		if (storedPiboSessionId) navigateToSelectedSession(roomId, storedPiboSessionId, false, navigationOptions);
 		try {
-			const navigation = loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { signal: controller.signal });
+			const navigation = loadNavigation(storedPiboSessionId, showArchivedRef.current, roomId, { force: true, signal: controller.signal });
 			const requestId = bootstrapRequestId.current;
 			const data = await navigation;
 			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted || bootstrapRequestId.current !== requestId) return;
-			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, navigationOptions);
+			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, Boolean(storedPiboSessionId), navigationOptions);
 		} catch (caught) {
 			if (isAbortError(caught)) return;
 			if (!storedPiboSessionId) throw caught;
 			removeStoredRoomSelection(roomId);
 			setSelectedPiboSessionId(null);
-			const navigation = loadNavigation(undefined, showArchivedRef.current, roomId, { signal: controller.signal });
+			const navigation = loadNavigation(undefined, showArchivedRef.current, roomId, { force: true, signal: controller.signal });
 			const requestId = bootstrapRequestId.current;
 			const data = await navigation;
 			if (roomSwitchGenerationRef.current !== generation || controller.signal.aborted || bootstrapRequestId.current !== requestId) return;
-			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, false, navigationOptions);
+			navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, true, navigationOptions);
 		} finally {
 			if (roomSwitchGenerationRef.current === generation) {
 				if (roomSwitchControllerRef.current === controller) roomSwitchControllerRef.current = null;
 				setLoadingRoomId((current) => current === roomId ? null : current);
 			}
 		}
-	}, [closeMobileSidebar, loadNavigation, navigateToSelectedSession]);
+	}, [closeMobileSidebar, loadNavigation, navigateToSelectedSession, overlayCurrentSignals]);
 
 	const toggleArchivedRooms = useCallback(() => {
 		const next = !showArchivedRooms;

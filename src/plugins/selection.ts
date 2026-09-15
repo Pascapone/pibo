@@ -75,6 +75,10 @@ export function createAgentPluginSelectionForProfile(installations: readonly Plu
 			if (contribution) enableContribution(installation.pluginId, contribution.id);
 		}
 	}
+	const webAnnotations = entries.get("pibo.web-annotations");
+	if (webAnnotations && Object.entries(webAnnotations.contributions).some(([id, enabled]) => enabled && id.startsWith("web_annotations_"))) {
+		for (const id of ["skill", "annotations", "build-context", "terminal"]) enableContribution("pibo.web-annotations", id);
+	}
 	if (profile.contextFiles.some((item) => item.enabled !== false && (item.key === "Pibo Native Tooling" || item.label === "Pibo Native Tooling"))) enableContribution("pibo.browser-tools", "native-tooling-context");
 	if (profile.contextFiles.some((item) => item.enabled !== false && (item.key === "Codex Base Prompt" || item.label === "Codex Base Prompt"))) enableContribution("pibo.codex-compat", "base-prompt");
 	if (profile.mcpServers.length > 0) {

@@ -89,7 +89,7 @@ export function SettingsView({
 }) {
 	if (activePanel === "skills") {
 		return (
-			<div className="overflow-auto p-6 max-[640px]:p-3">
+			<div className="h-full min-h-0 overflow-auto p-6 max-[640px]:p-3">
 				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
 					<Wrench size={16} />
 					Skills
@@ -101,7 +101,7 @@ export function SettingsView({
 
 	if (activePanel === "plugins") {
 		return (
-			<div className="overflow-auto p-6 max-[640px]:p-3">
+			<div className="h-full min-h-0 overflow-auto p-6 max-[640px]:p-3">
 				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
 					<PackageOpen size={16} />
 					Plugins
@@ -113,7 +113,7 @@ export function SettingsView({
 
 	if (activePanel === "debug") {
 		return (
-			<div className="overflow-auto p-6 max-[640px]:p-3">
+			<div className="h-full min-h-0 overflow-auto p-6 max-[640px]:p-3">
 				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
 					<Bug size={16} />
 					Debug
@@ -132,7 +132,7 @@ export function SettingsView({
 
 	if (activePanel === "concurrency") {
 		return (
-			<div className="p-6 overflow-auto">
+			<div className="h-full min-h-0 overflow-auto p-6">
 				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 					<Gauge size={16} />
 					Concurrency
@@ -146,7 +146,7 @@ export function SettingsView({
 
 	if (activePanel === "transcription") {
 		return (
-			<div className="p-6 overflow-auto">
+			<div className="h-full min-h-0 overflow-auto p-6">
 				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 					<Mic size={16} />
 					Transcription
@@ -160,7 +160,7 @@ export function SettingsView({
 
 	if (activePanel === "previews") {
 		return (
-			<div className="overflow-auto p-6 max-[640px]:p-3">
+			<div className="h-full min-h-0 overflow-auto p-6 max-[640px]:p-3">
 				<h1 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wider">
 					<MonitorPlay size={16} />
 					Previews
@@ -174,7 +174,7 @@ export function SettingsView({
 
 	if (activePanel === "speech") {
 		return (
-			<div className="p-6 overflow-auto">
+			<div className="h-full min-h-0 overflow-auto p-6">
 				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 					<Volume2 size={16} />
 					Speech
@@ -188,7 +188,7 @@ export function SettingsView({
 
 	if (activePanel === "providers") {
 		return (
-			<div className="p-6 overflow-auto">
+			<div className="h-full min-h-0 overflow-auto p-6">
 				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 					<Key size={16} />
 					Providers
@@ -200,7 +200,7 @@ export function SettingsView({
 
 	if (activePanel === "shortcuts") {
 		return (
-			<div className="p-6 overflow-auto">
+			<div className="h-full min-h-0 overflow-auto p-6">
 				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 					<Keyboard size={16} />
 					Shortcuts
@@ -212,7 +212,7 @@ export function SettingsView({
 
 	if (activePanel === "maintenance") {
 		return (
-			<div className="p-6 overflow-auto">
+			<div className="h-full min-h-0 overflow-auto p-6">
 				<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 					<Settings size={16} />
 					Maintenance
@@ -223,7 +223,7 @@ export function SettingsView({
 	}
 
 	return (
-		<div className="p-6 overflow-auto">
+		<div className="h-full min-h-0 overflow-auto p-6">
 			<h1 className="text-sm font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
 				<Settings size={16} />
 				General

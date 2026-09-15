@@ -13,6 +13,7 @@ const piAgentOAuthBundle = join(piAgentPackageRoot, "node_modules", "@earendil-w
 
 const packages = [
 	["preview", defaults.previewPackageManifest, "src/plugins/packaged-preview.ts", "setupPreview", [["PreviewView", "src/apps/chat-ui/src/plugins/preview-view.tsx"]]],
+	["vscode-web", defaults.vscodeWebPackageManifest, "src/plugins/packaged-vscode-web.ts", "setupVscodeWeb", [["VscodeView", "src/apps/chat-ui/src/plugins/vscode-view.tsx"]]],
 	["web-annotations", defaults.webAnnotationsPackageManifest, "src/plugins/packaged-web-annotations.ts", "setup", [["WebAnnotationsView", "src/apps/chat-ui/src/plugins/web-annotations-view.tsx"], ["BuildContextView", "src/apps/chat-ui/src/plugins/build-context-view.tsx"]]],
 	["goal-loops", defaults.goalControlPackageManifest, "src/plugins/packaged-goal-loops.ts", "setupGoalControl", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"], ["LoopsView", "src/apps/chat-ui/src/plugins/loops-view.tsx"]]],
 	["cron", defaults.cronPackageManifest, "src/plugins/packaged-cron.ts", "setupCron", [["CronView", "src/apps/chat-ui/src/plugins/cron-view.tsx"]]],
@@ -40,13 +41,15 @@ const reactNames = [
 const reactShim = `const React = globalThis.__PIBO_BROWSER_PLUGIN_BRIDGE__?.React; if (!React) throw new Error("Pibo browser plugin React bridge is unavailable"); export default React; ${reactNames.map((name) => `export const ${name} = React.${name};`).join(" ")}`;
 const reactDomShim = `const ReactDOM = globalThis.__PIBO_BROWSER_PLUGIN_BRIDGE__?.ReactDOM; if (!ReactDOM) throw new Error("Pibo browser plugin ReactDOM bridge is unavailable"); export default ReactDOM; export const createPortal = ReactDOM.createPortal; export const flushSync = ReactDOM.flushSync; export const unstable_batchedUpdates = ReactDOM.unstable_batchedUpdates;`;
 const jsxRuntimeShim = `const React = globalThis.__PIBO_BROWSER_PLUGIN_BRIDGE__?.React; if (!React) throw new Error("Pibo browser plugin React bridge is unavailable"); export const Fragment = React.Fragment; export function jsx(type, props, key) { return React.createElement(type, key === undefined ? props : { ...props, key }); } export const jsxs = jsx; export const jsxDEV = jsx;`;
+const reactQueryShim = `const ReactQuery = globalThis.__PIBO_BROWSER_PLUGIN_BRIDGE__?.ReactQuery; if (!ReactQuery) throw new Error("Pibo browser plugin React Query bridge is unavailable"); export const useQuery = ReactQuery.useQuery; export const useQueryClient = ReactQuery.useQueryClient;`;
 const browserBridgePlugin = {
 	name: "pibo-browser-bridge",
 	setup(buildContext) {
 		buildContext.onResolve({ filter: /^react$/ }, () => ({ path: "react", namespace: "pibo-bridge" }));
 		buildContext.onResolve({ filter: /^react-dom$/ }, () => ({ path: "react-dom", namespace: "pibo-bridge" }));
 		buildContext.onResolve({ filter: /^react\/(?:jsx-runtime|jsx-dev-runtime)$/ }, () => ({ path: "jsx-runtime", namespace: "pibo-bridge" }));
-		buildContext.onLoad({ filter: /.*/, namespace: "pibo-bridge" }, ({ path }) => ({ contents: path === "react" ? reactShim : path === "react-dom" ? reactDomShim : jsxRuntimeShim, loader: "js" }));
+		buildContext.onResolve({ filter: /^@tanstack\/react-query$/ }, () => ({ path: "react-query", namespace: "pibo-bridge" }));
+		buildContext.onLoad({ filter: /.*/, namespace: "pibo-bridge" }, ({ path }) => ({ contents: path === "react" ? reactShim : path === "react-dom" ? reactDomShim : path === "react-query" ? reactQueryShim : jsxRuntimeShim, loader: "js" }));
 	},
 };
 

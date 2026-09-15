@@ -13,6 +13,7 @@ import { PIBO_STANDARD_SKILL_NAMES } from "./standard-skills.js";
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
 export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
 export const PREVIEW_PLUGIN_ID = "pibo.preview";
+export const VSCODE_WEB_PLUGIN_ID = "pibo.vscode-web";
 export const CRON_PLUGIN_ID = "pibo.cron";
 export const WORKFLOWS_PLUGIN_ID = "pibo.workflows";
 export const WEB_ANNOTATIONS_PLUGIN_ID = "pibo.web-annotations";
@@ -62,6 +63,19 @@ function transcriptionPackageManifest(id: string, name: string): PluginManifest 
 export const openAiChatGptTranscriptionPackageManifest = () => transcriptionPackageManifest(CHATGPT_TRANSCRIPTION_PLUGIN_ID, "ChatGPT Subscription Transcription");
 export const openAiTranscriptionPackageManifest = () => transcriptionPackageManifest(OPENAI_TRANSCRIPTION_PLUGIN_ID, "OpenAI Transcription");
 
+export function vscodeWebPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: VSCODE_WEB_PLUGIN_ID,
+		name: "Pibo VS Code Web",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		services: { requires: [{ id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }] },
+		contributions: [productView("view", "VS Code", "VscodeView")],
+	};
+}
+
 export function previewPackageManifest(): PluginManifest {
 	return {
 		schemaVersion: 1,
@@ -72,7 +86,7 @@ export function previewPackageManifest(): PluginManifest {
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		contributions: [
 			systemContribution("app", "web-app", "session-live-previews"),
-			productView("view", "Preview", "PreviewView", "preview"),
+			productView("view", "Preview", "PreviewView"),
 		],
 	};
 }
@@ -420,13 +434,14 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "preview" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "agent-delegation" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli";
+	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "agent-delegation" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
 
 const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: previewPackageManifest, backendExport: "setupPreview", backendModule: "preview", webOnly: true, browserModules: [{ exports: "PreviewView", asset: "pibo-plugin-preview.js" }] },
+	{ manifest: vscodeWebPackageManifest, backendExport: "setupVscodeWeb", backendModule: "vscode-web", webOnly: true, browserModules: [{ exports: "VscodeView", asset: "pibo-plugin-vscode-web.js" }] },
 	{ manifest: cronPackageManifest, backendExport: "setupCron", backendModule: "cron", webOnly: true, browserModules: [{ exports: "CronView", asset: "pibo-plugin-cron.js" }] },
 	{ manifest: workflowsPackageManifest, backendExport: "setupWorkflows", backendModule: "workflows", browserModules: [{ exports: "WorkflowsView", asset: "pibo-plugin-workflows.js" }] },
 	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription-openai-chatgpt" },
