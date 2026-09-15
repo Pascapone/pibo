@@ -151,6 +151,70 @@ test("verified cutover excludes only superseded providers and rolls back all tar
 	await restarted.dispose();
 });
 
+test("cold cutover replaces an active old revision with only retained snapshots and released admissions, but rolls back on a true active blocker", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-cold-revision-cutover-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const tarballs = join(root, "tarballs");
+	const targetDirectory = join(root, "target");
+	await mkdir(tarballs, { recursive: true });
+	await mkdir(targetDirectory);
+	const pluginId = "pibo.agent-delegation";
+	const packageName = "@pasko70/pibo-plugin-agent-delegation";
+	await writeFile(join(targetDirectory, "package.json"), `${JSON.stringify({ name: packageName, version: "1.0.0", type: "module", files: ["pibo.plugin.json"] })}\n`);
+	await writeFile(join(targetDirectory, "pibo.plugin.json"), `${JSON.stringify({ schemaVersion: 1, id: pluginId, name: "Agent delegation", version: "1.0.0", sdk: "^1.0.0", entrypoints: {}, contributions: [] })}\n`);
+	const targetTarball = await npmPack(targetDirectory, tarballs);
+	const source = join(root, "pibo-1.7.2.tgz");
+	const core = join(root, "pibo-4.tgz");
+	await writeFile(source, "retained source bytes");
+	await writeFile(core, "target core bytes");
+	const planPath = join(root, "cutover.json");
+	await preparePibo4Cutover({
+		source: { package: "@pasko70/pibo", version: "1.7.2", path: source },
+		targetCore: { package: "@pasko70/pibo", version: "4.0.0-beta.1", path: core },
+		artifacts: { [pluginId]: { package: packageName, version: "1.0.0", path: targetTarball } },
+		snapshot: { schemaVersion: 1, plugins: [{ pluginId, state: "active" }] },
+		outputPath: planPath,
+	});
+	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	t.after(() => data.close());
+	const oldSource = join(root, "old-agent-delegation");
+	await mkdir(oldSource);
+	await writeFile(join(oldSource, "pibo.plugin.json"), `${JSON.stringify({ schemaVersion: 1, id: pluginId, name: "Old agent delegation", version: "0.9.0", sdk: "^1.0.0", entrypoints: {}, contributions: [] })}\n`);
+	const seedManager = new PluginManager({ store: data.plugins, artifactRoot: join(root, "artifacts") });
+	const seeded = await seedManager.install({ kind: "local", path: oldSource }, { expectedRevision: 0 });
+	const oldInstallation = data.plugins.putInstallation({ ...seeded.installation, source: { kind: "builtin", name: pluginId }, enabled: true, state: "active", updatedAt: new Date().toISOString() }, seeded.installation.stateRevision);
+	for (let index = 0; index < 54; index += 1) data.plugins.putAdmission({ piboSessionId: `ps_released_${index}`, generationId: `generation-${index}`, revision: 0, state: "released", plugins: [{ pluginId, revision: oldInstallation.revision }], createdAt: new Date().toISOString() }, 0);
+	assert.equal(data.db.prepare("SELECT COUNT(*) AS count FROM plugin_generation_admissions WHERE state='released'").get().count, 54);
+	let blocked = true;
+	const retainedConsumers = [
+		{ kind: "session", id: "ps_historical", usage: "historical", revision: oldInstallation.revision },
+		{ kind: "session", id: "ps_optional", usage: "optional", revision: oldInstallation.revision },
+		{ kind: "session", id: "ps_unknown", usage: "unknown" },
+		{ kind: "profile", id: "retained-profile", usage: "required", revision: oldInstallation.revision },
+		{ kind: "profile", id: "unknown-profile", usage: "unknown" },
+	];
+	const collectConsumers = async () => blocked ? [...retainedConsumers, { kind: "run", id: "run_live", usage: "active", revision: oldInstallation.revision }] : retainedConsumers;
+	const before = data.plugins.listInstallations();
+	const beforeOperations = data.plugins.listOperations();
+	await assert.rejects(startPluginProductRuntime({ host: new PluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers, installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: planPath, currentCoreVersion: "4.0.0-beta.1" }), /Cold cutover replacement is blocked by active consumers: run:run_live/);
+	assert.deepEqual(data.plugins.listInstallations(), before);
+	assert.deepEqual(data.plugins.listOperations(), beforeOperations);
+	await assert.rejects(access(`${planPath}.complete`));
+	blocked = false;
+	const product = await startPluginProductRuntime({ host: new PluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers, installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: planPath, currentCoreVersion: "4.0.0-beta.1" });
+	const replaced = data.plugins.getInstallation(pluginId);
+	assert.equal(replaced.version, "1.0.0");
+	assert.equal(replaced.state, "active");
+	assert.notEqual(replaced.contentHash, oldInstallation.contentHash);
+	assert.equal(data.plugins.listOperations().every((operation) => ["committed", "complete"].includes(operation.state)), true);
+	const revision = replaced.stateRevision;
+	await access(`${planPath}.complete`);
+	await product.dispose();
+	const restarted = await startPluginProductRuntime({ host: new PluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers, installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: planPath, currentCoreVersion: "4.0.0-beta.1" });
+	assert.equal(data.plugins.getInstallation(pluginId).stateRevision, revision);
+	await restarted.dispose();
+});
+
 test("cutover preparation accepts real pre-4 package lines and rejects unsupported or malformed source versions", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo4-cutover-source-versions-"));
 	t.after(() => rm(root, { recursive: true, force: true }));

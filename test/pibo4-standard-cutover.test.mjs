@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -56,10 +56,16 @@ async function stopProcess(child) {
 	]);
 }
 
-async function stageLegacyInstallation(data, artifactRoot, pluginId, state) {
+async function stageLegacyInstallation(data, artifactRoot, pluginId, state, packageRoot) {
 	const source = join(artifactRoot, "legacy-sources", pluginId);
 	await mkdir(source, { recursive: true });
-	await writeFile(join(source, "pibo.plugin.json"), `${JSON.stringify({
+	if (packageRoot) {
+		await cp(packageRoot, source, { recursive: true });
+		const manifest = JSON.parse(await readFile(join(source, "pibo.plugin.json"), "utf8"));
+		await writeFile(join(source, "pibo.plugin.json"), `${JSON.stringify({ ...manifest, version: "0.9.0" })}\n`);
+		const pkg = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
+		await writeFile(join(source, "package.json"), `${JSON.stringify({ ...pkg, version: "0.9.0" })}\n`);
+	} else await writeFile(join(source, "pibo.plugin.json"), `${JSON.stringify({
 		schemaVersion: 1,
 		id: pluginId,
 		name: `Retained legacy ${pluginId}`,
@@ -69,7 +75,10 @@ async function stageLegacyInstallation(data, artifactRoot, pluginId, state) {
 		...(pluginId === "pibo.user-resources" ? { services: { provides: [{ id: "pibo.user-resources.service", version: "1.0.0" }] } } : {}),
 		contributions: [],
 	})}\n`);
-	const manager = new PluginManager({ store: data.plugins, artifactRoot });
+	const manager = new PluginManager({ store: data.plugins, artifactRoot, coreServices: {
+		"pibo.chat.extensions": { owner: "@pibo/core", version: "1.0.0" },
+		"pibo.product.options": { owner: "@pibo/core", version: "1.0.0" },
+	} });
 	const installed = await manager.install({ kind: "local", path: source }, { expectedRevision: 0 });
 	return data.plugins.putInstallation({
 		...installed.installation,
@@ -135,7 +144,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	await writeFile(sourcePath, "retained legacy pibo 1.7.2 package bytes\n");
 	const packageSet = JSON.parse(await readFile(join(deployment.runtimePath, "node_modules/@pasko70/pibo-standard/package-set.json"), "utf8"));
 	const targets = new Map(packageSet.plugins.map((entry) => [entry.pluginId, entry]));
-	const targetPluginIds = ["pibo.preview", "pibo.workflows", "pibo.cron", "pibo.goal-control", "pibo.web-search"];
+	const targetPluginIds = packageSet.plugins.map((entry) => entry.pluginId);
 	const preparedArtifacts = {};
 	for (const pluginId of targetPluginIds) {
 		const coordinate = targets.get(pluginId);
@@ -163,6 +172,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 			{ pluginId: "pibo.user-resources", state: "active", contributions: { resources: true } },
 			{ pluginId: "pibo.web-product", state: "active", contributions: { "preview-app": true, "cron-channel": false } },
 			{ pluginId: "pibo.web-search", state: "uninstalled" },
+			...packageSet.plugins.filter((entry) => !new Set(["pibo.preview", "pibo.workflows", "pibo.cron", "pibo.goal-control", "pibo.web-search"]).has(entry.pluginId)).map((entry) => ({ pluginId: entry.pluginId, state: "active" })),
 		] },
 		outputPath: planPath,
 	}, null, 2)}\n`);
@@ -172,7 +182,11 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const data = new PiboDataStore(join(home, "pibo.sqlite"), { payloadRootDir: join(home, "payloads") });
 	const pluginArtifactRoot = join(home, "plugins", "artifacts");
 	for (const pluginId of ["pibo.standard-shell", "pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) await stageLegacyInstallation(data, pluginArtifactRoot, pluginId, "active");
-	await stageLegacyInstallation(data, pluginArtifactRoot, "pibo.web-search", "uninstalled");
+	const oldPluginOrder = [...packageSet.plugins].sort((left, right) => left.pluginId === "pibo.run-control" ? -1 : right.pluginId === "pibo.run-control" ? 1 : left.pluginId.localeCompare(right.pluginId));
+	for (const entry of oldPluginOrder) {
+		const state = ["pibo.cron", "pibo.goal-control"].includes(entry.pluginId) ? "installed" : entry.pluginId === "pibo.web-search" ? "uninstalled" : "active";
+		await stageLegacyInstallation(data, pluginArtifactRoot, entry.pluginId, state, join(deployment.runtimePath, "node_modules", ...entry.package.split("/")));
+	}
 	const retainedAt = "2026-09-15T08:00:00.000Z";
 	data.sessions.upsertSession({
 		session: { id: "ps_retained_cutover", piSessionId: "pi_retained_cutover", channel: "chat", kind: "runtime", profile: "base", title: "Retained cutover session", metadata: { retained: true }, createdAt: retainedAt },
@@ -217,15 +231,14 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const receiptPath = `${planPath}.complete`;
 	const receiptFirst = await readFile(receiptPath, "utf8");
 	const receipt = JSON.parse(receiptFirst);
-	assert.equal(receipt.targets.length, 5);
+	assert.equal(receipt.targets.length, 20);
 	assert.deepEqual(receipt.supersededOwners, ["pibo.core", "pibo.product-ui", "pibo.standard-shell", "pibo.user-resources", "pibo.web-product"]);
-	assert.deepEqual(receipt.targets.map((entry) => [entry.pluginId, entry.state]), [
-		["pibo.cron", "disabled"],
-		["pibo.goal-control", "disabled"],
-		["pibo.preview", "active"],
-		["pibo.web-search", "uninstalled"],
-		["pibo.workflows", "active"],
-	]);
+	const receiptStates = new Map(receipt.targets.map((entry) => [entry.pluginId, entry.state]));
+	assert.equal(receiptStates.get("pibo.agent-delegation"), "active");
+	assert.equal(receiptStates.get("pibo.cron"), "disabled");
+	assert.equal(receiptStates.get("pibo.goal-control"), "disabled");
+	assert.equal(receiptStates.get("pibo.web-search"), "uninstalled");
+	assert.equal([...receiptStates.values()].filter((state) => state === "active").length, 17);
 	await stopProcess(gateway);
 
 	const firstSnapshot = firstInstallations.map((entry) => [entry.pluginId, entry.state, entry.enabled, entry.stateRevision, entry.contentHash]).sort(([left], [right]) => left.localeCompare(right));

@@ -72,6 +72,12 @@ export async function startPluginProductRuntime(options: {
 			await host.add({ plugins: [createStagedPluginDefinition({ ...artifact, state: "active", enabled: true, stateRevision: 1 })] });
 			ownedPluginIds.add(artifact.pluginId);
 		},
+		async activateBatch(artifacts) {
+			for (const artifact of artifacts) await verifyPluginArtifact(artifact);
+			await preparePluginSdkResolution(artifactRoot);
+			await host.add({ plugins: artifacts.map((artifact) => createStagedPluginDefinition({ ...artifact, state: "active", enabled: true, stateRevision: 1 })) });
+			for (const artifact of artifacts) ownedPluginIds.add(artifact.pluginId);
+		},
 		async deactivate(pluginId) {
 			await host.remove(pluginId);
 			ownedPluginIds.delete(pluginId);
@@ -120,6 +126,7 @@ export async function startPluginProductRuntime(options: {
 		if (cutover) {
 			data.db.exec("BEGIN IMMEDIATE");
 			cutoverTransactionOpen = true;
+			const coldActivations: { pluginId: string; expectedRevision: number }[] = [];
 			for (const target of cutover.targets.filter((entry) => entry.state !== "active")) {
 				let existing = data.plugins.getInstallation(target.pluginId);
 				if (existing?.enabled || (existing && !["installed", "uninstalled"].includes(existing.state))) throw new Error(`Prepared cutover preserves ${target.pluginId} as ${target.state}, but the target store already has it enabled in ${existing.state}; disable or uninstall that target explicitly before retrying`);
@@ -145,8 +152,10 @@ export async function startPluginProductRuntime(options: {
 					installation = installed.installation;
 				}
 				if (!installation) throw new Error(`Cutover did not create installation ${target.pluginId}`);
-				if (["installed", "pending-activation", "failed"].includes(installation.state)) await manager.activate(target.pluginId, { expectedRevision: installation.stateRevision });
+				if (["installed", "pending-activation", "failed"].includes(installation.state)) coldActivations.push({ pluginId: target.pluginId, expectedRevision: installation.stateRevision });
 			}
+			const activations = await manager.activateColdReplacements(coldActivations);
+			if (activations.some((activation) => activation.state !== "complete")) throw new Error(`Cutover plugin activation batch did not complete: ${activations.map((activation) => `${activation.pluginId}:${activation.state}`).join(", ")}`);
 			for (const pluginId of cutover.supersededOwners) {
 				const legacy = data.plugins.getInstallation(pluginId);
 				if (!legacy || legacy.state === "uninstalled") continue;

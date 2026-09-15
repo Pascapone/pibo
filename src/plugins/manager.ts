@@ -9,6 +9,8 @@ import { hasNewPluginConsumers, pluginDrainBlockers, pluginImpact, type PluginCo
 export interface PluginManagerLifecycle {
 	/** Delegate to the ONE core host; imports are permitted only here, after verification. */
 	activate(artifact: PluginArtifact): Promise<void>;
+	/** Optional atomic host composition used only by verified cold-start replacement. */
+	activateBatch?(artifacts: readonly PluginArtifact[]): Promise<void>;
 	/** Must resolve only after complete cleanup; reject on any retained resource. Never abort runs. */
 	deactivate(pluginId: string): Promise<void>;
 	/** Restart recovery must prove the real host state; unknown never means successfully stopped. */
@@ -62,6 +64,14 @@ export class PluginManager {
 	}
 	private admissionConsumers(pluginId: string): PluginConsumer[] {
 		return this.store.listAdmissions(pluginId).map((admission) => ({ kind: "session", id: admission.piboSessionId, usage: "active", generation: admission.generationId, revision: admission.plugins.find((plugin) => plugin.pluginId === pluginId)!.revision }));
+	}
+	private coldReplacementBlockers(pluginId: string, impact: PluginImpact): PluginConsumer[] {
+		const admissionKeys = new Set(this.admissionConsumers(pluginId).map((consumer) => `${consumer.id}\0${consumer.generation ?? ""}`));
+		return impact.consumers.filter((consumer) =>
+			(consumer.kind === "session" && consumer.usage === "active" && admissionKeys.has(`${consumer.id}\0${consumer.generation ?? ""}`))
+			|| (["run", "runtime"].includes(consumer.kind) && consumer.usage === "active")
+			|| (consumer.kind === "plugin" && ["active", "required"].includes(consumer.usage)),
+		);
 	}
 	private assertNoNewAdmissions(pluginId: string, approved: PluginImpact): void {
 		if (hasNewPluginConsumers(approved, pluginImpact(this.admissionConsumers(pluginId)))) throw new PluginConflictError("New generation admission appeared; review a fresh impact plan");
@@ -133,6 +143,46 @@ export class PluginManager {
 			return this.store.putAdmission({ ...admission, state: "released" }, expectedRevision);
 		});
 	}
+	/** Cold-start batch replacement for a verified, caller-transactional cutover. Ordinary live activation keeps the drain protocol below. */
+	async activateColdReplacements(inputs: readonly { pluginId: string; expectedRevision: number }[]): Promise<PluginOperation[]> {
+		const lifecycle = this.requireLifecycle();
+		if (!lifecycle.activateBatch) throw new PluginValidationError("Cold replacement batch lifecycle is unavailable");
+		if (!this.store.db.isTransaction) throw new PluginValidationError("Cold replacement requires a caller-owned migration transaction");
+		if (inputs.length === 0) return [];
+		const unique = new Map(inputs.map((input) => [input.pluginId, input]));
+		if (unique.size !== inputs.length) throw new PluginValidationError("Cold replacement plugin IDs must be unique");
+		const prepared: { installation: StoredPluginInstallation; artifact: PluginArtifact; impact: PluginImpact }[] = [];
+		for (const { pluginId, expectedRevision } of inputs) {
+			const installation = this.requireInstallation(pluginId);
+			if (installation.stateRevision !== expectedRevision) throw new PluginConflictError();
+			if (!["installed", "pending-activation", "failed"].includes(installation.state)) throw new PluginConflictError(`Cannot cold-activate plugin in ${installation.state}`);
+			const artifact = installation.pendingArtifact ?? installationArtifact(installation);
+			await verifyPluginArtifact(artifact);
+			const impact = await this.impact(pluginId);
+			const blockers = this.coldReplacementBlockers(pluginId, impact);
+			if (blockers.length) throw new PluginConflictError(`Cold cutover replacement is blocked by active consumers: ${blockers.map((consumer) => `${consumer.kind}:${consumer.id}`).join(", ")}`);
+			if (await lifecycle.status(pluginId) !== "inactive") throw new PluginConflictError(`Cold cutover requires inactive host resources for ${pluginId}`);
+			this.assertNoNewAdmissions(pluginId, impact);
+			prepared.push({ installation, artifact, impact });
+		}
+		let operations = this.store.transaction(() => prepared.map(({ installation, artifact, impact }) => {
+			const gate = this.store.putInstallation({ ...installation, state: "retiring", updatedAt: this.now() }, installation.stateRevision);
+			return this.store.putOperation<PluginOperation>({ id: randomUUID(), pluginId: installation.pluginId, revision: 0, kind: "activate", state: "activating", createdAt: this.now(), installationRevision: gate.stateRevision, priorInstallation: installation, artifact, impact }, 0);
+		}));
+		for (const operation of operations) await this.options.checkpoint?.("activating", operation);
+		await lifecycle.activateBatch(prepared.map(({ artifact }) => artifact));
+		for (const operation of operations) {
+			if (await lifecycle.status(operation.pluginId) !== "active") throw new PluginValidationError(`Host did not confirm cold replacement activation for ${operation.pluginId}`);
+			const finalBlockers = this.coldReplacementBlockers(operation.pluginId, await this.impact(operation.pluginId));
+			if (finalBlockers.length) throw new PluginConflictError(`Active consumers appeared during cold cutover replacement: ${finalBlockers.map((consumer) => `${consumer.kind}:${consumer.id}`).join(", ")}`);
+		}
+		operations = this.store.transaction(() => operations.map((operation) => {
+			const active = this.store.putInstallation({ ...operation.artifact!, state: "active", enabled: true, stateRevision: operation.installationRevision, updatedAt: this.now() }, operation.installationRevision);
+			return this.updateOperation(operation, { state: "complete", installationRevision: active.stateRevision, diagnostic: undefined });
+		}));
+		return operations;
+	}
+
 	async activate(pluginId: string, options: { expectedRevision: number }): Promise<PluginOperation> {
 		this.requireLifecycle();
 		const installation = this.requireInstallation(pluginId);
