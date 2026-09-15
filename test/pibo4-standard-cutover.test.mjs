@@ -66,6 +66,7 @@ async function stageLegacyInstallation(data, artifactRoot, pluginId, state) {
 		version: "3.6.2",
 		sdk: "^1.0.0",
 		entrypoints: {},
+		...(pluginId === "pibo.user-resources" ? { services: { provides: [{ id: "pibo.user-resources.service", version: "1.0.0" }] } } : {}),
 		contributions: [],
 	})}\n`);
 	const manager = new PluginManager({ store: data.plugins, artifactRoot });

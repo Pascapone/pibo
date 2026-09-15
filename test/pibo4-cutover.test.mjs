@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
+import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PluginHost } from "../dist/plugins/host.js";
+import { PluginManager } from "../dist/plugins/manager.js";
 import { preparePibo4Cutover, verifyPreparedPibo4Cutover } from "../dist/plugins/cutover.js";
 import { startPluginProductRuntime } from "../dist/plugins/product-runtime.js";
 
@@ -88,6 +90,65 @@ test("cutover preparation supersedes Standard shell through composition without 
 	assert.deepEqual(plan.targets, []);
 	assert.deepEqual(plan.supersededOwners, ["pibo.standard-shell"]);
 	assert.equal((await verifyPreparedPibo4Cutover(planPath)).planHash, plan.planHash);
+});
+
+test("verified cutover excludes only superseded providers and rolls back all target rows on a later strict conflict", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-cutover-provider-rollback-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const tarballs = join(root, "tarballs");
+	await mkdir(tarballs, { recursive: true });
+	const makeTarget = async (id, name, services) => {
+		const directory = join(root, id);
+		await mkdir(directory, { recursive: true });
+		await writeFile(join(directory, "package.json"), `${JSON.stringify({ name, version: "1.0.0", type: "module", files: ["pibo.plugin.json"] })}\n`);
+		await writeFile(join(directory, "pibo.plugin.json"), `${JSON.stringify({ schemaVersion: 1, id, name: id, version: "1.0.0", sdk: "^1.0.0", entrypoints: {}, services, contributions: [] })}\n`);
+		return { package: name, version: "1.0.0", path: await npmPack(directory, tarballs) };
+	};
+	const requiredService = "pibo.user-resources.service";
+	const requires = await makeTarget("test.a-requires-user-resources", "@example/requires-user-resources", { requires: [{ id: requiredService, version: "^1.0.0" }] });
+	const conflicts = await makeTarget("test.z-conflicts-user-resources", "@example/conflicts-user-resources", { provides: [{ id: requiredService, version: "1.0.0" }] });
+	const source = join(root, "pibo-1.7.2.tgz");
+	const core = join(root, "pibo-4.tgz");
+	await writeFile(source, "retained source bytes");
+	await writeFile(core, "target core bytes");
+	const prepare = (outputPath, includeConflict) => preparePibo4Cutover({
+		source: { package: "@pasko70/pibo", version: "1.7.2", path: source },
+		targetCore: { package: "@pasko70/pibo", version: "4.0.0-beta.1", path: core },
+		artifacts: { "test.a-requires-user-resources": requires, ...(includeConflict ? { "test.z-conflicts-user-resources": conflicts } : {}) },
+		snapshot: { schemaVersion: 1, plugins: [
+			{ pluginId: "pibo.user-resources", state: "active", contributions: { resources: true } },
+			{ pluginId: "test.a-requires-user-resources", state: "active" },
+			...(includeConflict ? [{ pluginId: "test.z-conflicts-user-resources", state: "active" }] : []),
+		] },
+		outputPath,
+	});
+	const failedPlanPath = join(root, "failed-plan.json");
+	await prepare(failedPlanPath, true);
+	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	t.after(() => data.close());
+	const legacySource = join(root, "legacy-user-resources");
+	await mkdir(legacySource);
+	await writeFile(join(legacySource, "pibo.plugin.json"), `${JSON.stringify({ schemaVersion: 1, id: "pibo.user-resources", name: "Legacy user resources", version: "1.7.2", sdk: "^1.0.0", entrypoints: {}, services: { provides: [{ id: requiredService, version: "1.0.0" }] }, contributions: [] })}\n`);
+	const seedManager = new PluginManager({ store: data.plugins, artifactRoot: join(root, "artifacts") });
+	const seeded = await seedManager.install({ kind: "local", path: legacySource }, { expectedRevision: 0 });
+	data.plugins.putInstallation({ ...seeded.installation, source: { kind: "builtin", name: "pibo.user-resources" }, enabled: true, state: "active", updatedAt: new Date().toISOString() }, seeded.installation.stateRevision);
+	const before = data.plugins.listInstallations();
+	await assert.rejects(startPluginProductRuntime({ host: new PluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [], installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: failedPlanPath, currentCoreVersion: "4.0.0-beta.1" }), /requires an explicit valid provider/);
+	assert.deepEqual(data.plugins.listInstallations(), before);
+	assert.equal(data.plugins.getInstallation("test.a-requires-user-resources"), undefined);
+	assert.equal(data.plugins.getInstallation("test.z-conflicts-user-resources"), undefined);
+	await assert.rejects(access(`${failedPlanPath}.complete`));
+
+	const replayPlanPath = join(root, "replay-plan.json");
+	await prepare(replayPlanPath, false);
+	const product = await startPluginProductRuntime({ host: new PluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [], installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: replayPlanPath, currentCoreVersion: "4.0.0-beta.1" });
+	assert.equal(data.plugins.getInstallation("pibo.user-resources").state, "uninstalled");
+	assert.equal(data.plugins.getInstallation("test.a-requires-user-resources").state, "active");
+	const revision = data.plugins.getInstallation("test.a-requires-user-resources").stateRevision;
+	await product.dispose();
+	const restarted = await startPluginProductRuntime({ host: new PluginHost(), data, artifactRoot: join(root, "artifacts"), collectConsumers: async () => [], installDefaultPlugins: false, requirePreparedCutover: true, cutoverPlanPath: replayPlanPath, currentCoreVersion: "4.0.0-beta.1" });
+	assert.equal(data.plugins.getInstallation("test.a-requires-user-resources").stateRevision, revision);
+	await restarted.dispose();
 });
 
 test("cutover preparation accepts real pre-4 package lines and rejects unsupported or malformed source versions", async (t) => {

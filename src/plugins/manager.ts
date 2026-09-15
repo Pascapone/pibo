@@ -31,6 +31,8 @@ export interface PluginManagerOptions {
 	providers?: Record<string, string>;
 	/** Live core-service metadata; values remain private to the host. */
 	coreServices?: Record<string, { owner: string; version: string }> | (() => Record<string, { owner: string; version: string }>);
+	/** Verified migration owners omitted only from import-free dependency resolution; lifecycle and persistence remain unchanged. */
+	excludedInstallationIds?: ReadonlySet<string>;
 }
 export interface PluginSessionRecovery {
 	piboSessionId: string;
@@ -79,7 +81,7 @@ export class PluginManager {
 		if (previous?.pendingArtifact) throw new PluginConflictError("An update is already pending activation");
 		// Use the core's import-free graph validator, not a second dependency/version resolver.
 		const candidate: StoredPluginInstallation = { pluginId: resolved.manifest.id, revision: resolved.contentHash, version: resolved.manifest.version, contentHash: resolved.contentHash, source: resolved.source, manifest: resolved.manifest, state: "installed", enabled: true, stateRevision: options.expectedRevision, createdAt: this.now(), updatedAt: this.now() };
-		const composition = [...(this.options.externalInstallations ?? []), ...this.store.listInstallations().filter((item) => item.pluginId !== candidate.pluginId && !["uninstalled", "failed", "staged"].includes(item.state)).map((item) => ({ ...item, enabled: true })), candidate];
+		const composition = [...(this.options.externalInstallations ?? []), ...this.store.listInstallations().filter((item) => item.pluginId !== candidate.pluginId && !this.options.excludedInstallationIds?.has(item.pluginId) && !["uninstalled", "failed", "staged"].includes(item.state)).map((item) => ({ ...item, enabled: true })), candidate];
 		const coreServices = typeof this.options.coreServices === "function" ? this.options.coreServices() : this.options.coreServices;
 		const graph = planPluginActivation({ plugins: composition.map((installation) => ({ installation, setup() {} })), providers: this.options.providers, coreServices });
 		if (!graph.valid) throw new PluginValidationError(`Plugin dependency/service graph invalid: ${graph.diagnostics.map((item) => item.message).join("; ")}`);

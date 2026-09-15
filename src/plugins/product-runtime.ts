@@ -82,7 +82,14 @@ export async function startPluginProductRuntime(options: {
 			return state.plugins.some((plugin) => plugin.pluginId === pluginId) ? "active" : "inactive";
 		},
 	};
-	const manager = new PluginManager({ store: data.plugins, artifactRoot, lifecycle, collectConsumers: options.collectConsumers, coreServices: () => host.coreServiceDeclarations() });
+	const manager = new PluginManager({
+		store: data.plugins,
+		artifactRoot,
+		lifecycle,
+		collectConsumers: options.collectConsumers,
+		coreServices: () => host.coreServiceDeclarations(),
+		excludedInstallationIds: cutover ? new Set(cutover.supersededOwners) : undefined,
+	});
 	const runtime = new PluginRuntimeCoordinator({ host, manager, store: data.plugins });
 	const chatExtensions = new PiboChatExtensionRegistry();
 	const coreUserResources = prepareCoreUserResources(host, options.productOptions?.userResources);
@@ -105,11 +112,14 @@ export async function startPluginProductRuntime(options: {
 		}
 	}
 
+	let cutoverTransactionOpen = false;
 	try {
 		// Packaged backends resolve against this product version. Upgrade their
 		// managed manifests before importing any persisted backend definition.
 		if (initialState.state === "idle") await host.start({ plugins: [] });
 		if (cutover) {
+			data.db.exec("BEGIN IMMEDIATE");
+			cutoverTransactionOpen = true;
 			for (const target of cutover.targets.filter((entry) => entry.state !== "active")) {
 				let existing = data.plugins.getInstallation(target.pluginId);
 				if (existing?.enabled || (existing && !["installed", "uninstalled"].includes(existing.state))) throw new Error(`Prepared cutover preserves ${target.pluginId} as ${target.state}, but the target store already has it enabled in ${existing.state}; disable or uninstall that target explicitly before retrying`);
@@ -174,9 +184,16 @@ export async function startPluginProductRuntime(options: {
 			for (const installation of installations) ownedPluginIds.add(installation.pluginId);
 		}
 		coreUserResources.initialize();
+		if (cutoverTransactionOpen) {
+			data.db.exec("COMMIT");
+			cutoverTransactionOpen = false;
+		}
 		if (cutover && options.cutoverPlanPath) await writePibo4CutoverReceipt(options.cutoverPlanPath, cutover);
 	} catch (error) {
 		const cleanupErrors: unknown[] = [];
+		if (cutoverTransactionOpen) {
+			try { data.db.exec("ROLLBACK"); cutoverTransactionOpen = false; } catch (cleanupError) { cleanupErrors.push(cleanupError); }
+		}
 		if (initialState.state === "idle") {
 			try { await host.stop(); } catch (cleanupError) { cleanupErrors.push(cleanupError); }
 		} else {
