@@ -1,5 +1,6 @@
-import { cp, readFile, rm } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { access, cp, readFile, rm } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { FACT_COUNT_STOP_CONDITION, GOAL_STATUS_STOP_CONDITION, MAX_ITERATIONS_STOP_CONDITION, PROMISE_COMPLETE_STOP_CONDITION } from "../loops/stopping.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
@@ -437,10 +438,23 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 async function materializeDefaultPackage(artifactRoot: string, descriptor: DefaultPackageDescriptor): Promise<{ manifest: PluginManifest; source: string }> {
 	const expected = descriptor.manifest();
 	const packageSuffix = descriptor.backendModule === "profiles" ? "standard-profiles" : descriptor.backendModule;
-	const builtSource = resolve(process.cwd(), "dist", "pibo4-artifacts", packageSuffix);
+	const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+	const candidates = [
+		resolve(moduleDirectory, "..", "pibo4-artifacts", packageSuffix),
+		resolve(moduleDirectory, "..", "..", "dist", "pibo4-artifacts", packageSuffix),
+	];
+	let builtSource: string | undefined;
+	for (const candidate of candidates) {
+		try {
+			await access(join(candidate, "pibo.plugin.json"));
+			builtSource = candidate;
+			break;
+		} catch {}
+	}
 	const source = join(artifactRoot, "default-sources", expected.id, expected.version);
 	await rm(source, { recursive: true, force: true });
 	try {
+		if (!builtSource) throw new Error(`No built source found in ${candidates.join(", ")}`);
 		await cp(builtSource, source, { recursive: true, force: true });
 	} catch (error) {
 		throw new Error(`Standard plugin artifact ${packageSuffix} is unavailable. Build or install @pasko70/pibo-standard before starting the Standard composition.`, { cause: error });

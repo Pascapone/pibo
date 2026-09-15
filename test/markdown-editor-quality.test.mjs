@@ -106,6 +106,7 @@ test("Markdown editor remains usable in narrow host panels and focused mode", as
 		["toolbar icons use crisp even-pixel sizing", /width: 20px !important;[\s\S]*height: 20px !important;[\s\S]*opacity: 1;[\s\S]*shape-rendering: geometricPrecision/],
 		["keyboard focus is visible", /:focus-visible[\s\S]*outline: 2px solid #11a4d4/],
 	]);
-	assert.match(contextStyles, /@media \(max-width: 1180px\)[\s\S]*\.context-files-panel \{[\s\S]*position: absolute/);
-	assert.match(contextView, /window\.matchMedia\("\(max-width: 1180px\)"\)[\s\S]*setFilePanelOpen\(false\)/);
+	assert.match(contextStyles, /\.context-files-view--panel-overlay \.context-files-panel \{[\s\S]*position: absolute/);
+	assert.match(contextView, /rootElement\.getBoundingClientRect\(\)\.width <= 860[\s\S]*new ResizeObserver\(update\)[\s\S]*observer\.observe\(rootElement\)/);
+	assert.doesNotMatch(contextView, /window\.matchMedia\("\(max-width: 1180px\)"\)/);
 });

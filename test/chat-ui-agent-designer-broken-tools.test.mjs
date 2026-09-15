@@ -36,7 +36,7 @@ test("Agent Designer preserves, exposes, and can remove missing plugin selection
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 
 	const source = await readFile("src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx", "utf8");
-	assert.match(source, /missing from catalog\. Reference and configuration retained/);
+	assert.match(source, /previously selected plugin is no longer installed\. Its choices and configuration are retained for recovery/);
 	assert.match(source, /Object\.entries\(entry\.contributions\)/);
 	assert.match(source, />Remove retained reference</);
 	assert.match(source, /plugins\.filter\(\(item\) => item\.pluginId !== entry\.pluginId\)/);

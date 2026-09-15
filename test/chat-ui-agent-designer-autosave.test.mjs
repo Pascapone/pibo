@@ -10,7 +10,8 @@ const modelSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/a
 const designerUiSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/designer-ui.tsx"), "utf8");
 const pluginDesignerSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/agents/AgentPluginsDesigner.tsx"), "utf8");
 const pluginWorkspaceSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/plugins/plugin-workspace.tsx"), "utf8");
-const builtinBrowserEntrySource = readFileSync(resolve(here, "../src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx"), "utf8");
+const coreWorkspaceSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/core-workspace-view.tsx"), "utf8");
+const appSource = readFileSync(resolve(here, "../src/apps/chat-ui/src/App.tsx"), "utf8");
 const packageSource = readFileSync(resolve(here, "../src/plugins/default-packages.ts"), "utf8");
 
 test("Agent Designer debounces autosave and serializes overlapping writes", () => {
@@ -101,7 +102,7 @@ test("Agent Designer keeps Pibo subagents and plugin-delivered control tools cap
 test("Agent Designer keeps Goal system functionality separate from selectable Goal tools", () => {
 	assert.match(packageSource, /GOAL_CONTROL_PLUGIN_ID = "pibo\.goal-control"/);
 	assert.match(packageSource, /function toolContribution[\s\S]*scope: "agent"/);
-	assert.match(packageSource, /goalControlPackageManifest[\s\S]*PIBO_GOAL_TOOL_NAMES\.map\(\(name\) => toolContribution\(name, \{ defaultEnabled: true/);
+	assert.match(packageSource, /goalControlPackageManifest[\s\S]*PIBO_GOAL_TOOL_NAMES\.map\(\(name\) => \(\{ \.\.\.toolContribution\(name, \{ defaultEnabled: true/);
 	assert.match(pluginDesignerSource, /catalog\?\.plugins\.map/);
 	assert.match(pluginDesignerSource, /aria-pressed=\{entry\?\.enabled \?\? false\}/);
 	assert.match(pluginDesignerSource, /setAgentPluginEnabled\(current\.pluginSelection, plugin, !entry\?\.enabled\)/);
@@ -109,9 +110,11 @@ test("Agent Designer keeps Goal system functionality separate from selectable Go
 });
 
 test("navigation, plugin-tab switches, and tab close wait for a successful Agent Designer autosave", () => {
-	assert.match(builtinBrowserEntrySource, /props\.registerBeforeLeave\(autosave\)/);
-	assert.match(builtinBrowserEntrySource, /handleAutosaveChange = useCallback[\s\S]*setAutosave\(\(\) => save\)/);
-	assert.match(builtinBrowserEntrySource, /onAutosaveHandlerChange=\{handleAutosaveChange\}/);
+	assert.match(coreWorkspaceSource, /handleAutosaveChange = useCallback[\s\S]*setAutosave\(\(\) => save\)/);
+	assert.match(coreWorkspaceSource, /onAutosaveHandlerChange\(autosave\)/);
+	assert.match(coreWorkspaceSource, /onAutosaveHandlerChange=\{handleAutosaveChange\}/);
+	assert.match(appSource, /const flushAgentBeforeNavigation[\s\S]*await autosave\(\)/);
+	assert.match(appSource, /Agent Designer changes were not saved/);
 	assert.match(pluginWorkspaceSource, /useBlocker\(\{/);
 	assert.match(pluginWorkspaceSource, /shouldBlockFn:[\s\S]*runBeforeLeave/);
 	assert.match(pluginWorkspaceSource, /const activateTab[\s\S]*await runBeforeLeave\(\[activeTabId\]\)/);

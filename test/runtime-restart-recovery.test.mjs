@@ -8,10 +8,24 @@ import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
+import { formatPiboRunReminderMessage, isPiboRunReminderServiceMessage } from "../dist/runs/reminders.js";
+import { PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND } from "../dist/plugins/runtime.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 
 async function settleMicrotasks() {
 	for (let index = 0; index < 4; index += 1) await new Promise((resolve) => setImmediate(resolve));
+}
+
+function installRunReminderProvider(router, piboSessionId) {
+	router.portableToolSessions.set(piboSessionId, {
+		formatServiceMessage(kind, payload, context) {
+			return kind === PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND ? formatPiboRunReminderMessage(payload, context.maxDurationMs) : undefined;
+		},
+		isServiceMessage(kind, message) {
+			return kind === PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND && isPiboRunReminderServiceMessage(message);
+		},
+		async dispose() {},
+	});
 }
 
 async function createFixture(name) {
@@ -352,6 +366,7 @@ test("startup schedules persisted terminal run notifications once across router 
 				persistSession: true,
 			});
 			const scheduledAtConstruction = router.scheduledRunReminders.size;
+			installRunReminderProvider(router, piboSessionId);
 			router.getOrCreateSession = async () => ({
 				enqueueMessage(event) {
 					messages.push(event);

@@ -162,11 +162,11 @@ test("a failed real-ID rename reopens the confirmed draft and a retry gets a new
 });
 
 test("App commits the focused temporary editor before starting POST and guards pending backend actions", async () => {
-	const [app, sidebar, node, builtinBrowserEntry] = await Promise.all([
+	const [app, sidebar, node, coreWorkspace] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/session-sidebar.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/session-node.tsx", "utf8"),
-		readFile("src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/core-workspace-view.tsx", "utf8"),
 	]);
 	const create = app.slice(app.indexOf("const createSession = async"), app.indexOf("const toggleArchivedSessions = async"));
 	assert.ok(create.indexOf("flushSync(() =>") < create.indexOf("createSessionMutation.mutateAsync"));
@@ -182,7 +182,7 @@ test("App commits the focused temporary editor before starting POST and guards p
 	assert.match(node, /disabled=\{mutationsDisabled && !optimisticTitleIntent\}/);
 	assert.match(app, /selectedSessionBackendId\(request\.piboSessionId\)/);
 	assert.match(app, /onCreateSession=\{\(profile\) => createSession\(profile\)\}/);
-	assert.match(builtinBrowserEntry, /props\.createSession\(profile\)/);
+	assert.match(coreWorkspace, /onCreateSession\(profile\)/);
 	assert.doesNotMatch(create, /location\.(?:assign|replace|reload)|location\.href\s*=/);
 });
 

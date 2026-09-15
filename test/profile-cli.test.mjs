@@ -25,7 +25,11 @@ test("pibo profile exposes native Codex without claiming the codex compatibility
 		assert.equal(profile.runtimeInstanceId, "codex-native");
 		assert.equal(profile.builtinTools, "disabled");
 		assert.deepEqual(profile.builtinToolNames, []);
-		assert.equal(profile.toolPackages.goalControl, true);
+		assert.deepEqual(profile.tools.filter((tool) => ["get_goal", "create_goal", "update_goal"].includes(tool.name)).map((tool) => [tool.name, tool.active]), [
+			["create_goal", true],
+			["get_goal", true],
+			["update_goal", true],
+		]);
 
 		await assert.rejects(
 			() => execFileAsync("node", [cliPath, "profile", "codex"], { cwd, env }),
@@ -98,7 +102,7 @@ test("pibo profile resolves active saved Chat custom agents", async () => {
 		assert.deepEqual(profile.mainModel, { provider: "openai-codex", id: "gpt-5.5" });
 		assert.equal(profile.mainThinkingLevel, "xhigh");
 		assert.equal(profile.fast, false);
-		assert.equal(profile.toolPackages.runControl, true);
+		assert.ok(profile.tools.some((tool) => tool.name === "pibo_run_start" && tool.active));
 		assert.deepEqual(profile.mcpServers, ["unity"]);
 		assert.ok(profile.skills.some((skill) => skill.name === "graphify"));
 		assert.ok(profile.skills.some((skill) => skill.name === "unity-user-skill" && skill.path === userSkill.path));

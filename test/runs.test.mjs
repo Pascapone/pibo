@@ -7,7 +7,9 @@ import test from "node:test";
 import { createBashTool } from "@earendil-works/pi-coding-agent";
 import { PiboRunRegistry } from "../dist/runs/registry.js";
 import { isConfiguredTimeoutError, PiboRunCancelledError, PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
+import { formatPiboRunReminderMessage, isPiboRunReminderServiceMessage } from "../dist/runs/reminders.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
+import { PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND } from "../dist/plugins/runtime.js";
 import { updatePiboGatewaySettings } from "../dist/core/gateway-settings.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
@@ -25,6 +27,29 @@ function startRun(registry, options = {}) {
 const defaultPythonExecutable = process.platform === "win32" ? "python" : "python3";
 const pythonAvailable = spawnSync(defaultPythonExecutable, ["--version"], { stdio: "ignore" }).status === 0;
 const pythonTest = (name, run) => test(name, { skip: pythonAvailable ? false : `${defaultPythonExecutable} is unavailable` }, run);
+
+async function withoutYieldedRunIsolation(run) {
+	const previous = process.env.PIBO_YIELDED_RUN_ISOLATION;
+	process.env.PIBO_YIELDED_RUN_ISOLATION = "off";
+	try {
+		return await run();
+	} finally {
+		if (previous === undefined) delete process.env.PIBO_YIELDED_RUN_ISOLATION;
+		else process.env.PIBO_YIELDED_RUN_ISOLATION = previous;
+	}
+}
+
+function installRunReminderProvider(router, piboSessionId = "parent") {
+	router.portableToolSessions.set(piboSessionId, {
+		formatServiceMessage(kind, payload, context) {
+			return kind === PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND ? formatPiboRunReminderMessage(payload, context.maxDurationMs) : undefined;
+		},
+		isServiceMessage(kind, message) {
+			return kind === PIBO_YIELDED_RUN_REMINDER_MESSAGE_KIND && isPiboRunReminderServiceMessage(message);
+		},
+		async dispose() {},
+	});
+}
 
 function runSnapshot(run, options = {}) {
 	return {
@@ -691,15 +716,17 @@ test("run start records inferred Bash timeout, warns for foreground services, an
 		},
 	);
 
-	const result = await startTool.execute("tool-call-service", {
-		toolName: "bash",
-		arguments: { command: "pibo gateway:web", timeout: 2 },
-		completionPolicy: "tracked",
+	await withoutYieldedRunIsolation(async () => {
+		const result = await startTool.execute("tool-call-service", {
+			toolName: "bash",
+			arguments: { command: "pibo gateway:web", timeout: 2 },
+			completionPolicy: "tracked",
+		});
+		assert.equal(started.timeoutMs, 2000);
+		assert.match(started.serviceWarning, /Known long-lived service command/);
+		assert.match(result.content[0].text, /Warning:/);
+		await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "lifetime");
 	});
-	assert.equal(started.timeoutMs, 2000);
-	assert.match(started.serviceWarning, /Known long-lived service command/);
-	assert.match(result.content[0].text, /Warning:/);
-	await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "lifetime");
 });
 
 test("run timeout without output is classified as startup expiry", async () => {
@@ -716,8 +743,10 @@ test("run timeout without output is classified as startup expiry", async () => {
 			ackRun() { throw new Error("not used"); },
 		},
 	);
-	await startTool.execute("tool-call-startup", { toolName: "bash", arguments: { command: "pibo gateway:web", timeout: 1 } });
-	await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "startup");
+	await withoutYieldedRunIsolation(async () => {
+		await startTool.execute("tool-call-startup", { toolName: "bash", arguments: { command: "pibo gateway:web", timeout: 1 } });
+		await assert.rejects(started.execute(), (error) => error instanceof PiboRunExecutionTimeoutError && error.timeoutPhase === "startup");
+	});
 });
 
 test("run start tool rejects unknown yieldable tool names", async () => {
@@ -904,6 +933,7 @@ test("run list status and cancel tools expose snapshots", async () => {
 
 test("router coalesces generic run completion into a compact parent notification", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
+	installRunReminderProvider(router);
 	const messages = [];
 	const origin = {
 		id: "loop_msg_origin",
@@ -1403,6 +1433,7 @@ for (const scenario of bulkTeardownScenarios) {
 
 test("router converts yielded tool errors into failed run notifications", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
+	installRunReminderProvider(router);
 	const messages = [];
 	router.getOrCreateSession = async () => ({
 		enqueueMessage(event) {
@@ -1446,6 +1477,7 @@ test("router converts yielded tool errors into failed run notifications", async 
 
 test("router emits a distinct timed_out run notification", async () => {
 	const router = new PiboSessionRouter({ persistSession: false });
+	installRunReminderProvider(router);
 	const messages = [];
 	router.getOrCreateSession = async () => ({
 		enqueueMessage(event) {
@@ -1596,6 +1628,7 @@ test("router invalidates stale queued run notifications after read", async () =>
 	process.env.PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS = "2";
 	try {
 		const router = new PiboSessionRouter({ persistSession: false });
+		installRunReminderProvider(router);
 		const messages = [];
 		const session = {
 			enqueueMessage(event) {

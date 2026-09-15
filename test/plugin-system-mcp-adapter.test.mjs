@@ -45,6 +45,7 @@ test('a second ordinary MCP adapter uses the same delivery contract without touc
       required: false,
       defaultEnabled: true,
       schemaVersion: 1,
+      configSchema: { type: 'object', properties: { selectedServers: { type: 'array', items: { type: 'string' } } }, required: ['selectedServers'], additionalProperties: false },
       context: { kind: 'context', stage: 'mcp', description: 'Fixture MCP inventory', loading: 'runtime' },
     }],
   };
@@ -61,10 +62,12 @@ test('a second ordinary MCP adapter uses the same delivery contract without touc
   await product.manager.activate(fixture.pluginId, { expectedRevision: fixture.stateRevision });
   fixture = data.plugins.getInstallation('test.mcp-adapter');
 
+  const pluginSelection = structuredClone(createAgentPluginSelection([fixture]));
+  pluginSelection.plugins[0].contributionConfig = { adapter: { selectedServers: ['fixture'] } };
   const declared = new InitialSessionContext({
     profileName: 'fixture',
     mcpServers: ['fixture'],
-    pluginSelection: createAgentPluginSelection([fixture]),
+    pluginSelection,
   });
   const plan = product.runtime.preview(declared, { adapterId: 'pi', instanceId: 'pi', capabilities: {} }, 'ps_fixture');
   assert.equal(plan.valid, true);

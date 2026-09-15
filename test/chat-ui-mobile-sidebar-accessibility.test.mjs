@@ -143,8 +143,9 @@ test("every responsive Chat Web drawer applies shared modal semantics and preser
 });
 
 test("App owns initial focus, bidirectional containment, Escape close, and delayed trigger restoration", async () => {
-	const [appSource, helperSource] = await Promise.all([
+	const [appSource, chromeSource, helperSource] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/app-chrome.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/mobile-sidebar-accessibility.ts", "utf8"),
 	]);
 	assert.match(appSource, /useMobileSidebarModal/);
@@ -160,7 +161,8 @@ test("App owns initial focus, bidirectional containment, Escape close, and delay
 	assert.match(helperSource, /sidebarRef\?\.current/);
 	assert.match(helperSource, /rootRef\?\.current/);
 	assert.match(appSource, /mobileSidebarTriggerRef/);
-	assert.match(appSource, /ref=\{mobileSidebarTriggerRef\}/);
+	assert.match(appSource, /mobileSidebarTriggerRef=\{mobileSidebarTriggerRef\}/);
+	assert.match(chromeSource, /ref=\{mobileSidebarTriggerRef\}/);
 	assert.match(appSource, /sidebarRef: mobileSidebarRef/);
 	assert.match(appSource, /rootRef: mobileSidebarRootRef/);
 });

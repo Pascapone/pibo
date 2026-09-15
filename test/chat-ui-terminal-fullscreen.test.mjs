@@ -56,14 +56,14 @@ test("app chrome, sidebars, raw events, and terminal metadata are gated by Termi
 	const terminalSource = fs.readFileSync("src/apps/chat-ui/src/session-views/compact-terminal/CompactTerminalSessionView.tsx", "utf8");
 
 	assert.match(appSource, /data-pibo-terminal-fullscreen=\{isTerminalFullscreen \? "true" : "false"\}/);
-	assert.match(appSource, /const isAppFullscreen = isTerminalFullscreen \|\| isDesktopPreviewFullscreen/);
+	assert.match(appSource, /const isAppFullscreen = isTerminalFullscreen/);
+	assert.doesNotMatch(appSource, /isAppFullscreen =[^;]*isDesktopPreviewFullscreen/);
 	assert.match(appSource, /\{isAppFullscreen \|\| desktopTabsEnabled \? null : \(\s*<AppHeader/);
 	assert.match(appSource, /<DesktopSessionSidebar[\s\S]*hidden=\{isAppFullscreen \|\| \(isMobileSidebarViewport && !mobileSidebarOpen\)\}/);
 	assert.match(desktopSidebarSource, /data-pibo-debug="desktop-session-sidebar"/);
 	assert.match(appSource, /<DesktopTabSidebar[\s\S]*hidden=\{isTerminalFullscreen\}/);
 	assert.doesNotMatch(appSource, /<PluginWorkspaceTabs|pluginPanelOpen/);
 	assert.match(appSource, /className="min-h-0 min-w-\[250px\] flex-1 overflow-hidden"/);
-	assert.match(appSource, /hidden=\{isDesktopPreviewFullscreen\}/);
 	assert.match(layoutSource, /visible=\{showRawEvents && !terminalFullscreen\}/);
 	assert.match(layoutSource, /!terminalFullscreen && auxiliaryPanel \? \(/);
 	assert.match(layoutSource, /contextKind=\{headerProps\.contextKind\}/);

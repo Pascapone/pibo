@@ -4,7 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
+import { PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE } from "../dist/plugins/runtime.js";
 import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
+import { createPiboDelegationController } from "../dist/subagents/controller.js";
+
+function createAgentsController(router, parentPiboSessionId) {
+	const orchestration = router.createChildOrchestrationService();
+	return createPiboDelegationController({
+		require(serviceId) {
+			assert.equal(serviceId, PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE);
+			return orchestration;
+		},
+	}, parentPiboSessionId);
+}
 
 test("delegated observation cursors remain monotonic across router restart", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-subagent-observe-restart-"));
@@ -32,7 +44,7 @@ test("delegated observation cursors remain monotonic across router restart", asy
 				text: `before restart ${index}`,
 			});
 		}
-		const beforeRestart = firstRouter.createAgentsController(parentId).observe({
+		const beforeRestart = createAgentsController(firstRouter, parentId).observe({
 			afterSequence: 0,
 			order: "asc",
 			limit: 20,
@@ -56,7 +68,7 @@ test("delegated observation cursors remain monotonic across router restart", asy
 					text: `after restart ${index}`,
 				});
 			}
-			const observed = restartedRouter.createAgentsController(parentId).observe({
+			const observed = createAgentsController(restartedRouter, parentId).observe({
 				afterSequence: beforeRestart.nextAfterSequence,
 				order: "asc",
 				limit: 20,
@@ -109,9 +121,9 @@ test("delegated observation auto cursors persist across router restart", async (
 			eventId: "auto-before",
 			text: "before automatic restart",
 		});
-		const first = firstRouter.createAgentsController(parentId).observe({});
+		const first = createAgentsController(firstRouter, parentId).observe({});
 		assert.deepEqual(first.observations.map((item) => item.text), ["before automatic restart"]);
-		assert.deepEqual(firstRouter.createAgentsController(parentId).observe({}).observations, []);
+		assert.deepEqual(createAgentsController(firstRouter, parentId).observe({}).observations, []);
 
 		await firstRouter.disposeAll();
 		firstStore.close();
@@ -125,11 +137,11 @@ test("delegated observation auto cursors persist across router restart", async (
 				eventId: "auto-after",
 				text: "after automatic restart",
 			});
-			const observed = restartedRouter.createAgentsController(parentId).observe({});
+			const observed = createAgentsController(restartedRouter, parentId).observe({});
 			assert.deepEqual(observed.observations.map((item) => item.text), ["after automatic restart"]);
-			assert.deepEqual(restartedRouter.createAgentsController(parentId).observe({}).observations, []);
+			assert.deepEqual(createAgentsController(restartedRouter, parentId).observe({}).observations, []);
 			assert.deepEqual(
-				restartedRouter.createAgentsController(parentId).observe({ cursorMode: "history" }).observations.map((item) => item.text),
+				createAgentsController(restartedRouter, parentId).observe({ cursorMode: "history" }).observations.map((item) => item.text),
 				["after automatic restart"],
 			);
 		} finally {
@@ -166,7 +178,7 @@ test("the first durable observation sequence advances beyond pre-counter cursors
 			eventId: "after-upgrade",
 			text: "visible after counter migration",
 		});
-		const observed = router.createAgentsController(parentId).observe({
+		const observed = createAgentsController(router, parentId).observe({
 			afterSequence: legacyCursor,
 			order: "asc",
 		});

@@ -109,6 +109,7 @@ export function AgentPluginsDesigner({ draft, setDraft, readOnly, onBuiltinToolR
 		})}
 		{selection?.plugins.filter((entry) => !catalog?.plugins.some((plugin) => plugin.pluginId === entry.pluginId)).map((entry) => <div key={entry.pluginId} className="border border-amber-700 p-3 text-xs text-amber-200">
 			A previously selected plugin is no longer installed. Its choices and configuration are retained for recovery.
+			<ul className="mt-2 list-disc pl-4">{Object.entries(entry.contributions).map(([id, selected]) => <li key={id}>{id}: {selected ? "selected" : "not selected"}</li>)}</ul>
 			<button type="button" disabled={readOnly} className="mt-2 block underline disabled:opacity-50" onClick={() => setDraft((current) => current.pluginSelection ? { ...current, pluginSelection: { ...current.pluginSelection, plugins: current.pluginSelection.plugins.filter((item) => item.pluginId !== entry.pluginId) } } : current)}>Remove retained reference</button>
 		</div>)}
 	</DesignerPanel>;

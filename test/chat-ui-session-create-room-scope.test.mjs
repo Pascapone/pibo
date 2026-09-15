@@ -208,13 +208,13 @@ test("App scopes pending insertion, replacement, and rollback to the origin room
 });
 
 test("every Room Session create entrypoint uses the App router and inline-rename handoff", async () => {
-	const [app, browserEntry, sessionNode] = await Promise.all([
+	const [app, coreWorkspace, sessionNode] = await Promise.all([
 		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
-		readFile("src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/core-workspace-view.tsx", "utf8"),
 		readFile("src/apps/chat-ui/src/session-node.tsx", "utf8"),
 	]);
-	assert.doesNotMatch(browserEntry, /location\.(?:assign|replace|reload)|location\.href\s*=/, "Agent Designer must not trigger document navigation");
-	assert.match(browserEntry, /props\.createSession\(profile\)/, "Agent Designer delegates to the App-owned creation flow");
+	assert.doesNotMatch(coreWorkspace, /location\.(?:assign|replace|reload)|location\.href\s*=/, "Agent Designer must not trigger document navigation");
+	assert.match(coreWorkspace, /onCreateSession\(profile\)/, "Agent Designer delegates to the App-owned creation flow");
 	assert.match(app, /onCreateSession=\{\(profile\) => createSession\(profile\)\}/);
 	assert.match(app, /navigateToSelectedSession\(originRoomId \|\| undefined, created\.session\.id, false/);
 	assert.match(app, /createOptimisticSessionTitleIntent\(\{ operationId, originRoomId, tempId \}\)/);
