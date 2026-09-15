@@ -11,8 +11,8 @@ const assemblyRoot = resolve(root, "dist/pibo4-candidate-assembly");
 const tarballRoot = join(assemblyRoot, "tarballs");
 const packageSet = JSON.parse(await readFile(resolve(root, "dist/pibo4-artifacts/standard-package-set.json"), "utf8"));
 
-if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 20) {
-	throw new Error("Candidate assembly requires Core, Standard, and exactly 20 plugin packages");
+if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 21) {
+	throw new Error("Candidate assembly requires Core, Standard, and exactly 21 plugin packages");
 }
 
 const packageDirectories = [
@@ -46,7 +46,7 @@ for (const input of packageDirectories) {
 }
 
 const pluginArtifacts = artifacts.filter((entry) => entry.role === "plugin");
-if (artifacts.length !== 23 || pluginArtifacts.length !== 20 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 23) {
+if (artifacts.length !== 24 || pluginArtifacts.length !== 21 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 24) {
 	throw new Error("Candidate assembly package identities are incomplete or duplicated");
 }
 

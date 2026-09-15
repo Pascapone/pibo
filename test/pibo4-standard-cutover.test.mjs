@@ -143,8 +143,8 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 
 	const installedAssemblyRoot = join(deployment.runtimePath, ".pibo-candidate-assembly");
 	const assemblyManifest = JSON.parse(await readFile(join(installedAssemblyRoot, "assembly-manifest.json"), "utf8"));
-	assert.equal(assemblyManifest.artifacts.length, 23);
-	assert.equal(assemblyManifest.artifacts.filter((entry) => entry.role === "plugin").length, 20);
+	assert.equal(assemblyManifest.artifacts.length, 24);
+	assert.equal(assemblyManifest.artifacts.filter((entry) => entry.role === "plugin").length, 21);
 	assert.equal(assemblyManifest.artifacts.filter((entry) => entry.role === "core").length, 1);
 	assert.equal(assemblyManifest.artifacts.filter((entry) => entry.role === "cutover").length, 1);
 	assert.equal(assemblyManifest.artifacts.filter((entry) => entry.role === "standard").length, 1);
@@ -253,7 +253,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	assert.equal(firstInstallationsResponse.status, 200);
 	const firstInstallations = (await firstInstallationsResponse.json()).installations;
 	const packagePluginIds = new Set(packageSet.plugins.map((entry) => entry.pluginId));
-	assert.equal(firstInstallations.filter((entry) => packagePluginIds.has(entry.pluginId)).length, 20);
+	assert.equal(firstInstallations.filter((entry) => packagePluginIds.has(entry.pluginId)).length, 21);
 	assert.equal(selectedState(firstInstallations, "pibo.preview").state, "active");
 	assert.equal(selectedState(firstInstallations, "pibo.workflows").state, "active");
 	assert.deepEqual({ state: selectedState(firstInstallations, "pibo.cron").state, enabled: selectedState(firstInstallations, "pibo.cron").enabled }, { state: "installed", enabled: false });
@@ -262,7 +262,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	for (const pluginId of ["pibo.standard-shell", "pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) {
 		assert.equal(selectedState(firstInstallations, pluginId).state, "uninstalled");
 	}
-	assert.equal(firstInstallations.filter((entry) => packagePluginIds.has(entry.pluginId) && entry.state === "active" && entry.enabled).length, 17);
+	assert.equal(firstInstallations.filter((entry) => packagePluginIds.has(entry.pluginId) && entry.state === "active" && entry.enabled).length, 18);
 	const bootstrapText = await (await fetch(`http://127.0.0.1:${webPort}/api/chat/bootstrap`)).text();
 	assert.match(bootstrapText, new RegExp(retainedSkillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 	assert.doesNotMatch(bootstrapText, /\/root\/\.pibo\/user-skills\/maintain-okf-docs/);
@@ -299,14 +299,14 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const receiptPath = `${planPath}.complete`;
 	const receiptFirst = await readFile(receiptPath, "utf8");
 	const receipt = JSON.parse(receiptFirst);
-	assert.equal(receipt.targets.length, 20);
+	assert.equal(receipt.targets.length, 21);
 	assert.deepEqual(receipt.supersededOwners, ["pibo.core", "pibo.product-ui", "pibo.standard-shell", "pibo.user-resources", "pibo.web-product"]);
 	const receiptStates = new Map(receipt.targets.map((entry) => [entry.pluginId, entry.state]));
 	assert.equal(receiptStates.get("pibo.agent-delegation"), "active");
 	assert.equal(receiptStates.get("pibo.cron"), "disabled");
 	assert.equal(receiptStates.get("pibo.goal-control"), "disabled");
 	assert.equal(receiptStates.get("pibo.web-search"), "uninstalled");
-	assert.equal([...receiptStates.values()].filter((state) => state === "active").length, 17);
+	assert.equal([...receiptStates.values()].filter((state) => state === "active").length, 18);
 	await stopProcess(gateway);
 
 	const firstSnapshot = firstInstallations.map((entry) => [entry.pluginId, entry.state, entry.enabled, entry.stateRevision, entry.contentHash]).sort(([left], [right]) => left.localeCompare(right));

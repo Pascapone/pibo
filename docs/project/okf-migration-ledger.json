@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-15T15:48:23Z",
+  "generated_at": "2026-09-15T21:05:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -9313,10 +9313,10 @@
     {
       "path": "docs/project/vscode-web-integration.md",
       "state": "conformant",
-      "classification": "OKF concept to migrate",
+      "classification": "current VS Code Web workspace plugin reference",
       "type": "Reference",
       "authority": "informative",
-      "status": "deprecated",
+      "status": "stable",
       "file_bytes": 5737,
       "file_sha256": "6bb61bbb4eea49ca270a4f113130c108b1b793cc791bc8984d688c242ff2e18a",
       "body_sha256": "7d6bb57453c0cf931fa49c94c49ec7885130d49ebcc95d91e4ab5d9499ae4e6a",
@@ -13230,10 +13230,10 @@
     {
       "path": "docs/specs/web/embedded-vscode-area.md",
       "state": "conformant",
-      "classification": "canonical specification",
+      "classification": "current VS Code Web workspace plugin specification",
       "type": "Specification",
       "authority": "normative",
-      "status": "deprecated",
+      "status": "stable",
       "file_bytes": 16987,
       "file_sha256": "ee8d66ec14311d01a8ac022d667f33d49e7c1c1590c8363c6467acd3db456893",
       "body_sha256": "f1b7a2c95697244ee983c8a4ec81a53911004bf0c7d8a6c991283425aa9dfcb2",
@@ -14013,6 +14013,24 @@
       "file_bytes": 3293,
       "file_sha256": "5b6cdbe6bc92f3ec885cdb73eda7d04347e09c16c89108ea69dd6dde648ead80",
       "body_sha256": "692527990e073f60eacc8aaf062c38501e5334f6aa03318ba836cab94513052e"
+    },
+    {
+      "path": "docs/reports/beta-feedback-ui-2026-09-15.md",
+      "state": "conformant",
+      "classification": "Pibo 4 Beta feedback UI implementation and isolated validation evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/specs/web/room-selection-navigation.md",
+      "state": "conformant",
+      "classification": "Chat Web Room selection, cache restoration, and navigation ownership contract",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "stable",
+      "lineage": null
     }
   ]
 }

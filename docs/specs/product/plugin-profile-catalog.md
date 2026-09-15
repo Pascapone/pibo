@@ -6,12 +6,12 @@ tags: ["product", "plugins", "profiles", "packages"]
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-15T03:35:09Z"
+  by: "openai-codex/gpt-6"
+  at: "2026-09-15T21:05:00Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "746b990cd861f26d09e4a46be9e0972dadee0b7e"
+  commit: "c6e3943096bd45158393d59519b525b4365679c7"
   requirements:
     - id: "PROD-REG-001"
       status: "implemented"
@@ -152,6 +152,24 @@ traceability:
       failures:
         - "The repository root is marked private and its prepublish guard rejects direct publication. Release aborts on wrong artifact identities, versions, duplicate package names, or inconsistent Standard pins before npm publication. Publication is sequential and not atomic across packages."
       confidence: "high"
+    - id: "PROD-REG-009"
+      status: "implemented"
+      sources:
+        - path: "src/plugins/selection.ts"
+          symbol: "createAgentPluginSelectionForProfile"
+        - path: "src/plugins/selection.ts"
+          symbol: "profileSelectedPluginIds"
+      tests:
+        - path: "test/plugin-system-test-profile-visibility.test.mjs"
+          name: "annotation-intent profiles expose the complete Web Annotations UI family"
+        - path: "test/plugin-system-test-profile-visibility.test.mjs"
+          name: "profiles without annotation intent and stored explicit disables remain disabled"
+      public:
+        - "Agent profile tool, skill, workspace-view, projection, and session-tab contribution selections"
+      failures:
+        - "Annotation test intent cannot silently enable unrelated Web Annotation mutation tools."
+        - "Profile-derived defaults cannot override a stored explicit per-contribution disable."
+      confidence: "high"
 ---
 
 # Scope
@@ -167,6 +185,7 @@ Core product services, Session routing, individual tool semantics, Web rendering
 - First-party features and runtime adapters are ordinary immutable package artifacts. Standard composition selects the required package set; Minimal-Core starts with zero plugin installations.
 - Installation inspects and stages immutable content before import. Activation publishes one generation only after dependency, SDK, artifact, and ownership checks pass.
 - Agent profiles select installed contributions explicitly. Runtime requirements, service dependencies, direct visibility, yieldability, portability, and built-in replacement metadata remain independent properties.
+- A profile that explicitly selects a Web Annotations tool or skill receives the package's discoverability family—Annotations, Build Context, Terminal, and skill view—needed for test operation. This derived default does not enable unrelated mutation tools and never overrides a stored explicit disable.
 - External packages compile and run through documented package subpaths without importing repository internals.
 - Pibo 4 cutover verifies the retained old package and exact target artifacts before Minimal-Core replaces legacy aggregate delivery.
 - The repository root is a private build workspace, not an npm release package. Its prepublish guard rejects direct publication. The release wrapper publishes only the generated Minimal-Core, Cutover, individual plugin, and Standard directories after identity, version, and dependency-pin verification.
@@ -205,6 +224,10 @@ Production source and packed Core SHALL not expose the retired registry API, wil
 
 The repository root SHALL remain marked private and its prepublish guard SHALL reject direct publication as `@pasko70/pibo`. The npm release path SHALL build, verify, and publish the generated Minimal-Core, Cutover, every package listed by Standard, and Standard itself from separate package directories. Minimal-Core SHALL exclude first-party feature implementations; Standard SHALL pin the exact Core and plugin versions. Any identity, version, duplicate-name, or pin mismatch SHALL fail before the first publish.
 
+## Requirement: PROD-REG-009: Test-profile discoverability preserves explicit disables
+
+When a profile explicitly selects a Web Annotations tool or skill, profile-derived selection SHALL expose the package's Annotations, Build Context, Terminal, and skill-view contributions so the feature is discoverable and testable in Chat Web. This derivation SHALL NOT enable unrelated annotation mutation tools. A persisted explicit `false` for any contribution remains authoritative across recalculation, restart, and package-plan creation.
+
 # Interfaces and ownership
 
 Public package boundaries:
@@ -235,7 +258,7 @@ The capability host owns registration truth. `PluginManager` owns durable packag
 
 # Verification and traceability
 
-Source symbols and named tests are bound through commit `746b990cd861f26d09e4a46be9e0972dadee0b7e`, including the F08 capability cutover at `d37dea0c7870e426e35911b574af1af07dfa7cd2`.
+Source symbols and named tests are bound through commit `c6e3943096bd45158393d59519b525b4365679c7`, including the test-profile visibility correction and the packaged 21-plugin Standard composition.
 
 Focused verification included:
 

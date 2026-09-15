@@ -129,7 +129,7 @@ test("standard artifact set maps every package to one exact plugin id and versio
 	assert.equal(set.schemaVersion, 1);
 	assert.equal(set.core, "@pasko70/pibo");
 	assert.equal(set.standard, "@pasko70/pibo-standard");
-	assert.equal(set.plugins.length, 20);
+	assert.equal(set.plugins.length, 21);
 	assert.equal(new Set(set.plugins.map((entry) => entry.pluginId)).size, set.plugins.length);
 	assert.ok(set.plugins.every((entry) => entry.version === "1.0.0" && entry.package.startsWith("@pasko70/pibo-plugin-")));
 	const standardPackage = JSON.parse(await readFile("dist/pibo4-standard-package/package.json", "utf8"));

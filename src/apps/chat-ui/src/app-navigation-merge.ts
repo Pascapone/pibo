@@ -1,5 +1,35 @@
 import type { BootstrapData, NavigationData, PiboRoom, PiboWebSessionNode } from "./types";
 
+export type RoomNavigationSnapshot = Pick<
+	NavigationData,
+	"session" | "runtimeStatus" | "room" | "selectedRoomId" | "selectedPiboSessionId" | "latestRoomStreamId" | "sessions"
+>;
+
+export function roomNavigationSnapshot(data: NavigationData): RoomNavigationSnapshot {
+	return {
+		session: data.session,
+		...(data.runtimeStatus ? { runtimeStatus: data.runtimeStatus } : {}),
+		...(data.room ? { room: data.room } : {}),
+		selectedRoomId: data.selectedRoomId,
+		selectedPiboSessionId: data.selectedPiboSessionId,
+		...(data.latestRoomStreamId !== undefined ? { latestRoomStreamId: data.latestRoomStreamId } : {}),
+		sessions: data.sessions,
+	};
+}
+
+export function restoreRoomNavigationSnapshot(current: BootstrapData, snapshot: RoomNavigationSnapshot): BootstrapData {
+	return {
+		...current,
+		session: snapshot.session,
+		runtimeStatus: snapshot.runtimeStatus,
+		room: snapshot.room,
+		selectedRoomId: snapshot.selectedRoomId,
+		selectedPiboSessionId: snapshot.selectedPiboSessionId,
+		latestRoomStreamId: snapshot.latestRoomStreamId,
+		sessions: snapshot.sessions,
+	};
+}
+
 export function mergeNavigationIntoBootstrap(
 	current: BootstrapData,
 	navigation: NavigationData,
