@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -87,6 +87,10 @@ test("standard user resources resolve retained global skills from explicit PIBO_
 	process.env.HOME = unrelatedHome;
 	process.env.PIBO_HOME = piboHome;
 	createSkill(new UserSkillManager({ piboHome }, "global"), "maintain-okf-docs");
+	const skillStorePath = join(piboHome, "user-skills.json");
+	const skillStore = JSON.parse(await readFile(skillStorePath, "utf8"));
+	skillStore.skills[0].path = "/root/.pibo/user-skills/maintain-okf-docs/SKILL.md";
+	await writeFile(skillStorePath, JSON.stringify(skillStore));
 	const store = new CustomAgentStore(agentStorePath);
 	try {
 		for (const name of ["pibo-agent", "pibo-agent-v2", "pibo-agent-v2-multi", "pibo-agent-astra"]) store.create({ displayName: name, skills: ["maintain-okf-docs"] });
@@ -100,7 +104,9 @@ test("standard user resources resolve retained global skills from explicit PIBO_
 		for (const name of ["pibo-agent", "pibo-agent-v2", "pibo-agent-v2-multi", "pibo-agent-astra"]) {
 			assert.deepEqual(createPiboProfileFromCapabilitiesOrDefault(product.registry, name).skills.map((skill) => skill.name), ["maintain-okf-docs"]);
 		}
-		assert.equal(product.registry.getCapabilityCatalog().skills.find((skill) => skill.name === "maintain-okf-docs")?.kind, "user");
+		const retainedSkill = product.registry.getCapabilityCatalog().skills.find((skill) => skill.name === "maintain-okf-docs");
+		assert.equal(retainedSkill?.kind, "user");
+		assert.equal(retainedSkill?.path, join(piboHome, "user-skills", "maintain-okf-docs", "SKILL.md"));
 		assert.deepEqual(warnings.filter((warning) => warning.includes("maintain-okf-docs")), []);
 	} finally {
 		console.warn = originalWarn;

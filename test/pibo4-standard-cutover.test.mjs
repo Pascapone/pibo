@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, cp, glob, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -12,6 +12,8 @@ import { DatabaseSync } from "node:sqlite";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { ensureDeploymentArtifact } from "../dist/compute/pool/artifacts.js";
 import { PluginManager } from "../dist/plugins/manager.js";
+import { CustomAgentStore } from "../dist/apps/chat/agent-store.js";
+import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,16 +50,27 @@ async function waitForHttp(url, child, timeoutMs = 60_000) {
 }
 
 async function stopProcess(child) {
-	if (child.exitCode === null) {
-		child.kill("SIGTERM");
-		await Promise.race([
-			new Promise((resolvePromise) => child.once("exit", resolvePromise)),
-			new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000)),
+	const signalGroup = (signal) => {
+		try { process.kill(-child.pid, signal); } catch (error) { if (error?.code !== "ESRCH") throw error; }
+	};
+	const waitForExit = async (timeoutMs) => {
+		if (child.exitCode !== null || child.signalCode !== null) return true;
+		return await Promise.race([
+			new Promise((resolvePromise) => {
+				const done = () => resolvePromise(true);
+				child.once("exit", done);
+				if (child.exitCode !== null || child.signalCode !== null) { child.off("exit", done); resolvePromise(true); }
+			}),
+			new Promise((resolvePromise) => setTimeout(() => resolvePromise(false), timeoutMs)),
 		]);
+	};
+	if (child.exitCode === null && child.signalCode === null) {
+		signalGroup("SIGTERM");
+		await waitForExit(5_000);
 	}
-	if (child.exitCode === null) {
-		child.kill("SIGKILL");
-		await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+	if (child.exitCode === null && child.signalCode === null) {
+		signalGroup("SIGKILL");
+		await waitForExit(5_000);
 	}
 	child.stdout?.destroy();
 	child.stderr?.destroy();
@@ -186,7 +199,17 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	await execFileAsync(process.execPath, [cutoverBinary, inputPath], { cwd: deployment.runtimePath });
 	await rm(preparation, { recursive: true, force: true });
 
+	const retainedSkillPath = join(home, "user-skills", "maintain-okf-docs", "SKILL.md");
+	await mkdir(join(home, "user-skills", "maintain-okf-docs"), { recursive: true });
+	await writeFile(retainedSkillPath, "---\nname: maintain-okf-docs\ndescription: Retained documentation skill\n---\n\nUse retained project documentation rules.\n");
+	await writeFile(join(home, "user-skills.json"), JSON.stringify({ version: 1, skills: [{ id: "skill-retained-okf", name: "maintain-okf-docs", path: "/root/.pibo/user-skills/maintain-okf-docs/SKILL.md", enabled: true, source: "user-created", createdAt: "2026-09-01T00:00:00.000Z", updatedAt: "2026-09-01T00:00:00.000Z" }] }));
+	const agentStore = new CustomAgentStore(join(home, "chat-agents.sqlite"));
+	try { agentStore.create({ schemaVersion: 2, displayName: "pibo-agent", skills: ["maintain-okf-docs"], pluginSelection: { schemaVersion: 1, plugins: [] } }); } finally { agentStore.close(); }
+
+	const retainedWorkspace = join(root, "retained-workspace");
+	await mkdir(retainedWorkspace, { recursive: true });
 	const data = new PiboDataStore(join(home, "pibo.sqlite"), { payloadRootDir: join(home, "payloads") });
+	new ChatRoomService(data).createRoom({ id: "room_retained_cutover", name: "Retained cutover room", type: "chat", metadata: { workspace: retainedWorkspace } });
 	const pluginArtifactRoot = join(home, "plugins", "artifacts");
 	const retainedOldCore = join(root, "retained-old-core");
 	const sdkScope = join(pluginArtifactRoot, "node_modules", "@pasko70");
@@ -201,7 +224,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	}
 	const retainedAt = "2026-09-15T08:00:00.000Z";
 	data.sessions.upsertSession({
-		session: { id: "ps_retained_cutover", piSessionId: "pi_retained_cutover", channel: "chat", kind: "runtime", profile: "base", title: "Retained cutover session", metadata: { retained: true }, createdAt: retainedAt },
+		session: { id: "ps_retained_cutover", piSessionId: "pi_retained_cutover", channel: "chat", kind: "runtime", profile: "base", workspace: retainedWorkspace, title: "Retained cutover session", metadata: { retained: true, chatRoomId: "room_retained_cutover" }, createdAt: retainedAt },
 		roomId: "room_retained_cutover",
 		status: "idle",
 		firstMessagePreview: "Retained question",
@@ -213,8 +236,8 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const webPort = await freePort();
 	const gatewayPort = await freePort();
 	const gatewayArgs = [deployment.binaryPath, "gateway:web", `--cutover-plan=${planPath}`, "--auth=local", "--web-host=127.0.0.1", `--web-port=${webPort}`, `--gateway-port=${gatewayPort}`];
-	const gatewayEnvironment = { ...process.env, HOME: home, PIBO_HOME: home, PIBO_GATEWAY_MODE: "dev" };
-	const startGateway = () => spawn(process.execPath, gatewayArgs, { cwd: deployment.runtimePath, env: gatewayEnvironment, stdio: ["ignore", "pipe", "pipe"] });
+	const gatewayEnvironment = { ...process.env, HOME: join(root, "unrelated-service-home"), PIBO_HOME: home, PI_CODING_AGENT_DIR: join(root, "empty-pi-agent"), PIBO_GATEWAY_MODE: "dev" };
+	const startGateway = () => spawn(process.execPath, gatewayArgs, { cwd: deployment.runtimePath, env: gatewayEnvironment, stdio: ["ignore", "pipe", "pipe"], detached: true });
 	let stderr = "";
 	const gateway = startGateway();
 	gateway.stderr.setEncoding("utf8");
@@ -240,7 +263,39 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 		assert.equal(selectedState(firstInstallations, pluginId).state, "uninstalled");
 	}
 	assert.equal(firstInstallations.filter((entry) => packagePluginIds.has(entry.pluginId) && entry.state === "active" && entry.enabled).length, 17);
-	assert.doesNotMatch(stderr, /cutover is required|artifact changed or is missing|activation did not complete|Cannot find module/);
+	const bootstrapText = await (await fetch(`http://127.0.0.1:${webPort}/api/chat/bootstrap`)).text();
+	assert.match(bootstrapText, new RegExp(retainedSkillPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+	assert.doesNotMatch(bootstrapText, /\/root\/\.pibo\/user-skills\/maintain-okf-docs/);
+	const createSessionResponse = await fetch(`http://127.0.0.1:${webPort}/api/chat/sessions`, { method: "POST", headers: { "content-type": "application/json", origin: `http://127.0.0.1:${webPort}` }, body: JSON.stringify({ profile: "pibo-agent", roomId: "room_retained_cutover" }) });
+	const createSessionText = await createSessionResponse.text();
+	assert.equal(createSessionResponse.status, 201, createSessionText);
+	const preparedSessionId = JSON.parse(createSessionText).session.id;
+	const turnController = new AbortController();
+	const turnPromise = fetch(`http://127.0.0.1:${webPort}/api/chat/rooms/room_retained_cutover/messages`, { method: "POST", headers: { "content-type": "application/json", origin: `http://127.0.0.1:${webPort}` }, body: JSON.stringify({ piboSessionId: preparedSessionId, text: "Verify retained resources", clientTxnId: "n033-retained-resource-turn" }), signal: turnController.signal })
+		.then(async (response) => ({ status: response.status, body: await response.text() }))
+		.catch((error) => ({ error: error instanceof Error ? error.message : String(error) }));
+	let materializedSkillPath;
+	let turnEvents = "";
+	const turnDeadline = Date.now() + 20_000;
+	while (Date.now() < turnDeadline && !materializedSkillPath && !/session_error|message_finished|assistant_message/.test(turnEvents)) {
+		for await (const candidate of glob(join(home, "agent-runtimes", "**", "skills", "**", "SKILL.md"))) {
+			if ((await readFile(candidate, "utf8")).includes("Retained documentation skill")) { materializedSkillPath = candidate; break; }
+		}
+		turnEvents = await (await fetch(`http://127.0.0.1:${webPort}/api/chat/rooms/room_retained_cutover/events`)).text();
+		if (!materializedSkillPath && !/session_error|message_finished|assistant_message/.test(turnEvents)) await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
+	}
+	turnController.abort();
+	const turnOutcome = await Promise.race([turnPromise, new Promise((resolvePromise) => setTimeout(() => resolvePromise({ error: "turn did not settle after abort" }), 2_000))]);
+	if (!materializedSkillPath && !/session_error|message_finished|assistant_message/.test(turnEvents)) {
+		await stopProcess(gateway);
+		throw new Error(`Retained user skill turn preparation did not settle: ${JSON.stringify(turnOutcome)}\n${stderr}`);
+	}
+	if (materializedSkillPath) {
+		assert.equal(materializedSkillPath.startsWith(join(home, "agent-runtimes")), true);
+		assert.doesNotMatch(materializedSkillPath, /\/root\/\.pibo\/user-skills/);
+	}
+	assert.doesNotMatch(turnEvents, /Runtime resource preparation failed|maintain-okf-docs.*could not be loaded|\/root\/\.pibo\/user-skills/);
+	assert.doesNotMatch(stderr, /cutover is required|artifact changed or is missing|activation did not complete|Cannot find module|maintain-okf-docs.*could not be loaded|\/root\/\.pibo\/user-skills/);
 	const receiptPath = `${planPath}.complete`;
 	const receiptFirst = await readFile(receiptPath, "utf8");
 	const receipt = JSON.parse(receiptFirst);

@@ -17,6 +17,14 @@ function relativePathRoot(location: UserSkillStorageLocation): string {
 	return typeof location === "string" ? resolve(location) : resolve(location.piboHome);
 }
 
+export function resolveUserSkillPath(skill: Pick<UserSkill, "name" | "path">, location: UserSkillStorageLocation = process.cwd()): string {
+	const stored = resolve(relativePathRoot(location), skill.path);
+	const managed = join(defaultUserSkillDir(location), skill.name, "SKILL.md");
+	if (typeof location !== "string" && existsSync(managed)) return managed;
+	if (existsSync(stored)) return stored;
+	return existsSync(managed) ? managed : stored;
+}
+
 export function defaultUserSkillStorePath(location: UserSkillStorageLocation = process.cwd()): string {
 	return join(storageRoot(location), STORE_FILE_NAME);
 }
@@ -61,6 +69,7 @@ function readUserSkillDescription(skill: UserSkill, cwd: UserSkillStorageLocatio
 export function listUserSkills(cwd: UserSkillStorageLocation = process.cwd()): UserSkill[] {
 	const skills = loadUserSkillStore(cwd).skills;
 	for (const skill of skills) {
+		skill.path = resolveUserSkillPath(skill, cwd);
 		skill.description = readUserSkillDescription(skill, cwd);
 	}
 	return skills;
@@ -71,6 +80,7 @@ export function findUserSkill(idOrName: string, cwd: UserSkillStorageLocation = 
 	const store = loadUserSkillStore(cwd);
 	const stored = store.skills.find((skill) => skill.id === lookup || skill.name === lookup);
 	if (!stored) return undefined;
+	stored.path = resolveUserSkillPath(stored, cwd);
 	stored.description = readUserSkillDescription(stored, cwd);
 	return stored;
 }
@@ -89,7 +99,7 @@ function validateSkillName(name: string, existingId?: string, cwd: UserSkillStor
 }
 
 export function readSkillMarkdown(skill: UserSkill, cwd: UserSkillStorageLocation = process.cwd()): string {
-	const fullPath = resolve(relativePathRoot(cwd), skill.path);
+	const fullPath = resolveUserSkillPath(skill, cwd);
 	if (!existsSync(fullPath)) return "";
 	return readFileSync(fullPath, "utf-8");
 }
@@ -133,7 +143,7 @@ export function updateUserSkill(id: string, input: UpdateUserSkillInput, cwd: Us
 	const store = loadUserSkillStore(cwd);
 	const index = store.skills.findIndex((s) => s.id === id);
 	if (index < 0) throw new Error(`Skill "${id}" not found`);
-	const existing = store.skills[index];
+	const existing = { ...store.skills[index], path: resolveUserSkillPath(store.skills[index], cwd) };
 	let name = existing.name;
 	if (input.name !== undefined) {
 		name = validateSkillName(input.name, existing.id, cwd);
@@ -189,6 +199,7 @@ export function deleteUserSkill(id: string, cwd: UserSkillStorageLocation = proc
 	const index = store.skills.findIndex((s) => s.id === id);
 	if (index < 0) return undefined;
 	const [removed] = store.skills.splice(index, 1);
+	removed.path = resolveUserSkillPath(removed, cwd);
 	const skillDir = dirname(removed.path);
 	if (existsSync(skillDir)) {
 		rmSync(skillDir, { recursive: true, force: true });
