@@ -25,7 +25,7 @@ export function buildDeploymentContainerArgs(input: {
 		"set -eu",
 		"export DISPLAY=:99",
 		"if command -v Xvfb >/dev/null 2>&1 && ! pgrep -x Xvfb >/dev/null 2>&1; then Xvfb :99 -screen 0 1920x1080x24 -ac -nolisten tcp >/tmp/xvfb.log 2>&1 & fi",
-		"exec node /opt/pibo-runtime/node_modules/@pasko70/pibo/dist/bin/pibo.js gateway:web --web-host 0.0.0.0 --web-port 4788 --gateway-port 4789",
+		"exec /opt/pibo-runtime/node_modules/.bin/pibo gateway:web --web-host 0.0.0.0 --web-port 4788 --gateway-port 4789",
 	].join("; ");
 	return [
 		"run",

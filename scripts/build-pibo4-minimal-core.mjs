@@ -131,7 +131,8 @@ async function copyDeclaration(relativePath) {
 	}
 }
 for (const entry of ["plugins/sdk.d.ts", "plugins/host.d.ts", "plugins/runtime.d.ts", "plugins/cutover.d.ts"]) await copyDeclaration(entry);
-await writeFile(join(declarationTarget, "product-runtime.d.ts"), `import type { PluginHost } from "./plugins/host.js";\nexport declare function startPluginProductRuntime(options: { host: PluginHost; artifactRoot?: string; collectConsumers?: (...args: any[]) => any; readSessionPlan?: (...args: any[]) => any; productOptions?: Record<string, unknown>; installDefaultPlugins?: boolean; includeWebProduct?: boolean; requirePreparedCutover?: boolean; cutoverPlanPath?: string; currentCoreVersion?: string }): Promise<{ manager: any; runtime: any; data: any; dispose(): Promise<void> }>;\n`);
+await writeFile(join(declarationTarget, "product-runtime.d.ts"), `import type { PluginHost } from "./plugins/host.js";\nexport type PluginSourceInput = { kind: "local"; path: string } | { kind: "package"; path: string; name: string; version: string; integrity?: string };\nexport declare function startPluginProductRuntime(options: { host: PluginHost; artifactRoot?: string; collectConsumers?: (...args: any[]) => any; readSessionPlan?: (...args: any[]) => any; productOptions?: Record<string, unknown>; installDefaultPlugins?: boolean; bootstrapPluginSources?: readonly PluginSourceInput[]; includeWebProduct?: boolean; requirePreparedCutover?: boolean; cutoverPlanPath?: string; currentCoreVersion?: string }): Promise<{ manager: any; runtime: any; data: any; dispose(): Promise<void> }>;\n`);
+await writeFile(join(declarationTarget, "executable-cli.d.ts"), `import type { PluginSourceInput } from "./product-runtime.js";\nexport type PiboExecutableComposition = { productName?: string; gatewayDescription?: string; defaultProfile?: string; registerRuntimeUnassignedProfile?: boolean; bootstrapPluginSources?: readonly PluginSourceInput[] };\nexport declare function runPiboCoreCli(argv?: string[], composition?: PiboExecutableComposition): Promise<void>;\n`);
 await writeFile(join(declarationTarget, "index.d.ts"), `export * from "./plugins/sdk.js";\nexport * from "./plugins/host.js";\nexport * from "./plugins/runtime.js";\nexport * from "./plugins/cutover.js";\nexport * from "./product-runtime.js";\n`);
 
 const pkg = {
@@ -148,6 +149,7 @@ const pkg = {
 		"./plugin-runtime": { types: "./types/plugins/runtime.d.ts", import: "./plugin-runtime.js" },
 		"./plugin-cutover": { types: "./types/plugins/cutover.d.ts", import: "./plugin-cutover.js" },
 		"./product-runtime": { types: "./types/product-runtime.d.ts", import: "./product-runtime.js" },
+		"./executable-cli": { types: "./types/executable-cli.d.ts", import: "./dist/core/executable-cli.js" },
 		"./package.json": "./package.json",
 	},
 	files: ["*.js", "types", "dist"],

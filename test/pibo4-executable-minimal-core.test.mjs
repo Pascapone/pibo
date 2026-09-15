@@ -132,6 +132,11 @@ test("packed Minimal-Core installs offline and runs its real CLI, Gateway, Chat,
 	assert.equal(bootstrapPayload.session.runtimeBinding.runtimeInstanceId, "pibo.runtime-unassigned");
 	assert.equal(bootstrapPayload.session.runtimeBinding.adapterId, "unassigned");
 	assert.equal(bootstrapPayload.session.runtimeBinding.nativeSessionId, undefined);
+	const agentCatalog = await fetch(`http://127.0.0.1:${webPort}/api/chat/agent-catalog`);
+	assert.equal(agentCatalog.status, 200);
+	const agentCatalogPayload = await agentCatalog.json();
+	assert.deepEqual(agentCatalogPayload.catalog.skills, []);
+	assert.deepEqual(agentCatalogPayload.catalog.skills.map((skill) => skill.name), []);
 	const sessionPlan = await fetch(`http://127.0.0.1:${webPort}/api/chat/sessions/${bootstrapPayload.session.id}/plugin-plan`);
 	assert.equal(sessionPlan.status, 200);
 	const sessionPlanPayload = await sessionPlan.json();
@@ -232,12 +237,84 @@ test("all 23 Pibo 4 tarballs install together offline and Standard resolves its 
 	}
 });
 
-test("content-addressed Candidate installer accepts and reuses the executable Core tarball offline", { timeout: 120_000 }, async (t) => {
+test("packed Standard installs alone offline and starts exactly its 20 active plugin packages", { timeout: 180_000 }, async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-executable-standard-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const tarballs = join(root, "tarballs");
+	const project = join(root, "consumer");
+	const home = join(root, "home");
+	await Promise.all([tarballs, project, home].map((path) => execFileAsync("mkdir", ["-p", path])));
+	const standardTarball = await npmPack(resolve("dist/pibo4-standard-package"), tarballs);
+	await writeFile(join(project, "package.json"), `${JSON.stringify({ name: "pibo4-executable-standard-consumer", private: true })}\n`);
+	await execFileAsync("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", standardTarball], { cwd: project, maxBuffer: 64 * 1024 * 1024 });
+
+	const standardRoot = join(project, "node_modules/@pasko70/pibo-standard");
+	const standardPackage = JSON.parse(await readFile(join(standardRoot, "package.json"), "utf8"));
+	assert.deepEqual(standardPackage.bin, { pibo: "./bin/pibo.js", "pibo-standard": "./bin/pibo.js" });
+	assert.equal((await lstat(join(project, "node_modules/.bin/pibo"))).isSymbolicLink(), true);
+	const packageSet = JSON.parse(await readFile(join(standardRoot, "package-set.json"), "utf8"));
+	assert.equal(packageSet.plugins.length, 20);
+	for (const entry of packageSet.plugins) {
+		const installed = JSON.parse(await readFile(join(standardRoot, "node_modules", ...entry.package.split("/"), "package.json"), "utf8"));
+		assert.equal(installed.version, entry.version, entry.package);
+	}
+
+	const cliPath = join(project, "node_modules/.bin/pibo");
+	const cliEnv = { ...process.env, HOME: home, PIBO_HOME: home };
+	const rootHelp = await execFileAsync(cliPath, ["--help"], { cwd: project, env: cliEnv });
+	assert.match(rootHelp.stdout, /Pibo Standard/);
+	assert.match(rootHelp.stdout, /20 plugin packages/);
+	const webPort = await freePort();
+	const gatewayPort = await freePort();
+	let stderr = "";
+	const gateway = spawn(cliPath, ["gateway:web", "--auth=local", "--web-host=127.0.0.1", `--web-port=${webPort}`, `--gateway-port=${gatewayPort}`], {
+		cwd: project,
+		env: { ...cliEnv, PIBO_GATEWAY_MODE: "dev" },
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	gateway.stderr.setEncoding("utf8");
+	gateway.stderr.on("data", (chunk) => { stderr += chunk; });
+	t.after(() => stopProcess(gateway).catch(() => {}));
+	await waitForHttp(`http://127.0.0.1:${webPort}/health`, gateway, 60_000);
+	const bootstrap = await fetch(`http://127.0.0.1:${webPort}/api/chat/bootstrap`);
+	assert.equal(bootstrap.status, 200);
+	const bootstrapPayload = await bootstrap.json();
+	assert.equal(bootstrapPayload.session.profile, "base");
+	assert.equal(bootstrapPayload.session.runtimeBinding.runtimeInstanceId, "pi");
+	const installationsResponse = await fetch(`http://127.0.0.1:${webPort}/api/chat/plugins`);
+	assert.equal(installationsResponse.status, 200);
+	const installations = (await installationsResponse.json()).installations;
+	assert.equal(installations.length, 20);
+	assert.deepEqual(new Set(installations.map((entry) => entry.pluginId)), new Set(packageSet.plugins.map((entry) => entry.pluginId)));
+	assert.equal(installations.every((entry) => entry.enabled && entry.state === "active"), true);
+	const catalogResponse = await fetch(`http://127.0.0.1:${webPort}/api/chat/agent-catalog`);
+	assert.equal(catalogResponse.status, 200);
+	const catalog = (await catalogResponse.json()).catalog;
+	assert.equal(catalog.skills.find((skill) => skill.name === "pi-agent-harness")?.pluginId, "pibo.builtin-profiles");
+	assert.equal(catalog.skills.find((skill) => skill.name === "pibo-docker-system")?.pluginId, "pibo.builtin-profiles");
+	assert.equal(catalog.skills.every((skill) => skill.pluginId !== undefined && existsSync(skill.path)), true);
+	assert.doesNotMatch(stderr, /Cannot find module|activation did not complete|Plugin artifact has no staged root/);
+	await stopProcess(gateway);
+
+	const restarted = spawn(cliPath, ["gateway:web", "--auth=local", "--web-host=127.0.0.1", `--web-port=${webPort}`, `--gateway-port=${gatewayPort}`], {
+		cwd: project,
+		env: { ...cliEnv, PIBO_GATEWAY_MODE: "dev" },
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	t.after(() => stopProcess(restarted).catch(() => {}));
+	await waitForHttp(`http://127.0.0.1:${webPort}/health`, restarted, 60_000);
+	const restartedInstallations = (await (await fetch(`http://127.0.0.1:${webPort}/api/chat/plugins`)).json()).installations;
+	assert.equal(restartedInstallations.length, 20);
+	assert.equal(restartedInstallations.every((entry) => entry.enabled && entry.state === "active"), true);
+	await stopProcess(restarted);
+});
+
+test("content-addressed Candidate installer accepts and reuses the executable Standard tarball offline", { timeout: 180_000 }, async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo4-candidate-installer-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const tarballs = join(root, "tarballs");
 	await execFileAsync("mkdir", ["-p", tarballs]);
-	const coreTarball = await npmPack(resolve("dist/pibo4-core-package"), tarballs);
+	const standardTarball = await npmPack(resolve("dist/pibo4-standard-package"), tarballs);
 	const previousOffline = process.env.npm_config_offline;
 	process.env.npm_config_offline = "true";
 	t.after(() => {
@@ -245,23 +322,24 @@ test("content-addressed Candidate installer accepts and reuses the executable Co
 		else process.env.npm_config_offline = previousOffline;
 	});
 	const config = { artifactRoot: join(root, "artifacts") };
-	const first = await ensureDeploymentArtifact({ config, archivePath: coreTarball });
+	const first = await ensureDeploymentArtifact({ config, archivePath: standardTarball });
 	assert.equal(first.reused, false);
 	assert.equal(first.packageVersion, "4.0.0-beta.1");
 	assert.equal(first.runtimePath, join(config.artifactRoot, first.sha256, "runtime"));
-	assert.equal(first.binaryPath, join(first.runtimePath, "node_modules/@pasko70/pibo/dist/bin/pibo.js"));
+	assert.equal(first.binaryPath, join(first.runtimePath, "node_modules/.bin/pibo"));
 	assert.equal(existsSync(first.binaryPath), true);
 	const version = await execFileAsync(first.binaryPath, ["--version"], { env: { ...process.env, HOME: join(root, "home"), PIBO_HOME: join(root, "home") } });
 	assert.equal(version.stdout.trim(), "4.0.0-beta.1");
-	const second = await ensureDeploymentArtifact({ config, archivePath: coreTarball });
+	const second = await ensureDeploymentArtifact({ config, archivePath: standardTarball });
 	assert.equal(second.reused, true);
 	assert.equal(second.sha256, first.sha256);
 	assert.equal(second.binaryPath, first.binaryPath);
 });
 
-test("deployment-pool artifact upload packs the generated executable Core rather than the private repository root", async () => {
+test("deployment-pool artifact upload packs the generated executable Standard app rather than Core or the private repository root", async () => {
 	const script = await readFile("scripts/deployment-pool-remote.sh", "utf8");
 	assert.match(script, /npm run pibo4:packages/);
-	assert.match(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-core-package/);
+	assert.match(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-standard-package/);
+	assert.doesNotMatch(script, /npm pack --ignore-scripts --pack-destination "\$tmp_dir" \.\/dist\/pibo4-core-package/);
 	assert.doesNotMatch(script, /npm pack --pack-destination "\$tmp_dir"\s*>/);
 });

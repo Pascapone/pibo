@@ -8,6 +8,7 @@ import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 import type { PluginContribution, PluginInstallation, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
 import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_LOOP_SERVICE, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
+import { PIBO_STANDARD_SKILL_NAMES } from "./standard-skills.js";
 
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
 export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
@@ -371,6 +372,17 @@ export const codexNativeRuntimePackageManifest = (): PluginManifest => ({
 });
 export const ompRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(OMP_RUNTIME_PLUGIN_ID, "Pibo OMP Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "omp"), systemContribution("instance", "agent-runtime-instance", "omp-native"), systemContribution("profile", "profile", "orp")]);
 export const builtinProfilesPackageManifest = (): PluginManifest => runtimeAdapterManifest(BUILTIN_PROFILES_PLUGIN_ID, "Pibo Built-in Profiles", [
+	...PIBO_STANDARD_SKILL_NAMES.map((name) => ({
+		id: name,
+		kind: "skill" as const,
+		name,
+		title: name,
+		scope: "agent" as const,
+		required: false,
+		defaultEnabled: name === "pi-agent-harness",
+		schemaVersion: 1 as const,
+		context: { kind: "context" as const, stage: "skill" as const, description: `${name} workflow guidance.`, loading: "progressive" as const },
+	})),
 	systemContribution("base", "profile", "base"),
 	systemContribution("gateway-producer", "profile", "pibo-gateway-producer"),
 ]);

@@ -3,7 +3,6 @@ import { basename, join, resolve } from "node:path";
 import { build } from "esbuild";
 
 const root = process.cwd();
-const releaseVersion = process.env.PIBO_RELEASE_VERSION?.trim() || "4.0.0-beta.1";
 const outputRoot = resolve(root, "dist/pibo4-artifacts");
 const generatedRoot = resolve(root, "dist/.pibo4-generated");
 const defaults = await import(new URL("../dist/plugins/default-packages.js", import.meta.url));
@@ -71,6 +70,18 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 		legalComments: "none",
 		logLevel: "warning",
 	});
+	if (packageSuffix === "standard-profiles") {
+		const skills = join(packageRoot, "skills");
+		await mkdir(skills, { recursive: true });
+		for (const contribution of manifest.contributions.filter((entry) => entry.kind === "skill")) {
+			await cp(resolve(root, "skills", "builtin", contribution.name), join(skills, contribution.name), { recursive: true });
+		}
+	}
+	if (packageSuffix === "web-annotations") {
+		const skills = join(packageRoot, "skills");
+		await mkdir(skills, { recursive: true });
+		await cp(resolve(root, "skills", "builtin", "web-annotations"), join(skills, "web-annotations"), { recursive: true });
+	}
 	if (packageSuffix === "browser-tools") {
 		const vendor = join(packageRoot, "vendor");
 		await mkdir(vendor, { recursive: true });
@@ -120,23 +131,9 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 	}
 	manifest.entrypoints = { ...manifest.entrypoints, backend: "backend.mjs" };
 	await writeFile(join(packageRoot, "pibo.plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-	await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ name: `@pasko70/pibo-plugin-${packageSuffix}`, version: manifest.version, type: "module", files: ["pibo.plugin.json", "backend.mjs", "browser", ...(packageSuffix === "browser-tools" ? ["context"] : []), ...(["browser-tools", "runtime-pi"].includes(packageSuffix) ? ["vendor"] : [])] }, null, 2)}\n`);
+	await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ name: `@pasko70/pibo-plugin-${packageSuffix}`, version: manifest.version, type: "module", files: ["pibo.plugin.json", "backend.mjs", "browser", ...(["standard-profiles", "web-annotations"].includes(packageSuffix) ? ["skills"] : []), ...(packageSuffix === "browser-tools" ? ["context"] : []), ...(["browser-tools", "runtime-pi"].includes(packageSuffix) ? ["vendor"] : [])] }, null, 2)}\n`);
 }
 
 const standardSet = { schemaVersion: 1, core: "@pasko70/pibo", standard: "@pasko70/pibo-standard", plugins: packages.map(([suffix, manifestFactory]) => ({ package: `@pasko70/pibo-plugin-${suffix}`, pluginId: manifestFactory().id, version: manifestFactory().version })) };
 await writeFile(join(outputRoot, "standard-package-set.json"), `${JSON.stringify(standardSet, null, 2)}\n`);
-const standardRoot = resolve(root, "dist/pibo4-standard-package");
-await rm(standardRoot, { recursive: true, force: true });
-await mkdir(standardRoot, { recursive: true });
-await writeFile(join(standardRoot, "package-set.json"), `${JSON.stringify(standardSet, null, 2)}\n`);
-await writeFile(join(standardRoot, "index.js"), `import packageSet from "./package-set.json" with { type: "json" };\nexport { packageSet };\n`);
-await writeFile(join(standardRoot, "package.json"), `${JSON.stringify({
-	name: "@pasko70/pibo-standard",
-	version: releaseVersion,
-	type: "module",
-	main: "./index.js",
-	exports: { ".": "./index.js", "./package-set.json": "./package-set.json", "./package.json": "./package.json" },
-	files: ["index.js", "package-set.json"],
-	dependencies: Object.fromEntries([["@pasko70/pibo", releaseVersion], ...standardSet.plugins.map((entry) => [entry.package, entry.version])]),
-}, null, 2)}\n`);
-console.log(`Built ${packages.length} Pibo 4 plugin package artifacts and the Standard composition in ${outputRoot}`);
+console.log(`Built ${packages.length} Pibo 4 plugin package artifacts in ${outputRoot}`);

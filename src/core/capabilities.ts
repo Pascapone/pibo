@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
 	PiboExecutionEvent,
 	PiboJsonObject,
@@ -9,17 +7,10 @@ import type {
 	PiboSessionTreeNavigateParams,
 	PiboThinkingParams,
 } from "./events.js";
-import type { SkillProfile } from "./profiles.js";
 import { parsePiboThinkingLevel } from "./thinking.js";
 import type { PiboGatewayAction } from "../plugins/types.js";
 import type { PluginHost } from "../plugins/host.js";
 import { PluginScope } from "../plugins/scope.js";
-
-const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-
-function builtinSkillPath(name: string): string {
-	return resolve(PIBO_PACKAGE_ROOT, "skills", "builtin", name, "SKILL.md");
-}
 
 function getObjectParams(event: PiboExecutionEvent): PiboJsonObject | undefined {
 	const params = "params" in event ? event.params : undefined;
@@ -132,61 +123,10 @@ function requireLogoutParams(event: PiboExecutionEvent): { provider: string } {
 }
 
 export type PiboCoreContributionSink = {
-	addSkill(skill: SkillProfile): void;
 	addGatewayAction(action: PiboGatewayAction): void;
 };
 
 export function definePiboCoreContributions(sink: PiboCoreContributionSink): void {
-		sink.addSkill({
-			name: "pi-agent-harness",
-			path: builtinSkillPath("pi-agent-harness"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "pibo-agent-runtime-adapter",
-			path: builtinSkillPath("pibo-agent-runtime-adapter"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "pibo-spec-writing",
-			path: builtinSkillPath("pibo-spec-writing"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "pibo-docker-system",
-			path: builtinSkillPath("pibo-docker-system"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "graphify",
-			path: builtinSkillPath("graphify"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "prd",
-			path: builtinSkillPath("prd"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "skill-creator",
-			path: builtinSkillPath("skill-creator"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "loop",
-			path: builtinSkillPath("loop"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "ralph-loop",
-			path: builtinSkillPath("ralph-loop"),
-			kind: "builtin",
-		});
-		sink.addSkill({
-			name: "ralph-prd-json",
-			path: builtinSkillPath("ralph-prd-json"),
-			kind: "builtin",
-		});
 		sink.addGatewayAction({
 			name: "status",
 			description: "Return current session status with context usage quota.",
@@ -518,7 +458,6 @@ export function provideCoreCapabilities(host: PluginHost): () => Promise<void> {
 		host.contributions.register(scope, kind, key, value);
 	};
 	definePiboCoreContributions({
-		addSkill: (skill) => registerMissing("resource:skill", skill.name, skill),
 		addGatewayAction: (action) => registerMissing("resource:gateway-action", action.name, action),
 	});
 	return () => scope.dispose();

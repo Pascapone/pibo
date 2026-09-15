@@ -33,6 +33,7 @@ import {
 import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 import { piboHomePath } from "../core/pibo-home.js";
 import { provideCoreWebProduct } from "../core/web-product.js";
+import type { PluginSourceInput } from "../plugins/sources.js";
 
 export type GatewayServerOptions = {
 	host?: string;
@@ -61,6 +62,8 @@ export type GatewayServerOptions = {
 	includeWebProduct?: boolean;
 	/** Install repository-packaged defaults. Generated Minimal-Core executables set this to false. */
 	installDefaultPlugins?: boolean;
+	/** Generic executable-composition sources installed and activated before persisted plugins are restored. */
+	bootstrapPluginSources?: readonly PluginSourceInput[];
 };
 
 type GatewayQueuedFrame = {
@@ -342,6 +345,7 @@ export class PiboGatewayServer {
 			},
 			includeWebProduct: this.options.includeWebProduct,
 			installDefaultPlugins: this.options.installDefaultPlugins,
+			bootstrapPluginSources: this.options.bootstrapPluginSources,
 			provideWebProduct: provideCoreWebProduct,
 			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
 			readSessionPlan: (piboSessionId, kind) => {

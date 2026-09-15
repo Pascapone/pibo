@@ -21,6 +21,18 @@ export class ChatReadStateService {
 
 	unreadCountsPage(input:{piboSessionIds:string[]}):Array<[string,number]> {return [...this.countUnreadMessagesBySession(input)];}
 
+	lastReadAtBySession(input: { piboSessionIds: string[] }): Map<string, string> {
+		const result = new Map<string, string>();
+		const uniqueIds = [...new Set(input.piboSessionIds)];
+		for (let offset = 0; offset < uniqueIds.length; offset += 400) {
+			const ids = uniqueIds.slice(offset, offset + 400);
+			if (!ids.length) continue;
+			const rows = this.store.db.prepare(`SELECT session_id, last_read_at FROM app_session_read_state WHERE session_id IN (${ids.map(() => "?").join(", ")})`).all(...ids) as Array<{ session_id: string; last_read_at: string }>;
+			for (const row of rows) result.set(row.session_id, row.last_read_at);
+		}
+		return result;
+	}
+
 	hasUnreadErrorsBySession(input: { piboSessionIds: string[] }): Set<string> {
 		const unreadSessionIds = new Set<string>();
 		const uniqueIds = [...new Set(input.piboSessionIds)];

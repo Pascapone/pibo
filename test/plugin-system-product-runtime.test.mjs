@@ -138,6 +138,7 @@ test('Core exposes auth, base Web, Chat, and user resources with zero plugin ins
   t.after(() => product.dispose());
   const registry = PiboCapabilityHost.create({ host });
   assert.deepEqual(data.plugins.listInstallations(), []);
+  assert.deepEqual(registry.getCapabilityCatalog().skills, []);
   assert.equal(registry.getAuthService()?.name, 'dev-auth');
   assert.ok(registry.getChannels().some((channel) => channel.name === 'web-host'));
   assert.ok(registry.getWebApps().some((app) => app.name === 'pibo.chat-web'));

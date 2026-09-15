@@ -6,8 +6,13 @@ import type { PluginHost } from "../plugins/host.js";
 import { PluginScope } from "../plugins/scope.js";
 import { PIBO_USER_RESOURCES_SERVICE, type PiboPluginProductOptions, type PiboUserResourcesService } from "../plugins/product-services.js";
 
-/** Core-owned user resources remain available without a plugin installation. */
-export function provideCoreUserResources(host: PluginHost, options: PiboPluginProductOptions["userResources"] = {}): () => Promise<void> {
+export type PreparedCoreUserResources = {
+	initialize(): void;
+	dispose(): Promise<void>;
+};
+
+/** Prepare the Core service before plugins start, then initialize user contributions after plugin ownership is known. */
+export function prepareCoreUserResources(host: PluginHost, options: PiboPluginProductOptions["userResources"] = {}): PreparedCoreUserResources {
 	const scope = new PluginScope("@pibo/core", "@pibo/core/user-resources");
 	const upsert = <T>(kind: string, key: string, value: T) => {
 		host.contributions.remove(`resource:${kind}`, key, scope.instanceId);
@@ -43,33 +48,52 @@ export function provideCoreUserResources(host: PluginHost, options: PiboPluginPr
 		removeSkill(name) { remove("skill", name); },
 	};
 	const disposeService = host.provideCoreService({ id: PIBO_USER_RESOURCES_SERVICE, version: "1.0.0", value: service });
-	try {
-		if (options.userSkills) definePiboChatUserSkillContributions({ addSkill: (skill) => service.upsertSkill(skill) }, options.userSkills);
-		if (options.contextFilesMode || options.contextFiles) {
-			const contextSink = {
-				upsertContextFile: (file: ContextFileProfile) => service.upsertContextFile(file),
-				removeContextFile: (key: string) => service.removeContextFile(key),
-			};
-			if (options.contextFilesMode === "full") {
-				const app = createPiboContextFilesWebAppContribution(contextSink, options.contextFiles);
-				upsert("web-app", app.name, app);
-			} else {
-				definePiboContextFileCatalogContributions(contextSink, options.contextFiles);
+	let initialized = false;
+	let disposed = false;
+	return {
+		initialize() {
+			if (initialized) return;
+			if (disposed) throw new Error("Core user resources are disposed");
+			initialized = true;
+			try {
+				if (options.userSkills) definePiboChatUserSkillContributions({ addSkill: (skill) => service.upsertSkill(skill) }, options.userSkills);
+				if (options.contextFilesMode || options.contextFiles) {
+					const contextSink = {
+						upsertContextFile: (file: ContextFileProfile) => service.upsertContextFile(file),
+						removeContextFile: (key: string) => service.removeContextFile(key),
+					};
+					if (options.contextFilesMode === "full") {
+						const app = createPiboContextFilesWebAppContribution(contextSink, options.contextFiles);
+						upsert("web-app", app.name, app);
+					} else {
+						definePiboContextFileCatalogContributions(contextSink, options.contextFiles);
+					}
+				}
+				if (options.customAgents) definePiboChatCustomAgentProfileContributions({ upsertProfile: (profile) => service.upsertProfile(profile) }, options.customAgents);
+			} catch (error) {
+				initialized = false;
+				throw error;
 			}
-		}
-		if (options.customAgents) definePiboChatCustomAgentProfileContributions({ upsertProfile: (profile) => service.upsertProfile(profile) }, options.customAgents);
+		},
+		async dispose() {
+			if (disposed) return;
+			disposed = true;
+			const errors: unknown[] = [];
+			try { await disposeService(); } catch (error) { errors.push(error); }
+			try { await scope.dispose(); } catch (error) { errors.push(error); }
+			if (errors.length) throw new AggregateError(errors, "Core user-resource cleanup failed");
+		},
+	};
+}
+
+/** Core-owned user resources remain available without a plugin installation. */
+export function provideCoreUserResources(host: PluginHost, options: PiboPluginProductOptions["userResources"] = {}): () => Promise<void> {
+	const prepared = prepareCoreUserResources(host, options);
+	try {
+		prepared.initialize();
 	} catch (error) {
-		void disposeService();
-		void scope.dispose();
+		void prepared.dispose();
 		throw error;
 	}
-	let disposed = false;
-	return async () => {
-		if (disposed) return;
-		disposed = true;
-		const errors: unknown[] = [];
-		try { await disposeService(); } catch (error) { errors.push(error); }
-		try { await scope.dispose(); } catch (error) { errors.push(error); }
-		if (errors.length) throw new AggregateError(errors, "Core user-resource cleanup failed");
-	};
+	return () => prepared.dispose();
 }

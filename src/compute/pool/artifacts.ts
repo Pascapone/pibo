@@ -7,8 +7,23 @@ import { promisify } from "node:util";
 import type { DeploymentPoolConfig } from "./config.js";
 
 const execFileAsync = promisify(execFile);
-const PACKAGE_RELATIVE_PATH = "node_modules/@pasko70/pibo/package.json";
-const BINARY_RELATIVE_PATH = "node_modules/@pasko70/pibo/dist/bin/pibo.js";
+const PACKAGE_RELATIVE_PATHS = [
+	"node_modules/@pasko70/pibo-standard/package.json",
+	"node_modules/@pasko70/pibo/package.json",
+] as const;
+const BINARY_RELATIVE_PATHS = [
+	"node_modules/.bin/pibo",
+	"node_modules/@pasko70/pibo-standard/bin/pibo.js",
+	"node_modules/@pasko70/pibo/dist/bin/pibo.js",
+] as const;
+
+function installedBinaryPath(runtimePath: string): string | undefined {
+	for (const relativePath of BINARY_RELATIVE_PATHS) {
+		const candidate = resolve(runtimePath, relativePath);
+		if (existsSync(candidate)) return candidate;
+	}
+	return undefined;
+}
 
 export interface DeploymentArtifact {
 	sha256: string;
@@ -32,7 +47,7 @@ export async function ensureDeploymentArtifact(input: {
 	const sha256 = await sha256File(archivePath);
 	const artifactRoot = resolve(input.config.artifactRoot, sha256);
 	const runtimePath = resolve(artifactRoot, "runtime");
-	if (existsSync(resolve(runtimePath, BINARY_RELATIVE_PATH))) {
+	if (installedBinaryPath(runtimePath)) {
 		const now = new Date();
 		await utimes(artifactRoot, now, now);
 		return { ...(await inspectRuntimeArtifact(runtimePath)), sha256, reused: true };
@@ -47,7 +62,7 @@ export async function ensureDeploymentArtifact(input: {
 			cwd: resolve(staging, "runtime"),
 			maxBuffer: 20 * 1024 * 1024,
 		});
-		if (!existsSync(resolve(staging, "runtime", BINARY_RELATIVE_PATH))) throw new Error("Installed package does not contain the Pibo binary");
+		if (!installedBinaryPath(resolve(staging, "runtime"))) throw new Error("Installed package does not contain the Pibo binary");
 		await writeFile(resolve(staging, "manifest.json"), `${JSON.stringify({ sha256, source: basename(archivePath), installedAt: new Date().toISOString() }, null, 2)}\n`, { mode: 0o600 });
 		if (existsSync(artifactRoot)) await rm(staging, { recursive: true, force: true });
 		else await rename(staging, artifactRoot);
@@ -60,19 +75,20 @@ export async function ensureDeploymentArtifact(input: {
 
 export async function inspectRuntimeArtifact(runtimePath: string): Promise<DeploymentArtifact> {
 	const resolved = resolve(runtimePath);
-	const binaryPath = resolve(resolved, BINARY_RELATIVE_PATH);
-	if (!existsSync(binaryPath)) throw new Error(`Pibo runtime binary was not found: ${binaryPath}`);
+	const binaryPath = installedBinaryPath(resolved);
+	if (!binaryPath) throw new Error(`Pibo runtime binary was not found: ${resolved}`);
 	let packageVersion: string | undefined;
-	let packageText = "";
-	try {
-		packageText = await readFile(resolve(resolved, PACKAGE_RELATIVE_PATH), "utf8");
-		const parsed = JSON.parse(packageText) as { version?: unknown; name?: unknown };
-		if (parsed.name !== "@pasko70/pibo") throw new Error(`Unexpected package name in ${resolved}`);
+	let packageRoot: string | undefined;
+	for (const relativePath of PACKAGE_RELATIVE_PATHS) {
+		const candidate = resolve(resolved, relativePath);
+		if (!existsSync(candidate)) continue;
+		const parsed = JSON.parse(await readFile(candidate, "utf8")) as { version?: unknown; name?: unknown };
+		if (parsed.name !== "@pasko70/pibo-standard" && parsed.name !== "@pasko70/pibo") throw new Error(`Unexpected package name in ${resolved}`);
 		if (typeof parsed.version === "string") packageVersion = parsed.version;
-	} catch (error) {
-		if (error instanceof Error && error.message.startsWith("Unexpected package")) throw error;
+		packageRoot = resolve(candidate, "..");
+		break;
 	}
-	const packageRoot = resolve(resolved, "node_modules/@pasko70/pibo");
+	if (!packageRoot) throw new Error(`Pibo application package was not found: ${resolved}`);
 	return { sha256: await sha256Directory(packageRoot), runtimePath: resolved, binaryPath, packageVersion, reused: true };
 }
 

@@ -28,7 +28,7 @@ test('gateway owns one product host with ordinary default plugin and complete ma
   assert.equal(host.inspect().state, 'active');
   assert.equal(host.inspect().plugins.filter((plugin) => plugin.pluginId === 'pibo.web-annotations').length, 1);
   assert.equal(host.inspect().plugins.some((plugin) => plugin.pluginId === 'pibo.core' || plugin.pluginId === 'pibo.user-resources'), false);
-  assert.equal(registry.getCapabilityCatalog().skills.some((skill) => skill.name === 'pi-agent-harness' && skill.pluginId === undefined), true);
+  assert.equal(registry.getCapabilityCatalog().skills.some((skill) => skill.name === 'pi-agent-harness' && skill.pluginId === 'pibo.builtin-profiles'), true);
   const manager = host.services.get(PLUGIN_MANAGEMENT_SERVICE);
   assert.equal(manager.diagnose().lifecycleAvailable, true);
   assert.equal(manager.diagnose().consumerCollectorAvailable, true);

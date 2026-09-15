@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { PluginSetupContext } from "./host.js";
@@ -11,7 +12,13 @@ import {
 	type PiboChatExtensionService,
 } from "./product-services.js";
 
-const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+function webAnnotationsSkillPath(): string {
+	const packaged = resolve(MODULE_DIRECTORY, "skills", "web-annotations", "SKILL.md");
+	if (existsSync(packaged)) return packaged;
+	return resolve(MODULE_DIRECTORY, "../..", "skills", "builtin", "web-annotations", "SKILL.md");
+}
 
 /** Backend entry used by the ordinary staged Web Annotations package. */
 export function setup(context: PluginSetupContext): () => void {
@@ -20,7 +27,7 @@ export function setup(context: PluginSetupContext): () => void {
 	context.register("api", webApp);
 	context.register("skill", {
 		name: "web-annotations",
-		path: resolve(PIBO_PACKAGE_ROOT, "skills", "builtin", "web-annotations", "SKILL.md"),
+		path: webAnnotationsSkillPath(),
 		kind: "builtin",
 	});
 	context.register("annotations", {});

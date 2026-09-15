@@ -11,7 +11,6 @@ export const coreCapabilitiesSetup = defineTestCapabilitySetup({
 	name: "Pibo Core Test Fixture",
 	register(api) {
 		definePiboCoreContributions({
-			addSkill: (skill) => api.registerSkill(skill),
 			addGatewayAction: (action) => api.registerGatewayAction(action),
 		});
 	},

@@ -411,6 +411,7 @@ type ChatEventCommands = {
 
 type ChatReadState = {
 	markSessionRead(piboSessionId: string, lastReadStreamId: number): void;
+	lastReadAtBySession(input: { piboSessionIds: string[] }): Map<string, string>;
 	hasUnreadErrorsBySession(input: { piboSessionIds: string[] }): Set<string>;
 	countUnreadMessagesBySession(input: { piboSessionIds: string[] }): Map<string, number>;
 };
@@ -3764,10 +3765,14 @@ function sessionIdsWithUnreadInSubtree(
 
 type SignalStatusOptions = {
 	sessionIdsWithUnreadErrorInSubtree?: ReadonlySet<string>;
+	lastReadAtBySession?: ReadonlyMap<string, string>;
 };
 
-function signalStatusHasUnreadError(options: SignalStatusOptions, piboSessionId: string): boolean {
-	return options.sessionIdsWithUnreadErrorInSubtree?.has(piboSessionId) ?? true;
+function signalStatusHasUnreadError(options: SignalStatusOptions, piboSessionId: string, signalUpdatedAt?: string): boolean {
+	if (options.sessionIdsWithUnreadErrorInSubtree?.has(piboSessionId)) return true;
+	if (!options.lastReadAtBySession) return options.sessionIdsWithUnreadErrorInSubtree === undefined;
+	const lastReadAt = options.lastReadAtBySession.get(piboSessionId);
+	return !lastReadAt || !signalUpdatedAt || lastReadAt < signalUpdatedAt;
 }
 
 function signalStatusFromSnapshot(
@@ -3779,7 +3784,7 @@ function signalStatusFromSnapshot(
 	if (!session) return undefined;
 	const summary = summarizeSessionSignalStatus(session);
 	if (summary.status === "running") return { status: "running", updatedAt: session.updatedAt };
-	const hasUnreadError = signalStatusHasUnreadError(options, piboSessionId);
+	const hasUnreadError = signalStatusHasUnreadError(options, piboSessionId, session.updatedAt);
 	return { status: summary.status === "error" && hasUnreadError ? "error" : "idle", updatedAt: session.updatedAt };
 }
 
@@ -3789,7 +3794,7 @@ function signalStatusFromSummary(
 	options: SignalStatusOptions = {},
 ): { status?: PiboWebSessionStatus; updatedAt?: string } | undefined {
 	if (!summary) return undefined;
-	const hasUnreadError = signalStatusHasUnreadError(options, piboSessionId);
+	const hasUnreadError = signalStatusHasUnreadError(options, piboSessionId, summary.updatedAt);
 	if (summary.isTreeActive || summary.status === "running") return { status: "running", updatedAt: summary.updatedAt };
 	if (summary.status === "error" && hasUnreadError) return { status: "error", updatedAt: summary.updatedAt };
 	return { status: "idle", updatedAt: summary.updatedAt };
@@ -3800,6 +3805,7 @@ function sessionIndexItemsWithSignalState(
 	sessions: readonly PiboSession[],
 	indexItems: readonly ChatWebSessionIndexItem[],
 	sessionUnreadErrors: ReadonlySet<string> = new Set(),
+	lastReadAtBySession: ReadonlyMap<string, string> = new Map(),
 ): ChatWebSessionIndexItem[] {
 	const snapshotSignalStatuses = context.channelContext.snapshotSignalStatuses;
 	const signalStatuses = snapshotSignalStatuses?.().sessions;
@@ -3810,8 +3816,8 @@ function sessionIndexItemsWithSignalState(
 	for (const session of sessions) {
 		const existing = bySessionId.get(session.id);
 		const signal = signalStatuses
-			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds })
-			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds });
+			? signalStatusFromSummary(signalStatuses[session.id], session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds, lastReadAtBySession })
+			: signalStatusFromSnapshot(snapshotSignalSession?.(session.id), session.id, { sessionIdsWithUnreadErrorInSubtree: unreadErrorSubtreeIds, lastReadAtBySession });
 		if (!signal?.status) continue;
 		if (signal.status === "idle" && existing?.status !== "running" && existing?.status !== "error") continue;
 		bySessionId.set(session.id, {
@@ -4956,9 +4962,10 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
 				const sessionUnreadErrors = buildSessionUnreadErrors(state, ownedSessions);
+				const lastReadAtBySession = state.readState.lastReadAtBySession({ piboSessionIds: ownedSessions.map((session) => session.id) });
 				const sessions = await buildSessionNodes(
 					roomSessions,
-					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
+					sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors, lastReadAtBySession),
 					process.cwd(),
 					sessionUnreadCounts,
 					{ skipPiMetadataFallback: true },
@@ -5016,10 +5023,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
                 }
                 const sessionUnreadCounts = await buildSessionUnreadCounts(state, ownedSessions);
 				const sessionUnreadErrors = buildSessionUnreadErrors(state, ownedSessions);
+				const lastReadAtBySession = state.readState.lastReadAtBySession({ piboSessionIds: ownedSessions.map((session) => session.id) });
 				const [sessions, catalog] = await Promise.all([
 					buildSessionNodes(
 						roomSessions,
-						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors),
+						sessionIndexItemsWithSignalState(context, roomSessions, await readNavigationIndex(state,selectedRoomId), sessionUnreadErrors, lastReadAtBySession),
 						process.cwd(),
 						sessionUnreadCounts,
 						sessionNodeHistoryOptions(context),

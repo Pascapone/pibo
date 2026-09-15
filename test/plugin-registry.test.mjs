@@ -57,12 +57,13 @@ test("capability host projects Core resources and installed package capabilities
 		tool.name === "codex_image_generation" && tool.pluginId === "pibo.codex-compat" && tool.hasDefinition === true
 	)));
 	assert.deepEqual(registry.getChannels().map((channel) => channel.name), ["pibo.loop"]);
+	const builtinSkills = registry.getCapabilityCatalog().skills.filter((skill) => skill.kind === "builtin");
 	assert.deepEqual(
-		registry.getCapabilityCatalog().skills
-			.filter((skill) => skill.kind === "builtin")
-			.map((skill) => skill.name),
-		["pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json", "web-annotations"],
+		builtinSkills.map((skill) => skill.name),
+		["web-annotations", "pi-agent-harness", "pibo-agent-runtime-adapter", "pibo-spec-writing", "pibo-docker-system", "graphify", "prd", "skill-creator", "loop", "ralph-loop", "ralph-prd-json"],
 	);
+	assert.equal(builtinSkills.filter((skill) => skill.name !== "web-annotations").every((skill) => skill.pluginId === "pibo.builtin-profiles"), true);
+	assert.equal(builtinSkills.find((skill) => skill.name === "web-annotations")?.pluginId, "pibo.web-annotations");
 	assert.deepEqual(registry.getGatewayActionInfos(), [
 		{
 			name: "status",

@@ -1,8 +1,23 @@
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { InitialSessionContextBuilder } from "../core/profiles.js";
 import type { PluginSetupContext } from "./host.js";
+import { PIBO_STANDARD_SKILL_NAMES } from "./standard-skills.js";
 import type { PiboProfileBuildContext } from "./types.js";
 
+const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
+
+function packagedSkillPath(name: string): string {
+	const packaged = resolve(MODULE_DIRECTORY, "skills", name, "SKILL.md");
+	if (existsSync(packaged)) return packaged;
+	return resolve(MODULE_DIRECTORY, "../..", "skills", "builtin", name, "SKILL.md");
+}
+
 export function setupBuiltinProfiles(context: PluginSetupContext): void {
+	for (const name of PIBO_STANDARD_SKILL_NAMES) {
+		context.register(name, { name, path: packagedSkillPath(name), kind: "builtin" });
+	}
 	context.register("base", {
 		name: "base",
 		description: "Base agent with only the four Pi built-in tools.",

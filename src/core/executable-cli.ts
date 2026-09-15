@@ -3,6 +3,15 @@ import { ensurePrivatePiboHome } from "./pibo-home.js";
 import { PiboCapabilityHost } from "./capability-host.js";
 import { createRuntimeUnassignedProfile, PIBO_MINIMAL_CORE_PROFILE_NAME } from "./runtime-unassigned.js";
 import { runWebGatewayServer, type WebGatewayAuthMode } from "../gateway/web.js";
+import type { PluginSourceInput } from "../plugins/sources.js";
+
+export type PiboExecutableComposition = {
+	productName?: string;
+	gatewayDescription?: string;
+	defaultProfile?: string;
+	registerRuntimeUnassignedProfile?: boolean;
+	bootstrapPluginSources?: readonly PluginSourceInput[];
+};
 
 function packageVersion(): string {
 	const value = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")) as { version?: unknown };
@@ -10,28 +19,30 @@ function packageVersion(): string {
 	return value.version;
 }
 
-function rootHelp(): string {
+function rootHelp(composition: PiboExecutableComposition): string {
 	return [
-		"Pibo Minimal Core",
+		composition.productName ?? "Pibo Minimal Core",
 		"",
 		"Usage: pibo <command>",
 		"",
 		"Commands:",
-		"  gateway:web  Start the plugin-free Web Gateway and Chat app",
+		`  gateway:web  ${composition.gatewayDescription ?? "Start the plugin-free Web Gateway and Chat app"}`,
 		"",
 		"Options:",
 		"  -h, --help     Show this discovery help",
 		"  -V, --version  Show the package version",
 		"",
-		"Run `pibo gateway:web --help` for gateway options. Feature tools, runtime adapters, and feature views are delivered by separate plugin packages.",
+		composition.bootstrapPluginSources?.length
+			? `Run \`pibo gateway:web --help\` for gateway options. This composition activates ${composition.bootstrapPluginSources.length} packaged plugins on first startup.`
+			: "Run `pibo gateway:web --help` for gateway options. Feature tools, runtime adapters, and feature views are delivered by separate plugin packages.",
 	].join("\n");
 }
 
-function gatewayHelp(): string {
+function gatewayHelp(composition: PiboExecutableComposition): string {
 	return [
 		"Usage: pibo gateway:web [options]",
 		"",
-		"Start the plugin-free Web Gateway and Chat app.",
+		`${composition.gatewayDescription ?? "Start the plugin-free Web Gateway and Chat app"}.`,
 		"",
 		"Options:",
 		"  --auth <mode>          better-auth (default) or local",
@@ -99,10 +110,10 @@ function gatewayOptions(args: string[]) {
 	return { help: false as const, authMode, webHost, webPort, gatewayPort };
 }
 
-export async function runPiboCoreCli(argv = process.argv): Promise<void> {
+export async function runPiboCoreCli(argv = process.argv, composition: PiboExecutableComposition = {}): Promise<void> {
 	const command = argv[2];
 	if (command === undefined || command === "--help" || command === "-h") {
-		console.log(rootHelp());
+		console.log(rootHelp(composition));
 		return;
 	}
 	if (command === "--version" || command === "-V") {
@@ -110,27 +121,31 @@ export async function runPiboCoreCli(argv = process.argv): Promise<void> {
 		return;
 	}
 	if (command !== "gateway:web") {
-		throw new Error(`Command '${command}' is not part of Pibo Minimal Core. Install the required plugin package or run \`pibo --help\`.`);
+		throw new Error(`Command '${command}' is not part of ${composition.productName ?? "Pibo Minimal Core"}. Install the required plugin package or run \`pibo --help\`.`);
 	}
 	const options = gatewayOptions(argv.slice(3));
 	if (options.help) {
-		console.log(gatewayHelp());
+		console.log(gatewayHelp(composition));
 		return;
 	}
 	ensurePrivatePiboHome();
 	const capabilityHost = PiboCapabilityHost.create();
-	capabilityHost.registerProfile({
-		name: PIBO_MINIMAL_CORE_PROFILE_NAME,
-		description: "Runtime-free profile for a plugin-free Pibo Minimal Core installation",
-		create: () => createRuntimeUnassignedProfile(),
-	});
+	const defaultProfile = composition.defaultProfile ?? PIBO_MINIMAL_CORE_PROFILE_NAME;
+	if (composition.registerRuntimeUnassignedProfile ?? defaultProfile === PIBO_MINIMAL_CORE_PROFILE_NAME) {
+		capabilityHost.registerProfile({
+			name: PIBO_MINIMAL_CORE_PROFILE_NAME,
+			description: "Runtime-free profile for a plugin-free Pibo Minimal Core installation",
+			create: () => createRuntimeUnassignedProfile(),
+		});
+	}
 	await runWebGatewayServer({
 		authMode: options.authMode,
 		port: options.gatewayPort,
 		web: { host: options.webHost, port: options.webPort },
-		chat: { defaultProfile: PIBO_MINIMAL_CORE_PROFILE_NAME },
+		chat: { defaultProfile },
 		capabilityHost,
 		installDefaultPlugins: false,
+		bootstrapPluginSources: composition.bootstrapPluginSources,
 		resourceReaper: false,
 	});
 }

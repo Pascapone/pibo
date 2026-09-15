@@ -5,11 +5,11 @@ import type { PluginHost } from "./host.js";
 import { PluginManager, type PluginManagerLifecycle } from "./manager.js";
 import { preparePluginSdkResolution } from "./backend-loader.js";
 import { createStagedPluginDefinition } from "./staged-definition.js";
-import { verifyPluginArtifact } from "./sources.js";
+import { verifyPluginArtifact, type PluginSourceInput } from "./sources.js";
 import type { PluginConsumerCollector } from "./operations.js";
 import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, PiboChatExtensionRegistry, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation } from "./manifest.js";
-import { provideCoreUserResources } from "../core/user-resources.js";
+import { prepareCoreUserResources } from "../core/user-resources.js";
 import { provideCoreCapabilities } from "../core/capabilities.js";
 import { isPibo4LegacyAggregatePluginId, pibo4LegacyAggregateOwners, verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverPlan } from "./cutover.js";
 
@@ -22,6 +22,8 @@ export async function startPluginProductRuntime(options: {
 	readSessionPlan?: PluginSessionPlanReader;
 	productOptions?: PiboPluginProductOptions;
 	installDefaultPlugins?: boolean;
+	/** Package or local sources supplied by an executable composition. Missing sources are installed and activated in declaration order. */
+	bootstrapPluginSources?: readonly PluginSourceInput[];
 	includeWebProduct?: boolean;
 	requirePreparedCutover?: boolean;
 	cutoverPlanPath?: string;
@@ -78,6 +80,7 @@ export async function startPluginProductRuntime(options: {
 	const manager = new PluginManager({ store: data.plugins, artifactRoot, lifecycle, collectConsumers: options.collectConsumers, coreServices: () => host.coreServiceDeclarations() });
 	const runtime = new PluginRuntimeCoordinator({ host, manager, store: data.plugins });
 	const chatExtensions = new PiboChatExtensionRegistry();
+	const coreUserResources = prepareCoreUserResources(host, options.productOptions?.userResources);
 	const coreServiceDisposers = [
 		host.provideCoreService({ id: PLUGIN_HOST_SERVICE, version: "1.0.0", value: host }),
 		host.provideCoreService({ id: PLUGIN_MANAGEMENT_SERVICE, version: "1.0.0", value: manager }),
@@ -85,7 +88,7 @@ export async function startPluginProductRuntime(options: {
 		host.provideCoreService({ id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0", value: chatExtensions }),
 		...(options.readSessionPlan ? [host.provideCoreService({ id: PLUGIN_SESSION_PLAN_SERVICE, version: "1.0.0", value: options.readSessionPlan })] : []),
 		provideCoreCapabilities(host),
-		provideCoreUserResources(host, options.productOptions?.userResources),
+		() => coreUserResources.dispose(),
 	];
 	if (options.productOptions?.web) {
 		if (options.provideWebProduct) {
@@ -126,6 +129,17 @@ export async function startPluginProductRuntime(options: {
 				data.plugins.putInstallation({ ...legacy, enabled: false, state: "uninstalled", pendingArtifact: undefined, diagnostic: "Superseded by prepared Pibo 4 package cutover", updatedAt: new Date().toISOString() }, legacy.stateRevision);
 			}
 		}
+		if (options.bootstrapPluginSources) {
+			for (const source of options.bootstrapPluginSources) {
+				const inspected = await manager.inspect(source);
+				const existing = data.plugins.getInstallation(inspected.manifest.id);
+				if (existing) continue;
+				const installed = await manager.install(source, { expectedRevision: 0 });
+				if (!installed.installation) throw new Error(`Bootstrap plugin ${inspected.manifest.id} was not installed`);
+				const activation = await manager.activate(inspected.manifest.id, { expectedRevision: installed.installation.stateRevision });
+				if (activation.state !== "complete") throw new Error(`Bootstrap plugin ${inspected.manifest.id} activation did not complete: ${activation.state}`);
+			}
+		}
 		if (options.installDefaultPlugins !== false) {
 			const defaultPackagesModule = "./default-packages.js";
 			const { ensureDefaultPluginInstallations } = await import(defaultPackagesModule) as typeof import("./default-packages.js");
@@ -144,6 +158,7 @@ export async function startPluginProductRuntime(options: {
 			await host.add({ plugins: installations.map(createStagedPluginDefinition) });
 			for (const installation of installations) ownedPluginIds.add(installation.pluginId);
 		}
+		coreUserResources.initialize();
 		if (cutover && options.cutoverPlanPath) await writePibo4CutoverReceipt(options.cutoverPlanPath, cutover);
 	} catch (error) {
 		const cleanupErrors: unknown[] = [];

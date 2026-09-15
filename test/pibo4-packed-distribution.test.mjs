@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -51,7 +52,7 @@ test("packed Minimal-Core starts with zero plugins and installs one independentl
 	await runNode(project, script, { PIBO_HOME: home });
 
 	const corePackage = JSON.parse(await readFile(join(project, "node_modules/@pasko70/pibo/package.json"), "utf8"));
-	assert.deepEqual(Object.keys(corePackage.exports).sort(), [".", "./package.json", "./plugin-cutover", "./plugin-host", "./plugin-runtime", "./plugin-sdk", "./product-runtime"].sort());
+	assert.deepEqual(Object.keys(corePackage.exports).sort(), [".", "./executable-cli", "./package.json", "./plugin-cutover", "./plugin-host", "./plugin-runtime", "./plugin-sdk", "./product-runtime"].sort());
 	assert.equal(corePackage.dependencies, undefined);
 	const previewPackage = JSON.parse(await readFile(join("dist/pibo4-artifacts/preview/package.json"), "utf8"));
 	assert.equal(previewPackage.name, "@pasko70/pibo-plugin-preview");
@@ -107,8 +108,13 @@ test("standard artifact set maps every package to one exact plugin id and versio
 	assert.ok(set.plugins.every((entry) => entry.version === "1.0.0" && entry.package.startsWith("@pasko70/pibo-plugin-")));
 	const standardPackage = JSON.parse(await readFile("dist/pibo4-standard-package/package.json", "utf8"));
 	assert.equal(standardPackage.name, "@pasko70/pibo-standard");
+	assert.deepEqual(standardPackage.bin, { pibo: "./bin/pibo.js", "pibo-standard": "./bin/pibo.js" });
 	assert.equal(standardPackage.dependencies["@pasko70/pibo"], "4.0.0-beta.1");
-	for (const entry of set.plugins) assert.equal(standardPackage.dependencies[entry.package], entry.version);
+	assert.deepEqual(new Set(standardPackage.bundledDependencies), new Set(Object.keys(standardPackage.dependencies)));
+	for (const entry of set.plugins) {
+		assert.equal(standardPackage.dependencies[entry.package], entry.version);
+		assert.equal(existsSync(join("dist/pibo4-standard-package/node_modules", ...entry.package.split("/"), "pibo.plugin.json")), true);
+	}
 	const standardTarball = await npmPack(resolve("dist/pibo4-standard-package"), root);
 	const cutoverTarball = await npmPack(resolve("dist/pibo4-cutover-package"), root);
 	assert.match(basename(standardTarball), /^pasko70-pibo-standard-/);

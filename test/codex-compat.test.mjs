@@ -33,7 +33,7 @@ test("ordinary runtime packages expose base and native profiles without retired 
 	assert.equal(profile.builtinTools, "default");
 	assert.deepEqual(profile.builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.deepEqual(profile.tools, []);
-	assert.deepEqual(profile.skills.map((skill) => ({ name: skill.name, kind: skill.kind, pluginId: skill.pluginId })), [{ name: "pi-agent-harness", kind: "builtin", pluginId: undefined }]);
+	assert.deepEqual(profile.skills.map((skill) => ({ name: skill.name, kind: skill.kind, pluginId: skill.pluginId })), [{ name: "pi-agent-harness", kind: "builtin", pluginId: "pibo.builtin-profiles" }]);
 	assert.deepEqual(profile.contextFiles, []);
 	assert.deepEqual(profile.subagents, []);
 	assert.equal(profile.toolPackages.runControl, undefined);

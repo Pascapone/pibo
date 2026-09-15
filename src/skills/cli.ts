@@ -1,12 +1,15 @@
 import { Command } from "commander";
-import { definePiboCoreContributions } from "../plugins/builtin.js";
+import { PIBO_STANDARD_SKILL_NAMES } from "../plugins/standard-skills.js";
 import {
 	ScopedUserSkillManager,
 	normalizeUserSkillScope,
 	normalizeWritableUserSkillScope,
 } from "../user-skills/manager.js";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const PIBO_PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function printJson(value: unknown): void {
 	console.log(JSON.stringify(value, null, 2));
@@ -26,8 +29,11 @@ export async function runSkillsCli(argv: string[]): Promise<void> {
 		.description("List built-in and plugin skills available to profiles")
 		.option("--json", "Print JSON")
 		.action((options: { json?: boolean }) => {
-			const skills: Array<{ name: string; path: string; kind?: string }> = [];
-			definePiboCoreContributions({ addSkill: (skill) => skills.push(skill), addGatewayAction: () => undefined });
+			const skills = PIBO_STANDARD_SKILL_NAMES.map((name) => ({
+				name,
+				path: resolve(PIBO_PACKAGE_ROOT, "skills", "builtin", name, "SKILL.md"),
+				kind: "builtin",
+			}));
 			if (options.json) {
 				printJson(skills);
 				return;
