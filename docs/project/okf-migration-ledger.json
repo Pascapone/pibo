@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-15T02:06:30Z",
+  "generated_at": "2026-09-15T15:48:23Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -20,26 +20,26 @@
     {
       "path": "docs/plans/pibo-4-0-plugin-completion-todo.md",
       "state": "conformant",
-      "classification": "active task-by-task execution of the owner-authorized Pibo 4.0 completion plan",
+      "classification": "Pibo 4.0 plugin completion task ledger",
       "type": "Task Ledger",
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 18030,
-      "file_sha256": "e9029e327a67a7a42ba6c5e6b78574f3718045157a6bc9e81d1f0224dcf590f7",
-      "body_sha256": "034533a204871d712cbd8f11e46ad1e558759b46f5aeedf84831412da24a667e"
+      "file_bytes": 44931,
+      "file_sha256": "0cb1df7901309f0fd4db1a91ff78750e0046f70e2f3d24df116882431f151f95",
+      "body_sha256": "51784542aebea3483dd27674f24bd06808676fdaccb0b886ffc0fd924d52bdc2"
     },
     {
       "path": "docs/plans/pibo-4-0-plugin-completion.md",
       "state": "conformant",
-      "classification": "owner-directed Pibo 4.0 completion plan with explicit core boundaries and external plugin delivery",
+      "classification": "Pibo 4.0 plugin completion implementation plan",
       "type": "Plan",
       "authority": "directive",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 60488,
-      "file_sha256": "81757f4c848bf5b357bb296cf084e9726fc6a6fa2e9286f13fa48a51cb1097cb",
-      "body_sha256": "9b1031d48c9e8f2052a8f2b31c23df983f4c1089172f3c3e6d45f891f742f1a4"
+      "file_bytes": 79292,
+      "file_sha256": "d69989459037baca9f5e240bea0507ff3e37e94866bbd776cf282b832023bea4",
+      "body_sha256": "efdad60f94d6c8ad7bdaa75851227cd8ede72afeab18739079187f69af12d0bf"
     },
     {
       "path": "docs/plans/unified-plugin-system-rebuild.md",
@@ -8601,9 +8601,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 48549,
-      "file_sha256": "f3d75b3a4dcd2e16f2f9b1ea4d06e9ebdc61b3a4219b8bb16880a02f430ac397",
-      "body_sha256": "f3d75b3a4dcd2e16f2f9b1ea4d06e9ebdc61b3a4219b8bb16880a02f430ac397"
+      "file_bytes": 69040,
+      "file_sha256": "8308db4291bf9e28da9fb0595d578919a41952618607c4dc1547d91620ec9623",
+      "body_sha256": "8308db4291bf9e28da9fb0595d578919a41952618607c4dc1547d91620ec9623"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -11117,9 +11117,9 @@
       "reason": "Required OKF index in the exact I-CENTRAL closure.",
       "current_present": true,
       "synthetic": false,
-      "file_bytes": 18016,
-      "file_sha256": "53f97c018876a0d09beabe293e862e4a0d767f54df31a6c48832714f5461aaf0",
-      "body_sha256": "53f97c018876a0d09beabe293e862e4a0d767f54df31a6c48832714f5461aaf0"
+      "file_bytes": 25668,
+      "file_sha256": "f3df10483375fa6b369aa0c3a33396bdd7721efa3ba179fcb8fa0ac9f0787b42",
+      "body_sha256": "f3df10483375fa6b369aa0c3a33396bdd7721efa3ba179fcb8fa0ac9f0787b42"
     },
     {
       "path": "docs/reports/ink-cli-v2-pty-smoke-scenarios.md",
@@ -14001,6 +14001,18 @@
       "authority": "directive",
       "status": "stable",
       "lineage": null
+    },
+    {
+      "path": "docs/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md",
+      "state": "conformant",
+      "classification": "Pibo 4.0 canonical Pibo2 acceptance evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null,
+      "file_bytes": 3293,
+      "file_sha256": "5b6cdbe6bc92f3ec885cdb73eda7d04347e09c16c89108ea69dd6dde648ead80",
+      "body_sha256": "692527990e073f60eacc8aaf062c38501e5334f6aa03318ba836cab94513052e"
     }
   ]
 }

@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T15:27:42Z"
+  at: "2026-09-15T15:48:23Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -37,7 +37,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | lokal akzeptiert in F10 | Pibo2-Upgrade bleibt separat |
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
-| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `cb975d3e`; packed Pi-OAuth-Derivation, retained PIBO_HOME-Rebasing und 20-Plugin-Standard geprüft | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
+| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `cb975d3e`; packed Pi-OAuth-Derivation, retained PIBO_HOME-Rebasing und 20-Plugin-Standard geprüft | lokal und auf Pibo2 akzeptiert | Beta-Branch pushen; Publish und Release bleiben eigene Aktionen |
 
 # Erledigter Einstieg
 
@@ -166,8 +166,9 @@ Nachweise: [Pluginpaket-Spezifikation](/specs/product/plugin-profile-catalog.md)
 - [x] F10-05: Plan, To-do und Log auf den damals belegten lokalen Abschluss gesetzt; historische und lokale Zahlen bleiben getrennt, Release/Pibo2 werden nicht behauptet.
 - [x] F10-06: N-025 in Kandidat `8ad776f1` integriert: ausführbarer Core-Tarball, isolierter Offline-Gateway-/Chat-/Core-UI-Start, physische Closure, Offline-Installation aller 23 Tarballs und content-addressed Candidate-Installer-Kompatibilität sind belegt.
 - [x] F10-07: N-026 in Kandidat `51bcfcef4653328823e79a0f2386b786fcf003d9` integriert: Standard-Only-Offlineinstallation, Erststart und Wiederstart mit 20/20 aktiven Plugins, leerer Minimal-Core-Skillkatalog, konfliktfreie User-Skill-Materialisierung, deterministischer Signalfehlerstatus, content-addressed Standard-Candidate sowie headful Mobile/Desktop ohne Netzwerk-/Konsolenfehler sind belegt.
+- [x] F10-08: Exakten Kandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` mit SHA-256 `b5f5219b8958584902afdb13c9f6dd3eb889a3c1e9aae8cfe9b73ee5f2ba1f38` auf Pibo2 aus einem vollständigen 1.7.2-Bestand migriert. 20 Zielplugins sind aktiv, fünf ersetzte Sammelowner sind als deinstallierte Tombstones erhalten, das Receipt bleibt beim Neustart bytegenau stabil, vier Referenz-Sessions behalten Profil, Verlauf und Runtime-Binding, und reale Antworten über eine alte Pi- sowie eine alte Codex-Native-Session bestehen vor dem Neustart; Pi besteht zusätzlich danach. Die authentifizierte Headful-Web-Abnahme zeigt Verlauf, Sessionstatus, Settings und Pluginverwaltung ohne Browser-Konsolenfehler.
 
-Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package-tests.log`; `/tmp/f06-final-gateway-integration.log`; `/tmp/f06-unassigned-typecheck2.log`; `/tmp/f06-unassigned-chat-build.log`; `/tmp/f06-final-packages.log`; `/tmp/f06-core-final-desktop-five-views.png`; `/tmp/f06-core-final-mobile-settings.png`; `/tmp/f06-core-final-mobile-plugins.png`; CDP-Protokolle `/tmp/f06-core-final-desktop-five-views.json`, `/tmp/f06-core-final-mobile-settings.json` und `/tmp/f06-core-final-mobile-plugins.json`. Keine npm-Veröffentlichung, kein Push, PR, Merge, Release, Deployment, Pibo2-Lauf, realer All-Runtime-Modellaufruf oder Controller-Gateway-Mutation.
+Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package-tests.log`; `/tmp/f06-final-gateway-integration.log`; `/tmp/f06-unassigned-typecheck2.log`; `/tmp/f06-unassigned-chat-build.log`; `/tmp/f06-final-packages.log`; `/tmp/f06-core-final-desktop-five-views.png`; `/tmp/f06-core-final-mobile-settings.png`; `/tmp/f06-core-final-mobile-plugins.png`; CDP-Protokolle `/tmp/f06-core-final-desktop-five-views.json`, `/tmp/f06-core-final-mobile-settings.json` und `/tmp/f06-core-final-mobile-plugins.json`; [Pibo2-Abnahmebericht](/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md). Keine npm-Veröffentlichung, kein PR, Merge, Release, Publish oder Controller-Gateway-Mutation.
 
 # Neue Befunde und Zusatzaufgaben
 
@@ -209,12 +210,13 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 
 # Abnahmestand
 
-F00 bis F10 sind für den lokalen Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
+F00 bis F10 sind für den Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` lokal und auf Pibo2 abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte, lokale headful oder reale Pibo2-Evidenz. Der kanonische Pibo2-Dienst läuft auf dem exakten Kandidaten; Pi und Codex Native wurden mit erhaltenen Alt-Sessions real geprüft. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Veröffentlichung, Release, Merge und npm-Publish bleiben getrennte, nicht ausgeführte Aktionen.
 
 # Aktivität und Entscheidungen
 
 ## 2026-09-15
 
+- Kanonische Pibo2-Abnahme abgeschlossen: Der content-adressierte Kandidat `cb975d3e` / `b5f5219b…` migrierte den vorhandenen 1.7.2-Bestand auf 20 aktive Einzelplugins und fünf deinstallierte Altowner. Receipt `7adf5c35…`, Pluginzustand und Sessions blieben beim Neustart stabil. Alte Pi- und Codex-Native-Sessions antworteten real; die alte Pi-Session antwortete erneut nach dem Neustart. Authentifizierte Headful-Prüfung bestätigte Verlauf, Settings und Pluginverwaltung ohne Konsolenfehler. Der isolierte Staging-Authfehler war eine fehlende Provider-Umgebungsvariable der Testinstanz, kein Produktdefekt.
 - F08 abgeschlossen und als `d37dea0c` committed: Capability Host ist die einzige produktive Registrierungsautorität; Registry-/Wildcard-/`plugin-builtin`-/Aggregate-Delivery ist entfernt. TypeScript, 20 Artefakte plus Standard, serieller F08-Lauf 105/105 und isolierte Gatewayintegration 5/5 sind grün.
 - F09 abgeschlossen: aktuelle Spezifikationen und Pläne auf den F08-Commit abgeglichen, externe Entwicklung und Betrieb dokumentiert, OMP-Grenze präzisiert und `examples/plugins/hello-pibo` im Worker gebaut, importiert, inspiziert, installiert, aktiviert und gepackt. Strikte OKF-Prüfung und Dokumentationstests sind grün.
 - N-025 geschlossen und F06/F10 erneut lokal abgeschlossen: Kandidat `8ad776f1` liefert den ausführbaren Minimal-Core mit CLI, Gateway, Chat, Workern, fünf Core-Ansichten, Profil `core`, `pibo.runtime-unassigned`, leeren diagnostischen Pluginplänen und physisch ausgeschlossenen Runtime-/Featureimplementierungen.

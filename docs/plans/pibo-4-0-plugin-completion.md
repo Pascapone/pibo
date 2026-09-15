@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T15:27:42Z"
+  at: "2026-09-15T15:48:23Z"
 sources:
   - id: "owner-completion"
     resource: "scope:owner decisions 2026-09-14 in Pibo Session ps_c5596e29-e5db-47e8-a736-714f4a1c99cf; independent minimal core; all Pibo extension tools through public plugin contracts; explicit core views; Codex-owned Runtime Requests subject to dependency inspection; OMP maintenance only; remove executable legacy APIs; preserve data through migration; write a plan without implementation"
@@ -19,6 +19,8 @@ sources:
     resource: "/plans/unified-plugin-system-execution.md"
   - id: "workspace-contract"
     resource: "/specs/web/session-workspace-lifecycle.md"
+  - id: "pibo2-acceptance"
+    resource: "/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md"
   - id: "inspected-baseline"
     resource: "scope:read-only research and selected parent source inspection at beta/4.0-plugin-system commit 8817384f465a6cfe7d9cc66b9a11f8d438196aa5 on 2026-09-14; no fresh runtime acceptance in this planning task"
 ---
@@ -27,11 +29,11 @@ sources:
 
 Dieser Plan beschreibt die verbleibende Arbeit bis zum sauberen Plugin-Modell von Pibo 4.0. Der große Umbau ist bereits vorhanden. Jetzt werden die verbliebenen Sonderwege entfernt, der Kern tatsächlich unabhängig ausgeliefert und alle Erweiterungen über denselben öffentlichen Vertrag angebunden.
 
-Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 einschließlich der erneut geprüften N-033-Runtime-/Ressourcenlieferung für den festen lokalen Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` implementiert, dokumentiert und lokal abgenommen. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme. Veröffentlichung, Push, PR, Deployment, Merge, Release, Pibo2 und reale All-Runtime-Modellabnahme bleiben separate Aktionen.
+Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 einschließlich der erneut geprüften N-033-Runtime-/Ressourcenlieferung für den festen Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` implementiert, dokumentiert, lokal abgenommen und auf Pibo2 akzeptiert. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme; der [Pibo2-Abnahmebericht](/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md) hält Cutover, Alt-Session-Parität und Restart fest. Veröffentlichung, PR, Merge, Release und npm-Publish bleiben separate Aktionen.
 
 Dieser Plan führt die festgelegten Restentscheidungen aus dem [bisherigen Umbauplan](/plans/unified-plugin-system-rebuild.md) fort. Bei Widersprüchen zu dessen pauschaler Aussage „alle Produktoberflächen sind Plugins“, zur alten Default-Komposition, zu tolerierten Legacy-APIs oder zum OMP-Ausbau ist **dieser Plan maßgeblich**. Sonstige Anforderungen, insbesondere Daten-, Kontext- und UI-Parität, bleiben bestehen. Das [bisherige Ausführungsprotokoll](/plans/unified-plugin-system-execution.md) bleibt Nachweis vergangener Arbeit; alte offene Checkboxen bedeuten nicht automatisch, dass deren Implementierung erneut erforderlich ist.
 
-Arbeitsbasis ist `beta/4.0-plugin-system`, Ausgangscommit `8817384f465a6cfe7d9cc66b9a11f8d438196aa5`, im bestehenden Worktree `/root/code/pibo/.worktrees/plugin-system-rebuild`. Es gibt keinen Neustart von einem älteren Development-Stand. Der Controller-Gateway bleibt unangetastet. Code und Laufzeitprüfungen laufen im isolierten Docker-Worker. Pibo2 ist für den aktuellen lokalen Abschluss ausdrücklich ausgeschlossen und bleibt separate Release-Evidenz.
+Arbeitsbasis ist `beta/4.0-plugin-system`, Ausgangscommit `8817384f465a6cfe7d9cc66b9a11f8d438196aa5`, im bestehenden Worktree `/root/code/pibo/.worktrees/plugin-system-rebuild`. Es gibt keinen Neustart von einem älteren Development-Stand. Der Controller-Gateway bleibt unangetastet. Code und Laufzeitprüfungen liefen im isolierten Docker-Worker; anschließend wurde derselbe content-adressierte Kandidat auf Pibo2 akzeptiert.
 
 # 1. Überblick für Produktverantwortliche
 
