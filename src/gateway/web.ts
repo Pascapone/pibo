@@ -2,6 +2,7 @@ import { CHAT_WEB_APP_NAME, type ChatWebAppOptions } from "../apps/chat/web-app.
 import type { BetterAuthServiceOptions } from "../auth/better-auth.js";
 import type { ContextFilesPluginOptions } from "../plugins/context-files.js";
 import { PiboCapabilityHost } from "../core/capability-host.js";
+import { getPiboHome } from "../core/pibo-home.js";
 import { DEFAULT_WEB_CHANNEL_HOST, DEFAULT_WEB_CHANNEL_PORT, type WebHostChannelOptions } from "../web/channel.js";
 import { loadPiboConfig } from "../config/config.js";
 import { PiboGatewayServer, resolveGatewayResourceReaperOptions, type GatewayServerOptions } from "./server.js";
@@ -209,7 +210,7 @@ export async function runWebGatewayServer(options: WebGatewayServerOptions = {})
 			pluginProductOptions: {
 				userResources: {
 					contextFilesMode: "full",
-					userSkills: { globalRoot: resolvedOptions.chat?.userSkillGlobalRoot, workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot },
+					userSkills: { globalRoot: resolvedOptions.chat?.userSkillGlobalRoot, globalPiboHome: getPiboHome(), workspaceRoot: resolvedOptions.chat?.userSkillWorkspaceRoot },
 					contextFiles: resolvedOptions.contextFiles,
 					customAgents: { agentStorePath: resolvedOptions.chat?.agentStorePath },
 				},

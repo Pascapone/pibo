@@ -1,11 +1,15 @@
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = process.cwd();
 const outputRoot = resolve(root, "dist/pibo4-artifacts");
 const generatedRoot = resolve(root, "dist/.pibo4-generated");
 const defaults = await import(new URL("../dist/plugins/default-packages.js", import.meta.url));
+const topLevelOAuthBundle = fileURLToPath(import.meta.resolve("@earendil-works/pi-ai/bun-oauth"));
+const piAgentPackageRoot = resolve(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))), "..");
+const piAgentOAuthBundle = join(piAgentPackageRoot, "node_modules", "@earendil-works", "pi-ai", "dist", "bun-oauth.js");
 
 const packages = [
 	["preview", defaults.previewPackageManifest, "src/plugins/packaged-preview.ts", "setupPreview", [["PreviewView", "src/apps/chat-ui/src/plugins/preview-view.tsx"]]],
@@ -56,7 +60,11 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 	const packageRoot = join(outputRoot, packageSuffix);
 	await mkdir(packageRoot, { recursive: true });
 	const backendEntry = join(generatedRoot, `${packageSuffix}-backend.ts`);
-	await writeFile(backendEntry, `export { ${backendExport} as setup } from ${JSON.stringify(resolve(root, backendSource))};\n`);
+	const runtimeBootstrap = packageSuffix === "runtime-pi"
+		? `import { registerBunOAuthFlows as registerTopLevelOAuthFlows } from ${JSON.stringify(topLevelOAuthBundle)};\nimport { registerBunOAuthFlows as registerPiAgentOAuthFlows } from ${JSON.stringify(piAgentOAuthBundle)};\nregisterTopLevelOAuthFlows();\nregisterPiAgentOAuthFlows();\n`
+		: "";
+	const runtimeExports = packageSuffix === "runtime-pi" ? `export { derivePackagedPiProviderAuth } from ${JSON.stringify(resolve(root, backendSource))};\n` : "";
+	await writeFile(backendEntry, `${runtimeBootstrap}export { ${backendExport} as setup } from ${JSON.stringify(resolve(root, backendSource))};\n${runtimeExports}`);
 	await build({
 		entryPoints: [backendEntry],
 		outfile: join(packageRoot, "backend.mjs"),

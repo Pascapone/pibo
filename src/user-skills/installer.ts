@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { UserSkill } from "./types.js";
-import { createUserSkill, defaultUserSkillDir, parseSkillMd } from "./store.js";
+import { createUserSkill, defaultUserSkillDir, parseSkillMd, type UserSkillStorageLocation } from "./store.js";
 
 type ParsedSource = {
   account: string;
@@ -177,7 +177,7 @@ async function findSkillDirectory(account: string, repo: string, path?: string):
   throw new Error(`Could not find a SKILL.md in ${account}/${repo}${path ? `/${path}` : ""}`);
 }
 
-export async function installSkillFromUrl(url: string, cwd = process.cwd()): Promise<UserSkill> {
+export async function installSkillFromUrl(url: string, cwd: UserSkillStorageLocation = process.cwd()): Promise<UserSkill> {
   const source = parseSkillUrl(url);
   if (!source) {
     throw new Error(`Unsupported skill URL format: ${url}`);

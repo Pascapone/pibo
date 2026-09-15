@@ -1,9 +1,9 @@
-import os from "node:os";
 import { ScopedUserSkillManager } from "../user-skills/manager.js";
 import type { UserSkill } from "../user-skills/types.js";
 
 export type PiboChatUserSkillsPluginOptions = {
 	globalRoot?: string;
+	globalPiboHome?: string;
 	workspaceRoot?: string;
 };
 
@@ -17,7 +17,8 @@ export function definePiboChatUserSkillContributions(
 	options: PiboChatUserSkillsPluginOptions = {},
 ): void {
 	const manager = new ScopedUserSkillManager({
-		globalRoot: options.globalRoot ?? os.homedir(),
+		globalRoot: options.globalRoot,
+		globalPiboHome: options.globalPiboHome,
 		workspaceRoot: options.workspaceRoot ?? process.cwd(),
 	});
 	const userSkills: UserSkill[] = [];

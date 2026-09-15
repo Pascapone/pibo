@@ -21,7 +21,7 @@ export async function startTestWebPluginProduct(options = {}) {
 			userResources: {
 				contextFilesMode: "full",
 				contextFiles: options.contextFiles,
-				userSkills: { globalRoot: options.chat?.userSkillGlobalRoot, workspaceRoot: options.chat?.userSkillWorkspaceRoot },
+				userSkills: { globalRoot: options.chat?.userSkillGlobalRoot, globalPiboHome: process.env.PIBO_HOME, workspaceRoot: options.chat?.userSkillWorkspaceRoot },
 				customAgents: { agentStorePath: options.chat?.agentStorePath },
 			},
 		},

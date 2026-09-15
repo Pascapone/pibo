@@ -77,6 +77,40 @@ test("web gateway registers user skills before custom agent profiles are used", 
 	}
 });
 
+test("standard user resources resolve retained global skills from explicit PIBO_HOME", async () => {
+	const dir = await mkdtemp(join(tmpdir(), "pibo-user-skill-pibo-home-"));
+	const previousHome = process.env.HOME;
+	const previousPiboHome = process.env.PIBO_HOME;
+	const piboHome = join(dir, "retained-pibo-home");
+	const unrelatedHome = join(dir, "service-home");
+	const agentStorePath = join(piboHome, "chat-agents.sqlite");
+	process.env.HOME = unrelatedHome;
+	process.env.PIBO_HOME = piboHome;
+	createSkill(new UserSkillManager({ piboHome }, "global"), "maintain-okf-docs");
+	const store = new CustomAgentStore(agentStorePath);
+	try {
+		for (const name of ["pibo-agent", "pibo-agent-v2", "pibo-agent-v2-multi", "pibo-agent-astra"]) store.create({ displayName: name, skills: ["maintain-okf-docs"] });
+	} finally { store.close(); }
+	const warnings = [];
+	const originalWarn = console.warn;
+	let product;
+	try {
+		console.warn = (...args) => warnings.push(args.join(" "));
+		product = await startTestWebPluginProduct({ authMode: "local", chat: { agentStorePath } });
+		for (const name of ["pibo-agent", "pibo-agent-v2", "pibo-agent-v2-multi", "pibo-agent-astra"]) {
+			assert.deepEqual(createPiboProfileFromCapabilitiesOrDefault(product.registry, name).skills.map((skill) => skill.name), ["maintain-okf-docs"]);
+		}
+		assert.equal(product.registry.getCapabilityCatalog().skills.find((skill) => skill.name === "maintain-okf-docs")?.kind, "user");
+		assert.deepEqual(warnings.filter((warning) => warning.includes("maintain-okf-docs")), []);
+	} finally {
+		console.warn = originalWarn;
+		await product?.dispose();
+		if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+		if (previousPiboHome === undefined) delete process.env.PIBO_HOME; else process.env.PIBO_HOME = previousPiboHome;
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
 test("web gateway startup survives a malformed user skill store", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-malformed-user-skills-"));
 	const previousHome = process.env.PIBO_HOME;

@@ -7,19 +7,29 @@ const STORE_VERSION = 1;
 const SKILL_DIR_NAME = "user-skills";
 const STORE_FILE_NAME = "user-skills.json";
 
-export function defaultUserSkillStorePath(cwd = process.cwd()): string {
-	return resolve(cwd, ".pibo", STORE_FILE_NAME);
+export type UserSkillStorageLocation = string | { piboHome: string };
+
+function storageRoot(location: UserSkillStorageLocation): string {
+	return typeof location === "string" ? resolve(location, ".pibo") : resolve(location.piboHome);
 }
 
-export function defaultUserSkillDir(cwd = process.cwd()): string {
-	return resolve(cwd, ".pibo", SKILL_DIR_NAME);
+function relativePathRoot(location: UserSkillStorageLocation): string {
+	return typeof location === "string" ? resolve(location) : resolve(location.piboHome);
 }
 
-export function ensureUserSkillStorage(cwd = process.cwd()): void {
+export function defaultUserSkillStorePath(location: UserSkillStorageLocation = process.cwd()): string {
+	return join(storageRoot(location), STORE_FILE_NAME);
+}
+
+export function defaultUserSkillDir(location: UserSkillStorageLocation = process.cwd()): string {
+	return join(storageRoot(location), SKILL_DIR_NAME);
+}
+
+export function ensureUserSkillStorage(cwd: UserSkillStorageLocation = process.cwd()): void {
 	mkdirSync(defaultUserSkillDir(cwd), { recursive: true });
 }
 
-export function loadUserSkillStore(cwd = process.cwd()): UserSkillStoreData {
+export function loadUserSkillStore(cwd: UserSkillStorageLocation = process.cwd()): UserSkillStoreData {
 	const path = defaultUserSkillStorePath(cwd);
 	if (!existsSync(path)) return { version: STORE_VERSION, skills: [] };
 	const parsed = JSON.parse(readFileSync(path, "utf-8")) as unknown;
@@ -36,19 +46,19 @@ export function loadUserSkillStore(cwd = process.cwd()): UserSkillStoreData {
 	};
 }
 
-export function saveUserSkillStore(data: UserSkillStoreData, cwd = process.cwd()): void {
+export function saveUserSkillStore(data: UserSkillStoreData, cwd: UserSkillStorageLocation = process.cwd()): void {
 	const path = defaultUserSkillStorePath(cwd);
 	mkdirSync(dirname(path), { recursive: true });
 	writeFileSync(path, `${JSON.stringify({ version: STORE_VERSION, skills: data.skills }, null, 2)}\n`, "utf-8");
 }
 
-function readUserSkillDescription(skill: UserSkill, cwd = process.cwd()): string {
+function readUserSkillDescription(skill: UserSkill, cwd: UserSkillStorageLocation = process.cwd()): string {
 	const markdown = readSkillMarkdown(skill, cwd);
 	const parsed = parseSkillMd(markdown);
 	return parsed.description;
 }
 
-export function listUserSkills(cwd = process.cwd()): UserSkill[] {
+export function listUserSkills(cwd: UserSkillStorageLocation = process.cwd()): UserSkill[] {
 	const skills = loadUserSkillStore(cwd).skills;
 	for (const skill of skills) {
 		skill.description = readUserSkillDescription(skill, cwd);
@@ -56,7 +66,7 @@ export function listUserSkills(cwd = process.cwd()): UserSkill[] {
 	return skills;
 }
 
-export function findUserSkill(idOrName: string, cwd = process.cwd()): UserSkill | undefined {
+export function findUserSkill(idOrName: string, cwd: UserSkillStorageLocation = process.cwd()): UserSkill | undefined {
 	const lookup = idOrName.trim();
 	const store = loadUserSkillStore(cwd);
 	const stored = store.skills.find((skill) => skill.id === lookup || skill.name === lookup);
@@ -65,7 +75,7 @@ export function findUserSkill(idOrName: string, cwd = process.cwd()): UserSkill 
 	return stored;
 }
 
-function validateSkillName(name: string, existingId?: string, cwd = process.cwd()): string {
+function validateSkillName(name: string, existingId?: string, cwd: UserSkillStorageLocation = process.cwd()): string {
 	const trimmed = name.trim();
 	if (!trimmed) throw new Error("Skill name is required");
 	if (trimmed.length > 64) throw new Error("Skill name is too long (max 64 characters)");
@@ -78,13 +88,13 @@ function validateSkillName(name: string, existingId?: string, cwd = process.cwd(
 	return trimmed;
 }
 
-export function readSkillMarkdown(skill: UserSkill, cwd = process.cwd()): string {
-	const fullPath = resolve(cwd, skill.path);
+export function readSkillMarkdown(skill: UserSkill, cwd: UserSkillStorageLocation = process.cwd()): string {
+	const fullPath = resolve(relativePathRoot(cwd), skill.path);
 	if (!existsSync(fullPath)) return "";
 	return readFileSync(fullPath, "utf-8");
 }
 
-export function createUserSkill(input: CreateUserSkillInput, cwd = process.cwd()): UserSkill {
+export function createUserSkill(input: CreateUserSkillInput, cwd: UserSkillStorageLocation = process.cwd()): UserSkill {
 	ensureUserSkillStorage(cwd);
 	const name = validateSkillName(input.name, undefined, cwd);
 	const description = (input.description ?? "").trim();
@@ -119,7 +129,7 @@ export function createUserSkill(input: CreateUserSkillInput, cwd = process.cwd()
 	return skill;
 }
 
-export function updateUserSkill(id: string, input: UpdateUserSkillInput, cwd = process.cwd()): UserSkill {
+export function updateUserSkill(id: string, input: UpdateUserSkillInput, cwd: UserSkillStorageLocation = process.cwd()): UserSkill {
 	const store = loadUserSkillStore(cwd);
 	const index = store.skills.findIndex((s) => s.id === id);
 	if (index < 0) throw new Error(`Skill "${id}" not found`);
@@ -174,7 +184,7 @@ export function updateUserSkill(id: string, input: UpdateUserSkillInput, cwd = p
 	return updated;
 }
 
-export function deleteUserSkill(id: string, cwd = process.cwd()): UserSkill | undefined {
+export function deleteUserSkill(id: string, cwd: UserSkillStorageLocation = process.cwd()): UserSkill | undefined {
 	const store = loadUserSkillStore(cwd);
 	const index = store.skills.findIndex((s) => s.id === id);
 	if (index < 0) return undefined;
@@ -187,7 +197,7 @@ export function deleteUserSkill(id: string, cwd = process.cwd()): UserSkill | un
 	return removed;
 }
 
-export function setUserSkillEnabled(id: string, enabled: boolean, cwd = process.cwd()): UserSkill {
+export function setUserSkillEnabled(id: string, enabled: boolean, cwd: UserSkillStorageLocation = process.cwd()): UserSkill {
 	return updateUserSkill(id, { enabled }, cwd);
 }
 

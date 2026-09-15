@@ -8,6 +8,7 @@ import {
 	readSkillMarkdown,
 	setUserSkillEnabled,
 	updateUserSkill,
+	type UserSkillStorageLocation,
 } from "./store.js";
 import { installSkillFromUrl } from "./installer.js";
 
@@ -28,7 +29,7 @@ export function normalizeWritableUserSkillScope(value: string | undefined, fallb
 
 export class UserSkillManager {
 	constructor(
-		private readonly cwd: string,
+		private readonly cwd: UserSkillStorageLocation,
 		private readonly scope: UserSkillScope = "global",
 	) {}
 
@@ -79,8 +80,8 @@ export class ScopedUserSkillManager {
 	readonly global: UserSkillManager;
 	readonly workspace: UserSkillManager;
 
-	constructor(options: { globalRoot?: string; workspaceRoot?: string } = {}) {
-		this.global = new UserSkillManager(options.globalRoot ?? os.homedir(), "global");
+	constructor(options: { globalRoot?: string; globalPiboHome?: string; workspaceRoot?: string } = {}) {
+		this.global = new UserSkillManager(options.globalRoot ?? (options.globalPiboHome ? { piboHome: options.globalPiboHome } : os.homedir()), "global");
 		this.workspace = new UserSkillManager(options.workspaceRoot ?? process.cwd(), "workspace");
 	}
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -94,6 +94,32 @@ test("every first-party artifact independently packs with exact identity and sel
 		const tarball = await npmPack(directory, root);
 		assert.ok(basename(tarball).endsWith(".tgz"));
 	}
+});
+
+test("packed Pi runtime derives OpenAI Codex OAuth from a clean installed artifact", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-packed-pi-oauth-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const tarballs = join(root, "tarballs");
+	const consumer = join(root, "consumer");
+	const piHome = join(root, "pi-agent");
+	await mkdir(tarballs, { recursive: true });
+	await mkdir(consumer, { recursive: true });
+	await mkdir(piHome, { recursive: true });
+	await writeFile(join(consumer, "package.json"), JSON.stringify({ name: "clean-pi-runtime-consumer", private: true, type: "module" }));
+	const tarball = await npmPack(resolve("dist/pibo4-artifacts/runtime-pi"), tarballs);
+	await execFileAsync("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", tarball], { cwd: consumer, env: { ...process.env, npm_config_cache: join(root, "npm-cache") }, maxBuffer: 16 * 1024 * 1024 });
+	await writeFile(join(piHome, "auth.json"), JSON.stringify({ "openai-codex": { type: "oauth", access: "packed-access-token", refresh: "packed-refresh-token", expires: Date.now() + 24 * 60 * 60_000, accountId: "acct-packed" } }));
+	const { stdout, stderr } = await runNode(consumer, `
+		const backend = await import("@pasko70/pibo-plugin-runtime-pi/backend.mjs");
+		let driver;
+		backend.setup({ register(name, value) { if (name === "driver") driver = value; } });
+		if (driver?.descriptor?.id !== "pi") throw new Error("Packed Pi adapter setup did not register its real driver");
+		const auth = await backend.derivePackagedPiProviderAuth("openai-codex");
+		if (auth?.auth?.apiKey !== "packed-access-token") throw new Error("Packed OAuth derivation did not return the retained access token");
+		console.log("PACKED_PI_OAUTH_OK");
+	`, { PI_CODING_AGENT_DIR: piHome, HOME: join(root, "clean-home") });
+	assert.match(stdout, /PACKED_PI_OAUTH_OK/);
+	assert.equal(stderr, "");
 });
 
 test("standard artifact set maps every package to one exact plugin id and version", async (t) => {

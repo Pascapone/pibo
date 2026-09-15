@@ -4,11 +4,10 @@ import { boundedMessageBytes } from "../../data/bounded-worker-client.js";
 import { TraceResponseCache } from "./trace-response-cache.js";
 import { AsyncChatReadQueries } from "../../data/async-chat-reads.js";
 import { MessageCommandDispatcher } from "./message-command-dispatcher.js";
-import { piboHomePath } from "../../core/pibo-home.js";
+import { getPiboHome, piboHomePath } from "../../core/pibo-home.js";
 import { PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID, PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID } from "../../core/runtime-unassigned.js";
 import { AsyncChatStorage } from "../../data/async-chat-storage.js";
 import { createHash, randomUUID } from "node:crypto";
-import os from "node:os";
 import { dirname, join } from "node:path";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { PiboSteeringUnavailableError, type PiboJsonObject, type PiboJsonValue, type PiboOutputEvent } from "../../core/events.js";
@@ -4638,7 +4637,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		resourceMetrics: createResourceMetrics(),
 		eventLoopDelay,
 		userSkillManager: new ScopedUserSkillManager({
-			globalRoot: options.userSkillGlobalRoot ?? os.homedir(),
+			globalRoot: options.userSkillGlobalRoot,
+			globalPiboHome: getPiboHome(),
 			workspaceRoot: options.userSkillWorkspaceRoot ?? process.cwd(),
 		}),
 		workflowDraftStore: new ChatWorkflowDraftStore(workflowCatalogStore),

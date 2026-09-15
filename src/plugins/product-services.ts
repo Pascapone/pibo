@@ -105,7 +105,7 @@ export type PiboPluginProductOptions = {
 	dataPayloadRootDir?: string;
 	userResources?: {
 		contextFilesMode?: "full" | "catalog";
-		userSkills?: { globalRoot?: string; workspaceRoot?: string };
+		userSkills?: { globalRoot?: string; globalPiboHome?: string; workspaceRoot?: string };
 		contextFiles?: { metadataPath?: string; storePath?: string; managedRoot?: string; globalDir?: string; agentWorkspaceRoot?: string };
 		customAgents?: { agentStorePath?: string };
 	};

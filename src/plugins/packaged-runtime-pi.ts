@@ -1,6 +1,7 @@
 import { PI_AGENT_RUNTIME_DRIVER } from "../agent-runtimes/pi/adapter.js";
 import type { AgentRuntimeInstanceDefinition } from "../agent-runtime/types.js";
 import type { PluginSetupContext } from "./host.js";
+export { resolvePiProviderAuth as derivePackagedPiProviderAuth } from "../agent-runtimes/pi/credentials.js";
 
 const piRuntimeInstance = (): AgentRuntimeInstanceDefinition => ({ id: "pi", adapterId: "pi", displayName: "Pi Coding Agent" });
 
