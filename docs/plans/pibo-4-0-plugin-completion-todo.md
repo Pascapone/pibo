@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T12:18:14Z"
+  at: "2026-09-15T12:57:10Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -37,7 +37,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | lokal akzeptiert in F10 | Pibo2-Upgrade bleibt separat |
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
-| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `2ca6701f`; realistische superseded-Provider-Auflösung, Transaktionsrollback und packed Standard-Restart geprüft | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
+| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `9a23906f`; Cold-Revisionsbatch, historische Referenzen, aktive Blocker und packed 20-Plugin-Standard geprüft | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
 
 # Erledigter Einstieg
 
@@ -203,10 +203,11 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 | N-028 | Der reale vorhandene Quell-Tarball ist `@pasko70/pibo@1.7.2`; die Prepare-Grenze akzeptierte irrtümlich nur 3.x und 4.0-Prereleases. | F06/F07/F10 | behoben in `34691ecf95fb9bcfdcde7d896537c9fa1dc1ea9f`: strikte SemVer-Grenze akzeptiert 1.x/2.x/3.x und 4.0.0-alpha/beta/rc, prüft weiterhin Paketidentität und exakte Bytes und lehnt 4.x stable/newer sowie malformed Versionen ab |
 | N-029 | Der reale 1.7.2-Snapshot enthält `pibo.standard-shell`, obwohl Standard absichtlich kein Pluginartefakt ist; die Vorbereitung verlangte daher ein unmögliches Target. | F06/F07/F10 | behoben in `eda0911e6bb7722f59f6c203e596f9cc40390f8a`: externer One-time-Cutover ordnet den Altowner der Standardkomposition zu, erzeugt kein Target und tombstoned ihn über `supersededOwners`; packed Standard behält genau 20 reale Pluginzustände |
 | N-030 | Ein signierter superseded Altowner stellte `pibo.user-resources.service` bereit, während Core denselben Dienst besitzt; die Installationsgraphprüfung sah vor dem Tombstone beide Owner und verweigerte das erste Target. | F06/F07/F10 | behoben in `2ca6701f24125c5f7db0f6a2ffcfeeddf1d06275`: nur verifizierte `supersededOwners` werden im Cutover aus der Graphauflösung ausgeschlossen; normale Konflikte bleiben strikt, und eine gemeinsame DB-Transaktion stellt bei späterem Fehler alle alten Zeilen ohne Target/Receipt wieder her |
+| N-031 | Sequentielle Revisionsaktivierung konnte bei retained Consumers `draining` zurückgeben, ließ das Ziel `retiring` und setzte mit der nächsten Graphprüfung fort. | F06/F07/F10 | behoben in `9a23906fc012f7d484cbaf3b464073867f561679`: aktive Ziele werden vorab installiert und kalt als Batch aktiviert; historische/optionale/unbekannte Profile/Sessions und released Admissions blockieren nicht, echte reservierte Admissions, Live-Runs/-Runtimes und erforderliche Abhängigkeiten bleiben fail-closed; non-complete führt zu vollständigem Rollback ohne Receipt |
 
 # Abnahmestand
 
-F00 bis F10 sind für den lokalen Code-/Paketkandidaten `2ca6701f24125c5f7db0f6a2ffcfeeddf1d06275` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
+F00 bis F10 sind für den lokalen Code-/Paketkandidaten `9a23906fc012f7d484cbaf3b464073867f561679` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
 
 # Aktivität und Entscheidungen
 
