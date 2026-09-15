@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T14:27:25Z"
+  at: "2026-09-15T15:27:42Z"
 sources:
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
@@ -37,7 +37,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F07 – Migration an neue Eigentümer und Paketgrenzen anpassen | abgeschlossen | tatsächlicher gepackter 3.6.2-Cutover plus 83 Migrations-/Auswahl-/Kontext-/Tabtests | lokal akzeptiert in F10 | Pibo2-Upgrade bleibt separat |
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
-| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `182ab696`; packed Pi-OAuth-Derivation, PIBO_HOME-User-Ressourcen und 20-Plugin-Standard geprüft | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
+| F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `cb975d3e`; packed Pi-OAuth-Derivation, retained PIBO_HOME-Rebasing und 20-Plugin-Standard geprüft | lokal akzeptiert | kein Publish, Release, Deployment oder Pibo2 in diesem Lauf |
 
 # Erledigter Einstieg
 
@@ -205,11 +205,11 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 | N-030 | Ein signierter superseded Altowner stellte `pibo.user-resources.service` bereit, während Core denselben Dienst besitzt; die Installationsgraphprüfung sah vor dem Tombstone beide Owner und verweigerte das erste Target. | F06/F07/F10 | behoben in `2ca6701f24125c5f7db0f6a2ffcfeeddf1d06275`: nur verifizierte `supersededOwners` werden im Cutover aus der Graphauflösung ausgeschlossen; normale Konflikte bleiben strikt, und eine gemeinsame DB-Transaktion stellt bei späterem Fehler alle alten Zeilen ohne Target/Receipt wieder her |
 | N-031 | Sequentielle Revisionsaktivierung konnte bei retained Consumers `draining` zurückgeben, ließ das Ziel `retiring` und setzte mit der nächsten Graphprüfung fort. | F06/F07/F10 | behoben in `9a23906fc012f7d484cbaf3b464073867f561679`: aktive Ziele werden vorab installiert und kalt als Batch aktiviert; historische/optionale/unbekannte Profile/Sessions und released Admissions blockieren nicht, echte reservierte Admissions, Live-Runs/-Runtimes und erforderliche Abhängigkeiten bleiben fail-closed; non-complete führt zu vollständigem Rollback ohne Receipt |
 | N-032 | Der retained Artifact-Root-Link `node_modules/@pasko70/pibo` gehörte dem alten Candidate; normale SDK-Vorbereitung verweigerte den Eigentümerwechsel korrekt und stoppte den verifizierten Cutover vor Aktivierung. | F06/F07/F10 | behoben in `b785ca10d28bbbfcbe06b2efb836a1e8defd2b79`: nur ein verifizierter Cutover darf bei direkt geprüftem idle/stopped Host vor `host.start` den Symlink per temporärem Link plus atomischem Rename auf den exakten neuen Core-Root übergeben; normale/aktive Aufrufe bleiben strikt, Retry verwendet denselben Link idempotent |
-| N-033 | Das gepackte Pi-Backend ließ variable relative OAuth-Flow-Imports auf nicht gelieferte Dateien zurück; globale User Skills wurden bei abweichendem Service-`HOME` nicht aus dem expliziten `PIBO_HOME` gelesen. | F06/F07/F10 | behoben in `182ab696e61f29cf85de904a8f3d2a58afad3ffe`: beide gebündelten `pi-ai`-Instanzen erhalten alle statischen OAuth-Loader; Clean-Consumer führt echte OpenAI-Codex-Ableitung aus. User Skills werden als User Resources direkt aus `PIBO_HOME` geladen; vier bestehende Profile behalten `maintain-okf-docs` ohne Builtin/Fallback und ohne Warnspam |
+| N-033 | Das gepackte Pi-Backend ließ variable relative OAuth-Flow-Imports auf nicht gelieferte Dateien zurück. Nach der ersten Korrektur zeigte reales Staging zusätzlich, dass ein retained absoluter User-Skill-Pfad weiterhin auf das alte Pibo Home weisen konnte. | F06/F07/F10 | behoben und erneut geschlossen in `cb975d3e91aec82763990ab76b0626d23bd8f2d9`: beide gebündelten `pi-ai`-Instanzen erhalten alle statischen OAuth-Loader; ein Clean-Consumer führt echte OpenAI-Codex-Ableitung aus. Direkte `PIBO_HOME`-Autorität rebasiert retained Skillpfade generisch auf die dort verwaltete Ressource, während explizite andere Roots unverändert bleiben. Vier bestehende Profile behalten `maintain-okf-docs` ohne Builtin/Fallback; der gepackte Standard-Gatewaytest belegt Bootstrapauflösung, reale Turn-Vorbereitung und Prozess-Cleanup. |
 
 # Abnahmestand
 
-F00 bis F10 sind für den lokalen Code-/Paketkandidaten `182ab696e61f29cf85de904a8f3d2a58afad3ffe` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
+F00 bis F10 sind für den lokalen Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` abgeschlossen. N-025 bleibt durch den installierten ausführbaren Minimal-Core geschlossen; N-026 ergänzt den echten ausführbaren Standardpfad und die semantische Core-/Skill-Grenze. A-C40-01 bis A-C40-16 besitzen lokale automatisierte oder headful Evidenz; reale Provider-/Pibo2-Nachweise bleiben dort ausdrücklich begrenzt, wo nur kontrollierte Fixtures verfügbar waren. OMP-Recovery ist keine zusätzliche Pflicht; A-C40-14 prüft nur Funktionserhalt. Pibo2 bleibt in diesem Lauf ausdrücklich außerhalb des Scopes und wird nicht als lokale Evidenz ausgegeben.
 
 # Aktivität und Entscheidungen
 
