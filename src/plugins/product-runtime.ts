@@ -3,7 +3,7 @@ import { piboHomePath } from "../core/pibo-home.js";
 import { PluginRuntimeCoordinator } from "../agent-runtime/plugin-plan.js";
 import type { PluginHost } from "./host.js";
 import { PluginManager, type PluginManagerLifecycle } from "./manager.js";
-import { preparePluginSdkResolution } from "./backend-loader.js";
+import { handoffPluginSdkResolutionAtStoppedBoundary, preparePluginSdkResolution } from "./backend-loader.js";
 import { createStagedPluginDefinition } from "./staged-definition.js";
 import { verifyPluginArtifact, type PluginSourceInput } from "./sources.js";
 import type { PluginConsumerCollector } from "./operations.js";
@@ -53,12 +53,17 @@ export async function startPluginProductRuntime(options: {
 		throw new Error(`Legacy built-in plugin installations require a prepared Pibo 4 cutover before startup: ${activeLegacyInstallations.map((entry) => entry.pluginId).join(", ")}. Restore the old package if necessary, run the packaged cutover preparation command, then retry with cutoverPlanPath`);
 	}
 	if (cutover) {
+		if (initialState.state !== "idle") {
+			if (ownsData) data.close();
+			throw new Error(`Prepared cutover requires an idle/stopped PluginHost before host.start; found ${initialState.state}`);
+		}
 		const preparedOwners = new Set([...cutover.supersededOwners, ...cutover.targets.map((target) => target.pluginId)]);
 		const unpreparedOwners = activeLegacyInstallations.filter((installation) => !preparedOwners.has(installation.pluginId));
 		if (unpreparedOwners.length) {
 			if (ownsData) data.close();
 			throw new Error(`Prepared cutover does not include active legacy owners: ${unpreparedOwners.map((entry) => entry.pluginId).join(", ")}`);
 		}
+		await handoffPluginSdkResolutionAtStoppedBoundary(artifactRoot, host);
 	}
 	if (initialState.state !== "idle" && initialState.state !== "active") {
 		if (ownsData) data.close();

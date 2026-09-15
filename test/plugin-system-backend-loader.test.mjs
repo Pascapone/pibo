@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, chmod } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, chmod, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { PluginHost } from '../dist/plugins/host.js';
-import { startInstalledPlugins, preparePluginSdkResolution } from '../dist/plugins/backend-loader.js';
+import { handoffPluginSdkResolutionAtStoppedBoundary, startInstalledPlugins, preparePluginSdkResolution } from '../dist/plugins/backend-loader.js';
 import { createStagedPluginDefinition } from '../dist/plugins/staged-definition.js';
 import { LocalPluginSourceResolver, stagePluginSource } from '../dist/plugins/sources.js';
 
@@ -74,9 +74,23 @@ test('invalid installed backend export rolls back earlier plugin resources', asy
 	assert.equal(host.inspect().state, 'idle');
 });
 
-test('SDK linkage cannot silently replace a different package during activation', async t => {
+test('SDK ownership changes only through the explicit stopped-boundary handoff', async t => {
 	const f = await fixture(t);
-	await preparePluginSdkResolution(f.artifacts);
-	const different = join(f.root, 'different-runtime'); await mkdir(different);
-	await assert.rejects(preparePluginSdkResolution(f.artifacts, different), /another package/);
+	const oldPackage = join(f.root, 'old-runtime'); await mkdir(oldPackage);
+	const newPackage = join(f.root, 'new-runtime'); await mkdir(newPackage);
+	const destination = join(f.artifacts, 'node_modules', '@pasko70', 'pibo');
+	await preparePluginSdkResolution(f.artifacts, oldPackage);
+	await assert.rejects(preparePluginSdkResolution(f.artifacts, newPackage), /another package/);
+	assert.equal(await realpath(destination), await realpath(oldPackage));
+
+	const host = new PluginHost();
+	await host.start({ plugins: [] });
+	await assert.rejects(handoffPluginSdkResolutionAtStoppedBoundary(f.artifacts, host, newPackage), /idle\/stopped/);
+	assert.equal(await realpath(destination), await realpath(oldPackage));
+	await host.stop();
+
+	await handoffPluginSdkResolutionAtStoppedBoundary(f.artifacts, host, newPackage);
+	await handoffPluginSdkResolutionAtStoppedBoundary(f.artifacts, host, newPackage);
+	assert.equal(await realpath(destination), await realpath(newPackage));
+	await preparePluginSdkResolution(f.artifacts, newPackage);
 });

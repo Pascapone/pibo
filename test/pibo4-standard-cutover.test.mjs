@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -48,12 +48,19 @@ async function waitForHttp(url, child, timeoutMs = 60_000) {
 }
 
 async function stopProcess(child) {
-	if (child.exitCode !== null) return;
-	child.kill("SIGTERM");
-	await Promise.race([
-		new Promise((resolvePromise) => child.once("exit", resolvePromise)),
-		new Promise((_, reject) => setTimeout(() => reject(new Error("Gateway did not stop after SIGTERM")), 10_000)),
-	]);
+	if (child.exitCode === null) {
+		child.kill("SIGTERM");
+		await Promise.race([
+			new Promise((resolvePromise) => child.once("exit", resolvePromise)),
+			new Promise((resolvePromise) => setTimeout(resolvePromise, 5_000)),
+		]);
+	}
+	if (child.exitCode === null) {
+		child.kill("SIGKILL");
+		await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+	}
+	child.stdout?.destroy();
+	child.stderr?.destroy();
 }
 
 async function stageLegacyInstallation(data, artifactRoot, pluginId, state, packageRoot) {
@@ -181,6 +188,11 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 
 	const data = new PiboDataStore(join(home, "pibo.sqlite"), { payloadRootDir: join(home, "payloads") });
 	const pluginArtifactRoot = join(home, "plugins", "artifacts");
+	const retainedOldCore = join(root, "retained-old-core");
+	const sdkScope = join(pluginArtifactRoot, "node_modules", "@pasko70");
+	await mkdir(retainedOldCore, { recursive: true });
+	await mkdir(sdkScope, { recursive: true });
+	await symlink(retainedOldCore, join(sdkScope, "pibo"), "dir");
 	for (const pluginId of ["pibo.standard-shell", "pibo.core", "pibo.product-ui", "pibo.user-resources", "pibo.web-product"]) await stageLegacyInstallation(data, pluginArtifactRoot, pluginId, "active");
 	const oldPluginOrder = [...packageSet.plugins].sort((left, right) => left.pluginId === "pibo.run-control" ? -1 : right.pluginId === "pibo.run-control" ? 1 : left.pluginId.localeCompare(right.pluginId));
 	for (const entry of oldPluginOrder) {
@@ -213,6 +225,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	} catch (error) {
 		throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stderr}`);
 	}
+	assert.equal(await realpath(join(sdkScope, "pibo")), await realpath(join(deployment.runtimePath, "node_modules", "@pasko70", "pibo")));
 	const firstInstallationsResponse = await fetch(`http://127.0.0.1:${webPort}/api/chat/plugins`);
 	assert.equal(firstInstallationsResponse.status, 200);
 	const firstInstallations = (await firstInstallationsResponse.json()).installations;
@@ -245,6 +258,7 @@ test("packed Candidate Standard applies prepared aggregate cutover through its r
 	const restarted = startGateway();
 	t.after(() => stopProcess(restarted).catch(() => {}));
 	await waitForHttp(`http://127.0.0.1:${webPort}/health`, restarted);
+	assert.equal(await realpath(join(sdkScope, "pibo")), await realpath(join(deployment.runtimePath, "node_modules", "@pasko70", "pibo")));
 	const restartedInstallations = (await (await fetch(`http://127.0.0.1:${webPort}/api/chat/plugins`)).json()).installations;
 	const restartedSnapshot = restartedInstallations.map((entry) => [entry.pluginId, entry.state, entry.enabled, entry.stateRevision, entry.contentHash]).sort(([left], [right]) => left.localeCompare(right));
 	assert.deepEqual(restartedSnapshot, firstSnapshot);
