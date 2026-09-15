@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,6 +78,38 @@ test("OMP binding resolution preserves a persisted native session after gateway 
 	const resolved = await adapter.resolveBinding({ binding, workspace: "/tmp" });
 	assert.deepEqual(resolved, binding);
 	assert.doesNotThrow(() => nextRuntimeSessionBinding(binding, resolved, { expectedRevision: 2 }));
+});
+
+test("OMP reads fork candidates passively from its bound native transcript", async (t) => {
+	const root = await testRoot(t, "passive-fork-candidates");
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const path = join(root, "native.jsonl");
+	const nativeSessionId = "omp-passive-native";
+	const entries = [
+		{ type: "session", version: 3, id: "transcript-header-id-before-resume", timestamp: "2026-09-15T00:00:00Z", cwd: root },
+		{ type: "message", id: "user-1", parentId: null, timestamp: "2026-09-15T00:00:01Z", message: { role: "user", content: "first" } },
+		{ type: "message", id: "assistant-1", parentId: "user-1", timestamp: "2026-09-15T00:00:02Z", message: { role: "assistant", content: "reply" } },
+		{ type: "message", id: "user-2", parentId: "assistant-1", timestamp: "2026-09-15T00:00:03Z", message: { role: "user", content: [{ type: "text", text: "second" }, { type: "image", data: "ignored", mimeType: "image/png" }] } },
+	];
+	await writeFile(path, `${entries.map(JSON.stringify).join("\n")}\n{malformed}\n`);
+	const adapter = OMP_AGENT_RUNTIME_DRIVER.create({
+		instanceId: "omp-native",
+		displayName: "Oh My Pi",
+		enabled: true,
+		config: OMP_AGENT_RUNTIME_DRIVER.defaultConfig(),
+	});
+	const binding = {
+		piboSessionId: "ps_omp_passive",
+		runtimeInstanceId: "omp-native",
+		adapterId: "orp",
+		nativeSessionId,
+		state: "bound",
+		metadata: { nativeSessionFile: path },
+	};
+	assert.deepEqual(await adapter.readForkCandidates({ binding, workspace: root }), [
+		{ entryId: "user-1", text: "first" },
+		{ entryId: "user-2", text: "second" },
+	]);
 });
 
 test("OMP binding recovery stays unsupported when switch_session cannot prove native absence", async () => {

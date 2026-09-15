@@ -1,4 +1,9 @@
-import type { PiboEventSource, PiboOutputEvent } from "../core/events.js";
+import type {
+	PiboEventSource,
+	PiboOutputEvent,
+	PiboRuntimeQueueBlock,
+	PiboRuntimeQueueState,
+} from "../core/events.js";
 import type { PiboRunSnapshot, PiboRunStatus } from "../runs/registry.js";
 import type { PiboSession } from "../sessions/store.js";
 
@@ -127,6 +132,8 @@ export type PiboSessionSignalSnapshot = {
 	aggregateStatus: PiboSignalStatus;
 	phase?: "queued" | "prompting" | "streaming" | "tools" | "subagent" | "run" | "compaction" | "retry" | "blocked";
 	queuedMessages: number;
+	queueState: PiboRuntimeQueueState;
+	queueBlock?: PiboRuntimeQueueBlock;
 	currentMessageId?: string;
 	currentTurnId?: string;
 	latestTurn?: PiboTurnSignalSummary;
@@ -194,7 +201,14 @@ export type PiboSignalInput =
 	| { type: "session_created"; session: PiboSession }
 	| { type: "session_disposed"; piboSessionId: string; reason?: string }
 	| { type: "session_interrupted"; piboSessionId: string; reason?: string }
-	| { type: "session_processing_changed"; piboSessionId: string; processing: boolean; queuedMessages: number }
+	| {
+		type: "session_processing_changed";
+		piboSessionId: string;
+		processing: boolean;
+		queuedMessages: number;
+		queueState?: PiboRuntimeQueueState;
+		queueBlock?: PiboRuntimeQueueBlock;
+	}
 	| { type: "message_accepted"; piboSessionId: string; eventId: string; source?: PiboEventSource }
 	| { type: "message_rejected"; piboSessionId: string; eventId: string }
 	| { type: "run_changed"; run: PiboRunSnapshot; previousStatus?: PiboRunStatus; reason?: string }

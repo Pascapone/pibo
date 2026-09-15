@@ -691,7 +691,7 @@ export class AgentRuntimeAdapterRegistry {
 		}
 		diagnostics.push(...validateAgentRuntimeProfileCapabilities(input.profile, adapter.descriptor.capabilities));
 		try {
-			diagnostics.push(...adapter.validateProfile(input));
+			diagnostics.push(...await adapter.validateProfile(input));
 		} catch (error) {
 			diagnostics.push({
 				severity: "error",

@@ -25,7 +25,11 @@ export async function exerciseAgentRuntimeAdapterContract(
 		diagnostics.every((diagnostic) => diagnostic.severity !== "error"),
 		"enabled adapter diagnostics returned an error",
 	);
-	const validation = adapter.validateProfile({ profile: input.profile, workspace: input.workspace });
+	const validation = await adapter.validateProfile({
+		profile: input.profile,
+		workspace: input.workspace,
+		activeModel: input.activeModel,
+	});
 	invariant(validation.every((diagnostic) => diagnostic.severity !== "error"), "profile validation returned an error");
 
 	const session = await adapter.openSession(input);

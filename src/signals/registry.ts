@@ -202,6 +202,25 @@ function isRuntimeBindingState(value: unknown): value is NonNullable<PiboSession
 	return value === "unbound" || value === "bound" || value === "missing" || value === "error";
 }
 
+function isRuntimeQueueState(value: unknown): value is PiboSessionSignalSnapshot["queueState"] {
+	return value === "idle" || value === "queued" || value === "processing" || value === "blocked";
+}
+
+function queueBlockFromNode(node: PiboSignalNode | undefined): PiboSessionSignalSnapshot["queueBlock"] {
+	const value = node?.metadata?.queueBlock;
+	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	const block = value as Record<string, unknown>;
+	if ((block.code !== "fork_candidate_read" && block.code !== "session_identity_operation")
+		|| (block.operation !== "fork_candidates" && block.operation !== "fork" && block.operation !== "clone" && block.operation !== "switch")
+		|| typeof block.message !== "string" || typeof block.since !== "string") return undefined;
+	return {
+		code: block.code,
+		operation: block.operation,
+		message: block.message,
+		since: block.since,
+	};
+}
+
 function childSummaryEqual(a: ChildSessionSignalSummary, b: ChildSessionSignalSummary): boolean {
 	return a.nodeId === b.nodeId
 		&& a.piboSessionId === b.piboSessionId
@@ -225,6 +244,8 @@ function sessionSnapshotSemanticallyEqual(a: PiboSessionSignalSnapshot | undefin
 		&& a.aggregateStatus === b.aggregateStatus
 		&& a.phase === b.phase
 		&& a.queuedMessages === b.queuedMessages
+		&& a.queueState === b.queueState
+		&& jsonValueEqual(a.queueBlock, b.queueBlock)
 		&& a.currentMessageId === b.currentMessageId
 		&& a.currentTurnId === b.currentTurnId
 		&& jsonValueEqual(a.latestTurn, b.latestTurn)
@@ -528,8 +549,17 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 		const sessionNode = this.nodesById.get(`session:${piboSessionId}`);
 		const queueNode = this.nodesById.get(`queue:${piboSessionId}`);
 		const queuedMessages = this.queuedMessagesBySessionId.get(piboSessionId) ?? Number(queueNode?.metadata?.queuedMessages ?? 0);
+		const queueState = isRuntimeQueueState(queueNode?.metadata?.queueState)
+			? queueNode.metadata.queueState
+			: queueNode?.status === "blocked"
+				? "blocked"
+				: queuedMessages > 0
+					? "queued"
+					: "idle";
+		const queueBlock = queueBlockFromNode(queueNode);
 		const localStatuses = [...activeLocalNodes.map((node) => node.status)];
-		if (queuedMessages > 0) localStatuses.push("queued");
+		if (queueState === "blocked") localStatuses.push("blocked");
+		else if (queuedMessages > 0) localStatuses.push("queued");
 		if (sessionNode && isActiveSignalStatus(sessionNode.status)) localStatuses.push(sessionNode.status);
 		const localStatus = sessionNode && (sessionNode.status === "unknown" || isTerminalSignalStatus(sessionNode.status))
 			? sessionNode.status
@@ -563,6 +593,8 @@ export class InMemoryPiboSignalRegistry implements PiboSignalRegistry {
 			aggregateStatus,
 			phase: phaseForStatus(aggregateStatus, nodes),
 			queuedMessages,
+			queueState,
+			...(queueBlock ? { queueBlock } : {}),
 			currentMessageId: activeLocalNodes.find((node) => node.kind === "message")?.id,
 			currentTurnId: activeLocalNodes.find((node) => node.kind === "turn")?.id,
 			latestTurn,

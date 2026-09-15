@@ -1,4 +1,4 @@
-import { PiboSteeringUnavailableError, type PiboOutputEvent } from "../../core/events.js";
+import { PiboMessagePreDispatchError, PiboSteeringUnavailableError, type PiboOutputEvent } from "../../core/events.js";
 import { randomUUID } from "node:crypto";
 import type { PiboChannelContext } from "../../channels/types.js";
 import type { AsyncChatStorage } from "../../data/async-chat-storage.js";
@@ -93,9 +93,28 @@ export class MessageCommandDispatcher {
 				const cancelled = Boolean(error && typeof error === "object" && "code" in error && error.code === "runtime_start_cancelled");
 				const steering = error instanceof PiboSteeringUnavailableError;
 				const capacity = Boolean(error && typeof error === "object" && "code" in error && error.code === "runtime_capacity_unavailable");
+				const preDispatch = error instanceof PiboMessagePreDispatchError;
+				const knownPreDispatch = cancelled || steering || capacity || preDispatch;
+				const failure = cancelled
+					? "Message cancelled before runtime dispatch."
+					: capacity
+						? runtimeCapacityDispatchFailure(error)
+						: steering
+							? "Steering is unavailable; the message was not queued as a normal turn."
+							: preDispatch
+								? error.message
+								: "Runtime dispatch outcome is unclear; inspect the session before retrying.";
 				try {
-					await this.storage.transitionCommand(claim.id,this.owner,claim.token,cancelled || steering || capacity ? "failed" : "interrupted",
-						cancelled ? "Message cancelled before runtime dispatch." : capacity ? runtimeCapacityDispatchFailure(error) : steering ? "Steering is unavailable; the message was not queued as a normal turn." : "Runtime dispatch outcome is unclear; inspect the session before retrying.");
+					const transitioned = await this.storage.transitionCommand(
+						claim.id,
+						this.owner,
+						claim.token,
+						knownPreDispatch ? "failed" : "interrupted",
+						failure,
+					);
+					if (transitioned && knownPreDispatch) {
+						this.context.reportSessionError?.(claim.sessionId, failure, { eventId: claim.eventId, source: "pibo" });
+					}
 				} catch { /* Lease expiry retains the uncertain outcome. */ }
 				this.forget(claim.id);this.wake();
 			}

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
+import { PiboMessagePreDispatchError } from "../dist/core/events.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
@@ -160,14 +161,27 @@ test("Codex native advertises and validates its stable model, reasoning, service
 	}, (builder) => builder
 		.withModel({ provider: "openai-codex", id: "gpt-5.6-sol" })
 		.withThinkingLevel("high"));
-	assert.deepEqual(adapter.validateProfile({ profile: valid }), []);
+	assert.deepEqual(await adapter.validateProfile({ profile: valid }), []);
 
 	const invalidOptions = profile(instanceId, { token: "must-not-be-supported" });
-	assert.equal(adapter.validateProfile({ profile: invalidOptions })[0].code, "codex_native_runtime_options_invalid");
+	assert.equal((await adapter.validateProfile({ profile: invalidOptions }))[0].code, "codex_native_runtime_options_invalid");
 	const invalidPermissionMode = profile(instanceId, { permissionMode: "unrestricted" });
-	assert.match(adapter.validateProfile({ profile: invalidPermissionMode })[0].message, /approval, yolo, plan/);
+	assert.match((await adapter.validateProfile({ profile: invalidPermissionMode }))[0].message, /approval, yolo, plan/);
 	const invalidProvider = profile(instanceId, {}, (builder) => builder.withModel({ provider: "openai", id: "gpt-5.6-sol" }));
-	assert.equal(adapter.validateProfile({ profile: invalidProvider })[0].code, "codex_native_model_provider_invalid");
+	assert.equal((await adapter.validateProfile({ profile: invalidProvider }))[0].code, "codex_native_model_provider_invalid");
+
+	const missing = profile(instanceId, {}, (builder) => builder.withModel({ provider: "openai-codex", id: "gpt-6-astra" }));
+	assert.equal((await adapter.validateProfile({ profile: missing }))[0].code, "codex_native_model_unavailable");
+
+	const foreignSubagent = profile(instanceId, {}, (builder) => builder
+		.withMainModel({ provider: "openai-codex", id: "gpt-5.6-sol" })
+		.withSubagentModel({ provider: "foreign-runtime", id: "foreign-model" }));
+	assert.deepEqual(await adapter.validateProfile({ profile: foreignSubagent }), [], "parent validation must not inspect a foreign subagent model");
+
+	assert.equal((await adapter.validateProfile({
+		profile: valid,
+		activeModel: { provider: "openai-codex", id: "gpt-6-astra" },
+	}))[0].code, "codex_native_model_unavailable", "persisted active overrides are catalog validated");
 });
 
 test("Codex native applies profile options and exposes current context usage", async (t) => {
@@ -345,6 +359,64 @@ test("Codex native model, reasoning, and Fast Mode controls are model-aware and 
 		contextWindow: 200_000,
 		percent: 0.01,
 	});
+});
+
+test("Codex native rejects an unavailable active model before native session binding", async (t) => {
+	const root = await testRoot();
+	const instanceId = "codex-native-missing-model";
+	const profileName = "codex-native-missing-model-profile";
+	const piboSessionId = "ps_codex_missing_model";
+	const capabilityHost = createTestCapabilityHost({
+		setups: [coreCapabilitiesSetup, defineTestCapabilitySetup({
+			id: "test.codex-native-missing-model",
+			register(api) {
+				api.registerAgentRuntimeDriver(CODEX_NATIVE_AGENT_RUNTIME_DRIVER);
+				api.registerAgentRuntimeInstance({ id: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, config: runtimeConfig(root) });
+				api.registerProfile({
+					name: profileName,
+					create() {
+						return profile(instanceId, {}, (builder) => builder
+							.withModel({ provider: "openai-codex", id: "gpt-6-astra" }));
+					},
+				});
+			},
+		})],
+	});
+	const store = new InMemoryPiboSessionStore();
+	store.create({
+		id: piboSessionId,
+		channel: "test",
+		kind: "chat",
+		profile: profileName,
+		workspace: root,
+		runtimeBinding: { runtimeInstanceId: instanceId, adapterId: CODEX_NATIVE_ADAPTER_ID, state: "unbound" },
+	});
+	const router = new PiboSessionRouter({
+		persistSession: false,
+		capabilityHost,
+		sessionStore: store,
+		runtimeResourceService: new PiboRuntimeResourceService({ rootDir: join(root, "resources") }),
+	});
+	t.after(async () => {
+		await router.disposeAll();
+		await rm(root, { recursive: true, force: true });
+	});
+
+	await assert.rejects(
+		router.emit({
+			type: "message",
+			piboSessionId,
+			id: "missing-model-message",
+			text: "must not bind",
+			source: "user",
+		}),
+		(error) => error instanceof PiboMessagePreDispatchError
+			&& /gpt-6-astra/.test(error.message)
+			&& /not available/.test(error.message),
+	);
+	assert.equal(router.getSessionRuntimeStatus(piboSessionId), undefined);
+	assert.equal(store.get(piboSessionId).runtimeBinding.state, "unbound");
+	assert.equal(store.get(piboSessionId).runtimeBinding.nativeSessionId, undefined);
 });
 
 test("Codex native model catalog and controls flow through routed status and gateway actions", async (t) => {

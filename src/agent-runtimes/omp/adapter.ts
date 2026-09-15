@@ -39,7 +39,7 @@ import { OmpAuthController, OMP_AUTH_METHODS, unknownOmpStatusForAdapter } from 
 import { OmpRpcClient, OmpRpcResponseError } from "./client.js";
 import { defaultOmpRuntimeConfig, OMP_RUNTIME_CONFIG_SCHEMA, parseOmpRuntimeConfig, type OmpRuntimeConfig } from "./config.js";
 import { OmpHostToolBridge } from "./host-tools.js";
-import { emptyOmpHistoryPage, inspectOmpHistory, readOmpHistory } from "./history.js";
+import { emptyOmpHistoryPage, inspectOmpHistory, readOmpForkCandidates, readOmpHistory } from "./history.js";
 import {
 	historyReconciliationDigest,
 	type AgentRuntimeHistoryReconciliationProof,
@@ -734,6 +734,25 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 
 	async inspectHistory(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection> {
 		return inspectOmpHistory(input, this.instanceId);
+	}
+
+	async readForkCandidates(input: { binding: RuntimeSessionBinding; workspace: string }) {
+		try {
+			const candidates = await readOmpForkCandidates(input);
+			if (candidates !== undefined) return candidates;
+		} catch (error) {
+			throw new AgentRuntimeCapabilityUnavailableError(
+				"passive native fork candidate inspection",
+				this.instanceId,
+				"OMP fork candidates could not be read safely from the bound transcript; Pibo did not start a live identity operation.",
+				{ cause: error },
+			);
+		}
+		throw new AgentRuntimeCapabilityUnavailableError(
+			"passive native fork candidate inspection",
+			this.instanceId,
+			"OMP fork candidates require a verified bound transcript file; Pibo did not start a live identity operation.",
+		);
 	}
 
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {

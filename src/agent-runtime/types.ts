@@ -170,6 +170,8 @@ export type OpenAgentRuntimeSessionInput = {
 export type ValidateAgentRuntimeProfileInput = {
 	profile: InitialSessionContext;
 	workspace?: string;
+	/** Effective model selected for this concrete session, including persisted overrides. */
+	activeModel?: ModelProfile;
 };
 
 export type InspectAgentRuntimeProfileInput = ValidateAgentRuntimeProfileInput & {
@@ -211,7 +213,7 @@ export interface AgentRuntimeAdapter {
 	readonly enabled: boolean;
 
 	diagnose(): Promise<readonly AgentRuntimeDiagnostic[]>;
-	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[];
+	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] | Promise<readonly AgentRuntimeDiagnostic[]>;
 	openSession(input: OpenAgentRuntimeSessionInput): Promise<AgentRuntimeSession>;
 	inspectProfile?(input: InspectAgentRuntimeProfileInput): Promise<AgentRuntimeAssemblyInspection>;
 	listModels?(): Promise<AgentRuntimeModelCatalog>;

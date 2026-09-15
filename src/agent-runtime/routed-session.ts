@@ -13,6 +13,8 @@ import {
 	type PiboPiSessionSnapshot,
 	type PiboSessionListItem,
 	type PiboSessionOperationResult,
+	type PiboRuntimeQueueBlock,
+	type PiboRuntimeQueueState,
 	type PiboSessionStatus,
 	type PiboSessionErrorDetails,
 	type PiboSessionSwitchParams,
@@ -152,7 +154,14 @@ export type RuntimeRoutedSessionOptions = {
 		piboSessionId: string,
 		options?: { includeRuns?: boolean },
 	) => Promise<{ killed: string[]; cancelledRuns: string[] }>;
-	onStateChange?: (state: { processing: boolean; queuedMessages: number; disposed: boolean; sessionIdentityOperationInFlight: boolean }) => void;
+	onStateChange?: (state: {
+		processing: boolean;
+		queuedMessages: number;
+		queueState: PiboRuntimeQueueState;
+		queueBlock?: PiboRuntimeQueueBlock;
+		disposed: boolean;
+		sessionIdentityOperationInFlight: boolean;
+	}) => void;
 	onMessagesInterrupted?: PiboMessageInterruptionListener;
 	messagePreflight?: PiboMessagePreflight;
 	/** Controlled input transformation; immutable routing identity remains host-owned. */
@@ -298,6 +307,7 @@ export class RuntimeRoutedSession {
 	private activeThinkingIndex?: number;
 	private nextThinkingIndex = 0;
 	private sessionIdentityOperationInFlight = false;
+	private sessionIdentityOperation?: Pick<PiboRuntimeQueueBlock, "operation" | "since">;
 	private forkWhileRunningOperationInFlight = false;
 	private forkCandidatesRequest?: Promise<PiboForkCandidate[]>;
 	private primaryModel?: ModelProfile;
@@ -421,8 +431,7 @@ export class RuntimeRoutedSession {
 				this.forkWhileRunningOperationInFlight = true;
 			} else {
 				this.assertSessionIdentityOperationIdle(sessionIdentityOperation);
-				this.sessionIdentityOperationInFlight = true;
-				this.notifyState();
+				this.beginSessionIdentityOperation(sessionIdentityOperation);
 			}
 		}
 		try {
@@ -442,9 +451,7 @@ export class RuntimeRoutedSession {
 			if (forkWhileRunning) {
 				this.forkWhileRunningOperationInFlight = false;
 			} else if (sessionIdentityOperation) {
-				this.sessionIdentityOperationInFlight = false;
-				this.notifyState();
-				this.startDrain();
+				this.endSessionIdentityOperation();
 			}
 		}
 	}
@@ -468,6 +475,7 @@ export class RuntimeRoutedSession {
 		const thinkingLevel = status.reasoning?.value && isPiboThinkingLevel(status.reasoning.value)
 			? status.reasoning.value
 			: undefined;
+		const queueBlock = this.currentQueueBlock();
 		return {
 			piboSessionId: this.piboSessionId,
 			runtimeBinding: {
@@ -481,6 +489,8 @@ export class RuntimeRoutedSession {
 				revision: binding.revision,
 			},
 			queuedMessages: this.queue.length,
+			queueState: this.currentQueueState(queueBlock),
+			...(queueBlock ? { queueBlock } : {}),
 			activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id,
 			queuedEventIds: this.queue.map((item) => item.event.id ?? ""),
 			processing: this.disposed ? false : this.processing,
@@ -610,17 +620,14 @@ export class RuntimeRoutedSession {
 
 		const getForkCandidates = this.runtimeSession.controls?.getForkCandidates;
 		if (!getForkCandidates) throw runtimeCapabilityError(this.runtimeSession, "native session fork candidates");
-		this.sessionIdentityOperationInFlight = true;
-		this.notifyState();
+		this.beginSessionIdentityOperation("fork_candidates");
 		const request = Promise.resolve().then(async () => await getForkCandidates());
 		this.forkCandidatesRequest = request;
 		try {
 			return await request;
 		} finally {
 			if (this.forkCandidatesRequest === request) this.forkCandidatesRequest = undefined;
-			this.sessionIdentityOperationInFlight = false;
-			this.notifyState();
-			this.startDrain();
+			this.endSessionIdentityOperation();
 		}
 	}
 
@@ -645,6 +652,42 @@ export class RuntimeRoutedSession {
 		const cloneSession = this.runtimeSession.controls?.cloneSession;
 		if (!cloneSession) throw runtimeCapabilityError(this.runtimeSession, "native session clone");
 		return nativeOperationToPiCompatibility(this.runtimeSession, this.piboSessionId, await cloneSession());
+	}
+
+	private beginSessionIdentityOperation(operation: PiboRuntimeQueueBlock["operation"]): void {
+		this.sessionIdentityOperationInFlight = true;
+		this.sessionIdentityOperation = {
+			operation,
+			since: new Date((this.options.now ?? Date.now)()).toISOString(),
+		};
+		this.notifyState();
+	}
+
+	private endSessionIdentityOperation(): void {
+		this.sessionIdentityOperationInFlight = false;
+		this.sessionIdentityOperation = undefined;
+		this.notifyState();
+		this.startDrain();
+	}
+
+	private currentQueueBlock(): PiboRuntimeQueueBlock | undefined {
+		if (this.queue.length === 0 || !this.sessionIdentityOperationInFlight || !this.sessionIdentityOperation) return undefined;
+		const forkCandidateRead = this.sessionIdentityOperation.operation === "fork_candidates";
+		return {
+			code: forkCandidateRead ? "fork_candidate_read" : "session_identity_operation",
+			operation: this.sessionIdentityOperation.operation,
+			message: forkCandidateRead
+				? "Queued messages are waiting for native fork-candidate inspection to finish."
+				: `Queued messages are waiting for the native session ${this.sessionIdentityOperation.operation} operation to finish.`,
+			since: this.sessionIdentityOperation.since,
+		};
+	}
+
+	private currentQueueState(queueBlock = this.currentQueueBlock()): PiboRuntimeQueueState {
+		if (queueBlock) return "blocked";
+		if (!this.disposed && this.processing) return "processing";
+		if (this.queue.length > 0) return "queued";
+		return "idle";
 	}
 
 	private assertSessionIdentityOperationIdle(operation: string): void {
@@ -1476,9 +1519,12 @@ export class RuntimeRoutedSession {
 	}
 
 	private notifyState(): void {
+		const queueBlock = this.currentQueueBlock();
 		this.options.onStateChange?.({
 			processing: this.processing,
 			queuedMessages: this.queue.length,
+			queueState: this.currentQueueState(queueBlock),
+			...(queueBlock ? { queueBlock } : {}),
 			disposed: this.disposed,
 			sessionIdentityOperationInFlight: this.sessionIdentityOperationInFlight,
 		});

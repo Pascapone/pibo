@@ -348,6 +348,46 @@ test("accepted messages start the first local turn before runtime initialization
 	assert.equal(registry.snapshotTree("root").nodes["turn:root:m1"].startedAt, startedAt, "runtime start preserves the accepted timestamp");
 });
 
+test("queue gates project blocked state without interrupting accepted work", () => {
+	const registry = createPiboSignalRegistry();
+	registry.project({ type: "session_created", session: session("root") });
+	registry.project({ type: "message_accepted", piboSessionId: "root", eventId: "blocked-message", source: "user" });
+	registry.project({
+		type: "session_processing_changed",
+		piboSessionId: "root",
+		processing: false,
+		queuedMessages: 1,
+		queueState: "blocked",
+		queueBlock: {
+			code: "fork_candidate_read",
+			operation: "fork_candidates",
+			message: "Queued messages are waiting for native fork-candidate inspection to finish.",
+			since: "2026-09-15T00:00:00.000Z",
+		},
+	});
+
+	const blocked = registry.snapshotTree("root");
+	assert.equal(blocked.sessions.root.localStatus, "blocked");
+	assert.equal(blocked.sessions.root.phase, "blocked");
+	assert.equal(blocked.sessions.root.queueState, "blocked");
+	assert.equal(blocked.sessions.root.queueBlock.code, "fork_candidate_read");
+	assert.equal(blocked.nodes["queue:root"].status, "blocked");
+	assert.equal(blocked.nodes["message:root:blocked-message"].status, "queued");
+	assert.equal(blocked.nodes["turn:root:blocked-message"].status, "starting");
+
+	registry.project({
+		type: "session_processing_changed",
+		piboSessionId: "root",
+		processing: true,
+		queuedMessages: 0,
+		queueState: "processing",
+	});
+	const running = registry.snapshotTree("root");
+	assert.equal(running.sessions.root.localStatus, "running");
+	assert.equal(running.sessions.root.queueState, "processing");
+	assert.equal(running.sessions.root.queueBlock, undefined);
+});
+
 test("rejected accepted messages clear synthetic activity when the runtime is idle", () => {
 	const registry = createPiboSignalRegistry();
 	registry.project({ type: "session_created", session: session("root") });

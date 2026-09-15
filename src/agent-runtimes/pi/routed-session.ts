@@ -1375,6 +1375,15 @@ export class RoutedSession {
 		return {
 			piboSessionId: this.piboSessionId,
 			queuedMessages: this.queue.length,
+			queueState: this.disposed
+				? "idle"
+				: this.queue.length > 0 && this.sessionIdentityOperationInFlight
+					? "blocked"
+					: this.processing
+						? "processing"
+						: this.queue.length > 0
+							? "queued"
+							: "idle",
 			activeEventId: this.activeMessage?.id ?? this.activeExecutionEvent?.id,
 			queuedEventIds: this.queue.map((item) => item.event.id ?? ""),
 			processing: this.disposed ? false : this.processing,

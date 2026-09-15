@@ -743,6 +743,15 @@ test("fork-candidate page reads serialize accepted message drain behind OMP-styl
 		assert.equal(queuedMessageAccepted, true, "candidate discovery may accept only into the serialized routed queue");
 		assert.equal(outputs.some((event) => event.type === "message_queued" && event.eventId === "send-during-candidate-read"), true);
 		assert.equal(prompts, 0);
+		assert.equal(routed.getStatus().processing, false);
+		assert.equal(routed.getStatus().queueState, "blocked");
+		assert.deepEqual(routed.getStatus().queueBlock, {
+			code: "fork_candidate_read",
+			operation: "fork_candidates",
+			message: "Queued messages are waiting for native fork-candidate inspection to finish.",
+			since: routed.getStatus().queueBlock.since,
+		});
+		assert.equal(routedStates.at(-1).queueState, "blocked");
 		await routed.executeAction({
 			type: "execution",
 			piboSessionId: "ps_omp_candidate_race",

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setImmediate as yieldLoop } from 'node:timers/promises';
 import { MessageCommandDispatcher } from '../dist/apps/chat/message-command-dispatcher.js';
+import { PiboMessagePreDispatchError } from '../dist/core/events.js';
 const claim=i=>({id:`cmd-${i}`,sessionId:'session',roomId:'room',eventId:`event-${i}`,streamId:i,state:'waiting_slot',createdAt:1,updatedAt:1,token:1,text:'message',delivery:'queue'});
 
 test('an admission arriving during an empty claim does not wait for the polling timer',async t=>{
@@ -37,6 +38,28 @@ test('runtime queue capacity failures persist dimension-specific numeric diagnos
   await yieldLoop();await yieldLoop();
   const failed=transitions.find(([, , , state])=>state==='failed');
   assert.match(failed[4],/queue_bytes/);assert.match(failed[4],/queueBytes=4194305/);assert.match(failed[4],/limit=4194304/);assert.doesNotMatch(failed[4],new RegExp(secret));
+ }finally{await dispatcher.dispose();}
+});
+
+test('known pre-dispatch failures become failed commands with a correlated visible error',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let available=claim(1);const transitions=[];const reports=[];
+ const storage={claimCommand:async()=>{const next=available;available=undefined;return next;},heartbeatCommand:async()=>true,transitionCommand:async(...args)=>{transitions.push(args);return true;}};
+ const dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>({id:'session'}),emit:async()=>{throw new PiboMessagePreDispatchError('Native Codex model "gpt-6-astra" is not available.');},reportSessionError:(...args)=>reports.push(args)});
+ try {
+  await yieldLoop();await yieldLoop();
+  assert.equal(transitions.find(([, , , state])=>state==='failed')?.[4],'Native Codex model "gpt-6-astra" is not available.');
+  assert.deepEqual(reports,[['session','Native Codex model "gpt-6-astra" is not available.',{eventId:'event-1',source:'pibo'}]]);
+ }finally{await dispatcher.dispose();}
+});
+
+test('unclear dispatch failures remain interrupted and do not synthesize a user-visible pre-dispatch error',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});let available=claim(1);const transitions=[];const reports=[];
+ const storage={claimCommand:async()=>{const next=available;available=undefined;return next;},heartbeatCommand:async()=>true,transitionCommand:async(...args)=>{transitions.push(args);return true;}};
+ const dispatcher=new MessageCommandDispatcher(storage,{getSession:()=>({id:'session'}),emit:async()=>{throw new Error('connection lost after write');},reportSessionError:(...args)=>reports.push(args)});
+ try {
+  await yieldLoop();await yieldLoop();
+  assert.equal(transitions.find(([, , , state])=>state==='interrupted')?.[4],'Runtime dispatch outcome is unclear; inspect the session before retrying.');
+  assert.deepEqual(reports,[]);
  }finally{await dispatcher.dispose();}
 });
 

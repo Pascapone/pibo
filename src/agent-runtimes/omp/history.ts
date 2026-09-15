@@ -1,3 +1,11 @@
+import { createReadStream, statSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { contentText } from "@earendil-works/pi-ai";
+import { parseSessionEntries } from "@earendil-works/pi-coding-agent";
+import type {
+	AgentRuntimeForkCandidate,
+	ResolveAgentRuntimeBindingInput,
+} from "../../agent-runtime/types.js";
 import type {
 	AgentRuntimeHistoryEntry,
 	AgentRuntimeHistoryInspection,
@@ -15,6 +23,8 @@ import { OMP_ADAPTER_ID, OMP_ADAPTER_VERSION } from "./thread.js";
 const OMP_HISTORY_CURSOR_PREFIX = "omp-history:";
 const OMP_HISTORY_PAGE_LIMIT = 200;
 const DEFAULT_HISTORY_LIMIT = 100;
+const OMP_FORK_CANDIDATE_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+let ompForkCandidatesCache: { key: string; candidates: AgentRuntimeForkCandidate[] } | undefined;
 
 type OmpHistoryCursor = {
 	v: 1;
@@ -31,6 +41,54 @@ class OmpHistoryResponseError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export async function readOmpForkCandidates(
+	input: ResolveAgentRuntimeBindingInput,
+): Promise<AgentRuntimeForkCandidate[] | undefined> {
+	const nativeSessionId = input.binding.nativeSessionId;
+	const nativeSessionFile = input.binding.metadata?.nativeSessionFile;
+	if (input.binding.state !== "bound" || !nativeSessionId || typeof nativeSessionFile !== "string") return undefined;
+	const fileKey = () => {
+		const stats = statSync(nativeSessionFile);
+		return `${nativeSessionId}:${nativeSessionFile}:${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+	};
+	const key = fileKey();
+	if (ompForkCandidatesCache?.key === key) {
+		return ompForkCandidatesCache.candidates.map((candidate) => ({ ...candidate }));
+	}
+	const stream = createReadStream(nativeSessionFile, { encoding: "utf8" });
+	const lines = createInterface({ input: stream, crlfDelay: Infinity });
+	const candidates: AgentRuntimeForkCandidate[] = [];
+	let headerSeen = false;
+	try {
+		for await (const line of lines) {
+			for (const entry of parseSessionEntries(`${line}\n`)) {
+				if (!headerSeen) {
+					// OMP may assign a new live session id when it resumes the same transcript file.
+					// The adapter-owned nativeSessionFile is the durable identity for this passive read.
+					if (entry.type !== "session" || entry.version !== 3 || !entry.id) return undefined;
+					headerSeen = true;
+					continue;
+				}
+				if (entry.type !== "message" || entry.message.role !== "user") continue;
+				const text = contentText(entry.message.content, "");
+				if (text) candidates.push({ entryId: entry.id, text });
+			}
+		}
+		if (!headerSeen) return undefined;
+		const candidateBytes = candidates.reduce(
+			(bytes, candidate) => bytes + Buffer.byteLength(candidate.entryId) + Buffer.byteLength(candidate.text),
+			0,
+		);
+		if (candidateBytes <= OMP_FORK_CANDIDATE_CACHE_MAX_BYTES && key === fileKey()) {
+			ompForkCandidatesCache = { key, candidates: candidates.map((candidate) => ({ ...candidate })) };
+		}
+		return candidates;
+	} finally {
+		lines.close();
+		stream.destroy();
+	}
 }
 
 export function inspectOmpHistory(

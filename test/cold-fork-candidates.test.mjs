@@ -17,7 +17,7 @@ const persisted = [{ entryId: "past", text: "persisted user" }];
 const live = [{ entryId: "live", text: "live user" }];
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 
-async function routerFixture(run, { read = async () => persisted, state = "bound" } = {}) {
+async function routerFixture(run, { read = async () => persisted, liveRead = async () => live, state = "bound" } = {}) {
 	let opens = 0;
 	const capabilities = createMinimalAgentRuntimeCapabilities();
 	capabilities.lifecycle.fork = true;
@@ -30,7 +30,7 @@ async function routerFixture(run, { read = async () => persisted, state = "bound
 		adapter.openSession = async (input) => {
 			opens++;
 			const session = await open(input);
-			session.controls = { forkSession: async () => { throw Error("not used"); }, getForkCandidates: async () => live };
+			session.controls = { forkSession: async () => { throw Error("not used"); }, getForkCandidates: liveRead };
 			return session;
 		};
 		return adapter;
@@ -96,10 +96,40 @@ test("a runtime opened during persisted inspection wins over the stale candidate
 		await started.promise;
 		await router.getSessionStatusSnapshot("ps_cold_fork");
 		pending.resolve();
-		assert.deepEqual(await candidates, live);
-		assert.deepEqual(await router.getSessionForkCandidates("ps_cold_fork"), live);
+		assert.deepEqual(await candidates, live, "a runtime opened during the read invalidates its stale result");
+		assert.deepEqual(await router.getSessionForkCandidates("ps_cold_fork"), persisted, "later reads remain passive on the open runtime");
 		assert.equal(opens(), 1);
 	}, { read: async () => { started.resolve(); await pending.promise; return persisted; } });
+});
+
+test("passive fork inspection on an already-open runtime does not gate message dispatch", async () => {
+	const started = deferred();
+	const pending = deferred();
+	await routerFixture(async ({ router, opens }) => {
+		const events = [];
+		router.subscribe((event) => events.push(event));
+		await router.getSessionStatusSnapshot("ps_cold_fork");
+		assert.equal(opens(), 1);
+		const candidates = router.getSessionForkCandidates("ps_cold_fork");
+		await started.promise;
+		const queued = await router.emit({
+			type: "message",
+			piboSessionId: "ps_cold_fork",
+			id: "during-passive-read",
+			text: "dispatch now",
+			source: "user",
+		});
+		assert.equal(queued.type, "message_queued");
+		for (let index = 0; index < 100 && !events.some((event) => event.type === "message_finished" && event.eventId === "during-passive-read"); index += 1) {
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
+		assert.ok(events.some((event) => event.type === "message_finished" && event.eventId === "during-passive-read"));
+		pending.resolve();
+		assert.deepEqual(await candidates, persisted);
+	}, {
+		read: async () => { started.resolve(); await pending.promise; return persisted; },
+		liveRead: async () => { throw new Error("live identity operation must not run"); },
+	});
 });
 
 test("Pi persisted fork candidates preserve all user entries and text without rewriting native history", async () => {

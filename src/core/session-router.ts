@@ -1,4 +1,4 @@
-import { previouslyClearedMessages } from "./events.js";
+import { PiboMessagePreDispatchError, previouslyClearedMessages } from "./events.js";
 import { createProviderCapacityExtension } from "./provider-capacity.js";
 import { RuntimeCapacity, type RuntimeCapacityOptions, type RuntimeCapacityStatus, type RuntimeInitializationTiming } from "./runtime-capacity.js";
 import { randomUUID } from "node:crypto";
@@ -690,15 +690,25 @@ export class PiboSessionRouter {
 			session = await this.getOrCreateSession(event.piboSessionId);
 		} catch (error) {
 			if (event.type === "message" && event.id) {
+				const dispatchError = error instanceof PiboMessagePreDispatchError
+					? error
+					: new PiboMessagePreDispatchError(
+						error instanceof Error ? error.message : String(error),
+						error && typeof error === "object" && "code" in error && typeof error.code === "string"
+							? error.code
+							: "message_pre_dispatch_failed",
+						{ cause: error },
+					);
 				this.signalRegistry.project({
 					type: "pibo_output",
 					event: {
 						type: "session_error",
 						piboSessionId: event.piboSessionId,
 						eventId: event.id,
-						error: error instanceof Error ? error.message : String(error),
+						error: dispatchError.message,
 					},
 				});
+				throw dispatchError;
 			}
 			throw error;
 		}
@@ -780,6 +790,8 @@ export class PiboSessionRouter {
 					piboSessionId: event.piboSessionId,
 					processing: status.processing,
 					queuedMessages: status.queuedMessages,
+					queueState: status.queueState,
+					queueBlock: status.queueBlock,
 				});
 			}
 			throw error;
@@ -1109,7 +1121,7 @@ export class PiboSessionRouter {
 		}
 		const profileDiagnostics = [
 			...validateAgentRuntimeProfileCapabilities(targetProfile, adapter.descriptor.capabilities),
-			...adapter.validateProfile({ profile: targetProfile, workspace }),
+			...await adapter.validateProfile({ profile: targetProfile, workspace }),
 		];
 		const invalidProfile = profileDiagnostics.find((diagnostic) => diagnostic.severity === "error");
 		if (invalidProfile) throw new Error(`Runtime profile validation failed: ${invalidProfile.message}`);
@@ -1195,10 +1207,10 @@ export class PiboSessionRouter {
 	}
 
 	async getSessionForkCandidates(piboSessionId: string): Promise<PiboForkCandidate[]> {
+		const sessionAtReadStart = this.sessions.get(piboSessionId);
 		const canReadPersisted = () => !this.closing
 			&& !this.quiescingSessions.has(piboSessionId)
 			&& !this.disposingSessions.has(piboSessionId)
-			&& !this.sessions.has(piboSessionId)
 			&& !this.pendingSessions.has(piboSessionId);
 		if (canReadPersisted()) {
 			const record = this.resolvePiboSession(piboSessionId);
@@ -1209,7 +1221,8 @@ export class PiboSessionRouter {
 				const workspace = record.workspace ?? this.options.cwd ?? getDefaultPiboWorkspace();
 				const candidates = await adapter.readForkCandidates({ binding, workspace });
 				const current = this.resolvePiboSession(piboSessionId);
-				if (candidates !== undefined && canReadPersisted() && current.workspace === record.workspace
+				if (candidates !== undefined && canReadPersisted() && this.sessions.get(piboSessionId) === sessionAtReadStart
+					&& current.workspace === record.workspace
 					&& runtimeBindingsEqual(binding, this.resolveSessionRuntimeBinding(current))) return candidates;
 			}
 		}
@@ -1734,9 +1747,10 @@ export class PiboSessionRouter {
 		this.assertOpenableRuntimeBinding(binding);
 		const profileDiagnostics = [
 			...validateAgentRuntimeProfileCapabilities(sessionProfile, runtimeAdapter.descriptor.capabilities),
-			...runtimeAdapter.validateProfile({
+			...await runtimeAdapter.validateProfile({
 				profile: sessionProfile,
 				workspace,
+				activeModel,
 			}),
 		];
 		const invalidProfile = profileDiagnostics.find((diagnostic) => diagnostic.severity === "error");
@@ -1963,6 +1977,8 @@ export class PiboSessionRouter {
 						piboSessionId: piboSession.id,
 						processing: state.processing,
 						queuedMessages: state.queuedMessages,
+						queueState: state.queueState,
+						queueBlock: state.queueBlock,
 					});
 					if (!state.processing && state.queuedMessages === 0 && !state.disposed && !state.sessionIdentityOperationInFlight) {
 						this.syncLiveSessionRuntimeBinding(piboSession.id, runtimeSession, bindingSync);

@@ -1139,7 +1139,7 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		}
 	}
 
-	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
+	async validateProfile(input: ValidateAgentRuntimeProfileInput): Promise<readonly AgentRuntimeDiagnostic[]> {
 		const diagnostics: AgentRuntimeDiagnostic[] = [];
 		if (input.profile.runtimeInstanceId !== this.instanceId) {
 			diagnostics.push({
@@ -1158,19 +1158,34 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				path: "runtimeOptions",
 			});
 		}
-		for (const [path, model] of [
-			["model", input.profile.model],
-			["mainModel", input.profile.mainModel],
-			["subagentModel", input.profile.subagentModel],
-		] as const) {
-			if (model && model.provider !== CODEX_NATIVE_MODEL_PROVIDER_ID) {
+		const model = input.activeModel ?? selectRequestedModelProfile(input.profile);
+		if (!model) return diagnostics;
+		if (model.provider !== CODEX_NATIVE_MODEL_PROVIDER_ID) {
+			diagnostics.push({
+				severity: "error",
+				code: "codex_native_model_provider_invalid",
+				message: `Native Codex models use provider "${CODEX_NATIVE_MODEL_PROVIDER_ID}", not "${model.provider}".`,
+				path: input.activeModel ? "activeModel" : input.profile.model ? "model" : input.profile.parentSessionId ? "subagentModel" : "mainModel",
+			});
+			return diagnostics;
+		}
+		try {
+			const catalog = await this.loadModelCatalog();
+			if (!catalog.models.some((entry) => entry.id === model.id)) {
 				diagnostics.push({
 					severity: "error",
-					code: "codex_native_model_provider_invalid",
-					message: `Native Codex models use provider "${CODEX_NATIVE_MODEL_PROVIDER_ID}", not "${model.provider}".`,
-					path,
+					code: "codex_native_model_unavailable",
+					message: `Native Codex model "${model.id}" is not available in runtime instance "${this.instanceId}".`,
+					path: input.activeModel ? "activeModel" : input.profile.model ? "model" : input.profile.parentSessionId ? "subagentModel" : "mainModel",
 				});
 			}
+		} catch {
+			diagnostics.push({
+				severity: "error",
+				code: "codex_native_model_catalog_unavailable",
+				message: `Native Codex model catalog is unavailable for runtime instance "${this.instanceId}"; refusing to bind an unverified model.`,
+				path: input.activeModel ? "activeModel" : "model",
+			});
 		}
 		return diagnostics;
 	}

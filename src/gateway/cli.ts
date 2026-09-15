@@ -28,6 +28,8 @@ type RuntimeTelemetryHint = {
 type RuntimeStatus = {
 	piboSessionId?: string;
 	queuedMessages?: number;
+	queueState?: string;
+	queueBlock?: { code?: string; operation?: string; message?: string; since?: string };
 	activeEventId?: string;
 	queuedEventIds?: string[];
 	processing?: boolean;
@@ -275,9 +277,17 @@ function runtimeStatus(value: unknown): RuntimeStatus | undefined {
 	const obj = objectValue(value);
 	if (!obj || !stringValue(obj.piboSessionId) || typeof obj.processing !== "boolean" || typeof obj.streaming !== "boolean"
 		|| !Number.isInteger(obj.queuedMessages) || Number(obj.queuedMessages) < 0) return undefined;
+	const queueBlock = objectValue(obj.queueBlock);
 	return {
 		piboSessionId: stringValue(obj.piboSessionId),
 		queuedMessages: numberValue(obj.queuedMessages),
+		queueState: stringValue(obj.queueState),
+		queueBlock: queueBlock ? {
+			code: stringValue(queueBlock.code),
+			operation: stringValue(queueBlock.operation),
+			message: stringValue(queueBlock.message),
+			since: stringValue(queueBlock.since),
+		} : undefined,
 		activeEventId: stringValue(obj.activeEventId),
 		queuedEventIds: Array.isArray(obj.queuedEventIds) && obj.queuedEventIds.every((id) => typeof id === "string") ? obj.queuedEventIds as string[] : undefined,
 		processing: booleanValue(obj.processing),
@@ -422,7 +432,8 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 	console.log("  runtime queue layer:");
 	console.log(`    sessions: ${status.runtimeStatuses.length}`);
 	for (const session of status.runtimeStatuses) {
-		console.log(`    ${session.piboSessionId ?? "unknown"}: processing=${session.processing === true} streaming=${session.streaming === true} queued=${session.queuedMessages ?? 0}`);
+		console.log(`    ${session.piboSessionId ?? "unknown"}: processing=${session.processing === true} streaming=${session.streaming === true} queued=${session.queuedMessages ?? 0} queueState=${session.queueState ?? "unknown"}`);
+		if (session.queueBlock) console.log(`      queue blocked: ${session.queueBlock.code ?? "unknown"} (${session.queueBlock.operation ?? "unknown"}) since ${session.queueBlock.since ?? "unknown"}: ${session.queueBlock.message ?? ""}`);
 		if (session.activeEventId) console.log(`      active event: ${session.activeEventId}`);
 		if (session.queuedEventIds?.length) console.log(`      queued events: ${session.queuedEventIds.join(", ")}`);
 		if (session.activeTelemetry) {

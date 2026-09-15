@@ -12,6 +12,18 @@ export class PiboSteeringUnavailableError extends Error {
 	}
 }
 
+/** A user message was rejected before it could be handed to the native runtime. */
+export class PiboMessagePreDispatchError extends Error {
+	constructor(
+		message: string,
+		readonly code = "message_pre_dispatch_failed",
+		options?: ErrorOptions,
+	) {
+		super(message, options);
+		this.name = "PiboMessagePreDispatchError";
+	}
+}
+
 export type PiboJsonValue =
 	| null
 	| boolean
@@ -209,6 +221,15 @@ export type PiboExecutionEvent = PiboKnownExecutionEvent | PiboCustomExecutionEv
 
 export type PiboInputEvent = PiboMessageEvent | PiboExecutionEvent;
 
+export type PiboRuntimeQueueState = "idle" | "queued" | "processing" | "blocked";
+
+export type PiboRuntimeQueueBlock = {
+	code: "fork_candidate_read" | "session_identity_operation";
+	operation: "fork_candidates" | "fork" | "clone" | "switch";
+	message: string;
+	since: string;
+};
+
 export type PiboSessionStatus = {
 	piboSessionId: string;
 	activeModel?: { provider: string; id: string };
@@ -223,6 +244,8 @@ export type PiboSessionStatus = {
 		revision?: number;
 	};
 	queuedMessages: number;
+	queueState: PiboRuntimeQueueState;
+	queueBlock?: PiboRuntimeQueueBlock;
 	/** Semantic work identities used for snapshot-bound restart approval. */
 	activeEventId?: string;
 	queuedEventIds?: string[];

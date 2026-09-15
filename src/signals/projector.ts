@@ -150,11 +150,36 @@ export const sessionLifecycleSignalProducer: PiboSignalProducer = {
 		}
 		if (data.type === "session_processing_changed") {
 			const existing = context.getNode(`session:${data.piboSessionId}`);
-			const status = existing && isTerminalSignalStatus(existing.status) ? existing.status : data.processing ? "running" : "idle";
+			const queueState = data.queueState
+				?? (data.processing ? "processing" : data.queuedMessages > 0 ? "queued" : "idle");
+			const liveStatus = queueState === "blocked"
+				? "blocked"
+				: data.processing
+					? "running"
+					: data.queuedMessages > 0
+						? "queued"
+						: "idle";
+			const status = existing && isTerminalSignalStatus(existing.status) ? existing.status : liveStatus;
 			return [
 				{ type: "patch_node", nodeId: `session:${data.piboSessionId}`, patch: { status } },
 				{ type: "set_session_queue", piboSessionId: data.piboSessionId, queuedMessages: data.queuedMessages },
-				...(data.processing ? [] : settleActiveSessionNodes(data.piboSessionId, context, "interrupted", "processing_stopped")),
+				{
+					type: "upsert_node",
+					node: node({
+						id: `queue:${data.piboSessionId}`,
+						kind: "queue",
+						status: queueState === "blocked" ? "blocked" : data.queuedMessages > 0 ? "queued" : "idle",
+						piboSessionId: data.piboSessionId,
+						metadata: {
+							queuedMessages: data.queuedMessages,
+							queueState,
+							...(data.queueBlock ? { queueBlock: data.queueBlock } : {}),
+						},
+					}, context),
+				},
+				...(!data.processing && data.queuedMessages === 0
+					? settleActiveSessionNodes(data.piboSessionId, context, "interrupted", "processing_stopped")
+					: []),
 			];
 		}
 		if (data.type === "queue_changed") {
