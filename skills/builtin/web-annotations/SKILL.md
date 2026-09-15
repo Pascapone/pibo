@@ -1,3 +1,8 @@
+---
+name: web-annotations
+description: Set up browser targets, collect page annotations, and review session-scoped visual feedback in Pibo.
+---
+
 # Web Annotations Setup Guide
 
 ## Overview
