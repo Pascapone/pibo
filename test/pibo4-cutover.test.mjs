@@ -70,6 +70,31 @@ test("cutover preparation maps aggregate owners, preserves negative states, and 
 	await assert.rejects(preparePibo4Cutover({ source: { package: "@pasko70/pibo", version: "3.6.2", path: source }, targetCore: { package: "@pasko70/pibo", version: "4.0.0-beta.1", path: core }, artifacts: {}, snapshot: { schemaVersion: 1, plugins: [{ pluginId: "unknown.legacy", state: "active" }] }, outputPath: join(root, "unknown.json") }), /No exact Pibo 4 artifact/);
 });
 
+test("cutover preparation accepts real pre-4 package lines and rejects unsupported or malformed source versions", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "pibo4-cutover-source-versions-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const source = join(root, "source.tgz");
+	const core = join(root, "core.tgz");
+	await writeFile(source, "exact deployed source bytes");
+	await writeFile(core, "exact target core bytes");
+	const prepare = (version, index, packageName = "@pasko70/pibo") => preparePibo4Cutover({
+		source: { package: packageName, version, path: source },
+		targetCore: { package: "@pasko70/pibo", version: "4.0.0-beta.1", path: core },
+		artifacts: {},
+		snapshot: { schemaVersion: 1, plugins: [] },
+		outputPath: join(root, `plan-${index}.json`),
+	});
+	for (const [index, version] of ["1.7.2", "1.0.0", "2.4.1-beta.2", "3.6.2", "3.9.0+retained.1", "4.0.0-alpha", "4.0.0-beta.3", "4.0.0-rc.2"].entries()) {
+		const plan = await prepare(version, `allowed-${index}`);
+		assert.equal(plan.source.version, version);
+		assert.match(plan.source.contentHash, /^sha256:[0-9a-f]{64}$/);
+	}
+	for (const [index, version] of ["0.9.0", "1.7", "1.07.2", "v1.7.2", "1.7.2-01", "4.0.0", "4.0.1-beta.1", "4.1.0-beta.1", "4.0.0-preview.1", "5.0.0-alpha.1", "garbage"].entries()) {
+		await assert.rejects(prepare(version, `rejected-${index}`), /Unsupported cutover source/);
+	}
+	await assert.rejects(prepare("1.7.2", "wrong-package", "@other/pibo"), /Cutover source must be @pasko70\/pibo/);
+});
+
 test("Minimal-Core refuses a required but unprepared direct cutover before opening product data", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo4-unprepared-"));
 	const previousHome = process.env.PIBO_HOME;

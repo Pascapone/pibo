@@ -53,6 +53,16 @@ async function withVerifiedHash(coordinate: Pibo4PackedCoordinate): Promise<Pibo
 	if (coordinate.contentHash && coordinate.contentHash !== contentHash) throw new Error(`Packed artifact hash mismatch for ${coordinate.package}@${coordinate.version}; expected ${coordinate.contentHash}, received ${contentHash}`);
 	return { ...coordinate, path, contentHash };
 }
+function isSupportedSourceVersion(version: string): boolean {
+	const match = version.match(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/);
+	if (!match) return false;
+	const [, majorText, minorText, patchText, prerelease] = match;
+	if (prerelease?.split(".").some((identifier) => /^\d+$/.test(identifier) && identifier.length > 1 && identifier.startsWith("0"))) return false;
+	const major = Number(majorText);
+	if ([1, 2, 3].includes(major)) return true;
+	return major === 4 && minorText === "0" && patchText === "0" && prerelease !== undefined && ["alpha", "beta", "rc"].includes(prerelease.split(".")[0]!);
+}
+
 function targetStates(snapshot: Pibo4LegacyCutoverSnapshot): Map<string, { state: Pibo4LegacyPackageState; owners: Set<string> }> {
 	if (snapshot.schemaVersion !== 1 || !Array.isArray(snapshot.plugins)) throw new Error("Pibo 4 cutover requires a schemaVersion 1 legacy package snapshot");
 	const targets = new Map<string, { state: Pibo4LegacyPackageState; owners: Set<string> }>();
@@ -87,7 +97,9 @@ export async function preparePibo4Cutover(options: {
 	snapshot: Pibo4LegacyCutoverSnapshot;
 	outputPath: string;
 }): Promise<Pibo4CutoverPlan> {
-	if (!/^3\.|^4\.0\.0-(?:alpha|beta|rc)/.test(options.source.version)) throw new Error(`Unsupported cutover source @pasko70/pibo@${options.source.version}; prepare from 3.x or a 4.0 prerelease`);
+	if (options.source.package !== "@pasko70/pibo") throw new Error(`Cutover source must be @pasko70/pibo, received ${options.source.package}`);
+	if (!isSupportedSourceVersion(options.source.version)) throw new Error(`Unsupported cutover source @pasko70/pibo@${options.source.version}; prepare from an exact 1.x, 2.x, 3.x, or 4.0 prerelease package`);
+	if (options.targetCore.package !== "@pasko70/pibo") throw new Error(`Cutover target must be @pasko70/pibo, received ${options.targetCore.package}`);
 	if (!/^4\./.test(options.targetCore.version)) throw new Error(`Cutover target must be Pibo 4, received ${options.targetCore.version}`);
 	const sourceSnapshot = JSON.parse(JSON.stringify(options.snapshot)) as Pibo4LegacyCutoverSnapshot;
 	const mapped = targetStates(sourceSnapshot);
