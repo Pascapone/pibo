@@ -6,7 +6,7 @@ import {
 	type PiboContextBuildNode,
 	type PiboContextBuildRuntimeInfo,
 	type PiboContextBuildSnapshot,
-} from "../core/context-build.js";
+} from "../core/context-build-contract.js";
 import { InitialSessionContext } from "../core/profiles.js";
 import type { PiboModelDefaults } from "../core/model-defaults.js";
 import type { PiboThinkingLevel } from "../core/thinking.js";

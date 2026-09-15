@@ -701,6 +701,10 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		return bindPiCompleteHistoryProof(await readPiAgentRuntimeHistory(this.instanceId, input));
 	}
 
+	isHistoryReconciliationProof(proof: AgentRuntimeHistoryReconciliationProof): boolean {
+		return isPiBuiltInHistoryReconciliationProof(proof);
+	}
+
 	validateProfile(input: ValidateAgentRuntimeProfileInput): readonly AgentRuntimeDiagnostic[] {
 		const diagnostics: AgentRuntimeDiagnostic[] = [];
 		if (input.profile.runtimeInstanceId !== this.instanceId) {

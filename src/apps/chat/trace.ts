@@ -1,27 +1,14 @@
 import { createHash } from "node:crypto";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
+import type { PiHistoryMetadata, PiTranscriptHistoryPage } from "../../agent-runtimes/pi/history.js";
 import type {
 	AgentRuntimeHistoryEntry,
 	AgentRuntimeHistoryInspection,
 	AgentRuntimeHistoryReconciliationProof,
 } from "../../agent-runtime/history.js";
-import {
-	PI_HISTORY_PAGE_MAX_BYTES,
-	PI_HISTORY_SCAN_MAX_BYTES,
-	PI_HISTORY_TAIL_MAX_BYTES,
-	listPiHistorySessions,
-	loadPiHistoryFastMetadata,
-	loadPiHistoryMetadata,
-	piSessionEntriesToAgentRuntimeHistoryEntries,
-	readPiTranscriptHistoryPage,
-	readPiTranscriptTailEntries,
-	type PiHistoryMetadata,
-	type PiTranscriptHistoryPage,
-} from "../../agent-runtimes/pi/history.js";
 import type { ModelProfile } from "../../core/profiles.js";
 import { isPiboThinkingLevel, type PiboThinkingLevel } from "../../core/thinking.js";
 import type { PiboSession } from "../../sessions/store.js";
-import { isBuiltInHistoryReconciliationProof } from "../../agent-runtimes/history-proof.js";
 import { buildTraceViewFromEvents, traceNodesFromHistoryEntries } from "../../shared/trace-engine.js";
 import type { TraceMessageTurnTiming } from "../../shared/trace-event-projection.js";
 import type { PiboSessionTraceView, PiboTraceNode } from "../../shared/trace-types.js";
@@ -126,9 +113,6 @@ type TraceBuildInput = {
 	latestStreamId?: number;
 };
 
-export const TRACE_TRANSCRIPT_TAIL_MAX_BYTES = PI_HISTORY_TAIL_MAX_BYTES;
-export const TRACE_TRANSCRIPT_HISTORY_PAGE_MAX_BYTES = PI_HISTORY_PAGE_MAX_BYTES;
-export const TRACE_TRANSCRIPT_HISTORY_SCAN_MAX_BYTES = PI_HISTORY_SCAN_MAX_BYTES;
 
 export type TranscriptHistoryPage = PiTranscriptHistoryPage;
 
@@ -232,7 +216,7 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		? historyMetadataFromInspection(input.historyInspection)
 		: historyMetadataFromPiCompatibility(input.metadata);
 	const entries = [...(input.historyEntries ?? (input.transcriptEntries
-		? piSessionEntriesToAgentRuntimeHistoryEntries(input.transcriptEntries)
+		? await piCompatibilityHistoryEntries(input.transcriptEntries)
 		: []))];
 	const sessionStatus = input.status ?? "idle";
 	const view = buildTraceViewFromEvents({
@@ -246,7 +230,6 @@ export async function buildTraceView(input: TraceBuildInput): Promise<PiboSessio
 		turnTimingOverflow: input.turnTimingOverflow,
 		historyEntries: entries,
 		historyReconciliationProof: input.historyReconciliationProof,
-		historyReconciliationAuthoritative: isBuiltInHistoryReconciliationProof(input.historyReconciliationProof),
 		sessions: input.sessions.map((session) => ({
 			id: session.id,
 			parentId: session.parentId ?? null,
@@ -432,34 +415,10 @@ function thinkingLevelValue(value: unknown): PiboThinkingLevel | undefined {
 	return typeof value === "string" && isPiboThinkingLevel(value) ? value : undefined;
 }
 
-// Pi compatibility exports. Normal Chat Web history resolves through the selected runtime adapter.
-export async function loadPiSessionMetadata(session: PiboSession, cwd = process.cwd()): Promise<PiHistoryMetadata> {
-	return await loadPiHistoryMetadata(session.runtimeBinding?.nativeSessionId ?? session.piSessionId, cwd);
-}
-
-export async function loadPiSessionFastMetadata(session: PiboSession, cwd = process.cwd()): Promise<PiHistoryMetadata> {
-	return loadPiHistoryFastMetadata(session.runtimeBinding?.nativeSessionId ?? session.piSessionId, cwd);
-}
-
-export async function loadPiSessionTailEntries(
-	session: PiboSession,
-	cwd = process.cwd(),
-	maxBytes = TRACE_TRANSCRIPT_TAIL_MAX_BYTES,
-): Promise<{ metadata: PiHistoryMetadata; entries: SessionEntry[] }> {
-	const metadata = await loadPiSessionMetadata(session, cwd);
-	if (!metadata.sessionPath) return { metadata, entries: [] };
-	return { metadata, entries: readPiTranscriptTailEntries(metadata.sessionPath, maxBytes) };
-}
-
-export const listPiSessions = listPiHistorySessions;
-export const readTailEntries = readPiTranscriptTailEntries;
-export const readTranscriptHistoryPage = readPiTranscriptHistoryPage;
-
-/** @deprecated Pi compatibility helper. Use traceNodesFromHistoryEntries. */
-export function traceNodesFromEntries(
-	piboSessionId: string,
-	entries: readonly SessionEntry[],
-	turnTimings: readonly TraceMessageTurnTiming[] = [],
-): PiboTraceNode[] {
-	return traceNodesFromHistoryEntries(piboSessionId, piSessionEntriesToAgentRuntimeHistoryEntries(entries), turnTimings);
+async function piCompatibilityHistoryEntries(entries: readonly SessionEntry[]): Promise<AgentRuntimeHistoryEntry[]> {
+	const modulePath = "./pi-trace-compat.js";
+	const compatibility = await import(modulePath) as {
+		piSessionEntriesToHistoryEntries(entries: readonly SessionEntry[]): AgentRuntimeHistoryEntry[];
+	};
+	return compatibility.piSessionEntriesToHistoryEntries(entries);
 }

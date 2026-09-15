@@ -7,7 +7,7 @@ import { preparePluginSdkResolution } from "./backend-loader.js";
 import { createStagedPluginDefinition } from "./staged-definition.js";
 import { verifyPluginArtifact } from "./sources.js";
 import type { PluginConsumerCollector } from "./operations.js";
-import { PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
+import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, PiboChatExtensionRegistry, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation } from "./manifest.js";
 import { provideCoreUserResources } from "../core/user-resources.js";
 import { provideCoreCapabilities } from "../core/capabilities.js";
@@ -26,6 +26,7 @@ export async function startPluginProductRuntime(options: {
 	requirePreparedCutover?: boolean;
 	cutoverPlanPath?: string;
 	currentCoreVersion?: string;
+	provideWebProduct?: (host: PluginHost, options: NonNullable<PiboPluginProductOptions["web"]>) => () => void | Promise<void>;
 }) {
 	let cutover: Pibo4CutoverPlan | undefined;
 	if (options.requirePreparedCutover || options.cutoverPlanPath) {
@@ -76,18 +77,24 @@ export async function startPluginProductRuntime(options: {
 	};
 	const manager = new PluginManager({ store: data.plugins, artifactRoot, lifecycle, collectConsumers: options.collectConsumers, coreServices: () => host.coreServiceDeclarations() });
 	const runtime = new PluginRuntimeCoordinator({ host, manager, store: data.plugins });
+	const chatExtensions = new PiboChatExtensionRegistry();
 	const coreServiceDisposers = [
 		host.provideCoreService({ id: PLUGIN_HOST_SERVICE, version: "1.0.0", value: host }),
 		host.provideCoreService({ id: PLUGIN_MANAGEMENT_SERVICE, version: "1.0.0", value: manager }),
 		host.provideCoreService({ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", value: Object.freeze({ ...options.productOptions }) }),
+		host.provideCoreService({ id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0", value: chatExtensions }),
 		...(options.readSessionPlan ? [host.provideCoreService({ id: PLUGIN_SESSION_PLAN_SERVICE, version: "1.0.0", value: options.readSessionPlan })] : []),
 		provideCoreCapabilities(host),
 		provideCoreUserResources(host, options.productOptions?.userResources),
 	];
 	if (options.productOptions?.web) {
-		const webProductModule = "../core/web-product.js";
-		const { provideCoreWebProduct } = await import(webProductModule) as typeof import("../core/web-product.js");
-		coreServiceDisposers.push(provideCoreWebProduct(host, options.productOptions.web));
+		if (options.provideWebProduct) {
+			coreServiceDisposers.push(options.provideWebProduct(host, options.productOptions.web));
+		} else {
+			const webProductModule = "../core/web-product.js";
+			const { provideCoreWebProduct } = await import(webProductModule) as typeof import("../core/web-product.js");
+			coreServiceDisposers.push(provideCoreWebProduct(host, options.productOptions.web));
+		}
 	}
 
 	try {

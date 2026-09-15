@@ -65,6 +65,7 @@ import type {
 import type {
 	AgentRuntimeHistoryInspection,
 	AgentRuntimeHistoryPage,
+	AgentRuntimeHistoryReconciliationProof,
 	InspectAgentRuntimeHistoryInput,
 	ReadAgentRuntimeHistoryInput,
 } from "./history.js";
@@ -222,6 +223,8 @@ export interface AgentRuntimeAdapter {
 	disposeAuth?(): Promise<void>;
 	inspectHistory?(input: InspectAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryInspection>;
 	readHistory?(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage>;
+	/** Verify adapter-owned proof identity without teaching Core about concrete runtime implementations. */
+	isHistoryReconciliationProof?(proof: AgentRuntimeHistoryReconciliationProof): boolean;
 	/** Read persisted fork candidates without opening a runtime; undefined retains the live fallback. */
 	readForkCandidates?(input: ResolveAgentRuntimeBindingInput): Promise<AgentRuntimeForkCandidate[] | undefined>;
 	/**

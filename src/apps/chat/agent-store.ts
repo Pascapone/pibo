@@ -15,9 +15,12 @@ import type { AgentPluginSelection, PluginCatalog, PluginRuntimeTarget, PluginDi
 import { PluginConflictError, pluginErrorMessage, pluginJson, type PluginStore } from "../../plugins/store.js";
 import { PluginMigrationJournal, type PluginMigrationRecord } from "../../plugins/migration-journal.js";
 import type { PluginConsumer } from "../../plugins/operations.js";
-import { PIBO_GOAL_TOOL_NAMES } from "../../loops/tools.js";
-import { PIBO_RUN_TOOL_NAMES } from "../../runs/tools.js";
-import { PIBO_AGENT_TOOL_NAMES } from "../../subagents/tool.js";
+
+// Data-only names for translating retained pre-plugin agent records. They do not
+// import or execute the owning feature packages.
+const LEGACY_GOAL_TOOL_NAMES = ["get_goal", "create_goal", "update_goal"] as const;
+const LEGACY_RUN_TOOL_NAMES = ["pibo_run_start", "pibo_run_list", "pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"] as const;
+const LEGACY_AGENT_TOOL_NAMES = ["pibo_agents_send_message", "pibo_agents_list_agents", "pibo_agents_observe", "pibo_agents_kill"] as const;
 
 export type CustomAgentSubagent = {
 	name: string;
@@ -1525,10 +1528,10 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		const adapter = contributions.find((item) => item.kind === "mcp-adapter" && item.name === "mcp-cli");
 		if (adapter) adapter.config = { selectedServers: [...agent.mcpServers] };
 	}
-	if (agent.goalControl !== false) for (const name of PIBO_GOAL_TOOL_NAMES) add("tool", name);
+	if (agent.goalControl !== false) for (const name of LEGACY_GOAL_TOOL_NAMES) add("tool", name);
 	// send_message is yielded-only; the other three tools remain direct. Do not enable general Run targets.
 	const manualSubagents = agent.subagents.length > 0;
-	if (manualSubagents) for (const name of PIBO_AGENT_TOOL_NAMES) add("tool", name);
+	if (manualSubagents) for (const name of LEGACY_AGENT_TOOL_NAMES) add("tool", name);
 	// Baseline Pi wraps only bash (not read/edit/write) when full Run Control is enabled.
 	const piNativeYielding = options.runtime.adapterId === "pi" && agent.runControl;
 	if (piNativeYielding && (agent.builtinTools === "disabled" || !agent.builtinToolNames.includes("bash"))) diagnostics.push({
@@ -1536,10 +1539,10 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		message: "Legacy Run Control implicitly exposed bash despite disabled Pi built-ins; explicit harness selection reconciliation is required",
 	});
 	const hasYieldable = piNativeYielding || selectedTools.some((tool) => tool && tool.yieldable !== false);
-	if (manualSubagents || (agent.runControl && hasYieldable)) for (const name of PIBO_RUN_TOOL_NAMES) add("tool", name);
+	if (manualSubagents || (agent.runControl && hasYieldable)) for (const name of LEGACY_RUN_TOOL_NAMES) add("tool", name);
 	const runTargetNames = manualSubagents && !agent.runControl ? ["pibo_agents_send_message"] : agent.runControl ? [
 		...selectedTools.filter((tool) => tool && tool.yieldable !== false).map((tool) => tool!.name),
-		...(manualSubagents ? [...PIBO_AGENT_TOOL_NAMES] : []), ...(piNativeYielding ? ["bash"] : []),
+		...(manualSubagents ? [...LEGACY_AGENT_TOOL_NAMES] : []), ...(piNativeYielding ? ["bash"] : []),
 	] : [];
 	const start = contributions.find((item) => item.kind === "tool" && item.name === "pibo_run_start");
 	if (start) start.config = { allowedToolNames: runTargetNames };

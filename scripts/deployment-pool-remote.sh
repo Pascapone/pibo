@@ -45,7 +45,8 @@ case "$command_name" in
 		tmp_dir="$(mktemp -d)"
 		trap 'rm -rf "$tmp_dir"' EXIT
 		cd "$root_dir"
-		npm pack --pack-destination "$tmp_dir" >/dev/null
+		npm run pibo4:packages >/dev/null
+		npm pack --ignore-scripts --pack-destination "$tmp_dir" ./dist/pibo4-core-package >/dev/null
 		mapfile -t archives < <(find "$tmp_dir" -maxdepth 1 -type f -name '*.tgz' -print)
 		[[ "${#archives[@]}" -eq 1 ]] || { echo "npm pack did not produce exactly one archive" >&2; exit 1; }
 		archive="${archives[0]}"

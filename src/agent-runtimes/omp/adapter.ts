@@ -746,6 +746,10 @@ class OmpAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		return emptyOmpHistoryPage(this.instanceId);
 	}
 
+	isHistoryReconciliationProof(proof: AgentRuntimeHistoryReconciliationProof): boolean {
+		return isOmpBuiltInHistoryReconciliationProof(proof);
+	}
+
 	async resolveBinding(input: { binding: RuntimeSessionBinding; workspace: string }): Promise<RuntimeSessionBinding> {
 		if (input.binding.state === "missing") {
 			throw new AgentRuntimeCapabilityUnavailableError(

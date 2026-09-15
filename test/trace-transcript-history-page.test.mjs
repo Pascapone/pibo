@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { readTranscriptHistoryPage } from "../dist/apps/chat/trace.js";
+import { readTranscriptHistoryPage } from "../dist/apps/chat/pi-trace-compat.js";
 
 test("readTranscriptHistoryPage pages backward before a compaction cutoff", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pibo-transcript-history-"));

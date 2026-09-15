@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { buildTraceView, type PiboTraceNode, type PiboSessionTraceView } from "../apps/chat/trace.js";
+import { authorizeAgentRuntimeHistoryProof } from "../agent-runtime/history-authority.js";
 import type {
 	AgentRuntimeHistoryEntry,
 	AgentRuntimeHistoryInspection,
@@ -548,7 +549,9 @@ async function readDebugNativeHistory(
 	try {
 		const history = await withInstalledRuntimeAdapter(binding.runtimeInstanceId, async (adapter) => {
 			if (!adapter.descriptor.capabilities.maintenance.history || !adapter.readHistory) return undefined;
-			return await adapter.readHistory({ binding, workspace, limit: 500 });
+			const page = await adapter.readHistory({ binding, workspace, limit: 500 });
+			authorizeAgentRuntimeHistoryProof(adapter, page.reconciliationProof);
+			return page;
 		});
 		if (history) return history;
 		issues.push({

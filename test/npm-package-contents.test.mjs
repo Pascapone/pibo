@@ -81,11 +81,11 @@ test("generated Minimal-Core tarball excludes repository and feature implementat
 	const [report] = JSON.parse(stdout);
 	assert.equal(report.name, "@pasko70/pibo");
 	const files = report.files.map((file) => file.path);
-	for (const file of ["index.js", "plugin-sdk.js", "plugin-host.js", "plugin-runtime.js", "plugin-cutover.js", "product-runtime.js", "package.json"]) {
+	for (const file of ["index.js", "plugin-sdk.js", "plugin-host.js", "plugin-runtime.js", "plugin-cutover.js", "product-runtime.js", "dist/bin/pibo.js", "dist/core/executable-cli.js", "dist/apps/chat-ui/index.html", "dist/apps/context-files-ui/index.html", "package.json"]) {
 		assert.equal(files.includes(file), true, `Minimal-Core must include ${file}`);
 	}
-	assert.equal(files.some((file) => file.startsWith("dist/") || file.startsWith("docs/") || file.startsWith("compute-image/") || file.startsWith("scripts/")), false);
-	assert.equal(files.some((file) => file.includes("packaged-") || file.includes("plugin-builtin")), false);
+	assert.equal(files.some((file) => file.startsWith("docs/") || file.startsWith("compute-image/") || file.startsWith("scripts/")), false);
+	assert.equal(files.some((file) => file.includes("packaged-") || file.includes("plugin-builtin") || file.split("/").at(-1)?.startsWith("pibo-plugin-")), false);
 });
 
 test("generated Minimal-Core supports public package imports from its own tarball", async () => {

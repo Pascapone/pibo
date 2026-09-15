@@ -1440,6 +1440,10 @@ class CodexNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 		return inspection;
 	}
 
+	isHistoryReconciliationProof(proof: AgentRuntimeHistoryReconciliationProof): boolean {
+		return isCodexNativeBuiltInHistoryReconciliationProof(proof);
+	}
+
 	async readHistory(input: ReadAgentRuntimeHistoryInput): Promise<AgentRuntimeHistoryPage> {
 		const threadId = input.binding.nativeSessionId;
 		if (!threadId) {

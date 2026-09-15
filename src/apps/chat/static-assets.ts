@@ -8,7 +8,9 @@ export const CHAT_WEB_MOUNT_PATH = "/apps/chat";
 
 export const STATIC_ASSET_BROTLI_QUALITY = 5;
 
-const CHAT_UI_DIST_DIR = resolve(fileURLToPath(new URL("../../../dist/apps/chat-ui", import.meta.url)));
+const CHAT_UI_DIST_DIR = process.env.PIBO_CHAT_UI_DIST_DIR?.trim()
+	? resolve(process.env.PIBO_CHAT_UI_DIST_DIR)
+	: resolve(fileURLToPath(new URL("../../../dist/apps/chat-ui", import.meta.url)));
 const compressedAssetCache = new Map<string, Uint8Array>();
 
 export function responseChatAppShell(): Response {

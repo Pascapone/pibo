@@ -12,6 +12,7 @@ import {
 import { readOmpHistory } from "../dist/agent-runtimes/omp/history.js";
 import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import { buildTraceViewFromEvents as buildRuntimeNeutralTraceView, flattenTraceNodes } from "../dist/shared/trace-engine.js";
+import { authorizeAgentRuntimeHistoryProof } from "../dist/agent-runtime/history-authority.js";
 import { isBuiltInHistoryReconciliationProof } from "../dist/agent-runtimes/history-proof.js";
 import { traceTimelinePageFromView } from "../dist/apps/chat/trace-v2.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/terminalRows.js";
@@ -21,11 +22,11 @@ import {
 	historyReconciliationEntrySignature,
 } from "../dist/agent-runtime/history.js";
 
+const builtInHistoryAuthority = { isHistoryReconciliationProof: isBuiltInHistoryReconciliationProof };
+
 function buildTraceViewFromEvents(input) {
-	return buildRuntimeNeutralTraceView({
-		...input,
-		historyReconciliationAuthoritative: isBuiltInHistoryReconciliationProof(input.historyReconciliationProof),
-	});
+	authorizeAgentRuntimeHistoryProof(builtInHistoryAuthority, input.historyReconciliationProof);
+	return buildRuntimeNeutralTraceView(input);
 }
 
 function binding(nativeSessionId, locator) {

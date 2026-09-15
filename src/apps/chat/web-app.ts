@@ -5,6 +5,7 @@ import { TraceResponseCache } from "./trace-response-cache.js";
 import { AsyncChatReadQueries } from "../../data/async-chat-reads.js";
 import { MessageCommandDispatcher } from "./message-command-dispatcher.js";
 import { piboHomePath } from "../../core/pibo-home.js";
+import { PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID, PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID } from "../../core/runtime-unassigned.js";
 import { AsyncChatStorage } from "../../data/async-chat-storage.js";
 import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
@@ -113,7 +114,7 @@ import {
 	loadPiboModelDefaults,
 	type PiboModelDefaults,
 } from "../../core/model-defaults.js";
-import { inspectPiboContextBuild, type PiboContextBuildRuntimeInfo, type PiboContextBuildSnapshot } from "../../core/context-build.js";
+import type { PiboContextBuildRuntimeInfo, PiboContextBuildSnapshot } from "../../core/context-build-contract.js";
 import { isPiboThinkingLevel } from "../../core/thinking.js";
 import { loadPiboUserSettings, updateTelemetryRetentionLastPrunedAt } from "../../core/user-settings.js";
 import { disposeTelemetryRetentionMaintenance, isTelemetryRetentionMaintenanceDue, maybeRunTelemetryRetentionMaintenance, type TelemetryRetentionMaintenanceState } from "./telemetry-retention-service.js";
@@ -136,12 +137,6 @@ import {
 } from "./data/workflow-session-service.js";
 import { migrateLegacyProjects } from "./data/legacy-project-migration.js";
 import { PiboDataStore } from "../../data/pibo-store.js";
-import { createDefaultPiboCronStore, type PiboCronStore } from "../../cron/store.js";
-import { createDefaultPiboLoopStore, type PiboLoopStore } from "../../loops/store.js";
-import { handleChatCronApiRequest } from "./cron-api.js";
-import { handleChatLoopApiRequest } from "./loop-api.js";
-import { prepareWebAnnotationMessageAttachments, type PreparedWebAnnotationAttachments } from "../../web-annotations/attachments.js";
-import { createDefaultWebAnnotationStore, type WebAnnotationStore } from "../../web-annotations/store.js";
 import { CHAT_WEB_MOUNT_PATH, isChatAppPath, responseBuiltChatAsset, responseBuiltChatPublicFile, responseChatAppShell } from "./static-assets.js";
 import {
 	executeProviderAuthAction,
@@ -150,7 +145,7 @@ import {
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
 import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, resolveImagePreviewPath, resolveImagePreviewPathWithinRoots, responseChatFileDownload, responseChatImagePreview, responseChatTraceImage, saveUploadedChatFiles } from "./chat-files.js";
-import { codexImageArtifactPath, codexImageArtifactRoot } from "../../tools/codex-image-artifacts.js";
+import { generatedImageArtifactPath, generatedImageArtifactRoot } from "../../core/generated-image-artifacts.js";
 import { responseChatTranscription, responseChatTranscriptionProviders } from "./chat-transcription.js";
 import {
 	responseChatSpeechProviders,
@@ -166,6 +161,7 @@ import {
 } from "./chat-settings-routes.js";
 import {
 	agentPluginRoute, handleAgentPluginRoute, normalizePluginAgentCreate, normalizePluginAgentUpdate, validateAgentPluginPlanMutation,
+	withRuntimeUnassignedDiagnostic,
 } from "./chat-capability-routes.js";
 import {
 	chatUserSkillRoute,
@@ -345,7 +341,8 @@ export { CHAT_WEB_MOUNT_PATH } from "./static-assets.js";
 export { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 
 import type { PluginManager } from "../../plugins/manager.js";
-import { catalogPluginServices, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PluginSessionPlanReader } from "../../plugins/product-services.js";
+import { resolvePluginContributions } from "../../plugins/resolution.js";
+import { catalogPluginServices, PIBO_CHAT_EXTENSION_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboChatExtensionService, type PluginSessionPlanReader } from "../../plugins/product-services.js";
 import { handlePluginManagementRoute, pluginManagementRoute, pluginManagementRouteRequiresSameOrigin } from "./plugin-management-routes.js";
 import { handlePluginBrowserRoute, pluginBrowserRoute } from "./plugin-browser-routes.js";
 
@@ -446,8 +443,6 @@ type ChatWebAppState = {
 	workflowService: ChatWorkflowSessionService;
 	agentStore: CustomAgentStore;
 	reliabilityStore: PiboReliabilityStore;
-	cronStore: PiboCronStore;
-	loopStore: PiboLoopStore;
 	dataStore: PiboDataStore;
 	asyncStorage?: AsyncChatStorage;
 	commandDispatcher?: MessageCommandDispatcher;
@@ -533,7 +528,7 @@ function loadBootstrapCatalog(
 	const now = Date.now();
 	if (state.bootstrapCatalogCache && state.bootstrapCatalogCache.expiresAt > now) return state.bootstrapCatalogCache.value;
 	const value = Promise.all([
-		loadModelCatalog(process.cwd()),
+		loadModelCatalog(context.channelContext.inspectAgentRuntimeInstances),
 		buildAgentCatalog(context, state),
 	]).then(([modelCatalog, agentCatalog]) => ({
 		agents: (context.channelContext.getProfiles?.() ?? []).map(serializeAgentProfile),
@@ -791,42 +786,6 @@ function recordWorkflowLifecycleEvent(
 		...input,
 		actorId: input.actorId ?? auditActorIdFor(webSession),
 	});
-}
-
-let defaultChatWebAnnotationStore: WebAnnotationStore | undefined;
-
-function getChatWebAnnotationStore(): WebAnnotationStore {
-	defaultChatWebAnnotationStore ??= createDefaultWebAnnotationStore();
-	return defaultChatWebAnnotationStore;
-}
-
-function prepareWebAnnotationAttachments(input: {
-	piboSessionId: string;
-	messageText: string;
-	attachmentIds: unknown;
-}): PreparedWebAnnotationAttachments {
-	try {
-		return prepareWebAnnotationMessageAttachments({
-			store: getChatWebAnnotationStore(),
-			piboSessionId: input.piboSessionId,
-			messageText: input.messageText,
-			attachmentIds: input.attachmentIds,
-		});
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		const status = /not available for this session/.test(message) ? 404 : 400;
-		throw new PiboWebHttpError(message, status);
-	}
-}
-
-function markWebAnnotationsAttached(prepared: PreparedWebAnnotationAttachments): void {
-	if (!prepared.annotations.length) return;
-	const store = getChatWebAnnotationStore();
-	for (const annotation of prepared.annotations) {
-		if (annotation.status !== "attached") {
-			store.patchAnnotation(annotation.piboSessionId, annotation.id, { status: "attached" });
-		}
-	}
 }
 
 function accessDenied(error: unknown): never {
@@ -3457,6 +3416,43 @@ function requireSharedSession(context: PiboWebAppContext, piboSessionId: string)
 	return canonicalizeSessionProfile(context, requireStoredSession(context, piboSessionId));
 }
 
+function runtimeUnassignedTarget() {
+	return {
+		adapterId: PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID,
+		instanceId: PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID,
+		capabilities: { unassigned: true, available: false, reason: "no-runtime-installed" },
+	};
+}
+
+async function runtimeUnassignedSessionPluginPlan(
+	context: PiboWebAppContext,
+	manager: PluginManager,
+	piboSessionId: string,
+): Promise<Awaited<ReturnType<PluginSessionPlanReader>> | undefined> {
+	const session = requireStoredSession(context, piboSessionId);
+	if (session.runtimeBinding?.runtimeInstanceId !== PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID
+		|| session.runtimeBinding.adapterId !== PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID) return undefined;
+	const runtimes = await context.channelContext.inspectAgentRuntimeInstances?.() ?? [];
+	if (runtimes.some((runtime) => runtime.enabled && runtime.available)) return undefined;
+	const profile = context.channelContext.createProfile?.(session.profile);
+	if (!profile) throw new PiboWebHttpError("Session profile is unavailable", 409);
+	const installations = manager.store.listInstallations();
+	const plan = withRuntimeUnassignedDiagnostic(resolvePluginContributions({
+		catalog: {
+			schemaVersion: 1,
+			revision: installations.reduce((revision, installation) => revision + installation.stateRevision, 0),
+			installations,
+		},
+		selection: profile.pluginSelection ?? { schemaVersion: 1, plugins: [] },
+		selectionRevision: profile.pluginSelectionRevision,
+		agentId: profile.pluginAgentId,
+		runtime: runtimeUnassignedTarget(),
+		kind: "preview",
+		piboSessionId,
+	}));
+	return { plan, agentId: profile.pluginAgentId, roomId: chatRoomIdFromMetadata(session.metadata) };
+}
+
 function defaultRuntimeInstanceId(context: PiboWebAppContext, defaultProfile: string): string | undefined {
 	if (context.channelContext.createProfile) {
 		try {
@@ -3563,38 +3559,6 @@ async function buildContextBuildSnapshotForRequest(input: {
 		strict: false,
 	});
 	try {
-		if (runtime.adapterId === "pi" && runtimeInfo.available) {
-			const snapshot = await inspectPiboContextBuild({
-				cwd,
-				profile,
-				activeModel: selectedSession.activeModel,
-				thinkingLevel: initialThinkingLevel,
-				modelDefaults,
-				subagentProfileResolver: createProfile,
-				persistSession: false,
-				resources,
-				sessionContext: {
-					piboSessionId: selectedSession.id,
-					piboRoomId: chatRoomIdFromMetadata(selectedSession.metadata),
-					timezone: userSettings.timezone,
-				},
-			});
-			const runtimeIssues = diagnostics.filter((diagnostic) => diagnostic.severity !== "info");
-			return {
-				...snapshot,
-				runtime: runtimeInfo,
-				diagnostics: [
-					...snapshot.diagnostics,
-					...runtimeIssues.map((diagnostic) => ({ type: diagnostic.severity, message: diagnostic.message })),
-				],
-				summary: {
-					...snapshot.summary,
-					warnings: snapshot.summary.warnings + runtimeIssues.filter((diagnostic) => diagnostic.severity === "warning").length,
-					errors: snapshot.summary.errors + runtimeIssues.filter((diagnostic) => diagnostic.severity === "error").length,
-				},
-			};
-		}
-
 		return buildPortableRuntimeContextSnapshot({
 			profile,
 			runtime: runtimeInfo,
@@ -4508,13 +4472,12 @@ async function sendChatMessage(input: {
 	const duplicate = clientTxnId && !input.state.asyncStorage ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
 	timings.push(`chat_lookup;dur=${(performance.now() - lookupStartedAt).toFixed(2)}`);
 	if (duplicate) return timedResponse({ duplicate: true, event: duplicate });
-	const webAnnotationContext = prepareWebAnnotationAttachments({
-		piboSessionId: selectedSession.id,
-		messageText: text,
-		attachmentIds: input.body.webAnnotationIds,
-	});
+	const chatExtensions = input.context.channelContext.getService?.<PiboChatExtensionService>(PIBO_CHAT_EXTENSION_SERVICE);
+	const messageAugmentation = chatExtensions
+		? await chatExtensions.prepareMessage({ piboSessionId: selectedSession.id, messageText: text, body: input.body as unknown as PiboJsonObject })
+		: { messageText: text };
 	const fileAttachmentContext = prepareChatFileAttachments({
-		messageText: webAnnotationContext.messageText,
+		messageText: messageAugmentation.messageText,
 		attachmentPaths: input.body.fileAttachmentPaths,
 	});
 	const appendStartedAt = performance.now();
@@ -4532,11 +4495,7 @@ async function sendChatMessage(input: {
 			roomId: room.id,
 			text: fileAttachmentContext.messageText,
 			delivery,
-			...(webAnnotationContext.attachments.length ? {
-				webAnnotationIds: webAnnotationContext.ids,
-				webAnnotationAttachments: webAnnotationContext.attachments,
-				webAnnotationContext: webAnnotationContext.modelContext,
-			} : {}),
+			...(messageAugmentation.payload ?? {}),
 			...(fileAttachmentContext.attachments.length ? {
 				fileAttachmentPaths: fileAttachmentContext.paths,
 				fileAttachments: fileAttachmentContext.attachments,
@@ -4568,7 +4527,7 @@ async function sendChatMessage(input: {
 	if (durable && admission?.receipt) {
 		input.state.commandDispatcher ??= new MessageCommandDispatcher(input.state.asyncStorage!,input.context.channelContext);
 		input.state.commandDispatcher.wake();
-		markWebAnnotationsAttached(webAnnotationContext);
+		await messageAugmentation.commit?.();
 		return timedResponse({ admissionVersion:2,receipt:admission.receipt,event:accepted,statusPath:`${CHAT_WEB_API_PREFIX}/message-receipts/${admission.receipt.id}` },202);
 	}
 	const emitStartedAt = performance.now();
@@ -4610,7 +4569,7 @@ async function sendChatMessage(input: {
 		throw error;
 	}
 	timings.push(`chat_emit;dur=${(performance.now() - emitStartedAt).toFixed(2)}`);
-	markWebAnnotationsAttached(webAnnotationContext);
+	await messageAugmentation.commit?.();
 	return timedResponse({ output, event: accepted });
 	} catch (error) {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
@@ -4654,8 +4613,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		workflowService,
 		agentStore: createAgentStore(options.agentStorePath),
 		reliabilityStore,
-		cronStore: createDefaultPiboCronStore({ path: options.cronStorePath }),
-		loopStore: createDefaultPiboLoopStore({ path: options.ralphStorePath }),
 		dataStore,
 		asyncStorage: dataStore.path === ":memory:" ? undefined : new AsyncChatStorage(dataStore.path, options.dataPayloadRootDir ?? piboHomePath("payloads")),
 		ingestService: new ChatDataIngestService(dataStore),
@@ -4742,8 +4699,6 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 			state.workflowService.close();
 			state.agentStore.close();
 			state.reliabilityStore.close();
-			state.cronStore.close();
-			state.loopStore.close();
 			for(const stream of state.boundedStreams)stream.fail();
 			state.outputCompactor.disposeAll();
 			state.outputRenderSequencer.disposeAll();
@@ -4778,10 +4733,15 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					pluginStore: manager.store,
 					migrationBackupRoot: piboHomePath("plugins", "migration-backups", "agents"),
 					resolveRuntime: async (instanceId) => {
-						const runtime = (await context.channelContext.inspectAgentRuntimeInstances?.())?.find((r) => r.id === instanceId);
-						if (!runtime?.enabled || !runtime.available) throw new PiboWebHttpError("Runtime instance is unavailable", 400);
-						return { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject };
+						const runtimes = await context.channelContext.inspectAgentRuntimeInstances?.() ?? [];
+						const runtime = runtimes.find((candidate) => candidate.id === instanceId);
+						if (runtime?.enabled && runtime.available) {
+							return { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject };
+						}
+						if (runtimes.length === 0 && instanceId === PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID) return runtimeUnassignedTarget();
+						throw new PiboWebHttpError("Runtime instance is unavailable", 400);
 					},
+
 				});
 			}
 			const pluginRoute = pluginManagementRoute(url.pathname, request.method);
@@ -4819,6 +4779,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 							if (snapshot) return { plan: snapshot.plan, roomId: chatRoomIdFromMetadata(requireStoredSession(context, piboSessionId).metadata) };
 							throw new PiboWebHttpError("No recorded plugin generation exists", 404);
 						}
+						const runtimeUnassignedPlan = await runtimeUnassignedSessionPluginPlan(context, manager, piboSessionId);
+						if (runtimeUnassignedPlan) return runtimeUnassignedPlan;
 						const readPlan = options.pluginSessionPlan ?? context.channelContext.getService?.<PluginSessionPlanReader>(PLUGIN_SESSION_PLAN_SERVICE);
 						if (!readPlan) throw new PiboWebHttpError("Plugin preview service is unavailable", 503);
 						return readPlan(piboSessionId, kind === "preview" ? "preview" : "current");
@@ -4902,8 +4864,8 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				const basePath = roomWorkspaceFromMetadata(room.metadata) ?? selectedSession.workspace ?? getDefaultPiboWorkspace();
 					const resolvedPreview = generatedToolCallId
 						? resolveImagePreviewPathWithinRoots(
-							codexImageArtifactPath(selectedSession.id, generatedToolCallId).savedPath,
-							[codexImageArtifactRoot()],
+							generatedImageArtifactPath(selectedSession.id, generatedToolCallId).savedPath,
+							[generatedImageArtifactRoot()],
 						)
 						: resolveImagePreviewPath(requestedPath!, basePath);
 					return responseChatImagePreview(resolvedPreview.path, resolvedPreview.allowedRoots);
@@ -5091,27 +5053,14 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseJson({ snapshot });
 			}
 
-			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/cron`)) {
+			const chatExtensions = context.channelContext.getService?.<PiboChatExtensionService>(PIBO_CHAT_EXTENSION_SERVICE);
+			if (chatExtensions) {
 				const webSession = await requireSession(request, context);
-				const response = await handleChatCronApiRequest({
+				const response = await chatExtensions.dispatchApiRoute({
 					request,
 					context,
 					webSession,
 					roomService: state.roomService,
-					cronStore: state.cronStore,
-					defaultProfile,
-				});
-				if (response) return response;
-			}
-
-			if (url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/loops`) || url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/loop`) || url.pathname.startsWith(`${CHAT_WEB_API_PREFIX}/ralph`)) {
-				const webSession = await requireSession(request, context);
-				const response = await handleChatLoopApiRequest({
-					request,
-					context,
-					webSession,
-					roomService: state.roomService,
-					loopStore: state.loopStore,
 					defaultProfile,
 				});
 				if (response) return response;

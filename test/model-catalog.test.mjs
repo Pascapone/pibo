@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildModelCatalogFromRegistry, loadModelCatalogWithServices } from "../dist/apps/chat/model-catalog.js";
+import { buildModelCatalogFromRegistry, loadModelCatalogWithServices } from "../dist/agent-runtimes/pi/model-catalog.js";
 
 test("model catalog groups models by provider and carries auth state", () => {
 	const catalog = buildModelCatalogFromRegistry({

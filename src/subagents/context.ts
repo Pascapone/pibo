@@ -1,12 +1,19 @@
 import type { SubagentProfile } from "../core/profiles.js";
-import { listAvailableAgents } from "./tool.js";
 
 export const PIBO_DELEGATED_AGENT_CONTEXT_PATH = "pibo://runtime/delegated-agents.md";
 
 export function getDelegatedAgentContextFile(
 	subagents: readonly SubagentProfile[],
 ): { path: string; content: string } | undefined {
-	const agents = listAvailableAgents(subagents);
+	const agents = subagents
+		.filter((subagent) => subagent.enabled !== false)
+		.map((subagent) => ({
+			name: subagent.name,
+			description: subagent.description?.trim() || `Targets profile ${subagent.targetProfile}.`,
+			profile: subagent.targetProfile,
+			...(subagent.model ? { model: { ...subagent.model } } : {}),
+			...(subagent.thinkingLevel ? { thinkingLevel: subagent.thinkingLevel } : {}),
+		}));
 	if (agents.length === 0) return undefined;
 	const catalog = agents.map((agent) => {
 		const runtime = [

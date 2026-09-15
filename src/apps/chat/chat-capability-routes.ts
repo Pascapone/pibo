@@ -8,7 +8,7 @@ import { LEGACY_AGENT_SELECTION_FIELDS, captureLegacyAgentMigrationResources, in
 import { createAgentPluginSelection, validateAgentPluginSelection } from "../../plugins/selection.js";
 import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { pluginJson, PluginConflictError } from "../../plugins/store.js";
-import type { AgentPluginSelection, EffectivePluginPlan, IndependentPluginResource, PluginCatalog, PluginConfigurationSnapshot, PluginContribution, PluginResolutionInput, PluginRuntimeTarget } from "../../plugins/sdk.js";
+import type { AgentPluginSelection, EffectivePluginPlan, IndependentPluginResource, PluginCatalog, PluginConfigurationSnapshot, PluginContribution, PluginDiagnostic, PluginResolutionInput, PluginRuntimeTarget } from "../../plugins/sdk.js";
 
 export function buildAgentPluginCatalog(catalog: PluginCatalog): AgentPluginCatalog {
 	return { schemaVersion: 1, revision: catalog.revision, plugins: catalog.installations.flatMap((item) => {
@@ -68,11 +68,25 @@ export type AgentPluginPreviewOptions = {
 	agent: CustomAgentDefinition; catalog: PluginCatalog; runtime: PluginRuntimeTarget;
 	configurations?: PluginConfigurationSnapshot[]; services?: Record<string, string>; providers?: PluginResolutionInput["providers"]; serviceProviders?: PluginResolutionInput["serviceProviders"];
 };
+export function runtimeUnassignedDiagnostic(): PluginDiagnostic {
+	return {
+		code: "runtime-unassigned",
+		severity: "warning",
+		path: ["runtime"],
+		message: "No agent runtime plugin is installed; the plugin plan is an empty Core preview.",
+	};
+}
+
+export function withRuntimeUnassignedDiagnostic(plan: EffectivePluginPlan): EffectivePluginPlan {
+	if (plan.runtime.capabilities.unassigned !== true || plan.diagnostics.some((diagnostic) => diagnostic.code === "runtime-unassigned")) return plan;
+	return { ...plan, diagnostics: [...plan.diagnostics, runtimeUnassignedDiagnostic()] };
+}
+
 export function resolveAgentPluginPreview(options: AgentPluginPreviewOptions): EffectivePluginPlan {
 	if (!options.agent.pluginSelection) throw new PiboWebHttpError("Legacy agent needs an explicit plugin migration before activation", 409);
-	const plan = resolvePluginContributions({ catalog: options.catalog, runtime: options.runtime, selection: options.agent.pluginSelection,
+	const plan = withRuntimeUnassignedDiagnostic(resolvePluginContributions({ catalog: options.catalog, runtime: options.runtime, selection: options.agent.pluginSelection,
 		selectionRevision: options.agent.revision, agentId: options.agent.id, kind: "preview", resources: agentIndependentResources(options.agent, options.runtime),
-		configurations: options.configurations, services: options.services, providers: options.providers, serviceProviders: options.serviceProviders });
+		configurations: options.configurations, services: options.services, providers: options.providers, serviceProviders: options.serviceProviders }));
 	if (isUnresolvedAgentPluginMigration(options.agent)) return { ...plan, valid: false, diagnostics: [...plan.diagnostics, {
 		code: "legacy-migration-unresolved", severity: "error", path: [options.agent.id], message: "Legacy migration conflict requires an explicit reconciled plugin selection before activation",
 	}] };

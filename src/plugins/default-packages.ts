@@ -7,7 +7,7 @@ import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 import type { PluginContribution, PluginInstallation, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
-import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
+import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_LOOP_SERVICE, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
 
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
 export const OPENAI_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai";
@@ -84,7 +84,7 @@ export function cronPackageManifest(): PluginManifest {
 		version: DEFAULT_PACKAGE_VERSION,
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
-		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }] },
+		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }, { id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }] },
 		contributions: [
 			systemContribution("channel", "channel", "cron"),
 			productView("view", "Cron", "CronView", "cron"),
@@ -176,6 +176,7 @@ export function webAnnotationsPackageManifest(): PluginManifest {
 		version: DEFAULT_PACKAGE_VERSION,
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		services: { requires: [{ id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }] },
 		config: {
 			schemaVersion: 1,
 			scopes: ["app", "agent", "session"],
@@ -314,8 +315,8 @@ export function goalControlPackageManifest(): PluginManifest {
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 		config: { schemaVersion: 1, scopes: ["app", "agent", "session"], schema: { type: "object", additionalProperties: true } },
 		services: {
-			provides: [{ id: PIBO_LOOP_SERVICE, version: "1.0.0" }],
-			requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }],
+			provides: [{ id: PIBO_LOOP_SERVICE, version: "1.0.0" }, { id: PIBO_MESSAGE_PREFLIGHT_SERVICE, version: "1.0.0" }],
+			requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }, { id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }],
 		},
 		contributions: [
 			systemContribution("session-tools", "session-tool-provider", `${GOAL_CONTROL_PLUGIN_ID}-session-tools`),

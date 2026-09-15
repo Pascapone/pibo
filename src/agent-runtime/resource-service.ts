@@ -20,7 +20,6 @@ import {
 	type ScopedPiboMcpServerConfig,
 } from "../mcp/runtime-session.js";
 import { MCP_CLI_ADAPTER, type PiboMcpAdapter } from "../plugins/mcp-adapter.js";
-import { getInstalledCliToolContextFile } from "../tools/registry.js";
 import { getDelegatedAgentContextFile } from "../subagents/context.js";
 import type {
 	AgentRuntimeCapabilities,
@@ -99,6 +98,19 @@ type PreparedMcpServer = {
 	inspection: AgentRuntimeExternalMcpServerInspection;
 	error?: string;
 };
+
+async function loadInstalledCliToolContextFile(): Promise<{ path: string; content: string } | undefined> {
+	const modulePath = "../tools/registry.js";
+	try {
+		const tools = await import(modulePath) as {
+			getInstalledCliToolContextFile(): { path: string; content: string } | undefined;
+		};
+		return tools.getInstalledCliToolContextFile();
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") return undefined;
+		throw error;
+	}
+}
 
 function positiveInteger(value: number | undefined, fallback: number, label: string): number {
 	const resolved = value ?? fallback;
@@ -678,7 +690,7 @@ class RuntimeResourceSession implements PiboRuntimeResourceSession {
 				content: delegatedAgents.content,
 			});
 		}
-		const installedTools = getInstalledCliToolContextFile();
+		const installedTools = await loadInstalledCliToolContextFile();
 		if (installedTools) {
 			this.context.push({
 				id: "context:installed-pibo-tools",

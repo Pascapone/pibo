@@ -1,4 +1,5 @@
 import type { AgentRuntimeHistoryEntry, AgentRuntimeHistoryReconciliationProof } from "../agent-runtime/history.js";
+import { isAuthorizedAgentRuntimeHistoryProof } from "../agent-runtime/history-authority.js";
 import type { PiboOutputEvent } from "../core/events.js";
 import { isRunStartToolNode, reconcileAsyncAgentRunStatuses } from "./trace-async-agent-runs.js";
 import {
@@ -56,7 +57,6 @@ type TraceBuildInput = {
 	turnTimingOverflow?: boolean;
 	historyEntries?: readonly AgentRuntimeHistoryEntry[];
 	historyReconciliationProof?: AgentRuntimeHistoryReconciliationProof;
-	historyReconciliationAuthoritative?: boolean;
 	sessions?: Array<{
 		id: string;
 		parentId?: string | null;
@@ -84,20 +84,21 @@ export function buildTraceViewFromEvents(input: TraceBuildInput): PiboSessionTra
 		? []
 		: mergeMessageTurnTimings(suppliedTurnTimings, eventTurnTimings);
 	const historyTurnTimings = timingOverflow ? [...suppliedTurnTimings, ...eventTurnTimings] : turnTimings;
+	const historyReconciliationAuthoritative = isAuthorizedAgentRuntimeHistoryProof(input.historyReconciliationProof);
 	const entries = projectHistoryEntries(
 		allEntries,
 		sessionStatus,
 		openHistoryEventIds,
 		historyTurnTimings,
 		input.historyReconciliationProof,
-		input.historyReconciliationAuthoritative,
+		historyReconciliationAuthoritative,
 	);
 	const nodes = traceNodesFromHistoryEntries(
 		input.session.id,
 		entries,
 		historyTurnTimings,
 		input.historyReconciliationProof,
-		input.historyReconciliationAuthoritative,
+		historyReconciliationAuthoritative,
 	);
 	suppressServiceTurnHistory(nodes, events);
 	reconcileTranscriptUserMessages(nodes, events, turnTimings);

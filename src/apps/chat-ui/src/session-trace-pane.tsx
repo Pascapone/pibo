@@ -251,13 +251,14 @@ export function SessionTracePane({
     setRuntimeApprovals((current) => current.filter((request) => request.requestId !== requestId));
     setRuntimeUserInputs((current) => current.filter((request) => request.requestId !== requestId));
   }, []);
+  const hasAvailableAgentRuntime = bootstrap.agentCatalog?.agentRuntimes.some((runtime) => runtime.enabled && runtime.available) ?? false;
   const sessionGoalQuery = useQuery({
     queryKey: selectedBackendPiboSessionId
       ? ["chat", "session-goal", selectedBackendPiboSessionId]
       : ["chat", "session-goal", "idle"],
     queryFn: ({ signal }) => getLoopSessionGoal(selectedBackendPiboSessionId!, { signal }),
-    enabled: Boolean(selectedBackendPiboSessionId),
-    refetchInterval: selectedBackendPiboSessionId ? 5_000 : false,
+    enabled: Boolean(selectedBackendPiboSessionId && hasAvailableAgentRuntime),
+    refetchInterval: selectedBackendPiboSessionId && hasAvailableAgentRuntime ? 5_000 : false,
   });
   const selectedPreviewSessionRef = useRef<string | undefined>(selectedBackendPiboSessionId);
   selectedPreviewSessionRef.current = selectedBackendPiboSessionId;
@@ -275,8 +276,8 @@ export function SessionTracePane({
       const response = await getSessionLivePreviews(piboSessionId, { signal });
       return { piboSessionId, ...response } satisfies SessionLivePreviewQueryEnvelope;
     },
-    enabled: Boolean(selectedBackendPiboSessionId),
-    refetchInterval: (query) => selectedBackendPiboSessionId && query.state.data?.configured !== false ? 5_000 : false,
+    enabled: Boolean(selectedBackendPiboSessionId && hasAvailableAgentRuntime),
+    refetchInterval: (query) => selectedBackendPiboSessionId && hasAvailableAgentRuntime && query.state.data?.configured !== false ? 5_000 : false,
     retry: false,
   });
 	const livePreviewAuthority = resolveSessionLivePreviewAuthority({

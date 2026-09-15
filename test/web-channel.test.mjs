@@ -22,6 +22,7 @@ import { PiboDataSessionStore } from "../dist/sessions/pibo-data-store.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { configCommand } from "../dist/mcp/config-command.js";
 import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js";
+import { authorizeAgentRuntimeHistoryProof } from "../dist/agent-runtime/history-authority.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
 
@@ -76,6 +77,12 @@ function fakeRuntimeInspection(id, overrides = {}) {
 		...(overrides.models ? { models: overrides.models } : {}),
 		...(overrides.auth ? { auth: overrides.auth } : {}),
 	};
+}
+
+async function readAuthorizedHistory(history, input) {
+	const page = await history.read(input);
+	authorizeAgentRuntimeHistoryProof(history.adapter, page.reconciliationProof);
+	return page;
 }
 
 function createFakeAuthService() {
@@ -325,7 +332,16 @@ async function startWebHostChannel(options = {}) {
 				mcpServers: [],
 			};
 		},
-		inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances ?? (async () => [fakeRuntimeInspection("pi", { adapterId: "pi", displayName: "Pi", transport: "embedded", protocol: "pi-sdk" })]),
+		inspectAgentRuntimeInstances: options.inspectAgentRuntimeInstances ?? (async () => [fakeRuntimeInspection("pi", {
+			adapterId: "pi",
+			displayName: "Pi",
+			transport: "embedded",
+			protocol: "pi-sdk",
+			models: {
+				runtimeInstanceId: "pi",
+				models: [{ id: "fixture-model", provider: "fixture", displayName: "Fixture Model", options: { providerDisplayName: "Fixture", authConfigured: false } }],
+			},
+		})]),
 		...(options.getAgentRuntimeAuthStatus ? {
 			getAgentRuntimeAuthStatus: options.getAgentRuntimeAuthStatus,
 		} : {}),
@@ -2124,7 +2140,7 @@ test("origin branch trace routes reconcile native runtime turns to stable produc
 		},
 		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
 			readHistoryCalls += 1;
-			return await history.read(input);
+			return await readAuthorizedHistory(history, input);
 		},
 	});
 
@@ -2234,7 +2250,7 @@ test("public trace routes fail closed when persisted timing evidence exceeds the
 		},
 		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
 			readHistoryCalls += 1;
-			return await history.read(input);
+			return await readAuthorizedHistory(history, input);
 		},
 	});
 	try {
@@ -2316,7 +2332,7 @@ test("origin branch older native-history pages reconcile repeated prompts by sta
 			nativeTools: [], skills: [], subagents: [], contextFiles: [], packages: [], piboTools: [], mcpServers: [], piPackages: [],
 		},
 		async readSessionRuntimeHistory(_piboSessionId, input = {}) {
-			return await history.read({ ...input, limit: 2 });
+			return await readAuthorizedHistory(history, { ...input, limit: 2 });
 		},
 	});
 

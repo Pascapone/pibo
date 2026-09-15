@@ -1,6 +1,6 @@
 import { startPluginProductRuntime } from "../plugins/product-runtime.js";
 import { createPluginConsumerCollector, pluginImpact, type PluginConsumer, type PluginConsumerCollector } from "../plugins/operations.js";
-import { catalogPluginServices, PIBO_USER_RESOURCES_SERVICE, PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PiboPluginProductOptions, type PiboUserResourcesService, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
+import { catalogPluginServices, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_USER_RESOURCES_SERVICE, PLUGIN_CONSUMER_COLLECTOR_RESOURCE, type PiboMessagePreflight, type PiboPluginProductOptions, type PiboUserResourcesService, type PluginOwnedConsumerCollector } from "../plugins/product-services.js";
 import { CustomAgentStore, createDefaultCustomAgentStore, migrateLegacyAgentsAtStartup, profileConsumerCollector } from "../apps/chat/agent-store.js";
 import { createCustomAgentProfileDefinition } from "../apps/chat/agent-profiles.js";
 import { PiboDataStore } from "../data/pibo-store.js";
@@ -12,11 +12,12 @@ import { createServer, type Server, type Socket } from "node:net";
 import type { PiboChannel, PiboChannelContext } from "../channels/types.js";
 import type { PiboOutputEvent } from "../core/events.js";
 import { createPiboProfileFromCapabilitiesOrDefault, resolvePiboProfileNameFromCapabilitiesOrDefault } from "../plugins/builtin.js";
+import { authorizeAgentRuntimeHistoryProof } from "../agent-runtime/history-authority.js";
 import { PiboCapabilityHost } from "../core/capability-host.js";
+import { PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID, PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID } from "../core/runtime-unassigned.js";
 import { PiboSessionRouter } from "../core/session-router.js";
-import { createLoopMessagePreflight } from "../loops/store.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
-import { ResourceReaperService, type ResourceReaperServiceOptions } from "../resources/reaper.js";
+import type { ResourceReaperService, ResourceReaperServiceOptions } from "../resources/reaper.js";
 import { InMemoryPiboSessionStore, type PiboSessionStore } from "../sessions/store.js";
 import {
 	DEFAULT_GATEWAY_HOST,
@@ -31,6 +32,7 @@ import {
 } from "./protocol.js";
 import { releaseFallbackGatewayPid, releaseGatewayPid, writeFallbackGatewayPid, writeGatewayPid } from "./pidfile.js";
 import { piboHomePath } from "../core/pibo-home.js";
+import { provideCoreWebProduct } from "../core/web-product.js";
 
 export type GatewayServerOptions = {
 	host?: string;
@@ -57,6 +59,8 @@ export type GatewayServerOptions = {
 	loopStorePath?: string;
 	pluginProductOptions?: PiboPluginProductOptions;
 	includeWebProduct?: boolean;
+	/** Install repository-packaged defaults. Generated Minimal-Core executables set this to false. */
+	installDefaultPlugins?: boolean;
 };
 
 type GatewayQueuedFrame = {
@@ -337,6 +341,8 @@ export class PiboGatewayServer {
 				userResources: { contextFilesMode: "catalog", userSkills: {}, customAgents: { agentStorePath: this.options.agentStorePath }, ...this.options.pluginProductOptions?.userResources },
 			},
 			includeWebProduct: this.options.includeWebProduct,
+			installDefaultPlugins: this.options.installDefaultPlugins,
+			provideWebProduct: provideCoreWebProduct,
 			collectConsumers: createPluginConsumerCollector({ store: this.pluginData, collectLive, collectProfiles }),
 			readSessionPlan: (piboSessionId, kind) => {
 				if (!this.router) throw new Error("Plugin session plan service is not ready");
@@ -374,7 +380,10 @@ export class PiboGatewayServer {
 			persistSession: this.options.persistSession,
 			capabilityHost: this.capabilityHost,
 			sessionStore: this.sessionStore,
-			messagePreflight: createLoopMessagePreflight({ path: this.options.loopStorePath }),
+			messagePreflight: async (event) => {
+				const preflight = host.services.get<PiboMessagePreflight>(PIBO_MESSAGE_PREFLIGHT_SERVICE);
+				return preflight ? await preflight(event) : { allowed: true };
+			},
 			goalStorePath: this.options.loopStorePath,
 			recoverInterruptedRuntimeState,
 			runtimeInstanceId: recoverInterruptedRuntimeState ? this.runtimeInstanceId : undefined,
@@ -396,6 +405,8 @@ export class PiboGatewayServer {
 			await this.startChannels();
 		}
 		if (this.options.resourceReaper) {
+			const resourceReaperModule = "../resources/reaper.js";
+			const { ResourceReaperService } = await import(resourceReaperModule) as typeof import("../resources/reaper.js");
 			this.resourceReaper = new ResourceReaperService(this.options.resourceReaper);
 			await this.resourceReaper.start();
 		}
@@ -584,7 +595,21 @@ export class PiboGatewayServer {
 				const profile = resolvePiboProfileNameFromCapabilitiesOrDefault(this.capabilityHost, input.profile);
 				const profileContext = createPiboProfileFromCapabilitiesOrDefault(this.capabilityHost, profile);
 				const runtimeAdapter = this.capabilityHost.getAgentRuntimeAdapter(profileContext.runtimeInstanceId);
-				if (!runtimeAdapter) throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
+				if (!runtimeAdapter) {
+					if (this.capabilityHost.getCapabilityCatalog().agentRuntimes.length > 0 || input.runtimeBinding) {
+						throw new Error(`Unknown agent runtime instance "${profileContext.runtimeInstanceId}".`);
+					}
+					return this.requireSessionStore().create({
+						...input,
+						profile,
+						runtimeBinding: {
+							runtimeInstanceId: PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID,
+							adapterId: PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID,
+							state: "unbound",
+							metadata: { reason: "no-runtime-installed" },
+						},
+					});
+				}
 				const activeModel = input.activeModel ?? selectRequestedModelProfile(profileContext, loadPiboModelDefaults());
 				return this.requireSessionStore().create({
 					...input,
@@ -653,13 +678,15 @@ export class PiboGatewayServer {
 				if (!adapter?.descriptor.capabilities.maintenance.history || !adapter.readHistory) {
 					throw new Error(`Agent runtime instance "${binding.runtimeInstanceId}" does not provide native history.`);
 				}
-				return await adapter.readHistory({
+				const page = await adapter.readHistory({
 					binding,
 					workspace: session.workspace ?? process.cwd(),
 					cursor: input.cursor,
 					beforeTimestamp: input.beforeTimestamp,
 					limit: input.limit,
 				});
+				authorizeAgentRuntimeHistoryProof(adapter, page.reconciliationProof);
+				return page;
 			},
 			rebindSessionRuntime: (piboSessionId, input) => this.requireRouter().rebindSessionRuntime(piboSessionId, input),
 			getSessionRuntimeStatus: (piboSessionId) => this.requireRouter().getSessionRuntimeStatus(piboSessionId),

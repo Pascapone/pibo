@@ -1,10 +1,19 @@
+import { handleChatLoopApiRequest } from "../apps/chat/loop-api.js";
 import type { PiboExecutionEvent } from "../core/events.js";
 import { createPiboLoopChannel, PiboLoopServiceController } from "../loops/channel.js";
 import { parsePiboSessionGoalCommand } from "../loops/plugin.js";
+import { createDefaultPiboLoopStore, createLoopMessagePreflight } from "../loops/store.js";
 import { createBuiltInLoopStopConditions } from "../loops/stopping.js";
 import { createPiboGoalToolDefinitions } from "../loops/tools.js";
 import type { PluginSetupContext } from "./host.js";
-import { PIBO_LOOP_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, type PiboPluginProductOptions } from "./product-services.js";
+import {
+	PIBO_CHAT_EXTENSION_SERVICE,
+	PIBO_LOOP_SERVICE,
+	PIBO_MESSAGE_PREFLIGHT_SERVICE,
+	PIBO_PRODUCT_OPTIONS_SERVICE,
+	type PiboChatExtensionService,
+	type PiboPluginProductOptions,
+} from "./product-services.js";
 import { PIBO_SESSION_GOAL_STORE_SERVICE, definePluginSessionToolProvider } from "./runtime.js";
 import { registrationsForSelectedTools } from "./packaged-session-tool-helpers.js";
 
@@ -12,6 +21,7 @@ export function setupGoalControl(context: PluginSetupContext): () => Promise<voi
 	const options = context.services.require<PiboPluginProductOptions>(PIBO_PRODUCT_OPTIONS_SERVICE);
 	const controller = new PiboLoopServiceController(options);
 	context.services.provide(PIBO_LOOP_SERVICE, controller);
+	context.services.provide(PIBO_MESSAGE_PREFLIGHT_SERVICE, createLoopMessagePreflight({ path: options.loopStorePath }));
 	context.register("session-tools", definePluginSessionToolProvider({
 		createSession(providerContext) {
 			const storePath = providerContext.services.get<string>(PIBO_SESSION_GOAL_STORE_SERVICE);
@@ -35,5 +45,19 @@ export function setupGoalControl(context: PluginSetupContext): () => Promise<voi
 		},
 	});
 	for (const condition of createBuiltInLoopStopConditions()) context.register(`stop-${condition.type}`, condition);
-	return () => controller.stop();
+	const apiStore = createDefaultPiboLoopStore({ path: options.loopStorePath });
+	const chatExtensions = context.services.require<PiboChatExtensionService>(PIBO_CHAT_EXTENSION_SERVICE);
+	const disposeRoute = chatExtensions.registerApiRoute(async (input) => {
+		const pathname = new URL(input.request.url).pathname;
+		if (!pathname.startsWith("/api/chat/loops") && !pathname.startsWith("/api/chat/loop") && !pathname.startsWith("/api/chat/ralph")) return undefined;
+		return await handleChatLoopApiRequest({
+			...input,
+			loopStore: apiStore,
+		});
+	});
+	return async () => {
+		disposeRoute();
+		apiStore.close();
+		await controller.stop();
+	};
 }
