@@ -38,7 +38,7 @@ test("plugin-free base context build does not invent feature tools or select Pib
 	assert.equal(goalTool, undefined);
 });
 
-test("legacy tool-package flags do not recreate removed generated plugin tools", async () => {
+test("legacy tool-package flags stay inert while subagents expose core delegation", async () => {
 	const profile = new InitialSessionContextBuilder("generated-tool-origin-test")
 		.withBuiltinTools("disabled")
 		.withAutoContextFiles(false)
@@ -53,7 +53,6 @@ test("legacy tool-package flags do not recreate removed generated plugin tools",
 	});
 	const expectedOrigins = new Map([
 		["runtime", "pibo-runtime"],
-		["pibo_agents_observe", "pibo-subagents"],
 		["pibo_run_read", "pibo-run-control"],
 		["get_goal", "pibo-goal-control"],
 		["apply_patch", "codex-compat"],
@@ -62,6 +61,8 @@ test("legacy tool-package flags do not recreate removed generated plugin tools",
 	for (const [toolName] of expectedOrigins) {
 		assert.equal(findNode(snapshot.nodes, (node) => node.id === `tools/${toolName}`), undefined, `legacy flags must not synthesize ${toolName}`);
 	}
+	const delegationTool = findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_observe");
+	assert.equal(delegationTool?.metadata?.inspectorOrigin?.label, "pibo-core");
 
 	const allNodes = [];
 	const collect = (nodes) => {
@@ -205,7 +206,7 @@ test("portable runtime manifest excludes controller-backed Codex browser tools w
 	assert.deepEqual(manifest.payloadJson.activeToolPackages, []);
 });
 
-test("portable runtime context build does not invent delegation tools without selected plugin contributions", () => {
+test("portable runtime context build exposes core delegation tools for configured subagents", () => {
 	const capabilities = createMinimalAgentRuntimeCapabilities("Unavailable by default.");
 	capabilities.tools.piboManaged = { support: "mcp", transports: ["streamable-http"] };
 	const profile = new InitialSessionContextBuilder("codex-subagent-context")
@@ -240,14 +241,22 @@ test("portable runtime context build does not invent delegation tools without se
 	const manifest = findNode(snapshot.nodes, (node) => node.id === "runtime-manifest");
 	assert.equal(tools.state, "active");
 	assert.ok(tools.badges.includes("MCP:STREAMABLE-HTTP"));
-	assert.equal(tools.children.some((node) => node.title.startsWith("pibo_agents_")), false);
+	assert.deepEqual(
+		tools.children.filter((node) => node.title.startsWith("pibo_agents_")).map((node) => node.title).sort(),
+		["pibo_agents_kill", "pibo_agents_list_agents", "pibo_agents_observe", "pibo_agents_send_message"],
+	);
 	assert.equal(tools.children.some((node) => node.title.startsWith("pibo_run_")), false);
 	assert.ok(tools.children.some((node) => node.title === "agent:reviewer (pi-reviewer) — Review the proposed implementation."));
 	assert.equal(manifest.kind, "runtime_manifest");
 	assert.equal(manifest.estimatedTokens, undefined, "the read-only manifest must not count as prompt context");
 	assert.equal(manifest.payloadJson.toolSurface, "pibo-managed-only");
-	assert.deepEqual(manifest.payloadJson.activeToolNames, []);
-	assert.deepEqual(manifest.payloadJson.yieldableToolNames, []);
+	assert.deepEqual(manifest.payloadJson.activeToolNames, [
+		"pibo_agents_send_message",
+		"pibo_agents_list_agents",
+		"pibo_agents_observe",
+		"pibo_agents_kill",
+	]);
+	assert.deepEqual(manifest.payloadJson.yieldableToolNames, manifest.payloadJson.activeToolNames);
 	assert.deepEqual(manifest.payloadJson.activeToolPackages, []);
 	assert.equal(manifest.payloadJson.activeToolNames.some((name) => name.startsWith("agent:") || name.startsWith("package:") || name.startsWith("yielded-target:")), false);
 	assert.deepEqual(manifest.payloadJson.effectiveModel, { provider: "openai-codex", id: "gpt-5.6-sol" });
@@ -262,7 +271,7 @@ test("portable runtime context build does not invent delegation tools without se
 	}]);
 });
 
-test("Pi inspection does not synthesize delegation or Run tools from legacy profile flags", async () => {
+test("Pi inspection derives core delegation from subagents without synthesizing Run tools", async () => {
 	const profile = new InitialSessionContextBuilder("agent-context-without-plugins")
 		.withAutoContextFiles(false)
 		.withBuiltinTools("disabled")
@@ -271,8 +280,8 @@ test("Pi inspection does not synthesize delegation or Run tools from legacy prof
 		.createSession();
 	const snapshot = await inspectPiboContextBuild({ profile, persistSession: false });
 	assert.equal(findNode(snapshot.nodes, (node) => node.id === "tools/pibo_run_start"), undefined);
-	assert.equal(findNode(snapshot.nodes, (node) => node.id === "tools/pibo_agents_observe"), undefined);
-	assert.equal(findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md"), undefined);
+	assert.ok(findNode(snapshot.nodes, (node) => node.title === "pibo_agents_observe"));
+	assert.ok(findNode(snapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md"));
 });
 
 test("context build snapshot exposes runtime context and provider-backed web search without final prompt duplicate", async () => {

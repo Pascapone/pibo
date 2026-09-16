@@ -73,7 +73,7 @@ test('product runtime starts persisted plugins and publishes one manager/host/se
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/web_annotations_list').contribution.kind, 'tool');
   assert.equal(host.contributions.get('contribution', 'pibo.web-annotations/annotations').contribution.view.exportName, 'WebAnnotationsView');
   assert.equal(data.plugins.getInstallation('pibo.core'), undefined, 'Core capabilities are host-owned, not a plugin installation');
-  for (const pluginId of ['pibo.preview', 'pibo.cron', 'pibo.workflows', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.agent-delegation', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp']) {
+  for (const pluginId of ['pibo.preview', 'pibo.cron', 'pibo.workflows', 'pibo.code-runtime', 'pibo.file-editing', 'pibo.web-search', 'pibo.browser-tools', 'pibo.codex-compat', 'pibo.run-control', 'pibo.goal-control', 'pibo.runtime-pi', 'pibo.runtime-codex-native', 'pibo.runtime-omp']) {
     const installation = data.plugins.getInstallation(pluginId);
     assert.equal(installation.state, 'active', `${pluginId} should be an ordinary active installation`);
     assert.equal(installation.source.kind, 'local');

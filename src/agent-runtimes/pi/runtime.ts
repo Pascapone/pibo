@@ -30,6 +30,7 @@ import {
 import { loadPiboModelDefaults, selectRequestedModelProfile, selectRequestedThinkingLevel, type PiboModelDefaults } from "../../core/model-defaults.js";
 import { createDefaultPiboProfile } from "../../core/default-profile.js";
 import { getDelegatedAgentContextFile } from "../../subagents/context.js";
+import { PIBO_AGENT_TOOL_NAMES } from "../../subagents/tool.js";
 import { resolvePiboSubagentRuntimeSelections } from "../../subagents/runtime-selection.js";
 import type { PiboThinkingLevel } from "../../core/thinking.js";
 import { getInstalledCliToolContextFile } from "../../tools/registry.js";
@@ -345,7 +346,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			: createSessionContextFile({ piboSessionId: profile.sessionId, ...options.sessionContext });
 		const installedToolContextFile = options.resources ? undefined : getInstalledCliToolContextFile();
 		const mcpAgentContextFile = options.resources ? undefined : await getMcpAgentContextFile(profile.mcpServers);
-		const delegatedAgentContextFile = options.resources || !profile.effectivePluginPlan?.contributions.some((entry) => entry.contribution.context.kind === "context" && entry.contribution.context.stage === "subagents")
+		const delegatedAgentContextFile = options.resources
 			? undefined
 			: getDelegatedAgentContextFile(profile.subagents);
 		const skillPaths = options.resources
@@ -556,7 +557,10 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 	const activeToolNames = new Set(options.portableTools?.getDefinitions().map((tool) => tool.name) ?? []);
 	const selectedToolNames = new Set(profile.tools.filter((tool) => tool.enabled !== false).map((tool) => tool.name));
 	const registeredToolNames = new Set([...activeToolNames, ...selectedToolNames]);
-	const generatedTools: PiboProfileInspection["tools"] = [];
+	const hasDelegatedAgents = profile.subagents.some((subagent) => subagent.enabled !== false);
+	const generatedTools: PiboProfileInspection["tools"] = hasDelegatedAgents
+		? PIBO_AGENT_TOOL_NAMES.map((name) => ({ name, hasDefinition: true, registered: true, active: true }))
+		: [];
 
 		return {
 			profileName: profile.profileName,
@@ -591,11 +595,7 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				inspectionModelDefaults,
 			).map(({ enabled, ...subagent }) => ({
 				...subagent,
-				active: enabled && profile.effectivePluginPlan?.contributions.some((entry) =>
-					entry.contribution.kind === "tool"
-					&& entry.contribution.context.kind === "context"
-					&& entry.contribution.context.stage === "subagents"
-				) === true,
+				active: enabled,
 			})),
 			mcpServers: [...profile.mcpServers],
 			mcpStatus: options.resources?.getInspection().mcpServers.map((server) => structuredClone(server)) ?? [],

@@ -67,6 +67,17 @@ test("desktop module tabs use pane-width sidebars and container-responsive conte
 	assert.match(workflowGraph, /@max-\[760px\]:grid-cols-1/);
 });
 
+test("Settings workspace constrains its route shell so panel content owns vertical scrolling", async () => {
+	const [app, workspace, settings] = await Promise.all([
+		readFile("src/apps/chat-ui/src/App.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/core-workspace-view.tsx", "utf8"),
+		readFile("src/apps/chat-ui/src/settings/SettingsView.tsx", "utf8"),
+	]);
+	assert.match(app, /`grid h-full min-h-0 overflow-hidden \$\{area === "sessions"/);
+	assert.match(workspace, /label="Settings"[\s\S]*contentOverflow="hidden"/);
+	assert.match(settings, /h-full min-h-0 overflow-auto/);
+});
+
 test("Agent Designer exposes Archive and Read-only Profiles as fixed folders", async () => {
 	const sidebar = await readFile("src/apps/chat-ui/src/agents/AgentsSidebar.tsx", "utf8");
 	assert.match(sidebar, /SystemAgentFolderGroup label="Archive"/);

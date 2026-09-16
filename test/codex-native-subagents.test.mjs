@@ -91,7 +91,7 @@ async function createRegistry(root, registerProfiles, childDriver) {
 	return { product, registry };
 }
 
-test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a different runtime", async (t) => {
+test("Codex native invokes Core delegation through scoped MCP without Run Control on a different runtime", async (t) => {
 	const root = await fixtureRoot("pibo-codex-subagent-parent-");
 	const workspace = join(root, "workspace");
 	const childDriver = createFakeAgentRuntimeDriver({
@@ -108,7 +108,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 					.withAgentRuntime("codex-subagent-fixture")
 					.withBuiltinTools("disabled")
 					.withAutoContextFiles(false)
-					.withToolPackages({ goalControl: false, runControl: true })
+					.withToolPackages({ goalControl: false })
 					.addSubagent({ name: "helper", targetProfile: "fixture-subagent-child", maxDepth: 2 })
 					.createSession();
 			},
@@ -161,21 +161,18 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	});
 
 	const status = await openStatus(router, "ps_codex_subagent_parent");
-	assert.equal(status.activeTools.includes("pibo-session-tools/pibo_agents_send_message"), false);
-	assert.ok(status.activeTools.includes("pibo-session-tools/pibo_run_start"));
+	assert.ok(status.activeTools.includes("pibo-session-tools/pibo_agents_send_message"));
+	assert.equal(status.activeTools.includes("pibo-session-tools/pibo_run_start"), false);
 	const parent = store.get("ps_codex_subagent_parent");
 	assert.equal(parent.runtimeBinding.adapterId, CODEX_NATIVE_ADAPTER_ID);
 	assert.equal(parent.runtimeBinding.state, "bound");
 	const client = router.sessions.get(parent.id).runtime;
 	const listedTools = await listFixtureMcpTools(client, parent.runtimeBinding.nativeSessionId);
-	const runStartDefinition = listedTools.tools.find((tool) => tool.name === "pibo_run_start");
-	assert.ok(runStartDefinition);
-	const argumentSchemas = runStartDefinition.inputSchema.properties.arguments.anyOf
-		?? [runStartDefinition.inputSchema.properties.arguments];
-	const delegatedArgumentsSchema = argumentSchemas.find((schema) => schema.required?.includes("sessionName"));
-	assert.ok(delegatedArgumentsSchema, "real Codex MCP tools/list must expose delegated sessionName");
-	assert.equal(delegatedArgumentsSchema.properties.sessionName.maxLength, 40);
-	assert.equal(delegatedArgumentsSchema.properties.sessionName.pattern, "\\S");
+	const sendDefinition = listedTools.tools.find((tool) => tool.name === "pibo_agents_send_message");
+	assert.ok(sendDefinition);
+	assert.ok(sendDefinition.inputSchema.required.includes("sessionName"));
+	assert.equal(sendDefinition.inputSchema.properties.sessionName.maxLength, 40);
+	assert.equal(sendDefinition.inputSchema.properties.sessionName.pattern, "\\S");
 
 	for (const [label, argumentsValue] of [
 		["empty-cross-schema", {}],
@@ -185,13 +182,9 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 		["oversized", { name: "helper", sessionName: "😀".repeat(41), message: "too long" }],
 		["combining-oversized", { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "too many code points" }],
 	]) {
-		const rejected = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
-			toolName: "pibo_agents_send_message",
-			arguments: argumentsValue,
-			completionPolicy: "tracked",
-		});
+		const rejected = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_send_message", argumentsValue);
 		assert.equal(rejected.isError, true, `${label} sessionName must fail through real MCP tools/call`);
-		assert.match(rejected.content[0].text, /Invalid arguments/);
+		assert.match(rejected.content[0].text, /(?:Invalid arguments|Agent session name)/);
 	}
 	assert.equal(childSessions(store, parent.id).length, 0);
 	assert.equal(router.listRuns({ includeConsumed: true, includeDetached: true }).length, 0);
@@ -204,16 +197,14 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	assert.equal(registry.requireAgentRuntimeAdapter("fixture-child").sessions.length, 0);
 	assert.equal(events.some((event) => event.type === "subagent_session"), false);
 	const send = async (message, threadKey, sessionName) => {
-		const started = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_start", {
-			toolName: "pibo_agents_send_message",
-			arguments: { name: "helper", sessionName, message, threadKey },
-			completionPolicy: "tracked",
+		const result = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_send_message", {
+			name: "helper",
+			sessionName,
+			message,
+			threadKey,
 		});
-		const runId = started.structuredContent.runId;
-		const waited = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_wait", { runId, timeoutMs: 2_000 });
-		assert.equal(waited.structuredContent.status, "completed");
-		const read = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_run_read", { runId });
-		return { runId, read };
+		assert.equal(result.structuredContent.status, "completed");
+		return { requestId: result.structuredContent.requestId, read: result };
 	};
 
 	const first = await send("first yielded request", "shared", fortyCombiningCodePoints);
@@ -230,7 +221,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 
 	const second = await send("second yielded request", "shared", "  Second yielded request  ");
 	assert.match(second.read.content[0].text, /fixture child: second yielded request/);
-	assert.equal(second.read.structuredContent.result.details.agentId, firstChild.id);
+	assert.equal(second.read.structuredContent.agentId, firstChild.id);
 	assert.equal(childSessions(store, parent.id).length, 1);
 	assert.equal(store.get(firstChild.id).title, "Second yielded request");
 
@@ -239,7 +230,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	assert.equal(listed.structuredContent.agents[0].agentId, firstChild.id);
 	assert.equal(listed.structuredContent.agents[0].sessionName, "Second yielded request");
 	const observed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_observe", {
-		requestIds: [second.runId],
+		requestIds: [second.requestId],
 		agentIds: [firstChild.id],
 		eventTypes: ["assistant_message"],
 		kinds: ["message"],
@@ -248,7 +239,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 		limit: 10,
 	});
 	assert.equal(observed.structuredContent.observations.length, 1);
-	assert.equal(observed.structuredContent.observations[0].requestId, second.runId);
+	assert.equal(observed.structuredContent.observations[0].requestId, second.requestId);
 	assert.match(observed.structuredContent.observations[0].text, /fixture child: second yielded request/);
 	const killed = await callFixtureMcp(client, parent.runtimeBinding.nativeSessionId, "pibo_agents_kill", { agentId: firstChild.id });
 	assert.deepEqual(killed.structuredContent.killed, [firstChild.id]);
@@ -256,7 +247,7 @@ test("Codex native invokes yielded-only Pibo subagents through scoped MCP on a d
 	assert.equal(afterKill.structuredContent.agents[0].status, "killed");
 
 	const afterKillSend = await send("yielded request after kill", "yielded", "Request after kill");
-	assert.match(afterKillSend.runId, /^run_/);
+	assert.match(afterKillSend.requestId, /^agent_request_/);
 	assert.match(afterKillSend.read.content[0].text, /fixture child: yielded request after kill/);
 
 	const links = events.filter((event) => event.type === "subagent_session" && event.piboSessionId === parent.id);
@@ -281,7 +272,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 					.withAgentRuntime("pi")
 					.withBuiltinTools("disabled")
 					.withAutoContextFiles(false)
-					.withToolPackages({ goalControl: false })
+					.withToolPackages({ goalControl: false, runControl: true })
 					.addSubagent({ name: "codex", targetProfile: "codex-subagent-child", maxDepth: 2 })
 					.createSession();
 			},
@@ -334,7 +325,7 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	});
 
 	const status = await openStatus(router, "ps_pi_subagent_parent");
-	assert.equal(status.activeTools.includes("pibo_agents_send_message"), false);
+	assert.equal(status.activeTools.includes("pibo_agents_send_message"), true);
 	assert.ok(status.activeTools.includes("pibo_run_start"));
 	const parent = store.get("ps_pi_subagent_parent");
 	assert.equal(parent.runtimeBinding.adapterId, "pi");
@@ -342,8 +333,12 @@ test("a Pi parent yielded subagent request creates and reuses a native Codex chi
 	const startTool = piRuntime.session.getToolDefinition("pibo_run_start");
 	const waitTool = piRuntime.session.getToolDefinition("pibo_run_wait");
 	const readTool = piRuntime.session.getToolDefinition("pibo_run_read");
-	assert.equal(startTool.parameters.properties.arguments.required.includes("sessionName"), true);
-	assert.equal(startTool.parameters.properties.arguments.properties.sessionName.maxLength, 40);
+	const runArgumentSchema = startTool.parameters.properties.arguments;
+	const delegatedArgumentSchema = (runArgumentSchema.anyOf ?? [runArgumentSchema]).find((schema) =>
+		schema.required?.includes("name") && schema.required?.includes("sessionName") && schema.required?.includes("message"),
+	);
+	assert.ok(delegatedArgumentSchema);
+	assert.equal(delegatedArgumentSchema.properties.sessionName.maxLength, 40);
 	for (const argumentsValue of [
 		{ name: "codex", message: "missing" },
 		{ name: "codex", sessionName: "   ", message: "blank" },

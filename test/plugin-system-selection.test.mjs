@@ -31,7 +31,7 @@ test('legacy profile migration pins extracted tool families without changing its
 	assert.deepEqual(byId('pibo.run-control').contributions, { pibo_run_start: true, pibo_run_list: true });
 	assert.equal(byId('pibo.goal-control').enabled, false);
 	assert.deepEqual(byId('pibo.goal-control').contributions, { get_goal: false, create_goal: false });
-	assert.equal(byId('pibo.agent-delegation').enabled, true);
+	assert.equal(byId('pibo.agent-delegation').enabled, false);
 	assert.equal(byId('pibo.codex-compat').enabled, true);
 	assert.equal(Object.isFrozen(selection), true);
 });

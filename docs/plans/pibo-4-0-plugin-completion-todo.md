@@ -7,8 +7,10 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T15:48:23Z"
+  at: "2026-09-16T08:00:00Z"
 sources:
+  - id: "owner-beta-feedback"
+    resource: "scope:owner decisions 2026-09-16 in Pibo Room room_209cf2ff-6b46-4705-a216-a6d2138604bd; conditional Core delegation; complete Codex Native delivery; stable Settings and Sidebar scrolling"
   - id: "completion-plan"
     resource: "/plans/pibo-4-0-plugin-completion.md"
   - id: "implementation-order"
@@ -21,7 +23,7 @@ Diese Liste wird aus dem [Abschlussplan](/plans/pibo-4-0-plugin-completion.md) a
 
 Ein Haken bestätigt eine erledigte Aufgabe mit benanntem Nachweis. Code, fokussierte Prüfung und integrierte Abnahme sind getrennte Spalten. Keine historischen Testzahlen als neue Abnahme. Bei Rückschritten wird der Haken wieder geöffnet und der Grund festgehalten. Nach jedem sinnvollen Paketabschluss und bei neuen Befunden aktualisiert der aktive Worker diese Datei; der Orchestrator prüft den Stand gegen Plan und Ergebnisse.
 
-Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/plugin-system-rebuild`. Docker: `pibo-dev-plugin-system-rebuild`. Ausgangscommit: `8817384f465a6cfe7d9cc66b9a11f8d438196aa5`. Host-Git ist maßgeblich; Docker-Git-Metadaten sind historisch abweichend. Keine Controller-Gateway-Mutation, kein Merge in dev/main und kein Release.
+Arbeitsbranch: `beta-core-delegation-scroll`, Zielbranch `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/beta-core-delegation-scroll`. Docker: `pibo-dev-beta-core-delegation-scroll`. Ausgangscommit: `bf882c6e`. Host-Git ist maßgeblich; Docker-Git-Metadaten sind historisch abweichend. Keine Controller-Gateway-Mutation, kein Merge in dev/main und kein Release.
 
 # Übersicht
 
@@ -38,6 +40,7 @@ Arbeitsbranch: `beta/4.0-plugin-system`. Worktree: `/root/code/pibo/.worktrees/p
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
 | F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `cb975d3e`; packed Pi-OAuth-Derivation, retained PIBO_HOME-Rebasing und 20-Plugin-Standard geprüft | lokal und auf Pibo2 akzeptiert | Beta-Branch pushen; Publish und Release bleiben eigene Aktionen |
+| F11 – Beta-Feedback: Core-Delegation, Codex Native und Scroll-UX | lokal abgeschlossen | Typecheck, Build, 211 fokussierte Tests, Offline-Cutover und headful Desktop/Mobile | Pibo2 offen | exakten Commit installieren und akzeptieren |
 
 # Erledigter Einstieg
 
@@ -170,6 +173,22 @@ Nachweise: [Pluginpaket-Spezifikation](/specs/product/plugin-profile-catalog.md)
 
 Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package-tests.log`; `/tmp/f06-final-gateway-integration.log`; `/tmp/f06-unassigned-typecheck2.log`; `/tmp/f06-unassigned-chat-build.log`; `/tmp/f06-final-packages.log`; `/tmp/f06-core-final-desktop-five-views.png`; `/tmp/f06-core-final-mobile-settings.png`; `/tmp/f06-core-final-mobile-plugins.png`; CDP-Protokolle `/tmp/f06-core-final-desktop-five-views.json`, `/tmp/f06-core-final-mobile-settings.json` und `/tmp/f06-core-final-mobile-plugins.json`; [Pibo2-Abnahmebericht](/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md). Keine npm-Veröffentlichung, kein PR, Merge, Release, Publish oder Controller-Gateway-Mutation.
 
+## F11 – Beta-Feedback: Core-Delegation, Codex Native und Scroll-UX
+
+- [x] F11-01: `pibo.agent-delegation` aus der auswählbaren Standardkomposition entfernen und gespeicherte Alt-Auswahlen bereinigen.
+- [x] F11-02: Vier `pibo_agents_*`-Tools automatisch aus effektiven Subagents ableiten; ohne Subagent keine Delegationswerkzeuge.
+- [x] F11-03: Direkte Delegation von Run Control entkoppeln; Run Control bleibt optional und kann yieldable Delegation weiterhin ausführen.
+- [x] F11-04: Standard mit `@openai/codex@0.153.2` und passendem Plattformpaket einschließlich `codex-code-mode-host` bündeln; Minimal bleibt frei von Codex.
+- [x] F11-05: Candidate-Assembly um die beiden offiziellen Codex-Tarballs erweitern und den echten Offline-Cutover mit leerem npm-Cache prüfen.
+- [x] F11-06: Settings-Content auf Desktop und Mobile innerhalb des Route-Shells scrollbar machen.
+- [x] F11-07: Raumscrollposition global und Sessionscrollposition pro Raum/Archivansicht über Navigation, Remount und mobile `hidden`-Phasen bewahren.
+- [x] F11-08: Preview, VS Code, Web Annotations, Tool-Ansichtsmodi sowie Debug-/Token-/Cache-Verträge fokussiert erneut prüfen.
+- [x] F11-09: Headful Browserabnahme lokal: Settings 1440×900 und 390×844; Desktop und Mobile Session-/Raumwechsel mit A→B→A-Wiederherstellung.
+- [ ] F11-10: Exakten Commit und content-adressierten Kandidaten auf Pibo2 installieren; Browserpfade und Codex Native mit `openai-codex/gpt-5.6-luna`, Reasoning Effort Medium, akzeptieren.
+- [ ] F11-11: Zielbranch `upstream/beta/4.0-plugin-system` auf den akzeptierten Commit sichern und Remote-Hash verifizieren.
+
+Lokale Nachweise: Root-/UI-Typecheck; vollständiger Build; 20 Pluginartefakte; 25-Tarball-Candidate; 211/211 fokussierte Delegations-, Plugin-, UI-, Tool-Ansichts- und Debugtests; gepackter Candidate-Cutover grün; Screenshots `/tmp/pibo-beta-settings-desktop.png`, `/tmp/pibo-beta-settings-mobile-scrolled.png`, `/tmp/pibo-beta-sidebar-scroll-desktop.png` und `/tmp/pibo-beta-sidebar-scroll-mobile.png`. Keine Controller-Gateway-Mutation.
+
 # Neue Befunde und Zusatzaufgaben
 
 | ID | Befund / Zusatzaufgabe | Paket | Status |
@@ -189,13 +208,13 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 | N-013 | Die Paketentscheidung widmet `@pasko70/pibo` vom Monolithen zum Minimal-Core um; Bestand braucht deshalb einen expliziten, gepackten Alt-zu-Neu-Cutover, damit benötigte Features/Runtimes nicht still fehlen. Dies ist eine Upgrade-Anforderung, kein behaupteter Bestandsdefekt. | F06/F07 | behoben; tatsächlicher gepackter 3.6.2-Ausgangspunkt, vorgeschaltetes Cutoverpaket, exakte Hashzuordnung und fail-closed Direktwechsel geprüft |
 | N-014 | Ein pauschal auswählbarer Session-Tool-Provider könnte mehrere nicht einzeln deklarierte oder abgewählte Tools freischalten. | F01 | behoben und fokussiert geprüft; appweiter Provider plus einzeln ausgewählte/runtimegefilterte Tool-Contributions |
 | N-015 | `dispose(): void` akzeptiert in TypeScript auch async Funktionen; Provider-Cleanup könnte dadurch unbemerkt weiterlaufen oder fehlschlagen. | F01 | behoben und fokussiert geprüft; Cleanup wird awaited, aggregiert und blockiert Zulassungsfreigabe |
-| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine fachlichen Controller dauerhaft im Core konservieren. | F02/F04/F06 | behoben; Quellpfad und gepackter Minimal-Core schließen fachliche Controller aus |
+| N-016 | Übergangs-Session-Service-Namen für Code Runtime und Delegation dürfen keine unentschiedene Ownership konservieren. | F02/F04/F06/F11 | für optionale Features behoben; die spätere F11-Entscheidung ordnet bedingte Agent Delegation ausdrücklich dem Core zu |
 | N-017 | Das externe Fixture mit Repo-Symlink belegt F01-API-Nutzbarkeit, aber keine eigenständige Distribution. | F06 | behoben; Clean-Consumer installiert Core- und Preview-Tarballs ohne Symlink oder Quellcheckout |
 | N-018 | Importfreie Installationsprüfung kannte echte Core-Service-Provider nicht und wies externe Pakete vor Aktivierung fälschlich als service-los ab. | F01 | behoben und fokussiert geprüft; Manager liest nur versionierte Core-Service-Metadaten |
-| N-019 | `yieldable` allein unterscheidet kein direkt sichtbares Tool von einem ausschließlich über Run erreichbaren Tool; Delegation würde sonst `pibo_agents_send_message` direkt freigeben. | F02 | behoben; `direct` und `yieldable` sind unabhängige Contribution-Eigenschaften und positiv über Run, Context und MCP geprüft |
+| N-019 | `yieldable` allein unterscheidet kein direkt sichtbares Tool von einem ausschließlich über Run erreichbaren Tool. | F02/F11 | Mechanik behoben; F11 gibt direkte Core-Delegation bewusst frei und erlaubt zusätzlich die optionale Run-Control-Kapselung |
 | N-020 | Eine Pi-seitige Legacy-Session-Assembly würde die entfernten First-Party-Namens-/Factory-Sonderfälle als ausführbaren Harnesspfad konservieren. | F02/F08 | behoben; Altzustandsvergleich bleibt ausschließlich in `test/helpers/legacy-session-tool-names.mjs`, produktive Delivery ist ausgeschlossen |
 | N-021 | Dependency-Expansion darf `globallyActive` nicht als Erlaubnis verwenden, um eine explizite Agent-Deaktivierung zu überstimmen; gespeicherte und effektive Nutzerwahl müssen übereinstimmen. | F02/F07 | behoben und fokussiert geprüft; aktuelle Snapshots trennen unentschiedene Defaults von expliziten Entscheidungen, Legacy-Snapshots fallen sicher auf explizite Booleans zurück, Plan-Diagnosen benennen Tool-, Agent-Plugin-, globale und Runtime-Blockaden |
-| N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Run-/Delegation-Controller konstruiert, den Delegation-Toolnamen importiert oder konkrete Reminder-/Metadaten formatiert. | F02/F04/F06 | behoben; Pakete besitzen Fachlogik und der gepackte Minimal-Core-Audit schließt Controller, Toolnamen und Reminderimplementierungen physisch aus |
+| N-022 | Eine generische Service-ID verschiebt keine Ownership, solange `core/session-router` konkrete Featurecontroller konstruiert. | F02/F04/F06/F11 | für Run Control und optionale Features behoben; F11 revidiert nur Delegation als dokumentierte bedingte Kernfähigkeit, konkrete Run-Reminder bleiben außerhalb des Core |
 | N-023 | Frischer Standardstart scheiterte, weil ein Pluginprofil ein provider-backed Tool noch als ausführbar registriertes Legacy-Tool auflösen wollte. | F03/F06 | behoben; Profile können deklarierte provider-backed Toolmetadaten generisch aus aktiven Manifesten projizieren, frischer isolierter Docker-Gatewaystart und Profilinventur bestanden |
 | N-024 | Der bisherige Root-`npm pack`-Test verlangte Featuremodule im Paket, obwohl `@pasko70/pibo` als Minimal-Core festgelegt ist; der Releasewrapper publizierte tatsächlich den breiten Root. | F06/F10 | behoben in `746b990c`: Root ist privat, Release publiziert nur Core/Cutover/20 Plugins/Standard aus getrennten Verzeichnissen, und der hermetische Test verbietet nacktes `npm publish` |
 | N-025 | Der generierte `@pasko70/pibo`-Tarball enthielt weder `bin/pibo` noch `dist/bin/pibo.js`, Gateway-/Chat-Web-Delivery oder einen echten App-Start. Der bisherige Clean-Test importierte nur `startPluginProductRuntime`; damit war die Aussage einer installierbaren Minimal-Core-App nicht belegt. | F06/F10 | behoben in `8ad776f1`; ausführbarer runtimefreier Core, leere diagnostische Plan-/Preview-Pfade, physische Closure, Offline-Installation aller 23 Tarballs und Candidate-Installer geprüft |
@@ -207,6 +226,11 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 | N-031 | Sequentielle Revisionsaktivierung konnte bei retained Consumers `draining` zurückgeben, ließ das Ziel `retiring` und setzte mit der nächsten Graphprüfung fort. | F06/F07/F10 | behoben in `9a23906fc012f7d484cbaf3b464073867f561679`: aktive Ziele werden vorab installiert und kalt als Batch aktiviert; historische/optionale/unbekannte Profile/Sessions und released Admissions blockieren nicht, echte reservierte Admissions, Live-Runs/-Runtimes und erforderliche Abhängigkeiten bleiben fail-closed; non-complete führt zu vollständigem Rollback ohne Receipt |
 | N-032 | Der retained Artifact-Root-Link `node_modules/@pasko70/pibo` gehörte dem alten Candidate; normale SDK-Vorbereitung verweigerte den Eigentümerwechsel korrekt und stoppte den verifizierten Cutover vor Aktivierung. | F06/F07/F10 | behoben in `b785ca10d28bbbfcbe06b2efb836a1e8defd2b79`: nur ein verifizierter Cutover darf bei direkt geprüftem idle/stopped Host vor `host.start` den Symlink per temporärem Link plus atomischem Rename auf den exakten neuen Core-Root übergeben; normale/aktive Aufrufe bleiben strikt, Retry verwendet denselben Link idempotent |
 | N-033 | Das gepackte Pi-Backend ließ variable relative OAuth-Flow-Imports auf nicht gelieferte Dateien zurück. Nach der ersten Korrektur zeigte reales Staging zusätzlich, dass ein retained absoluter User-Skill-Pfad weiterhin auf das alte Pibo Home weisen konnte. | F06/F07/F10 | behoben und erneut geschlossen in `cb975d3e91aec82763990ab76b0626d23bd8f2d9`: beide gebündelten `pi-ai`-Instanzen erhalten alle statischen OAuth-Loader; ein Clean-Consumer führt echte OpenAI-Codex-Ableitung aus. Direkte `PIBO_HOME`-Autorität rebasiert retained Skillpfade generisch auf die dort verwaltete Ressource, während explizite andere Roots unverändert bleiben. Vier bestehende Profile behalten `maintain-okf-docs` ohne Builtin/Fallback; der gepackte Standard-Gatewaytest belegt Bootstrapauflösung, reale Turn-Vorbereitung und Prozess-Cleanup. |
+| N-034 | Codex Native konnte installiert erscheinen, obwohl `codex-code-mode-host` im ausgelieferten Standard fehlte. | F11 | lokal behoben; Standard bündelt offizielle CLI plus Plattformpaket und Prozessdiagnose benennt einen fehlenden Host präzise |
+| N-035 | Die separate Delegation-Plugin-Auswahl versteckte notwendige Tools und koppelte Delegation unnötig an Run Control. | F11 | lokal behoben; Core leitet alle vier Tools ausschließlich aus Subagents ab, direkte Ausführung benötigt Run Control nicht |
+| N-036 | Settings besaß zwar scrollbaren Inhalt, aber der umgebende Route-Shell gab keine begrenzte Höhe weiter. | F11 | lokal behoben und headful auf Desktop/Mobile gescrollt |
+| N-037 | Raum-/Sessionnavigation remountete beziehungsweise versteckte Sidebar-Scrollcontainer; mobile `hidden`-Phasen überschrieben gespeicherte Werte zusätzlich mit null. | F11 | lokal behoben; sichtbare Werte werden seitenweit und pro Raum/Archivschlüssel behalten, Hidden-Ereignisse ignoriert und beim Öffnen wiederhergestellt |
+| N-038 | Der Offline-Candidate enthielt die neue Runtimeabhängigkeit nicht als installierbare Tarballs. | F11 | lokal behoben; 25-artifact Assembly bindet beide offiziellen Codex-Pakete per Größe/SHA-256 und installiert mit leerem npm-Cache |
 
 # Abnahmestand
 

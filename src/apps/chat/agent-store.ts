@@ -22,6 +22,24 @@ const LEGACY_GOAL_TOOL_NAMES = ["get_goal", "create_goal", "update_goal"] as con
 const LEGACY_RUN_TOOL_NAMES = ["pibo_run_start", "pibo_run_list", "pibo_run_status", "pibo_run_wait", "pibo_run_read", "pibo_run_cancel", "pibo_run_ack"] as const;
 const LEGACY_AGENT_TOOL_NAMES = ["pibo_agents_send_message", "pibo_agents_list_agents", "pibo_agents_observe", "pibo_agents_kill"] as const;
 
+const RETIRED_AGENT_DELEGATION_PLUGIN_ID = "pibo.agent-delegation";
+
+function withoutRetiredAgentDelegationSelection(selection: AgentPluginSelection | undefined): AgentPluginSelection | undefined {
+	if (!selection?.plugins.some((entry) => entry.pluginId === RETIRED_AGENT_DELEGATION_PLUGIN_ID)) return selection;
+	return {
+		...structuredClone(selection),
+		plugins: selection.plugins
+			.filter((entry) => entry.pluginId !== RETIRED_AGENT_DELEGATION_PLUGIN_ID)
+			.map((entry) => structuredClone(entry)),
+	};
+}
+
+function withoutRetiredAgentDelegationMigration(report: AgentPluginMigrationReport | undefined): AgentPluginMigrationReport | undefined {
+	if (!report) return undefined;
+	const selection = withoutRetiredAgentDelegationSelection(report.selection);
+	return selection === report.selection ? report : { ...structuredClone(report), selection: selection! };
+}
+
 export type CustomAgentSubagent = {
 	name: string;
 	description?: string;
@@ -190,7 +208,7 @@ export function previewCustomAgentCreate(
 	return {
 		id,
 		revision: 1,
-		pluginSelection: input.pluginSelection ? structuredClone(input.pluginSelection) : undefined,
+		pluginSelection: withoutRetiredAgentDelegationSelection(input.pluginSelection),
 		profileName: input.displayName,
 		displayName: input.displayName,
 		profileAliases: [],
@@ -234,7 +252,7 @@ export function previewCustomAgentUpdate(
 	return {
 		...existing,
 		revision: existing.revision + 1,
-		pluginSelection: input.pluginSelection ? structuredClone(input.pluginSelection) : existing.pluginSelection,
+		pluginSelection: input.pluginSelection ? withoutRetiredAgentDelegationSelection(input.pluginSelection) : existing.pluginSelection,
 		profileName,
 		displayName: input.displayName ?? existing.displayName,
 		folderId: input.folderId === undefined ? existing.folderId : input.folderId ?? undefined,
@@ -1059,11 +1077,13 @@ export function createDefaultCustomAgentStore(_cwd?: string): CustomAgentStore {
 }
 
 function agentFromRow(row: AgentRow, profileAliases: readonly string[]): CustomAgentDefinition {
+	const pluginSelection = withoutRetiredAgentDelegationSelection(row.plugin_selection_json ? JSON.parse(row.plugin_selection_json) : undefined);
+	const pluginMigration = withoutRetiredAgentDelegationMigration(row.plugin_migration_json ? JSON.parse(row.plugin_migration_json) : undefined);
 	return {
 		id: row.id,
 		revision: row.revision,
-		pluginSelection: row.plugin_selection_json ? JSON.parse(row.plugin_selection_json) : undefined,
-		pluginMigration: row.plugin_migration_json ? JSON.parse(row.plugin_migration_json) : undefined,
+		pluginSelection,
+		pluginMigration,
 		profileName: row.profile_name,
 		displayName: row.display_name,
 		profileAliases: profileAliases.filter((alias) => alias !== row.profile_name),
@@ -1529,9 +1549,8 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		if (adapter) adapter.config = { selectedServers: [...agent.mcpServers] };
 	}
 	if (agent.goalControl !== false) for (const name of LEGACY_GOAL_TOOL_NAMES) add("tool", name);
-	// send_message is yielded-only; the other three tools remain direct. Do not enable general Run targets.
+	// Delegation is a conditional Core capability derived from the configured subagents.
 	const manualSubagents = agent.subagents.length > 0;
-	if (manualSubagents) for (const name of LEGACY_AGENT_TOOL_NAMES) add("tool", name);
 	// Baseline Pi wraps only bash (not read/edit/write) when full Run Control is enabled.
 	const piNativeYielding = options.runtime.adapterId === "pi" && agent.runControl;
 	if (piNativeYielding && (agent.builtinTools === "disabled" || !agent.builtinToolNames.includes("bash"))) diagnostics.push({
@@ -1539,8 +1558,8 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 		message: "Legacy Run Control implicitly exposed bash despite disabled Pi built-ins; explicit harness selection reconciliation is required",
 	});
 	const hasYieldable = piNativeYielding || selectedTools.some((tool) => tool && tool.yieldable !== false);
-	if (manualSubagents || (agent.runControl && hasYieldable)) for (const name of LEGACY_RUN_TOOL_NAMES) add("tool", name);
-	const runTargetNames = manualSubagents && !agent.runControl ? ["pibo_agents_send_message"] : agent.runControl ? [
+	if (agent.runControl && (manualSubagents || hasYieldable)) for (const name of LEGACY_RUN_TOOL_NAMES) add("tool", name);
+	const runTargetNames = agent.runControl ? [
 		...selectedTools.filter((tool) => tool && tool.yieldable !== false).map((tool) => tool!.name),
 		...(manualSubagents ? [...LEGACY_AGENT_TOOL_NAMES] : []), ...(piNativeYielding ? ["bash"] : []),
 	] : [];
@@ -1548,7 +1567,7 @@ export function inventoryLegacyAgentSelection(agent: CustomAgentDefinition, opti
 	if (start) start.config = { allowedToolNames: runTargetNames };
 	return { contributions, userSkills, harnessSkills, userContextFiles, inventoryDiagnostics: diagnostics,
 		harnessTools: options.runtime.adapterId === "pi" && agent.builtinTools !== "disabled" ? [...agent.builtinToolNames] : [],
-		yieldedOnlyTools: manualSubagents ? ["pibo_agents_send_message"] : [],
+		yieldedOnlyTools: [],
 		/** Migrator/runtime must preserve this filter, not broaden manual infrastructure to all tools. */
 		runTargetNames,
 	};

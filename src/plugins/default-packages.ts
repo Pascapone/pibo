@@ -434,7 +434,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "agent-delegation" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli";
+	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
@@ -455,7 +455,6 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: codexCompatPackageManifest, backendExport: "setupCodexCompat", backendModule: "codex-compat", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 	{ manifest: runControlPackageManifest, backendExport: "setupRunControl", backendModule: "run-control", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 	{ manifest: goalControlPackageManifest, backendExport: "setupGoalControl", backendModule: "goal-loops", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }, { exports: "LoopsView", asset: "pibo-plugin-loops.js" }] },
-	{ manifest: agentDelegationPackageManifest, backendExport: "setupAgentDelegation", backendModule: "agent-delegation", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 	{ manifest: builtinProfilesPackageManifest, backendExport: "setupBuiltinProfiles", backendModule: "profiles" },
 	{ manifest: piRuntimePackageManifest, backendExport: "setupPiRuntime", backendModule: "runtime-pi" },
 	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-codex-native", browserModules: [{ exports: "RuntimeRequestsView", asset: "pibo-plugin-runtime-requests.js" }] },

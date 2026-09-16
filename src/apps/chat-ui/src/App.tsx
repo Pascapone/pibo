@@ -1988,7 +1988,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		? "h-full overflow-hidden grid grid-cols-[minmax(0,1fr)]"
 		: (area === "workflows" || area === "cron" || area === "loops" || area === "agents")
 			? "h-full overflow-hidden"
-			: `grid ${area === "sessions" && showRawEvents
+		: `grid h-full min-h-0 overflow-hidden ${area === "sessions" && showRawEvents
 				? "grid-cols-[300px_minmax(0,1fr)_320px] max-[980px]:grid-cols-1"
 				: "grid-cols-[300px_minmax(0,1fr)] max-[980px]:grid-cols-1"
 			}`;
@@ -2158,6 +2158,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 						sidebarRef={mobileSidebarRef}
 					>
 						<SessionSidebar
+							visible={!isAppFullscreen && (!isMobileSidebarViewport || mobileSidebarOpen)}
 							bootstrap={bootstrap}
 							selectedRoomId={selectedRoomId}
 							selectedPiboSessionId={selectedPiboSessionId}

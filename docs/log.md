@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-16
+
+- **Pibo 4 Beta Core delegation, Codex delivery, and scroll correction implemented locally**: Updated the [completion plan](/plans/pibo-4-0-plugin-completion.md) and [task ledger](/plans/pibo-4-0-plugin-completion-todo.md) for F11. Profiles with effective Subagents now receive all four Core-owned `pibo_agents_*` tools automatically and can delegate directly without Run Control; profiles without Subagents receive none. The retired Delegation plugin is removed from Standard and stored selections, while Run Control remains independently optional. Standard and the 25-tarball Candidate include the official Codex CLI and platform package with `codex-code-mode-host`; Minimal remains runtimefree. Settings scrolling and Room/Session sidebar position retention passed headful desktop/mobile checks. Typecheck, full build, 211 focused tests, the packed offline Candidate cutover and the complete serial suite with 3,075 tests, 3,065 passes, 0 failures and 10 skips passed. Exact-commit Pibo2 acceptance and upstream Beta synchronization remain open; no controller mutation, publication, merge or release occurred.
+
 ## 2026-09-15
 
 - **Pibo 4 Beta user feedback accepted on Pibo2**: Candidate `f519fc78253b158abf3297d3bb2b8872ee557ff1` fixes Settings scrolling, Room return navigation, workspace tabs, native model error feedback, and OMP queue blocking. The exact Standard assembly passed the documented public/headful paths. Original Codex gpt-6-astra and OMP Sessions now answer and return to idle. The [acceptance report](/reports/beta-feedback-pibo2-2026-09-15.md) records 3,063 passing integrated tests, final package checks, checksum, preserved-state recovery, and outstanding operator workflow gaps.

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
@@ -281,11 +281,11 @@ export function createAgentToolDefinitions(
 			name: "pibo_agents_send_message",
 			title: "Pibo Agents Send Message",
 			description: [
-				"Yielded-only delegated send with a required sessionName. It must be a nonblank string of at most 40 Unicode code points and is trimmed before use. name selects the configured agent, sessionName is the human-readable child-session title, and threadKey controls conversation reuse. Invalid arguments fail before a run or child session is created. Start this tool through pibo_run_start; bounded waits do not limit the child lifetime.",
+				"Send work to a configured delegated agent. sessionName must be a nonblank human-readable title of at most 40 Unicode code points and is trimmed before use. name selects the configured agent and threadKey controls conversation reuse. Invalid arguments fail before a child session is created. The direct call waits for the delegated reply; optional Pibo Run Control can run it asynchronously.",
 				"Available agents:",
 				catalog,
 			].join("\n"),
-			promptSnippet: "Start pibo_agents_send_message through pibo_run_start. Provide a nonblank sessionName of at most 40 Unicode code points on every call; Pibo trims it and rejects invalid input before creating a run. Follow-up calls update the reused child title without changing identity. Reuse threadKey to continue its child session, and use run wait/status/read/cancel plus agent observe for lifecycle control.",
+			promptSnippet: "Call pibo_agents_send_message directly and provide a nonblank sessionName of at most 40 Unicode code points. Pibo trims it and rejects invalid input before creating a child session. Reuse threadKey to continue its child session. When Pibo Run Control is available, pibo_run_start may wrap the send for asynchronous lifecycle control.",
 			executionMode: "parallel",
 			inputSchema: Type.Object({
 				name: piboStringEnum(names, { description: "Configured delegated-agent selector; not the child title or reuse key" }),
@@ -307,20 +307,18 @@ export function createAgentToolDefinitions(
 			async execute(toolCallId, params, signal, _onUpdate, context) {
 				const subagent = byName.get(params.name);
 				if (!subagent) throw new Error(`Unknown delegated agent "${params.name}"`);
-				if (!context.yieldedRunId) {
-					throw new Error("pibo_agents_send_message is yielded-only. Start it through pibo_run_start.");
-				}
 				const preparedParams = preparePiboAgentToolInput(params);
+				const requestId = context.yieldedRunId ?? "agent_request_" + randomUUID();
 				const result = normalizeAgentSendMessageResult(await controller.sendMessage({
 					subagent,
 					sessionName: preparedParams.sessionName,
 					message: preparedParams.message,
 					threadKey: preparedParams.threadKey,
 					toolCallId,
-					requestId: context.yieldedRunId,
+					requestId,
 					parentProvenance: context.getActiveMessage?.()?.provenance,
 					signal,
-				}), context.yieldedRunId);
+				}), requestId);
 				return {
 					content: [{
 						type: "text",

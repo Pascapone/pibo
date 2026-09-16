@@ -194,7 +194,7 @@ function createYieldedSubagentFixture(suffix, script) {
 								.withAgentRuntime("pi")
 								.withBuiltinTools("disabled")
 								.withAutoContextFiles(false)
-								.withToolPackages({ goalControl: false })
+								.withToolPackages({ goalControl: false, runControl: true })
 								.addSubagent({ name: "worker", targetProfile: childProfile })
 								.createSession();
 						},
@@ -759,10 +759,12 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(send.executionMode, "parallel");
 	assert.match(send.description, /helper: Ask the helper agent/);
 	const controller = new AbortController();
-	await assert.rejects(
-		send.execute("tool-call-direct", { name: "helper", message: "direct" }, controller.signal, undefined, {}),
-		/yielded-only/,
-	);
+	const direct = await send.execute("tool-call-direct", {
+		name: "helper",
+		sessionName: "Direct request",
+		message: "direct",
+	}, controller.signal, undefined, {});
+	assert.match(direct.details.requestId, /^agent_request_/);
 	for (const [label, params] of [
 		["missing", { name: "helper", message: "missing" }],
 		["blank", { name: "helper", sessionName: "   ", message: "blank" }],
@@ -775,13 +777,14 @@ test("shared agent tool definitions delegate execution and management to the con
 			/Agent session name/,
 		);
 	}
-	assert.equal(observed.length, 0);
+	assert.equal(observed.length, 1);
+	assert.match(observed[0].requestId, /^agent_request_/);
 	await send.execute("tool-call-combining-exact", {
 		name: "helper",
 		sessionName: fortyCombiningCodePoints,
 		message: "Exactly 40 code points.",
 	}, controller.signal, undefined, { yieldedRunId: "run_combining_exact" });
-	assert.equal(observed[0].sessionName, fortyCombiningCodePoints);
+	assert.equal(observed[1].sessionName, fortyCombiningCodePoints);
 	const result = await send.execute("tool-call-1", {
 		name: "helper",
 		sessionName: "  Find relevant files  ",
@@ -796,14 +799,14 @@ test("shared agent tool definitions delegate execution and management to the con
 		}),
 	});
 
-	assert.equal(observed[1].subagent.name, "helper");
-	assert.equal(observed[1].sessionName, "Find relevant files");
-	assert.equal(observed[1].message, "Find the relevant files.");
-	assert.equal(observed[1].threadKey, "files");
-	assert.equal(observed[1].toolCallId, "tool-call-1");
-	assert.equal(observed[1].requestId, "run_request_1");
-	assert.deepEqual(observed[1].parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
-	assert.equal(observed[1].signal, controller.signal);
+	assert.equal(observed[2].subagent.name, "helper");
+	assert.equal(observed[2].sessionName, "Find relevant files");
+	assert.equal(observed[2].message, "Find the relevant files.");
+	assert.equal(observed[2].threadKey, "files");
+	assert.equal(observed[2].toolCallId, "tool-call-1");
+	assert.equal(observed[2].requestId, "run_request_1");
+	assert.deepEqual(observed[2].parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
+	assert.equal(observed[2].signal, controller.signal);
 	assert.equal(send.inputSchema.required.includes("sessionName"), true);
 	assert.equal(send.inputSchema.properties.sessionName.minLength, 1);
 	assert.equal(send.inputSchema.properties.sessionName.maxLength, PIBO_AGENT_SESSION_NAME_MAX_LENGTH);
@@ -969,13 +972,13 @@ test("profiles can expose subagents as active router tools", async () => {
 	assert.equal(inspection.contextFiles.some((file) => file.path === "pibo://runtime/delegated-agents.md"), true);
 	const delegatedContext = getDelegatedAgentContextFile(registry.createProfile("parent-profile").subagents);
 	assert.ok(delegatedContext);
-	assert.match(delegatedContext.content, /arguments: \{ name, sessionName, message, threadKey\? \}/);
+	assert.match(delegatedContext.content, /pibo_agents_send_message\(\{ name, sessionName, message, threadKey\? \}\)/);
 	assert.match(delegatedContext.content, /sessionName.*human-readable child title/);
 	assert.match(delegatedContext.content, /at most 40 Unicode code points/);
 	assert.match(delegatedContext.content, /trims surrounding whitespace/);
-	assert.match(delegatedContext.content, /before creating a yielded run or child session/);
-	assert.match(delegatedContext.content, /textContains\?, textRegex\?/);
-	assert.match(delegatedContext.content, /both must match when supplied together/);
+	assert.match(delegatedContext.content, /before creating a child session/);
+	assert.match(delegatedContext.content, /Call pibo_agents_send_message directly/);
+	assert.match(delegatedContext.content, /optional Pibo Run Control tools/);
 
 	const store = new InMemoryPiboSessionStore();
 	store.create({
@@ -1002,13 +1005,12 @@ test("profiles can expose subagents as active router tools", async () => {
 		assert.equal(output.type, "execution_result");
 		assert.deepEqual(
 			PIBO_AGENT_TOOL_NAMES.filter((name) => output.result.activeTools.includes(name)),
-			PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message"),
+			PIBO_AGENT_TOOL_NAMES,
 		);
 		assert.equal(output.result.activeTools.includes("ordinary"), true);
-		assert.equal(output.result.activeTools.includes("pibo_run_start"), true);
+		assert.equal(output.result.activeTools.includes("pibo_run_start"), false);
 		assert.equal(output.result.activeTools.some((name) => name.startsWith("pibo_subagent_")), false);
-		const runStart = router.sessions.get("ps_parent").runtime.session.getToolDefinition("pibo_run_start");
-		assert.deepEqual(runStart.parameters.properties.toolName.enum, ["pibo_agents_send_message"]);
+		assert.ok(router.sessions.get("ps_parent").runtime.session.getToolDefinition("pibo_agents_send_message"));
 	} finally {
 		await router.disposeAll();
 	}
@@ -1123,11 +1125,10 @@ test("router omits subagent tools that have reached their max depth", async () =
 			action: "status",
 		});
 
-		const managementToolNames = PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message");
-		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => rootOutput.result.activeTools.includes(name)), managementToolNames);
-		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => childOutput.result.activeTools.includes(name)), managementToolNames);
-		assert.equal(router.sessions.get("ps_root").runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
-		assert.equal(router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
+		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => rootOutput.result.activeTools.includes(name)), PIBO_AGENT_TOOL_NAMES);
+		assert.deepEqual(PIBO_AGENT_TOOL_NAMES.filter((name) => childOutput.result.activeTools.includes(name)), PIBO_AGENT_TOOL_NAMES);
+		assert.ok(router.sessions.get("ps_root").runtime.session.getToolDefinition("pibo_agents_send_message"));
+		assert.ok(router.sessions.get("ps_child").runtime.session.getToolDefinition("pibo_agents_send_message"));
 
 		const rootRuntime = router.sessions.get("ps_root").runtime;
 		const childRuntime = router.sessions.get("ps_child").runtime;
@@ -2019,7 +2020,7 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 								.withAgentRuntime("pi")
 								.withBuiltinTools("disabled")
 								.withAutoContextFiles(false)
-								.withToolPackages({ goalControl: false })
+								.withToolPackages({ goalControl: false, runControl: true })
 								.addSubagent({ name: "worker", targetProfile: "subagent-abort-child-profile" })
 								.createSession();
 						},
@@ -2050,7 +2051,7 @@ test("aborting a parent turn interrupts its active subagent child", async () => 
 	try {
 		await router.emit({ type: "execution", piboSessionId: "ps_abort_parent", action: "status" });
 		const runtime = router.sessions.get("ps_abort_parent").runtime;
-		assert.equal(runtime.session.getToolDefinition("pibo_agents_send_message"), undefined);
+		assert.ok(runtime.session.getToolDefinition("pibo_agents_send_message"));
 		const startTool = runtime.session.getToolDefinition("pibo_run_start");
 		const started = await startTool.execute("subagent-abort-tool", {
 			toolName: "pibo_agents_send_message",
@@ -2163,7 +2164,7 @@ test("killing an active delegated agent cancels its parent-owned yielded run dur
 							.withAgentRuntime("pi")
 							.withBuiltinTools("disabled")
 							.withAutoContextFiles(false)
-							.withToolPackages({ goalControl: false })
+							.withToolPackages({ goalControl: false, runControl: true })
 							.addSubagent({ name: "worker", targetProfile: childProfile })
 							.createSession(),
 					});
@@ -2240,7 +2241,7 @@ test("cancelling a queued delegated run leaves the active request on the shared 
 								.withAgentRuntime("pi")
 								.withBuiltinTools("disabled")
 								.withAutoContextFiles(false)
-								.withToolPackages({ goalControl: false })
+								.withToolPackages({ goalControl: false, runControl: true })
 								.addSubagent({ name: "worker", targetProfile: "subagent-targeted-cancel-child-profile" })
 								.createSession();
 						},
@@ -2509,7 +2510,7 @@ test("profile-selected subagents expose run control tools", async () => {
 	);
 	assert.deepEqual(
 		PIBO_AGENT_TOOL_NAMES.filter((name) => activeTools.has(name)),
-		PIBO_AGENT_TOOL_NAMES.filter((name) => name !== "pibo_agents_send_message"),
+		PIBO_AGENT_TOOL_NAMES,
 	);
 	assert.equal([...activeTools].some((name) => name.startsWith("pibo_subagent_")), false);
 	assert.equal(activeTools.has("pibo_run_start"), true);

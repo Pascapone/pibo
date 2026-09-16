@@ -28,7 +28,6 @@ const packages = [
 	["gateway-tools", defaults.gatewayToolsPackageManifest, "src/plugins/packaged-gateway-tools.ts", "setupGatewayTools", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],
 	["codex-compat", defaults.codexCompatPackageManifest, "src/plugins/packaged-codex-compat.ts", "setupCodexCompat", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],
 	["run-control", defaults.runControlPackageManifest, "src/plugins/packaged-run-control.ts", "setupRunControl", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],
-	["agent-delegation", defaults.agentDelegationPackageManifest, "src/plugins/packaged-agent-delegation.ts", "setupAgentDelegation", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],
 	["mcp-cli", defaults.mcpCliPackageManifest, "src/plugins/packaged-mcp-cli.ts", "setupMcpCli", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],
 	["transcription-openai-chatgpt", defaults.openAiChatGptTranscriptionPackageManifest, "src/plugins/packaged-transcription-openai-chatgpt.ts", "setupOpenAiChatGptTranscription", []],
 	["transcription-openai", defaults.openAiTranscriptionPackageManifest, "src/plugins/packaged-transcription-openai.ts", "setupOpenAiTranscription", []],
@@ -142,7 +141,7 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 	}
 	manifest.entrypoints = { ...manifest.entrypoints, backend: "backend.mjs" };
 	await writeFile(join(packageRoot, "pibo.plugin.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-	await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ name: `@pasko70/pibo-plugin-${packageSuffix}`, version: manifest.version, type: "module", files: ["pibo.plugin.json", "backend.mjs", "browser", ...(["standard-profiles", "web-annotations"].includes(packageSuffix) ? ["skills"] : []), ...(packageSuffix === "browser-tools" ? ["context"] : []), ...(["browser-tools", "runtime-pi"].includes(packageSuffix) ? ["vendor"] : [])] }, null, 2)}\n`);
+	await writeFile(join(packageRoot, "package.json"), `${JSON.stringify({ name: `@pasko70/pibo-plugin-${packageSuffix}`, version: manifest.version, type: "module", ...(packageSuffix === "runtime-codex-native" ? { dependencies: { "@openai/codex": "0.153.2" } } : {}), files: ["pibo.plugin.json", "backend.mjs", "browser", ...(["standard-profiles", "web-annotations"].includes(packageSuffix) ? ["skills"] : []), ...(packageSuffix === "browser-tools" ? ["context"] : []), ...(["browser-tools", "runtime-pi"].includes(packageSuffix) ? ["vendor"] : [])] }, null, 2)}\n`);
 }
 
 const standardSet = { schemaVersion: 1, core: "@pasko70/pibo", standard: "@pasko70/pibo-standard", plugins: packages.map(([suffix, manifestFactory]) => ({ package: `@pasko70/pibo-plugin-${suffix}`, pluginId: manifestFactory().id, version: manifestFactory().version })) };

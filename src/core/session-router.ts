@@ -112,6 +112,8 @@ import {
 	PiboPortableToolService,
 	type PiboPortableToolSession,
 } from "../tools/session-service.js";
+import { createPiboDelegationController } from "../subagents/controller.js";
+import { createAgentToolDefinitions } from "../subagents/tool.js";
 import {
 	PiboRuntimeResourceService,
 } from "../agent-runtime/resource-service.js";
@@ -1786,6 +1788,29 @@ export class PiboSessionRouter {
 		const previousResources = this.runtimeResourceSessions.get(piboSession.id);
 		if (previousResources) await previousResources.dispose();
 		await this.portableToolSessions.get(piboSession.id)?.dispose();
+		const sessionServices: Readonly<Record<string, unknown>> = Object.freeze({
+			[PIBO_SESSION_CONTEXT_SERVICE]: Object.freeze({
+				piboSessionId: piboSession.id,
+				piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
+				runtimeInstanceId: binding.runtimeInstanceId,
+				adapterId: binding.adapterId,
+				sessionGeneration,
+				profileName: sessionProfile.profileName,
+				cwd: workspace,
+			}),
+			[PIBO_SESSION_YIELDED_RUNS_SERVICE]: this.yieldedRuns.controlFor(piboSession.id),
+			[PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE]: this.createChildOrchestrationService(),
+			[PIBO_SESSION_AGENT_TARGETS_SERVICE]: sessionProfile.subagents,
+			[PIBO_SESSION_GOAL_STORE_SERVICE]: this.options.goalStorePath,
+		});
+		const delegationController = createPiboDelegationController({
+			get: <T>(id: string) => sessionServices[id] as T | undefined,
+			require: <T>(id: string) => {
+				const value = sessionServices[id] as T | undefined;
+				if (value === undefined) throw new Error("Session service " + id + " is unavailable for core delegation");
+				return value;
+			},
+		}, piboSession.id);
 		const portableTools = this.portableToolService.createSession({
 			piboSessionId: piboSession.id,
 			piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
@@ -1798,22 +1823,9 @@ export class PiboSessionRouter {
 			recordPluginHook: pluginGeneration ? (evidence) => persistPluginHookEvidence(this.options.pluginRuntime!.options.store, evidence) : undefined,
 			cwd: workspace,
 			getActiveMessage: () => session?.getActiveMessage(),
+			coreSessionTools: createAgentToolDefinitions(sessionProfile.subagents, delegationController).map((definition) => ({ definition })),
 			sessionToolProviders: pluginGeneration?.sessionToolProviders,
-			sessionServices: {
-				[PIBO_SESSION_CONTEXT_SERVICE]: Object.freeze({
-					piboSessionId: piboSession.id,
-					piboRoomId: piboRoomIdFromMetadata(piboSession.metadata),
-					runtimeInstanceId: binding.runtimeInstanceId,
-					adapterId: binding.adapterId,
-					sessionGeneration,
-					profileName: sessionProfile.profileName,
-					cwd: workspace,
-				}),
-				[PIBO_SESSION_YIELDED_RUNS_SERVICE]: this.yieldedRuns.controlFor(piboSession.id),
-				[PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE]: this.createChildOrchestrationService(),
-				[PIBO_SESSION_AGENT_TARGETS_SERVICE]: sessionProfile.subagents,
-				[PIBO_SESSION_GOAL_STORE_SERVICE]: this.options.goalStorePath,
-			},
+			sessionServices,
 		});
 		this.portableToolSessions.set(piboSession.id, portableTools);
 		let resources: PiboRuntimeResourceSession;

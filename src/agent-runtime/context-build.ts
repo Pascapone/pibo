@@ -11,6 +11,7 @@ import { InitialSessionContext } from "../core/profiles.js";
 import type { PiboModelDefaults } from "../core/model-defaults.js";
 import type { PiboThinkingLevel } from "../core/thinking.js";
 import { materializePiboProfileTools } from "../tools/session-tool-set.js";
+import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 
 export function profileWithRuntimeInstance(profile: InitialSessionContext, runtimeInstanceId: string): InitialSessionContext {
 	if (profile.runtimeInstanceId === runtimeInstanceId) return profile;
@@ -89,13 +90,16 @@ export function buildPortableRuntimeContextSnapshot(input: {
 	const materializedProfiles = new Set(materializedProfileTools.map((tool) => tool.profile));
 	const selectedTools = profile.tools.filter((tool) => tool.enabled !== false);
 	const selectedDeclarativeTools = selectedTools.filter((tool) => !materializedProfiles.has(tool) && (tool.providerTool !== undefined || Boolean(profile.effectivePluginPlan && tool.pluginId)));
+	const coreDelegationToolNames = availableAgents.length > 0 ? [...PIBO_AGENT_TOOL_NAMES] : [];
 	const activeToolNames = uniqueNames([
 		...materializedProfileTools.filter((tool) => tool.profile.direct !== false).map((tool) => tool.definition.name),
 		...selectedDeclarativeTools.filter((tool) => tool.direct !== false).map((tool) => tool.name),
+		...coreDelegationToolNames,
 	]);
 	const yieldableToolNames = uniqueNames([
 		...materializedProfileTools.filter((tool) => tool.profile.yieldable !== false).map((tool) => tool.definition.name),
 		...selectedDeclarativeTools.filter((tool) => tool.yieldable !== false).map((tool) => tool.name),
+		...coreDelegationToolNames,
 	]);
 	const activeToolPackages = uniqueNames(profile.effectivePluginPlan?.contributions
 		.filter((entry) => entry.contribution.kind === "tool")

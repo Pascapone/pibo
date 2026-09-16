@@ -24,6 +24,8 @@ export type CreatePiboPortableToolSessionInput = {
 	cwd: string;
 	getActiveMessage?: PiboToolDefinitionContext["getActiveMessage"];
 	getConversationEntries?: PiboToolDefinitionContext["getConversationEntries"];
+	/** Core-owned tools whose availability is derived from session configuration. */
+	coreSessionTools?: readonly SessionToolDefinitionRegistration[];
 	/** Selected providers pinned by the effective plugin generation. */
 	sessionToolProviders?: readonly PluginSessionToolProviderBinding[];
 	/** Session-owned services exposed by stable public IDs. */
@@ -163,7 +165,9 @@ export class PiboPortableToolService {
 		}
 		record.nativeYieldableTools = options.nativeYieldableTools;
 		record.nativeToolNames = new Set(options.nativeYieldableTools?.map((tool) => tool.name) ?? []);
+		const coreSessionTools = [...(record.input.coreSessionTools ?? [])];
 		const baseProviderTools = this.createProviderTools(record, "base", []);
+		const baseSessionTools = [...coreSessionTools, ...baseProviderTools];
 		const baseContributionByName = new Map(baseProviderTools.map((tool) => [tool.definition.name, tool.contributionId] as const));
 		const definitions = createPiboSessionToolDefinitions({
 			profile: record.input.profile,
@@ -178,7 +182,7 @@ export class PiboPortableToolService {
 				getConversationEntries: record.getConversationEntries,
 			},
 			nativeYieldableTools: options.nativeYieldableTools,
-			sessionToolDefinitions: baseProviderTools,
+			sessionToolDefinitions: baseSessionTools,
 			createAugmentedSessionToolDefinitions: (availableTools) => this.createProviderTools(record, "augment", availableTools.map((definition) => {
 				const contributionId = baseContributionByName.get(definition.name);
 				return contributionId ? { contributionId, definition } : { definition };

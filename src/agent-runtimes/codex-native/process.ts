@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
 import {
 	lstat,
@@ -8,7 +9,7 @@ import {
 	rmdir,
 	writeFile,
 } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
 import { protectPrivatePathsSync } from "../../core/private-path.js";
 import { CodexAppServerClient, type CodexAppServerDiagnostic } from "./client.js";
@@ -154,10 +155,45 @@ function nodeErrorCode(error: unknown): string | undefined {
 }
 
 function codexExecutableInvocation(executable: string, args: readonly string[]): { command: string; args: string[] } {
-	if (process.platform === "win32" && isAbsolute(executable) && [".js", ".cjs", ".mjs"].includes(extname(executable).toLowerCase())) {
+	if (isAbsolute(executable) && [".js", ".cjs", ".mjs"].includes(extname(executable).toLowerCase())) {
 		return { command: process.execPath, args: [executable, ...args] };
 	}
 	return { command: executable, args: [...args] };
+}
+
+function codexPlatformPackage(): { packageName: string; target: string } | undefined {
+	if (process.platform === "linux" && process.arch === "x64") return { packageName: "@openai/codex-linux-x64", target: "x86_64-unknown-linux-musl" };
+	if (process.platform === "linux" && process.arch === "arm64") return { packageName: "@openai/codex-linux-arm64", target: "aarch64-unknown-linux-musl" };
+	if (process.platform === "darwin" && process.arch === "x64") return { packageName: "@openai/codex-darwin-x64", target: "x86_64-apple-darwin" };
+	if (process.platform === "darwin" && process.arch === "arm64") return { packageName: "@openai/codex-darwin-arm64", target: "aarch64-apple-darwin" };
+	if (process.platform === "win32" && process.arch === "x64") return { packageName: "@openai/codex-win32-x64", target: "x86_64-pc-windows-msvc" };
+	if (process.platform === "win32" && process.arch === "arm64") return { packageName: "@openai/codex-win32-arm64", target: "aarch64-pc-windows-msvc" };
+	return undefined;
+}
+
+async function packagedCodexCompanionAvailable(executable: string): Promise<boolean | undefined> {
+	if (!isAbsolute(executable)) return undefined;
+	let companion: string;
+	if ([".js", ".cjs", ".mjs"].includes(extname(executable).toLowerCase())) {
+		if (basename(executable) !== "codex.js" || !executable.split(sep).includes("codex")) return undefined;
+		const platform = codexPlatformPackage();
+		if (!platform) return false;
+		try {
+			const require = createRequire(executable);
+			const packageRoot = dirname(require.resolve(platform.packageName + "/package.json"));
+			companion = join(packageRoot, "vendor", platform.target, "bin", process.platform === "win32" ? "codex-code-mode-host.exe" : "codex-code-mode-host");
+		} catch {
+			return false;
+		}
+	} else {
+		companion = join(dirname(executable), process.platform === "win32" ? "codex-code-mode-host.exe" : "codex-code-mode-host");
+	}
+	try {
+		const metadata = await lstat(companion);
+		return metadata.isFile() && !metadata.isSymbolicLink();
+	} catch {
+		return false;
+	}
 }
 
 export async function prepareCodexNativeInstancePaths(
@@ -469,6 +505,16 @@ export async function diagnoseCodexNativeRuntime(
 			...(probe.exitCode !== undefined || probe.errorCode
 				? { details: { ...(probe.exitCode !== undefined ? { exitCode: probe.exitCode } : {}), ...(probe.errorCode ? { errorCode: probe.errorCode } : {}) } }
 				: {}),
+		});
+		return diagnostics;
+	}
+	const companionAvailable = await packagedCodexCompanionAvailable(config.executable);
+	if (companionAvailable === false) {
+		diagnostics.push({
+			severity: "error",
+			code: "codex_native_code_mode_host_missing",
+			message: "Codex Code Mode Host is missing beside the configured Codex executable for runtime instance " + runtimeInstanceId + ".",
+			path: "config.executable",
 		});
 		return diagnostics;
 	}

@@ -59,7 +59,7 @@ test("packed Minimal-Core starts with zero plugins and installs one independentl
 	assert.ok((await readFile(join("dist/pibo4-artifacts/preview/browser/index.js"), "utf8")).includes("__PIBO_BROWSER_PLUGIN_BRIDGE__"));
 });
 
-test("packed Minimal-Core executable files exclude first-party runtime, Run, and Delegation implementations", async () => {
+test("packed Minimal-Core public library exports exclude runtime, Run, and Delegation implementations", async () => {
 	const files = ["index.js", "plugin-cutover.js", "plugin-host.js", "plugin-runtime.js", "plugin-sdk.js", "product-runtime.js"];
 	const forbidden = [
 		"PI_AGENT_RUNTIME_DRIVER",
@@ -89,7 +89,11 @@ test("every first-party artifact independently packs with exact identity and sel
 		assert.equal(pkg.version, entry.version);
 		assert.equal(manifest.id, entry.pluginId);
 		assert.equal(manifest.version, entry.version);
-		assert.equal(pkg.dependencies, undefined);
+		if (suffix === "runtime-codex-native") {
+			assert.deepEqual(pkg.dependencies, { "@openai/codex": "0.153.2" });
+		} else {
+			assert.equal(pkg.dependencies, undefined);
+		}
 		assert.ok((await readFile(join(directory, "backend.mjs"), "utf8")).length > 100);
 		const tarball = await npmPack(directory, root);
 		assert.ok(basename(tarball).endsWith(".tgz"));
@@ -129,18 +133,26 @@ test("standard artifact set maps every package to one exact plugin id and versio
 	assert.equal(set.schemaVersion, 1);
 	assert.equal(set.core, "@pasko70/pibo");
 	assert.equal(set.standard, "@pasko70/pibo-standard");
-	assert.equal(set.plugins.length, 21);
+	assert.equal(set.plugins.length, 20);
 	assert.equal(new Set(set.plugins.map((entry) => entry.pluginId)).size, set.plugins.length);
 	assert.ok(set.plugins.every((entry) => entry.version === "1.0.0" && entry.package.startsWith("@pasko70/pibo-plugin-")));
 	const standardPackage = JSON.parse(await readFile("dist/pibo4-standard-package/package.json", "utf8"));
 	assert.equal(standardPackage.name, "@pasko70/pibo-standard");
 	assert.deepEqual(standardPackage.bin, { pibo: "./bin/pibo.js", "pibo-standard": "./bin/pibo.js" });
 	assert.equal(standardPackage.dependencies["@pasko70/pibo"], "4.0.0-beta.1");
-	assert.deepEqual(new Set(standardPackage.bundledDependencies), new Set(Object.keys(standardPackage.dependencies)));
+	assert.deepEqual(
+		new Set(standardPackage.bundledDependencies),
+		new Set([...Object.keys(standardPackage.dependencies), ...Object.keys(standardPackage.optionalDependencies)]),
+	);
 	for (const entry of set.plugins) {
 		assert.equal(standardPackage.dependencies[entry.package], entry.version);
 		assert.equal(existsSync(join("dist/pibo4-standard-package/node_modules", ...entry.package.split("/"), "pibo.plugin.json")), true);
 	}
+	assert.equal(
+		existsSync(join("dist/pibo4-standard-package/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex-code-mode-host")),
+		true,
+		"Pibo Standard must bundle the Codex Code Mode host with Codex Native",
+	);
 	const standardTarball = await npmPack(resolve("dist/pibo4-standard-package"), root);
 	const cutoverTarball = await npmPack(resolve("dist/pibo4-cutover-package"), root);
 	assert.match(basename(standardTarball), /^pasko70-pibo-standard-/);

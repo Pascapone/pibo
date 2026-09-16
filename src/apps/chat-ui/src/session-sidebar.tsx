@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEventHandler, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEventHandler, type ReactNode, type RefObject } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -32,6 +32,11 @@ import {
 
 const SESSION_INFINITE_SCROLL_ROOT_MARGIN = "240px 0px";
 
+// Chat route transitions can remount the sidebar while the page stays open.
+// Retain viewport state for the lifetime of this browser page.
+let retainedRoomListScrollTop = 0;
+const retainedSessionScrollTopByKey = new Map<string, number>();
+
 function unreadBadgeLabel(count: number): string {
 	return count > 99 ? "99+" : String(count);
 }
@@ -52,6 +57,7 @@ function UnreadBadge({ count }: { count?: number }) {
 export type RoomUpdateInput = { name?: string; topic?: string | null; workspace?: string | null };
 
 export type SessionSidebarProps = {
+	visible?: boolean;
 	bootstrap: BootstrapData;
 	selectedRoomId: string | null;
 	selectedPiboSessionId: string | null;
@@ -104,6 +110,7 @@ export type SessionSidebarProps = {
 };
 
 export function SessionSidebar({
+	visible = true,
 	bootstrap,
 	selectedRoomId,
 	selectedPiboSessionId,
@@ -159,12 +166,37 @@ export function SessionSidebar({
 	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
 	const archivedSessionsToggleRef = useRef<HTMLButtonElement>(null);
+	const roomListScrollRef = useRef<HTMLDivElement>(null);
+	const roomListScrollTopRef = useRef(retainedRoomListScrollTop);
+	const sessionScrollTopByKeyRef = useRef(retainedSessionScrollTopByKey);
+	const sessionScrollKey = (selectedRoomId ?? bootstrap.selectedRoomId ?? "none") + ":" + (showArchived ? "archived" : "active");
+	const activeSessionScrollKeyRef = useRef(sessionScrollKey);
 	const [draggedRoomId, setDraggedRoomId] = useState<string | null>(null);
 	const [roomDropIndicator, setRoomDropIndicator] = useState<{ targetRoomId: string; position: "before" | "after" } | null>(null);
 	const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
 	const [dropIndicator, setDropIndicator] = useState<{ targetPiboSessionId: string; position: "before" | "after" } | null>(null);
 	const firstUnpinnedRoomIndex = roomGroups.active.findIndex((room) => !isPinnedRoom(room));
 	const firstUnpinnedSessionIndex = visibleActiveSessions.findIndex((session) => !session.pinned);
+	useLayoutEffect(() => {
+		if (!visible) return;
+		if (roomListScrollRef.current) roomListScrollRef.current.scrollTop = roomListScrollTopRef.current;
+	}, [visible, selectedRoomId, loadingRoomId, bootstrap.rooms.length, showArchivedRooms]);
+
+	useLayoutEffect(() => {
+		activeSessionScrollKeyRef.current = sessionScrollKey;
+		if (!visible) return;
+		const scrollTop = sessionScrollTopByKeyRef.current.get(sessionScrollKey) ?? 0;
+		if (sessionListScrollRef.current) sessionListScrollRef.current.scrollTop = scrollTop;
+	}, [
+		visible,
+		sessionScrollKey,
+		selectedPiboSessionId,
+		roomSessionsLoading,
+		visibleActiveSessions.length,
+		visibleArchivedSessions.length,
+		sessionListScrollRef,
+	]);
+
 	const handleToggleArchivedSessions = async () => {
 		const restoreFocus = archivedSessionsToggleRef.current === document.activeElement;
 		try {
@@ -227,7 +259,16 @@ export function SessionSidebar({
 								</button>
 							</div>
 						</div>
-						<div className="min-h-0 flex-1 overflow-y-auto pr-1">
+						<div
+							ref={roomListScrollRef}
+							data-pibo-debug="room-scroll-region"
+							className="min-h-0 flex-1 overflow-y-auto pr-1"
+							onScroll={(event) => {
+								if (!visible) return;
+								roomListScrollTopRef.current = event.currentTarget.scrollTop;
+								retainedRoomListScrollTop = roomListScrollTopRef.current;
+							}}
+						>
 						{roomGroups.active.map((room, index) => {
 							const showPinnedDivider = firstUnpinnedRoomIndex > 0 && index === firstUnpinnedRoomIndex;
 							const indicator = roomDropIndicator?.targetRoomId === room.id ? roomDropIndicator.position : null;
@@ -350,7 +391,15 @@ export function SessionSidebar({
 						</button>
 					</div>
 				</div>
-				<div ref={sessionListScrollRef} className="min-h-0 flex-1 overflow-y-auto pr-1">
+				<div
+					ref={sessionListScrollRef}
+					data-pibo-debug="session-scroll-region"
+					data-pibo-scroll-key={sessionScrollKey}
+					className="min-h-0 flex-1 overflow-y-auto pr-1"
+					onScroll={(event) => {
+						if (visible && !roomSessionsLoading) sessionScrollTopByKeyRef.current.set(activeSessionScrollKeyRef.current, event.currentTarget.scrollTop);
+					}}
+				>
 				{roomSessionsLoading ? (
 					<RoomSessionsLoadingSkeleton />
 				) : (

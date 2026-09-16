@@ -128,6 +128,7 @@
     "acorn-walk": "8.3.4",
     "better-auth": "1.6.30",
     "commander": "^14.0.3",
+    "jsonwebtoken": "9.0.2",
     "lexical": "^0.35.0",
     "lucide-react": "^0.545.0",
     "prismjs": "^1.30.0",
@@ -147,6 +148,7 @@
   },
   "devDependencies": {
     "@mdxeditor/editor": "^3.55.0",
+    "@openai/codex": "0.153.2",
     "@tanstack/router-plugin": "^1.167.28",
     "@types/node": "^25.6.0",
     "@types/prismjs": "^1.26.6",

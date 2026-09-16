@@ -20,6 +20,7 @@ import {
 	PIBO_SESSION_YIELDED_RUNS_SERVICE,
 } from "../dist/plugins/runtime.js";
 import { PiboPortableToolService } from "../dist/tools/session-service.js";
+import { createAgentToolDefinitions } from "../dist/subagents/tool.js";
 
 const selectedPluginIds = new Set([
 	"pibo.code-runtime",
@@ -29,7 +30,6 @@ const selectedPluginIds = new Set([
 	"pibo.codex-compat",
 	"pibo.run-control",
 	"pibo.goal-control",
-	"pibo.agent-delegation",
 ]);
 
 function selectFirstPartyTools(installations) {
@@ -113,6 +113,12 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 		observeAgents() { return { observations: [], truncated: false, nextAfterSequence: 0 }; },
 		killAgent() { throw new Error("not executed in schema test"); },
 	};
+	const coreDelegationTools = createAgentToolDefinitions(generation.profile.subagents, {
+		async sendMessage() { throw new Error("not executed in schema test"); },
+		listAgents() { return []; },
+		observe() { return { filters: {}, observations: [], truncated: false, nextAfterSequence: 0 }; },
+		async killAgent() { throw new Error("not executed in schema test"); },
+	});
 	const session = portableService.createSession({
 		piboSessionId: "ps_first_party",
 		piboRoomId: "room_first_party",
@@ -121,6 +127,7 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 		sessionGeneration: "gen_first_party",
 		profile: generation.profile,
 		cwd: root,
+		coreSessionTools: coreDelegationTools.map((definition) => ({ definition })),
 		sessionToolProviders: generation.sessionToolProviders,
 		sessionServices: {
 			[PIBO_SESSION_YIELDED_RUNS_SERVICE]: runController,
@@ -145,7 +152,7 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 	assert.ok(directNames.includes("pibo_agents_list_agents"));
 	assert.ok(directNames.includes("pibo_agents_observe"));
 	assert.ok(directNames.includes("pibo_agents_kill"));
-	assert.equal(directNames.includes("pibo_agents_send_message"), false, "delegated send remains yielded-only");
+	assert.ok(directNames.includes("pibo_agents_send_message"), "delegated send is a direct Core tool");
 	assert.ok(directNames.includes("pibo_run_start"));
 	assert.ok(directNames.includes("runtime"));
 	assert.ok(directNames.includes("hashline"));
@@ -164,7 +171,7 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 	const inspectedObserve = findNode(detailedSnapshot.nodes, "tools/pibo_agents_observe/definition");
 	const delegatedContext = findNodeWhere(detailedSnapshot.nodes, (node) => node.path === "pibo://runtime/delegated-agents.md");
 	assert.ok(inspectedRunStart.schemaJson.inputSchema.properties.toolName.enum.includes("pibo_agents_send_message"));
-	assert.equal(findNode(detailedSnapshot.nodes, "tools/pibo_agents_send_message"), undefined);
+	assert.ok(findNode(detailedSnapshot.nodes, "tools/pibo_agents_send_message"));
 	assert.equal(inspectedObserve.schemaJson.inputSchema.properties.order.default, "desc");
 	assert.equal(inspectedObserve.schemaJson.inputSchema.properties.limit.default, 20);
 	assert.match(delegatedContext.hydratedText, /`reviewer`.*Reviews changes/s);
@@ -184,11 +191,11 @@ test("selected first-party providers preserve direct, yielded, context, Run sche
 	const toolsNode = findNode(snapshot.nodes, "tools");
 	assert.ok(toolsNode.badges.includes("MCP:STREAMABLE-HTTP"));
 	assert.ok(toolsNode.children.some((node) => node.title === "yielded-target:pibo_agents_send_message"));
-	assert.equal(toolsNode.children.some((node) => node.title === "pibo_agents_send_message"), false);
+	assert.equal(toolsNode.children.some((node) => node.title === "pibo_agents_send_message"), true);
 
 	const access = await session.issueMcpAccess();
 	assert.deepEqual([...access.allowedToolNames].sort(), [...definitions.filter((tool) => tool.name !== "bash" && tool.portable !== false).map((tool) => tool.name)].sort());
-	assert.equal(access.allowedToolNames.includes("pibo_agents_send_message"), false);
+	assert.equal(access.allowedToolNames.includes("pibo_agents_send_message"), true);
 	await session.dispose();
 	assert.throws(() => session.createDefinitions(), /disposed/);
 });

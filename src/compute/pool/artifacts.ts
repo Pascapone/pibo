@@ -18,8 +18,9 @@ const BINARY_RELATIVE_PATHS = [
 ] as const;
 
 interface CandidateAssemblyArtifact {
-	role: "core" | "cutover" | "standard" | "plugin";
+	role: "core" | "cutover" | "standard" | "plugin" | "dependency";
 	package: string;
+	packageJsonName?: string;
 	version: string;
 	file: string;
 	bytes: number;
@@ -147,14 +148,15 @@ function validateCandidateAssemblyManifest(value: unknown): CandidateAssemblyMan
 	}
 	if (!Array.isArray(manifest.artifacts)) throw new Error("Candidate assembly artifacts are missing");
 	const artifacts = manifest.artifacts as CandidateAssemblyArtifact[];
-	if (artifacts.length !== 24 || artifacts.filter((entry) => entry.role === "plugin").length !== 21 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
-		throw new Error("Candidate assembly must contain one Core, one Cutover runner, one Standard, and exactly 21 plugin artifacts");
+	if (artifacts.length !== 25 || artifacts.filter((entry) => entry.role === "plugin").length !== 20 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
+		throw new Error("Candidate assembly must contain one Core, one Cutover runner, one Standard, exactly 20 plugin artifacts, and two runtime dependencies");
 	}
 	const packages = new Set<string>();
 	const files = new Set<string>();
 	for (const artifact of artifacts) {
-		if (!artifact || !["core", "cutover", "standard", "plugin"].includes(artifact.role)) throw new Error("Candidate assembly artifact role is invalid");
+		if (!artifact || !["core", "cutover", "standard", "plugin", "dependency"].includes(artifact.role)) throw new Error("Candidate assembly artifact role is invalid");
 		if (typeof artifact.package !== "string" || !artifact.package || packages.has(artifact.package)) throw new Error("Candidate assembly artifact package is invalid or duplicated");
+		if (artifact.packageJsonName !== undefined && (artifact.role !== "dependency" || typeof artifact.packageJsonName !== "string" || !artifact.packageJsonName)) throw new Error(`Candidate assembly package.json identity is invalid for ${artifact.package}`);
 		if (typeof artifact.version !== "string" || !artifact.version) throw new Error(`Candidate assembly version is invalid for ${artifact.package}`);
 		if (typeof artifact.file !== "string" || !/^tarballs\/[^/]+\.tgz$/.test(artifact.file) || files.has(artifact.file)) throw new Error(`Candidate assembly artifact path is invalid for ${artifact.package}`);
 		if (!Number.isSafeInteger(artifact.bytes) || artifact.bytes <= 0) throw new Error(`Candidate assembly byte count is invalid for ${artifact.package}`);
@@ -195,6 +197,10 @@ async function installCandidateAssembly(input: {
 		if (!details.isFile() || details.size !== artifact.bytes) throw new Error(`Candidate assembly size mismatch for ${artifact.package}`);
 		if (await sha256File(path) !== artifact.sha256) throw new Error(`Candidate assembly checksum mismatch for ${artifact.package}`);
 	}
+	const runtimePackagePath = resolve(input.runtimePath, "package.json");
+	const runtimePackage = JSON.parse(await readFile(runtimePackagePath, "utf8")) as Record<string, unknown>;
+	runtimePackage.dependencies = Object.fromEntries(input.manifest.artifacts.map((entry) => [entry.package, `file:.pibo-candidate-assembly/${entry.file}`]));
+	await writeFile(runtimePackagePath, `${JSON.stringify(runtimePackage, null, 2)}\n`, { mode: 0o600 });
 	await execFileAsync("npm", [
 		"install",
 		"--offline",
@@ -202,12 +208,11 @@ async function installCandidateAssembly(input: {
 		"--ignore-scripts",
 		"--no-audit",
 		"--no-fund",
-		...input.manifest.artifacts.map((entry) => resolve(assemblyRoot, entry.file)),
 	], { cwd: input.runtimePath, maxBuffer: 64 * 1024 * 1024 });
 	for (const artifact of input.manifest.artifacts) {
 		const packagePath = resolve(input.runtimePath, "node_modules", artifact.package, "package.json");
 		const installed = JSON.parse(await readFile(packagePath, "utf8")) as { name?: unknown; version?: unknown };
-		if (installed.name !== artifact.package || installed.version !== artifact.version) throw new Error(`Installed Candidate package does not match manifest: ${artifact.package}`);
+		if (installed.name !== (artifact.packageJsonName ?? artifact.package) || installed.version !== artifact.version) throw new Error(`Installed Candidate package does not match manifest: ${artifact.package}`);
 	}
 	if (!existsSync(resolve(input.runtimePath, input.manifest.application.binary))) throw new Error("Candidate assembly application binary is missing after install");
 }

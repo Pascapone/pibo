@@ -234,12 +234,19 @@ test("one archived agent with an unavailable runtime is isolated and remains dia
 });
 
 test("fixture tool names match actual legacy session-tool assembler (Goal default, manual-only Run)", () => {
-	for (const id of ["standard", "subset", "manual", "run", "resources"]) {
+	for (const id of ["standard", "subset", "run", "resources"]) {
 		const fixture = fixtures.cases.find((item) => item.id === id);
 		const agent = previewCustomAgentCreate(fixture.input);
 		const names = legacySessionToolNames({ nativeToolNames: agent.nativeTools, subagents: agent.subagents, goalControl: agent.goalControl, runControl: agent.runControl });
 		assert.deepEqual(names, fixture.expectedTools, id);
 	}
+	const manual = fixtures.cases.find((item) => item.id === "manual");
+	const legacyManualAgent = previewCustomAgentCreate(manual.input);
+	const legacyNames = legacySessionToolNames({ nativeToolNames: legacyManualAgent.nativeTools, subagents: legacyManualAgent.subagents, goalControl: legacyManualAgent.goalControl, runControl: legacyManualAgent.runControl });
+	assert.equal(legacyNames.includes("pibo_agents_send_message"), false, "legacy send_message was yielded-only");
+	assert.equal(legacyNames.includes("pibo_agents_observe"), true);
+	assert.equal(legacyNames.includes("pibo_run_start"), true);
+	assert.deepEqual(manual.expectedTools, ["web_annotations_list"], "plugin migration excludes Core-owned delegation and implicit Run Control");
 });
 
 test("required subset mismatch and runtime incompatibility never gain tools", () => {
@@ -317,6 +324,27 @@ test("migration refuses concurrent source edits; raw unknown fields remain in ba
 });
 
 const emptySelection = { schemaVersion: 1, plugins: [] };
+
+test("retired Delegation plugin selections are removed while Core derives delegation from subagents", () => {
+	const retained = { pluginId: "fixture.search", revision: "hash:fixture.search", enabled: true, contributions: { search: true }, config: {} };
+	const retired = { pluginId: "pibo.agent-delegation", revision: "hash:retired", enabled: true, contributions: { pibo_agents_send_message: true }, config: {} };
+	const created = previewCustomAgentCreate({
+		schemaVersion: 2,
+		displayName: "core-delegation-agent",
+		subagents: [{ name: "helper", targetProfile: "base" }],
+		pluginSelection: { schemaVersion: 1, plugins: [retired, retained] },
+	});
+	assert.deepEqual(created.pluginSelection.plugins, [retained]);
+	assert.deepEqual(previewCustomAgentUpdate(created, {
+		pluginSelection: { schemaVersion: 1, plugins: [retired] },
+	}).pluginSelection.plugins, []);
+	assert.deepEqual(inventoryLegacyAgentSelection(created, {
+		catalog: legacyCatalog,
+		runtime: runtime(),
+		owners: fixtures.owners,
+	}).runTargetNames, []);
+});
+
 test("SQL CAS protects parallel connections, archive and missing references survive metadata edits", async () => {
 	const root = mkdtempSync(join(tmpdir(), "designer-cas-")); const path = join(root, "agents.sqlite");
 	const first = new CustomAgentStore(path); const second = new CustomAgentStore(path);

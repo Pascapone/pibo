@@ -26,6 +26,7 @@ import type { AgentRuntimeDiagnostic, AgentRuntimeTransport } from "../agent-run
 import { createPiboRuntime } from "./runtime.js";
 import { getDefaultPiboWorkspace } from "./workspace.js";
 import { buildLegacyContextPreview } from "../agent-runtime/legacy-context-preview.js";
+import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
 
 export type PiboContextBuildNodeKind =
 	| "prompt_section"
@@ -346,6 +347,8 @@ function toolDefinitionSchema(definition: ToolDefinition | undefined, toolInfo: 
 }
 
 function generatedOriginForTool(name: string, profile: InitialSessionContext): string | undefined {
+	if (profile.subagents.some((subagent) => subagent.enabled !== false)
+		&& (PIBO_AGENT_TOOL_NAMES as readonly string[]).includes(name)) return "pibo-core";
 	return profile.effectivePluginPlan?.contributions.find((entry) => entry.contribution.kind === "tool" && entry.contribution.name === name)?.pluginId;
 }
 
@@ -473,8 +476,11 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 		const allTools = runtime.session.getAllTools();
 		const toolInfoByName = new Map(allTools.map((tool) => [tool.name, tool]));
 		const providerTools = profile.tools.filter((tool) => tool.enabled !== false).filter(isWebSearchProviderTool);
-		const toolNames = [...new Set([...activeToolNames, ...providerTools.map((tool) => tool.name)])].sort((left, right) => left.localeCompare(right));
-		const selectedTools = [...activeToolNames];
+		const coreDelegationToolNames = profile.subagents.some((subagent) => subagent.enabled !== false)
+			? [...PIBO_AGENT_TOOL_NAMES]
+			: [];
+		const toolNames = [...new Set([...activeToolNames, ...coreDelegationToolNames, ...providerTools.map((tool) => tool.name)])].sort((left, right) => left.localeCompare(right));
+		const selectedTools = [...new Set([...activeToolNames, ...coreDelegationToolNames])];
 		const toolSnippets: Record<string, string> = {};
 		const promptGuidelines: string[] = [];
 		for (const name of selectedTools) {
@@ -596,6 +602,7 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 						: "pi";
 			const definition = runtime.session.getToolDefinition(name);
 			const info = toolInfoByName.get(name);
+			const coreDelegationTool = (coreDelegationToolNames as readonly string[]).includes(name);
 			const children: NodeInput[] = [];
 			if (definition?.promptSnippet) {
 				children.push({
@@ -685,8 +692,8 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 				provider: providerTool?.providerTool.provider,
 				badges,
 				metadata: {
-					registered: Boolean(info || providerTool),
-					hasDefinition: Boolean(definition || info),
+					registered: Boolean(info || providerTool || coreDelegationTool),
+					hasDefinition: Boolean(definition || info || coreDelegationTool),
 					description: definition?.description ?? info?.description ?? providerTool?.description,
 					...(toolSource === "pibo" || toolSource === "generated" ? { owner: "pibo", deliveryMode: "direct" } : {}),
 					...(generatedOrigin ? { inspectorOrigin: { label: generatedOrigin, modelVisible: false } } : {}),
@@ -842,13 +849,13 @@ export async function inspectPiboContextBuild(options: PiboRuntimeOptions = {}):
 			metadata: { pluginId: binding.pluginId, contributionId: binding.contributionId },
 		})));
 
-		const yieldableToolNames = [...new Set(allTools.flatMap((tool) => {
+		const yieldableToolNames = [...new Set([...coreDelegationToolNames, ...allTools.flatMap((tool) => {
 			const definition = runtime.session.getToolDefinition(tool.name) as unknown as ToolDefinition & { piboAugmentation?: { targetToolNames?: unknown } } | undefined;
 			const augmentation = definition?.piboAugmentation;
 			return Array.isArray(augmentation?.targetToolNames)
 				? augmentation.targetToolNames.filter((name): name is string => typeof name === "string")
 				: [];
-		}))];
+		})])];
 		const activeToolPackages = [...new Set(profile.effectivePluginPlan?.contributions
 			.filter((entry) => entry.contribution.kind === "tool")
 			.map((entry) => entry.pluginId) ?? [])];

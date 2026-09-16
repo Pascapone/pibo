@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "cac4dcd03945b9754db7be9ab2ab4324f10c335c",
-  "scope": "Anonymized synthetic profiles; effective direct Pibo tools exclude separately recorded harness tools and yielded-only send target. Family mapping is migration test data, never active composition. Core skill/context owners preserved until AP12 extraction.",
+  "scope": "Anonymized synthetic profiles. Delegation is a conditional Core capability derived from subagents and is excluded from plugin migration inventory. Family mapping is migration test data, never active composition. Core skill/context owners preserved until AP12 extraction.",
   "owners": {
     "tool:web_search": "pibo.web-search",
     "tool:runtime": "pibo.code-runtime",
@@ -182,24 +182,10 @@
         ]
       },
       "expectedTools": [
-        "pibo_agents_kill",
-        "pibo_agents_list_agents",
-        "pibo_agents_observe",
-        "pibo_run_ack",
-        "pibo_run_cancel",
-        "pibo_run_list",
-        "pibo_run_read",
-        "pibo_run_start",
-        "pibo_run_status",
-        "pibo_run_wait",
         "web_annotations_list"
       ],
-      "expectedYieldedOnlyTools": [
-        "pibo_agents_send_message"
-      ],
-      "expectedRunTargets": [
-        "pibo_agents_send_message"
-      ],
+      "expectedYieldedOnlyTools": [],
+      "expectedRunTargets": [],
       "expectedHarnessTools": [
         "bash",
         "edit",

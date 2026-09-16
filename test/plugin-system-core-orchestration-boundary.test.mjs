@@ -8,11 +8,9 @@ async function source(path) {
 	return readFile(new URL(path, root), "utf8");
 }
 
-test("core routing imports only generic child and yielded-run orchestration contracts", async () => {
+test("core routing owns conditional delegation and imports no Run implementation", async () => {
 	const router = await source("src/core/session-router.ts");
 	for (const forbidden of [
-		'../subagents/controller.js',
-		'../subagents/tool.js',
 		'../subagents/observations.js',
 		'../subagents/observation-query.js',
 		'../runs/controller.js',
@@ -24,18 +22,21 @@ test("core routing imports only generic child and yielded-run orchestration cont
 	]) {
 		assert.equal(router.includes(forbidden), false, `core router must not depend on ${forbidden}`);
 	}
+	assert.match(router, /createPiboDelegationController/);
+	assert.match(router, /createAgentToolDefinitions/);
 	assert.match(router, /PIBO_SESSION_CHILD_ORCHESTRATION_SERVICE/);
 	assert.match(router, /PIBO_SESSION_YIELDED_RUNS_SERVICE/);
 });
 
-test("run and delegation packages own controller and reminder construction", async () => {
+test("Run packages own reminders while core routing owns delegation construction", async () => {
 	const packaged = [
 		await source("src/plugins/packaged-run-control.ts"),
 		await source("src/plugins/packaged-goal-loops.ts"),
-		await source("src/plugins/packaged-agent-delegation.ts"),
 	].join("\n");
+	const router = await source("src/core/session-router.ts");
 	const delegation = await source("src/subagents/controller.ts");
-	assert.match(packaged, /createPiboDelegationController\(providerContext\.services/);
+	assert.doesNotMatch(packaged, /createPiboDelegationController/);
+	assert.match(router, /createPiboDelegationController/);
 	assert.match(packaged, /formatPiboRunReminderMessage/);
 	assert.match(packaged, /isPiboRunReminderServiceMessage/);
 	assert.match(delegation, /subagentToolName: PIBO_DELEGATION_SEND_TOOL_NAME/);

@@ -88,7 +88,6 @@ export function createAgentPluginSelectionForProfile(installations: readonly Plu
 	}
 	if (profile.toolPackages.runControl !== undefined) setFamily("pibo.run-control", profile.toolPackages.runControl);
 	setFamily("pibo.goal-control", profile.toolPackages.goalControl !== false);
-	setFamily("pibo.agent-delegation", profile.subagents.some((subagent) => subagent.enabled !== false));
 	if (profile.toolPackages.codexCompat === true) setFamily("pibo.codex-compat", true);
 	const diagnostics = validateAgentPluginSelection(selection);
 	if (diagnostics.length) throw new PluginValidationError(diagnostics);

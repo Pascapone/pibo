@@ -7,8 +7,10 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-15T15:48:23Z"
+  at: "2026-09-16T08:00:00Z"
 sources:
+  - id: "owner-beta-feedback"
+    resource: "scope:owner decisions 2026-09-16 in Pibo Room room_209cf2ff-6b46-4705-a216-a6d2138604bd; Core-owned conditional Agent Delegation; independent optional Run Control; complete Codex Native delivery; stable Settings and Sidebar scrolling"
   - id: "owner-completion"
     resource: "scope:owner decisions 2026-09-14 in Pibo Session ps_c5596e29-e5db-47e8-a736-714f4a1c99cf; independent minimal core; all Pibo extension tools through public plugin contracts; explicit core views; Codex-owned Runtime Requests subject to dependency inspection; OMP maintenance only; remove executable legacy APIs; preserve data through migration; write a plan without implementation"
   - id: "owner-test-policy"
@@ -29,7 +31,7 @@ sources:
 
 Dieser Plan beschreibt die verbleibende Arbeit bis zum sauberen Plugin-Modell von Pibo 4.0. Der große Umbau ist bereits vorhanden. Jetzt werden die verbliebenen Sonderwege entfernt, der Kern tatsächlich unabhängig ausgeliefert und alle Erweiterungen über denselben öffentlichen Vertrag angebunden.
 
-Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 einschließlich der erneut geprüften N-033-Runtime-/Ressourcenlieferung für den festen Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` implementiert, dokumentiert, lokal abgenommen und auf Pibo2 akzeptiert. Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme; der [Pibo2-Abnahmebericht](/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md) hält Cutover, Alt-Session-Parität und Restart fest. Veröffentlichung, PR, Merge, Release und npm-Publish bleiben separate Aktionen.
+Die nachfolgende Zielarchitektur begann als geplantes Verhalten. Am 15. September 2026 sind F00–F10 einschließlich der erneut geprüften N-033-Runtime-/Ressourcenlieferung für den festen Code-/Paketkandidaten `cb975d3e91aec82763990ab76b0626d23bd8f2d9` implementiert, dokumentiert, lokal abgenommen und auf Pibo2 akzeptiert. Das Beta-Feedback vom 16. September ergänzt F11 und revidiert den früheren Delegations-Plugin-Schnitt: Agent Delegation ist eine bedingte Kernfähigkeit, Run Control bleibt ein unabhängiges optionales Plugin.[^owner-beta-feedback] Die [laufende To-do-Liste](/plans/pibo-4-0-plugin-completion-todo.md) trennt Implementierung, Prüfung und Abnahme; der [Pibo2-Abnahmebericht](/reports/pibo-4-0-plugin-system-pibo2-acceptance-2026-09-15.md) hält die frühere Cutover-Abnahme fest. Veröffentlichung, PR, Merge, Release und npm-Publish bleiben separate Aktionen.
 
 Dieser Plan führt die festgelegten Restentscheidungen aus dem [bisherigen Umbauplan](/plans/unified-plugin-system-rebuild.md) fort. Bei Widersprüchen zu dessen pauschaler Aussage „alle Produktoberflächen sind Plugins“, zur alten Default-Komposition, zu tolerierten Legacy-APIs oder zum OMP-Ausbau ist **dieser Plan maßgeblich**. Sonstige Anforderungen, insbesondere Daten-, Kontext- und UI-Parität, bleiben bestehen. Das [bisherige Ausführungsprotokoll](/plans/unified-plugin-system-execution.md) bleibt Nachweis vergangener Arbeit; alte offene Checkboxen bedeuten nicht automatisch, dass deren Implementierung erneut erforderlich ist.
 
@@ -83,7 +85,9 @@ Diese Entscheidungen stammen vom Auftraggeber. Ihre grundsätzliche Produktzuord
 | Pi und Codex Native | Jeweilige Runtime-Plugins | Adapter, Implementierung und runtimeeigene Abhängigkeiten werden nicht vom Kern importiert. |
 | Runtime Requests | Ziel: Beitrag des Codex-Native-Plugins | Tab und Inline-Interaktion gemeinsam anbinden; andere tatsächliche Nutzer vor Verschiebung prüfen, siehe Abschnitt 5. |
 | Oh My Pi / OMP | Runtime-Plugin im Erhaltungsumfang | Muss installierbar und im bisherigen normalen Betrieb funktionsfähig bleiben. Keine neue Recovery, Migrationserweiterung oder Runtimewechsel-Unterstützung. |
-| Pibo-eigene Tools, Run-Control, Delegation, File Editing, Browser Tools, Search, MCP-Integration, Speech/Transcription | Fachlich zugeordnete Plugins | Kein im Core verbleibender Tool-Katalog oder Namensdispatch. Allgemeine Ausführungsmechanismen und Lifecycle bleiben Kernverträge. |
+| Agent Delegation | Bedingte Kernfähigkeit | Sobald ein Profil mindestens einen Subagent aktiviert, stellt der Kern automatisch `pibo_agents_send_message`, `pibo_agents_list_agents`, `pibo_agents_observe` und `pibo_agents_kill` bereit. Ohne Subagent fehlen diese Tools. Es gibt kein auswählbares Delegation-Plugin. |
+| Run Control | Eigenes optionales Plugin | Kann Delegations- und andere yieldable Tools kapseln, ist für direkte Delegation aber weder Voraussetzung noch automatisch ausgewählt. |
+| Übrige Pibo-eigene Tools, Goals, File Editing, Browser Tools, Search, MCP-Integration, Speech/Transcription | Fachlich zugeordnete Plugins | Kein allgemeiner im Core verbleibender Tool-Katalog oder Namensdispatch. Allgemeine Ausführungsmechanismen und Lifecycle bleiben Kernverträge. |
 
 **Harness-eigene Tools** wie native Pi-/Codex-Werkzeuge bleiben Sache der jeweiligen Runtime. „Keine eingebauten Tools“ bezieht sich auf Pibo-eigene Erweiterungswerkzeuge im Kern; native Harness-Werkzeuge werden nicht künstlich erneut als Pibo-Tools implementiert.
 
@@ -147,11 +151,11 @@ Der Aufrufkontext ist an Session, Runtime-Generation, Plugin-Revision und ausgew
 
 Ersetzungen und Hooks benötigen definierte Reihenfolge, Konfliktverhalten, Fehlerbehandlung und Cleanup. Ein aufgehobenes Plugin darf keine Listener, Timer, Renderer, Tool-Credentials oder laufenden Controller unerkannt zurücklassen. Keine automatische Ausweitung auf beliebiges Hot-Reload oder parallele Pluginversionen.
 
-## C40-TOOLS-001: Tool-Factories gehören zum Plugin
+## C40-TOOLS-001: Fachliche Tools gehören ihrem Produkt-Owner
 
-Die konkreten Definitionsgeneratoren für Goals, Runs, Delegation und ähnliche Werkzeuge wechseln in ihre fachlichen Pakete. Der zentrale Router darf allgemeine Ausführung, Scheduling, Abbruch und Session-Lifecycle koordinieren; er darf nicht anhand von `pibo_run_*`, `pibo_agents_*`, Goal-Namen oder sonstigen Namen entscheiden, welche Factory aufzurufen ist.
+Die konkreten Definitionsgeneratoren für Goals, Runs und andere optionale Erweiterungswerkzeuge liegen in ihren fachlichen Paketen. Agent Delegation ist die ausdrückliche Ausnahme: Subagents gehören zum Kernprofil, daher konstruiert der zentrale Router die vier stabilen `pibo_agents_*`-Werkzeuge direkt aus der effektiven Subagent-Auswahl. Diese Namen dürfen nur an dieser Kernfähigkeit gebunden sein und bilden keinen allgemeinen Tool-Katalog.
 
-Auslagerbare Ausführung, Fortschritt, Cancel und Ergebnisabholung werden als Tool-Metadaten und allgemeine Dienste angebunden. Run-Control-Tools benutzen diese Dienste. Delegationslogik und ihre Toolnamen gehören zum Delegationspaket, während Session-Erzeugung und generische Parent-/Child-Lifecycle-Verträge beim Kern bleiben können. Goal-spezifische Weiterlaufbedingungen gehören zum Goal-Plugin. Jeder verbleibende Spezialfall erhält einen dokumentierten Owner und wird vor Abschluss beseitigt oder als echter allgemeiner Kernvertrag begründet.
+Direkte Agent Delegation funktioniert ohne Run Control. Ist Run Control ausgewählt, darf es dieselben yieldable Delegationsdefinitionen über seinen allgemeinen Run-Lifecycle ausführen. Auslagerbare Ausführung, Fortschritt, Cancel und Ergebnisabholung bleiben allgemeine Dienste. Goal-spezifische Weiterlaufbedingungen gehören zum Goal-Plugin. Jeder weitere Spezialfall erhält einen dokumentierten Owner und wird vor Abschluss beseitigt oder als echter allgemeiner Kernvertrag begründet.
 
 Die bestehende Inkonsistenz in `profileFromPluginPlan()` – Prüfung auf `codex` bei tatsächlich anders benannten Compat-Tools – wird mit dieser Trennung behoben. Eine weitere harte Toolnamensliste als dauerhafter Fix ist nicht das Ziel. Kontext und Verhalten werden aus ausgewählten Beiträgen bzw. deklarierter Plugin-Konfiguration abgeleitet.
 
@@ -318,7 +322,7 @@ Provider-Cleanup darf synchron oder asynchron sein. Session- und Router-Drain wi
 
 ## F02 – Pibo-Tools und fachliche Controller aus dem Kern lösen
 
-- [ ] Goals, Runs, Delegation, Code Runtime, Codex Compat, File Editing, Browser Tools und weitere inventarisierte Familien über F01 anbinden.
+- [ ] Goals, Runs, Code Runtime, Codex Compat, File Editing, Browser Tools und weitere optionale Familien über F01 anbinden; die bedingte Core-Delegation aus F11 separat behandeln.
 - [ ] Toolnamenslisten und konkrete Factory-Auswahl aus Core/Router/Context-Build entfernen.
 - [ ] Kontext-/Prompt-Erzeugung aus dem Plugin-Plan ableiten und Codex-Compat-Inkonsistenz ohne neue Namenssonderliste beheben.
 - [ ] Run-Abbruch, Fortschritt, Ergebnisabholung, Parent-/Child-Korrelation und Ressourcencleanup in den bestehenden Verhaltensprüfungen erhalten.
@@ -346,7 +350,7 @@ Eine generisch benannte Core-Service-Factory erfüllt diese Grenze nicht, wenn d
 - [x] Gemeinsames First-Party-Navigationsdesign als wiederverwendbare Hilfe anbieten; keine Plugin-ID-Allowlist im Host.
 - [x] Plugin-Abhängigkeiten explizit deklarieren; keine implizite Preview- oder Cron-Abhängigkeit über einen globalen Import.
 - [x] Deinstallation erhält Daten/Tabzustände und zeigt fehlende Angebote verständlich; Wiederinstallation stellt zuordenbare Zustände wieder bereit.
-- [ ] Run-/Delegation-Pakete konstruieren und registrieren ihre Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste; Core importiert weder Feature-Factories noch Toolnamen oder konkrete Reminderformatter.
+- [ ] Run Control konstruiert seinen Controller über generische Session-Orchestrierungs-/Lifecycle-Dienste; Core-Delegation wird in F11 aus der effektiven Subagent-Auswahl erzeugt. Core importiert keine Run-Featurefactory oder konkreten Reminderformatter.
 
 Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/App.tsx`, `src/apps/chat-ui/src/plugins/plugin-workspace.tsx`, `src/apps/chat-ui/src/plugins/builtin-browser-entry.tsx`, jeweilige `packaged-*`-Module.
 
@@ -354,7 +358,7 @@ Einstieg: `src/apps/chat-ui/src/desktop-tabs-model.ts`, `src/apps/chat-ui/src/Ap
 
 ### F04-Zwischenstand: generische Run-/Child-Orchestrierung
 
-N-022 ist im Quell- und Verhaltenspfad umgesetzt. Der Core stellt nur noch generationgebundene, fachlich neutrale Dienste für Yielded-Run-Scheduling sowie Parent-/Child-Session-Lifecycle, Ausgabe, Abbruch, Cursor und Cleanup bereit. Das Delegationspaket konstruiert seinen Controller selbst und besitzt Toolname, Child-Metadaten, Agentdarstellung und Beobachtungsprojektion. Das Run-Control-Paket besitzt seinen Remindertext und dessen Erkennung; der Core dispatcht nur nach der semantischen Service-Message-Fähigkeit. Die alte Controller-Injection der Portable-Tool-Session einschließlich `subagentRunner` ist entfernt.
+N-022 wurde am 16. September durch die ausdrückliche F11-Produktentscheidung teilweise revidiert. Der Core besitzt wieder die bedingte Agent-Delegation samt Tooldefinitionen, Child-Metadaten und Beobachtungsprojektion, weil Subagents selbst Core-Konfiguration sind. Run Control besitzt weiterhin Remindertext und Run-Lifecycle und bleibt unabhängig optional. Die alte Controller-Injection der Portable-Tool-Session einschließlich `subagentRunner` bleibt entfernt.
 
 Der fokussierte Nachweis umfasst Root-Emit und 56 Run-/Delegation-/Reminder-/Portable-/Codex-Ressourcentests; `/tmp/pibo4-f04-n022.md` protokolliert die Befunde. Diese Quellprüfung ersetzt den F06-07-Nachweis nicht: Erst Importgraph und Inhalt des gepackten Minimal-Core belegen die physische Delivery-Grenze.
 
@@ -389,7 +393,7 @@ Root-Emit, Chat-UI-Typecheck/-Build und 75 fokussierte Runtime-/Request-/UI-/Deb
 - [x] Frische Minimalinstallation ohne Cache und ohne Quellcheckout starten; Plugin anschließend installieren und nutzen.
 - [x] Öffentliche Paket-/SDK-Kompatibilität und verständliche Diagnose bei Versionskonflikten prüfen.
 - [x] Einen gepackten alten Monolith-/Beta-Stand über den zweistufigen Cutover auf gepackten Minimal-Core plus exakt gemappte Artefakte aktualisieren; ein unvorbereiteter Direktwechsel muss fail-closed bleiben.
-- [x] Den gepackten Minimal-Core per Importgraph und Artefaktinhalt darauf prüfen, dass Run-, Delegation- und andere Featurecontroller, Toolnamen sowie konkrete Reminder-/Metadatenimplementierungen nicht benötigt oder mitgeliefert werden.
+- [x] Den gepackten Minimal-Core per Importgraph und Artefaktinhalt darauf prüfen, dass Run- und andere optionale Featurecontroller sowie konkrete Reminderimplementierungen nicht benötigt oder mitgeliefert werden. Die kleine bedingte Core-Delegation aus F11 ist Bestandteil des Kerns und lädt ohne ausgewählte Subagents keine Tools.
 - [x] Den tatsächlichen npm-Releasepfad an dieselben Artefaktgrenzen binden: Der private Repository-Root darf nicht publiziert werden; Core, Cutover, jedes Plugin und Standard werden aus getrennten generierten Verzeichnissen geprüft und publiziert.
 - [x] N-025 geschlossen: Das Core-Artefakt ist selbst eine installierbare App mit `bin/pibo`, `dist/bin/pibo.js`, `gateway:web`, Chat Web und den fünf Core-Ansichten; Clean-/Offline-Tests belegen den realen Start und die physische Feature-/Runtimefreiheit.
 
@@ -465,7 +469,20 @@ Stand 2026-09-15: Die kanonische serielle Regression ohne den separat begrenzten
 
 Die Kandidaten `b30a1e03`, `8ad776f1` und `51bcfcef` bleiben historische Vor-N-025-, Vor-N-026- beziehungsweise Vor-N-027-Stände. Die lokale Abnahme für `bb010a72141ea32059e992c8e9fad54fe111bd3e` verwendet kontrollierte Runtime-/Request-Fixtures, wo externe Providerzugänge nicht Teil des Laufs waren. Sie ist keine npm-Veröffentlichung, kein Release, keine Pibo2-Abnahme und kein realer All-Runtime-Modellnachweis.
 
-**Fertig, wenn:** Jede Zusage hat aktuelle Evidenz oder eine ausdrücklich vereinbarte Einschränkung. Für den lokalen Kandidaten erfüllt; Release/Tag/Publish, Pibo2 und reale externe Providerabnahme bleiben getrennte spätere Aktionen.
+**Fertig, wenn:** Jede Zusage hat aktuelle Evidenz oder eine ausdrücklich vereinbarte Einschränkung. Für den F00–F10-Kandidaten erfüllt; F11 benötigt erneut lokale Paketabnahme und Pibo2-Akzeptanz. Release/Tag/Publish bleiben getrennte spätere Aktionen.
+
+# 7a. F11 – Beta-Feedback: Core-Delegation, vollständiges Codex Native und stabile Scrollflächen
+
+- [x] Das auswählbare Paket `pibo.agent-delegation` aus Standardkomposition, Agent Designer und gespeicherten Auswahlen entfernen; alte Auswahlwerte beim Lesen sicher bereinigen.
+- [x] Alle vier Delegationswerkzeuge automatisch und ausschließlich bei mindestens einem effektiven Subagent bereitstellen.
+- [x] Direkte Delegation ohne Run Control ausführen; ausgewähltes Run Control darf Delegation weiterhin als yieldable Tool kapseln.
+- [x] Offizielle Codex-CLI und das passende Plattformpaket einschließlich `codex-code-mode-host` in Standard und content-adressierter Candidate-Assembly vollständig ausliefern; Minimal bleibt runtimefrei.
+- [x] Settings-Inhalt auf Desktop und Mobile innerhalb des verfügbaren Pane-Viewports scrollbar machen.
+- [x] Raum- und Session-Scrollpositionen bei Navigation, Route-Remount und mobilem Aus-/Einblenden bewahren; Sessionpositionen pro Raum und Archivansicht führen.
+- [x] Preview, VS Code, Web Annotations, alle Tool-Ansichtsmodi und Debug-/Token-/Cache-Funktionen über bestehende fokussierte Verträge erneut prüfen.
+- [ ] Den exakten festen Commit auf Pibo2 installieren und dort die betroffenen Browser- und Codex-Native-Flows mit `openai-codex/gpt-5.6-luna` und Reasoning Effort Medium akzeptieren.
+
+Lokale Evidenz: vollständiger Typecheck und Build; 20 auswählbare Pluginartefakte; pluginfreier Minimal-Core; Standard mit offizieller Codex-Laufzeit; Candidate-Assembly mit 23 Pibo- und zwei Codex-Tarballs; 211/211 fokussierte Delegations-, Plugin-, UI-, Tool-Ansichts- und Debugtests; vollständige serielle Suite mit 3.075 Tests, 3.065 Pässen, 0 Fehlern und 10 Skips; gepackter Offline-Cutover mit leerem npm-Cache; headful Settings-Scroll auf 1440×900 und 390×844; mobile und Desktop A→B→A-Raum-/Sessionnavigation mit erhaltenen Scrollpositionen. Pibo2 bleibt bis zur erneuten Installation offen.
 
 # 8. Validierungsphilosophie und Abschlussmatrix
 
@@ -562,7 +579,7 @@ Dokumentationsprüfungen gemäß Projektprofil: `npm run docs:validate`, `npm ru
 
 | Risiko | Umgang |
 |---|---|
-| Nur sichtbare Registrierung wandert, fachlicher Code bleibt im Core | Importgraph und gepackte Minimalinstallation prüfen; sämtliche Feature-Controller dem Paketowner zuordnen. |
+| Nur sichtbare Registrierung wandert, fachlicher Code bleibt im Core | Importgraph und gepackte Minimalinstallation prüfen; Feature-Controller dem Paketowner zuordnen. Die ausdrücklich Core-eigene bedingte Agent Delegation bleibt die dokumentierte Ausnahme. |
 | Bisher globale Dienste werden durch naive Extraktion mehrfach gestartet | Eine klare Dienstinstanz pro definiertem Scope, explizite Provider-Abhängigkeiten und Cleanup-Nachweis. |
 | Sammelpakete aufzuteilen verliert IDs, Tabzustände oder Settings | Versionierte Owner-Zuordnung und Migration sowohl von 3.6.2 als auch aktuellem Beta-Zustand. |
 | SDK ist zu eng, First-Party-Plugins greifen wieder auf Interna zu | Externes Beispiel früh ausführen; fehlende allgemeine Verträge zuerst ergänzen. |
@@ -573,7 +590,8 @@ Dokumentationsprüfungen gemäß Projektprofil: `npm run docs:validate`, `npm ru
 
 Noch zu konkretisierende Implementierungsentscheidungen sind Paketnamen/Versionierung, genaue öffentliche Service-Schnittstellen und die kleinste gemeinsame Request-Hilfe für tatsächlich vorhandene andere Verbraucher. Diese Details werden in F00/F01 anhand der Quellen entschieden; sie ändern nicht die vereinbarte Kern-/Plugin-Grenze. Ein neues Framework, Marketplace, Sandbox, unbegrenztes Hot-Reload, neues Pi-Request-Produkt oder OMP-Featureausbau gehören nicht zum Auftrag.
 
-**Abgeschlossen ist der Umbau, wenn:** Der Kern ohne Plugins aus einem echten Minimalartefakt startet; sämtliche Erweiterungen einschließlich unserer eigenen über öffentliche Verträge separat lieferbar sind; keine alte ausführbare Registrierung oder konkrete Toolnamenslogik im Kern bleibt; die fünf Core-Ansichten erhalten sind; bestehende Daten über den dokumentierten Upgrade-Weg übernommen werden; Pi/Codex den zugesagten Sessionumfang erfüllen, OMP im vereinbarten Erhaltungsumfang funktioniert; UI-Parität und Dokumentation am exakten Kandidaten belegt sind.
+**Abgeschlossen ist der Umbau, wenn:** Der Kern ohne Plugins aus einem echten Minimalartefakt startet; optionale Erweiterungen über öffentliche Verträge separat lieferbar sind; nur die dokumentierte bedingte Agent-Delegation konkrete Core-Toolnamen besitzt; die fünf Core-Ansichten erhalten sind; bestehende Daten über den dokumentierten Upgrade-Weg übernommen werden; Pi/Codex den zugesagten Sessionumfang erfüllen, OMP im vereinbarten Erhaltungsumfang funktioniert; UI-Parität und Dokumentation am exakten Kandidaten belegt sind.
 
 [^owner-completion]: Produktentscheidungen des Auftraggebers vom 14. September 2026: harter 4.0-Schnitt, pluginfreier Kern, ausdrücklich benannte Kernansichten, extern lieferbare Erweiterungen und begrenzter OMP-Umfang.
 [^owner-test-policy]: Bestehende Tests bewahren und für Verhaltensparität nutzen; gezielte Iteration während Entwicklung, integrierte Prüfung zum Abschluss.
+[^owner-beta-feedback]: Produktentscheidungen des Auftraggebers vom 16. September 2026: Agent Delegation wird bei ausgewählten Subagents automatisch Core-Bestandteil und funktioniert ohne Run Control; Run Control bleibt optional; Codex Native muss vollständig ausgeliefert werden; Settings und Sidebars bewahren nutzbare Scrollflächen und Positionen.

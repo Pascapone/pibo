@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -10,9 +11,24 @@ const releaseVersion = process.env.PIBO_RELEASE_VERSION?.trim() || "4.0.0-beta.1
 const assemblyRoot = resolve(root, "dist/pibo4-candidate-assembly");
 const tarballRoot = join(assemblyRoot, "tarballs");
 const packageSet = JSON.parse(await readFile(resolve(root, "dist/pibo4-artifacts/standard-package-set.json"), "utf8"));
+const require = createRequire(import.meta.url);
+const codexPlatformPackage = process.platform === "linux" && process.arch === "x64"
+	? "@openai/codex-linux-x64"
+	: process.platform === "linux" && process.arch === "arm64"
+		? "@openai/codex-linux-arm64"
+		: process.platform === "darwin" && process.arch === "x64"
+			? "@openai/codex-darwin-x64"
+			: process.platform === "darwin" && process.arch === "arm64"
+				? "@openai/codex-darwin-arm64"
+				: process.platform === "win32" && process.arch === "x64"
+					? "@openai/codex-win32-x64"
+					: process.platform === "win32" && process.arch === "arm64"
+						? "@openai/codex-win32-arm64"
+						: undefined;
+if (!codexPlatformPackage) throw new Error("Pibo Candidate assembly does not support Codex Native on this build platform");
 
-if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 21) {
-	throw new Error("Candidate assembly requires Core, Standard, and exactly 21 plugin packages");
+if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 20) {
+	throw new Error("Candidate assembly requires Core, Standard, and exactly 20 plugin packages");
 }
 
 const packageDirectories = [
@@ -20,6 +36,8 @@ const packageDirectories = [
 	{ role: "cutover", directory: resolve(root, "dist/pibo4-cutover-package") },
 	...packageSet.plugins.map((entry) => ({ role: "plugin", directory: resolve(root, "dist/pibo4-artifacts", entry.package.slice("@pasko70/pibo-plugin-".length)) })),
 	{ role: "standard", directory: resolve(root, "dist/pibo4-standard-package") },
+	{ role: "dependency", directory: dirname(require.resolve("@openai/codex/package.json")) },
+	{ role: "dependency", directory: dirname(require.resolve(`${codexPlatformPackage}/package.json`)), package: codexPlatformPackage },
 ];
 
 async function sha256(path) {
@@ -35,9 +53,11 @@ for (const input of packageDirectories) {
 	const filename = JSON.parse(stdout)[0]?.filename;
 	if (!filename || basename(filename) !== filename) throw new Error(`npm pack returned an invalid filename for ${pkg.name}`);
 	const path = join(tarballRoot, filename);
+	const packageName = input.package ?? pkg.name;
 	artifacts.push({
 		role: input.role,
-		package: pkg.name,
+		package: packageName,
+		...(packageName === pkg.name ? {} : { packageJsonName: pkg.name }),
 		version: pkg.version,
 		file: `tarballs/${filename}`,
 		bytes: (await stat(path)).size,
@@ -46,7 +66,7 @@ for (const input of packageDirectories) {
 }
 
 const pluginArtifacts = artifacts.filter((entry) => entry.role === "plugin");
-if (artifacts.length !== 24 || pluginArtifacts.length !== 21 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 24) {
+if (artifacts.length !== 25 || pluginArtifacts.length !== 20 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 25) {
 	throw new Error("Candidate assembly package identities are incomplete or duplicated");
 }
 
