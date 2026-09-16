@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai-codex/gpt-5.6-sol
-  at: '2026-09-12T15:55:00Z'
+  at: '2026-09-16T12:48:29Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Committed implementation and test evidence for SPC-ORCH-002
 implementation:
   state: current
-  baseline_commit: c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e
+  baseline_commit: cd5c359e654418cf842b8718324f3cee2e3725c0
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e
+  commit: cd5c359e654418cf842b8718324f3cee2e3725c0
   requirements:
   - id: ORCH-SUB-001
     status: implemented
@@ -237,7 +237,7 @@ The registered agent tools define yielded-only sends, bounded observation, indep
 
 - **Stable concept:** `SPC-ORCH-002`
 - **Target path:** `docs/specs/orchestration/subagents.md`
-- **Authority:** Current source and test evidence at `c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e`.
+- **Authority:** Current source and test evidence at `cd5c359e654418cf842b8718324f3cee2e3725c0`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the committed implementation candidate. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -260,9 +260,9 @@ Children are direct owned subagent sessions with independent bindings. Default m
 
 ### Observation
 
-Observe defaults to `cursorMode="auto"`, the newest 20 completed assistant messages, and hidden tools. The first equivalent live query returns its newest retained snapshot; later calls return only unread observations and advance a durable, monotonic cursor through matching and non-matching source events. `cursorMode="history"` ignores and does not change that saved cursor, so callers can deliberately reread retained observations. An explicit `afterSequence` overrides the saved position for that automatic query. Automatic cursors are isolated by parent and normalized semantic filter scope; pagination-only `order` and `limit` changes share the same cursor, while diagnostic filters such as text, regex, identity, event, kind, time, and tool selection use separate cursors. At most 128 cursor scopes are retained per parent.
+Observe defaults to `cursorMode="auto"`, the newest 20 completed assistant messages and Session errors, and hidden tools. The first equivalent live query returns its newest retained snapshot; later calls return only unread observations and advance a durable, monotonic cursor through matching and non-matching source events. `cursorMode="history"` ignores and does not change that saved cursor, so callers can deliberately reread retained observations. An explicit `afterSequence` overrides the saved position for that automatic query. Automatic cursors are isolated by parent and normalized semantic filter scope; pagination-only `order` and `limit` changes share the same cursor, while diagnostic filters such as text, regex, identity, event, kind, time, and tool selection use separate cursors. At most 128 cursor scopes are retained per parent.
 
-Observe caps the requested limit at 200, filters at most 50 exact IDs/keys, and bounds text/tool/details to 4 KiB/768 B/32 KiB with cursor and retention-loss reporting. Completed assistant messages are the normal progress surface. Tool calls stay hidden unless the caller explicitly requests targeted diagnosis, preferably by exact `toolCallIds`, then `includeTools=true`, and only then `toolDetail="full"` when summaries are insufficient. Live router observation and persisted `pibo debug agents ... observe` share one query policy for role, identity, event, kind, time, text, tool-call, tool-visibility/detail, ordering, limits, and cursor-safe page selection. The operator debug command remains intentionally stateless history: it accepts explicit pagination and filters but never creates or advances an automatic consumer cursor. Persisted debug cursors are durable `streamId` values; live observation sequence values and yielded request IDs remain source-specific.
+Observe caps the requested limit at 200, filters at most 50 exact IDs/keys, and bounds text/tool/details to 4 KiB/768 B/32 KiB with cursor and retention-loss reporting. Completed assistant messages and Session errors are the normal progress surface. Tool calls stay hidden unless the caller explicitly requests targeted diagnosis, preferably by exact `toolCallIds`, then `includeTools=true`, and only then `toolDetail="full"` when summaries are insufficient. Live router observation and persisted `pibo debug agents ... observe` share one query policy for role, identity, event, kind, time, text, tool-call, tool-visibility/detail, ordering, limits, and cursor-safe page selection. The operator debug command remains intentionally stateless history: it accepts explicit pagination and filters but never creates or advances an automatic consumer cursor. Persisted debug cursors are durable `streamId` values; live observation sequence values and yielded request IDs remain source-specific.
 
 #### Shared observation core
 
@@ -279,7 +279,7 @@ The complete optional Observe filter surface is:
   "agentIds": ["ps_..."],
   "names": ["worker"],
   "threadKeys": ["implementation"],
-  "eventTypes": ["assistant_message"],
+  "eventTypes": ["assistant_message", "session_error"],
   "kinds": ["message"],
   "roles": ["assistant"],
   "since": "2026-09-04T16:00:00.000Z",
