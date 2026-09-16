@@ -1,5 +1,13 @@
 # Pibo documentation update log
 
+## 2026-09-13
+
+- **Visible image Tool Calls**: Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-payload-010) so Default mode groups ordinary Tool Calls separately from purple image rows and image galleries. Updated the [Codex Native adapter contract](/specs/runtime/codex-native-adapter.md#requirement-run-cnx-005) so `imageView` preserves its redacted local path through normalized Tool Call and Tool Result events. Focused Docker tests, desktop and 390x844 headful browser checks, authorized thumbnail responses, and carousel navigation cover the implemented path; OMP remains outside this change.
+
+## 2026-09-12
+
+- **Default delegated Steering**: Updated the [delegated-agent contract](/specs/orchestration/subagents.md#requirement-orch-sub-007) so reused children with an active steerable turn receive Steering by default, `queue: true` explicitly requests a separate follow-up turn, and idle or non-steerable children always use Queue. Steering completion follows the shared active-turn identity; cancelling its additional waiter does not retract input or cancel that turn. Focused Docker tests cover default Steering, forced Queue, dispatch-race fallback, active-turn reply correlation, and cancellation ownership.
+
 ## 2026-09-09
 
 - **Cache diagnostics review**: Added the [PR 996 review and acceptance record](/reports/cache-observability-pr996-review-2026-09-09.md), documenting the reproduced same-millisecond receipt ordering defect, its correction, and validation.

@@ -59,6 +59,7 @@ import { DEFAULT_USER_TIMEZONE } from "../../core/user-settings.js";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
+import { registerMetaMuseProvider } from "../../providers/meta-muse.js";
 import { registerOpenAiSupplementalModels, type OpenAiSupplementalModelRegistryLike } from "../../providers/openai-gpt56.js";
 import { PIBO_APP_CONTEXT } from "../../app-context.js";
 import type { PiboRuntimeToolController } from "../../tools/runtime/tool.js";
@@ -447,6 +448,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		registerMiniMaxProvider(modelRegistry as MiniMaxModelRegistryLike);
 		registerGlmProvider(modelRegistry as GlmModelRegistryLike);
 		registerQwenTokenPlanProvider(modelRegistry as QwenTokenPlanModelRegistryLike);
+		registerMetaMuseProvider(modelRegistry);
 		const ownsLocalRuntimeRegistry = options.runtimeToolController === undefined && profile.tools.some(isEnabledRuntimeTool);
 		const localRuntimeRegistry = ownsLocalRuntimeRegistry ? new RuntimeSessionRegistry({ cwd: runtimeCwd }) : undefined;
 		const runtimeToolController = options.runtimeToolController

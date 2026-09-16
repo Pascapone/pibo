@@ -391,6 +391,7 @@ export class RuntimeRoutedSession {
 			activeEventId: activeMessage.id,
 			text: event.text,
 			source: event.source,
+			provenance: event.provenance,
 		};
 		this.emit(output);
 		return output;
@@ -454,6 +455,15 @@ export class RuntimeRoutedSession {
 			source: this.activeMessage.source,
 			provenance: this.activeMessage.provenance,
 		};
+	}
+
+	canSteerMessage(): boolean {
+		return Boolean(
+			this.activeMessage
+			&& this.processing
+			&& this.runtimeSession.getStatus().streaming
+			&& this.runtimeSession.steer,
+		);
 	}
 
 	getStatus(): PiboSessionStatus {

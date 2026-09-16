@@ -20,8 +20,16 @@ export type PiboTraceSource = TraceSource;
 
 export type PiboTraceOrderKey = TraceOrderKey;
 
+export type PiboTraceFileAttachment = {
+	name: string;
+	path: string;
+	bytes?: number;
+	contentType?: string;
+};
+
 export type PiboTraceNode = {
 	messageDeliveryState?: "sending" | import("../data/message-command-store.js").MessageCommandState;
+	fileAttachments?: readonly PiboTraceFileAttachment[];
 	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	modelInferences?: import("./model-inference-metrics.js").ModelInferenceRecord[];
 	compactionStats?: import("../core/events.js").PiboCompactionStats;
@@ -66,6 +74,7 @@ export type TracePayloadRef = {
 };
 
 export type TraceTimelineNode = {
+	fileAttachments?: readonly PiboTraceFileAttachment[];
 	toolMetrics?: import("./tool-call-metrics.js").ToolCallMetrics;
 	modelInferences?: import("./model-inference-metrics.js").ModelInferenceRecord[];
 	compactionStats?: import("../core/events.js").PiboCompactionStats;

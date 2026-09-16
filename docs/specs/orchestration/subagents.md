@@ -10,19 +10,19 @@ status: stable
 authority: normative
 generated:
   by: openai-codex/gpt-5.6-sol
-  at: '2026-09-05T19:25:00Z'
+  at: '2026-09-12T15:55:00Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Committed implementation and test evidence for SPC-ORCH-002
 implementation:
   state: current
-  baseline_commit: d30e0250fdce4017920c7f9c41c1e2067124d23b
+  baseline_commit: c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e
   package: WP-04-ORCHESTRATION
   source_evidence: performed
   focused_test_execution: performed in Docker after authoring; see implementation report
   build_and_typecheck_execution: performed in Docker after authoring; see implementation report
 traceability:
-  commit: d30e0250fdce4017920c7f9c41c1e2067124d23b
+  commit: c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e
   requirements:
   - id: ORCH-SUB-001
     status: implemented
@@ -189,6 +189,38 @@ traceability:
     failures:
     - History mode rereads only observations still retained by the selected live or persisted source; it does not promise unbounded transcript retention.
     confidence: high
+  - id: ORCH-SUB-007
+    status: implemented
+    sources:
+    - path: src/subagents/tool.ts
+      symbol: PiboAgentSendMessageInput
+    - path: src/subagents/tool.ts
+      symbol: createAgentToolDefinitions
+    - path: src/agent-runtime/routed-session.ts
+      symbol: RuntimeRoutedSession.canSteerMessage
+      owner: RuntimeRoutedSession
+      member: canSteerMessage
+    - path: src/core/session-router.ts
+      symbol: PiboSessionRouter.emitSteeringMessageAndWaitForReply
+      owner: PiboSessionRouter
+      member: emitSteeringMessageAndWaitForReply
+    - path: src/core/session-router.ts
+      symbol: PiboSessionRouter.createAgentsController
+      owner: PiboSessionRouter
+      member: createAgentsController
+    tests:
+    - path: test/subagents.test.mjs
+      name: delegated sends steer an active reused child by default and queue only when requested
+    - path: test/subagents.test.mjs
+      name: delegated sends fall back to queue when active steering becomes unavailable
+    - path: test/session-reply-waiter.test.mjs
+      name: session reply waiter resolves steering from the active turn completion
+    - path: test/session-reply-waiter.test.mjs
+      name: cancelling an accepted steering wait does not cancel the active turn
+    failures:
+    - Idle or non-steerable children always receive queued turns; callers cannot force steering while idle.
+    - Cancelling an accepted steering wait cannot retract the steering input or cancel the shared active turn.
+    confidence: high
 ---
 # Spec: Delegated Agents and Reusable Child Sessions
 
@@ -205,7 +237,7 @@ The registered agent tools define yielded-only sends, bounded observation, indep
 
 - **Stable concept:** `SPC-ORCH-002`
 - **Target path:** `docs/specs/orchestration/subagents.md`
-- **Authority:** Current source and test evidence at `d30e0250fdce4017920c7f9c41c1e2067124d23b`.
+- **Authority:** Current source and test evidence at `c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the committed implementation candidate. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -442,6 +474,31 @@ Automatic cursors are isolated for diagnostic filters, including text, regex, id
   - `test/debug-agents.test.mjs:192` — “debug delegated-agent CLI exposes and executes the shared observation filters”
 - Acceptance must preserve the stated bounded-retention and stateless-debug limits.
 
+### Requirement: ORCH-SUB-007
+
+A delegated send to a reused child with an active steerable turn MUST use Steering by default. `queue=true` MUST force a separate queued follow-up turn. An idle or non-steerable child MUST always receive a queued turn, including when `queue` is omitted or false. Steering completion MUST correlate to the existing active turn, and the tool result MUST report the actual delivery mode.
+
+**Confidence:** `high`. **Current evidence:** source inspection, focused Docker execution, and named steering, fallback, correlation, and cancellation coverage at the committed implementation candidate.
+
+#### Current behavior and limits
+
+The router checks live runtime state and capability before selecting Steering. If steering becomes unavailable between selection and dispatch, the same delegated request falls back to Queue with a new queued event identity. Cancelling a queued delegated run removes or cancels that queued request under the existing exact-request rules. Cancelling after Steering was accepted stops only the additional waiter; it cannot retract steering input or cancel the shared active turn, whose original delegated run remains its lifecycle owner.
+
+#### Acceptance evidence
+
+- Exact source evidence:
+  - `src/subagents/tool.ts:58` — `PiboAgentSendMessageInput` (type_or_class)
+  - `src/subagents/tool.ts:275` — `createAgentToolDefinitions` (exported_symbol)
+  - `src/agent-runtime/routed-session.ts:460` — `RuntimeRoutedSession.canSteerMessage` (method)
+  - `src/core/session-router.ts:1355` — `PiboSessionRouter.emitSteeringMessageAndWaitForReply` (method)
+  - `src/core/session-router.ts:2497` — `PiboSessionRouter.createAgentsController` (method)
+- Exact named tests:
+  - `test/subagents.test.mjs:2027` — “delegated sends steer an active reused child by default and queue only when requested”
+  - `test/subagents.test.mjs:2082` — “delegated sends fall back to queue when active steering becomes unavailable”
+  - `test/session-reply-waiter.test.mjs:41` — “session reply waiter resolves steering from the active turn completion”
+  - `test/session-reply-waiter.test.mjs:64` — “cancelling an accepted steering wait does not cancel the active turn”
+- Acceptance must preserve the distinction between shared active-turn Steering and separate queued-turn lifecycle ownership.
+
 ## Ownership links
 
 - [`adapter-contract.md`](/specs/runtime/adapter-contract.md)
@@ -453,7 +510,7 @@ Automatic cursors are isolated for diagnostic filters, including text, regex, id
 
 ## Verification boundary
 
-- Source/test baseline: `d30e0250fdce4017920c7f9c41c1e2067124d23b`.
-- Focused Docker execution covers the Observe schema, runtime context, live query, persisted query, regex validation, and debug CLI paths; exact commands and results belong in the candidate handoff.
-- Pibo2 acceptance of the exact committed candidate remains an independent pre-PR gate.
+- Source/test baseline: `c6c07ecf96cb484dcd1caf1aff207a56b3ecb37e`.
+- Focused Docker execution covers the delegated-send schema and guidance, active default Steering, explicit Queue, dispatch-race fallback, active-turn reply correlation, and request cancellation ownership; exact commands and results belong in the candidate handoff.
+- The isolated Pibo Docker worker validates the exact implementation commit; no production gateway, provider, or browser path was required for this backend routing change.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

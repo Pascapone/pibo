@@ -38,6 +38,58 @@ test("session reply waiter resolves only after message_finished with the final a
 	});
 });
 
+test("session reply waiter resolves steering from the active turn completion", async () => {
+	await withRouter(async (router) => {
+		router.emit = async (event) => {
+			queueMicrotask(() => {
+				router.emitOutput({ type: "assistant_message", piboSessionId: event.piboSessionId, eventId: "active-turn", text: "steered result" });
+				router.emitOutput({ type: "message_finished", piboSessionId: event.piboSessionId, eventId: "active-turn" });
+			});
+			return { type: "message_steered", piboSessionId: event.piboSessionId, eventId: event.id, activeEventId: "active-turn", text: event.text, source: event.source };
+		};
+
+		const reply = await router.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId: "ps_waiter",
+			id: "steering-message",
+			text: "change direction",
+			delivery: "steer",
+			source: "actor",
+		});
+		assert.equal(reply.eventId, "active-turn");
+		assert.equal(reply.text, "steered result");
+	});
+});
+
+test("cancelling an accepted steering wait does not cancel the active turn", async () => {
+	await withRouter(async (router) => {
+		let cancellations = 0;
+		router.emit = async (event) => ({
+			type: "message_steered",
+			piboSessionId: event.piboSessionId,
+			eventId: event.id,
+			activeEventId: "active-turn",
+			text: event.text,
+			source: event.source,
+		});
+		router.cancelSessionMessage = async () => { cancellations += 1; };
+		const controller = new AbortController();
+		const waiting = router.emitMessageAndWaitForReply({
+			type: "message",
+			piboSessionId: "ps_waiter",
+			id: "steering-cancelled",
+			text: "change direction",
+			delivery: "steer",
+			source: "actor",
+		}, undefined, controller.signal);
+		await new Promise((resolve) => setImmediate(resolve));
+
+		controller.abort();
+		await assert.rejects(waiting, (error) => error instanceof Error && error.name === "AbortError");
+		assert.equal(cancellations, 0);
+	});
+});
+
 test("router isolates output listener failures and still notifies later listeners", async () => {
 	await withRouter(async (router) => {
 		const observed = [];

@@ -4,10 +4,12 @@ import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import { Value } from "typebox/value";
+import { createMinimalAgentRuntimeCapabilities } from "../dist/agent-runtime/capabilities.js";
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
 import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
 import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
+import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { createRunToolDefinitions } from "../dist/runs/tools.js";
@@ -107,12 +109,12 @@ async function waitFor(predicate, timeoutMs = 2_000) {
 	}
 }
 
-function createYieldedSubagentFixture(suffix, script) {
+function createYieldedSubagentFixture(suffix, script, capabilities) {
 	const adapterId = `subagent-${suffix}-child`;
 	const parentProfile = `subagent-${suffix}-parent`;
 	const childProfile = `subagent-${suffix}-child-profile`;
 	const parentId = `ps_${suffix}_parent`;
-	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script });
+	const childDriver = createFakeAgentRuntimeDriver({ adapterId, script, capabilities });
 	const registry = PiboPluginRegistry.create({
 		plugins: [
 			piboCorePlugin,
@@ -687,6 +689,7 @@ test("shared agent tool definitions delegate execution and management to the con
 		sessionName: "  Find relevant files  ",
 		message: "Find the relevant files.",
 		threadKey: "files",
+		queue: true,
 	}, controller.signal, undefined, {
 		yieldedRunId: "run_request_1",
 		getActiveMessage: () => ({
@@ -700,6 +703,7 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(observed[1].sessionName, "Find relevant files");
 	assert.equal(observed[1].message, "Find the relevant files.");
 	assert.equal(observed[1].threadKey, "files");
+	assert.equal(observed[1].queue, true);
 	assert.equal(observed[1].toolCallId, "tool-call-1");
 	assert.equal(observed[1].requestId, "run_request_1");
 	assert.deepEqual(observed[1].parentProvenance, { kind: "loop-run", jobId: "loop_job", runId: "loop_run" });
@@ -710,7 +714,8 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(send.inputSchema.properties.sessionName.pattern, "\\S");
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", message: "missing" }), false);
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "   ", message: "blank" }), false);
-	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(40), message: "valid" }), true);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(40), message: "valid", queue: true }), true);
+	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "valid", message: "invalid queue", queue: "yes" }), false);
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: "😀".repeat(41), message: "long" }), false);
 	assert.equal(Value.Check(send.inputSchema, { name: "helper", sessionName: fortyTwoCombiningCodePoints, message: "schema mismatch" }), true);
 	assert.throws(
@@ -720,6 +725,8 @@ test("shared agent tool definitions delegate execution and management to the con
 	assert.equal(send.inputSchema.properties.threadKey.maxLength, 256);
 	assert.equal(result.details.agentId, "ps_child");
 	assert.equal(result.details.requestId, "run_request_1");
+	assert.equal(result.details.delivery, "queue");
+	assert.equal(result.structuredContent.delivery, "queue");
 	assert.equal(result.structuredContent.finalMessage, "helper result for helper");
 	assert.match(result.content[0].text, /Agent request run_request_1 completed/);
 	assert.match(result.content[0].text, /helper result for helper/);
@@ -871,7 +878,7 @@ test("profiles can expose subagents as active router tools", async () => {
 	assert.equal(inspection.contextFiles.some((file) => file.path === "pibo://runtime/delegated-agents.md"), true);
 	const delegatedContext = getDelegatedAgentContextFile(registry.createProfile("parent-profile").subagents);
 	assert.ok(delegatedContext);
-	assert.match(delegatedContext.content, /arguments: \{ name, sessionName, message, threadKey\? \}/);
+	assert.match(delegatedContext.content, /arguments: \{ name, sessionName, message, threadKey\?, queue\? \}/);
 	assert.match(delegatedContext.content, /sessionName.*human-readable child title/);
 	assert.match(delegatedContext.content, /at most 40 Unicode code points/);
 	assert.match(delegatedContext.content, /trims surrounding whitespace/);
@@ -1038,6 +1045,9 @@ test("router omits subagent tools that have reached their max depth", async () =
 		assert.match(rootAgentContext.content, /`defaulted`/);
 		assert.match(rootAgentContext.content, /`limited`/);
 		assert.match(rootAgentContext.content, /`deeper`/);
+		assert.match(rootAgentContext.content, /omit `queue` or set `queue: false`/);
+		assert.match(rootAgentContext.content, /Set `queue: true` only when you deliberately want a separate follow-up turn/);
+		assert.match(rootAgentContext.content, /steering cannot be forced while idle/);
 		assert.doesNotMatch(childAgentContext.content, /`defaulted`/);
 		assert.doesNotMatch(childAgentContext.content, /`limited`/);
 		assert.match(childAgentContext.content, /`deeper`/);
@@ -1073,13 +1083,17 @@ test("agents controller emits a parent link event before waiting for the child r
 	});
 	const router = new PiboSessionRouter({ persistSession: false, sessionStore: store });
 	const events = [];
+	let delegatedEvent;
 	router.subscribe((event) => events.push(event));
-	router.emitMessageAndWaitForReply = async (event) => ({
-		type: "assistant_message",
-		piboSessionId: event.piboSessionId,
-		eventId: event.id,
-		text: "child reply",
-	});
+	router.emitMessageAndWaitForReply = async (event) => {
+		delegatedEvent = event;
+		return {
+			type: "assistant_message",
+			piboSessionId: event.piboSessionId,
+			eventId: event.id,
+			text: "child reply",
+		};
+	};
 
 	try {
 		const controller = router.createAgentsController("ps_parent");
@@ -1108,6 +1122,8 @@ test("agents controller emits a parent link event before waiting for the child r
 		assert.equal(store.get(result.agentId).metadata.subagentToolName, "pibo_agents_send_message");
 		assert.equal(store.get(result.agentId).title, "Inspect delegation");
 		assert.equal(result.requestId, "run_request_link");
+		assert.equal(delegatedEvent.delivery, "queue");
+		assert.equal(result.delivery, "queue");
 		assert.equal(result.finalMessage, "child reply");
 	} finally {
 		await router.disposeAll();
@@ -2008,6 +2024,97 @@ test("parent abort reports rejected child cancellation instead of silently succe
 	}
 });
 
+test("delegated sends steer an active reused child by default and queue only when requested", async () => {
+	const baseCapabilities = createMinimalAgentRuntimeCapabilities();
+	const fixture = createYieldedSubagentFixture("steering-default", { waitForAbort: true }, {
+		...baseCapabilities,
+		input: { ...baseCapabilities.input, steering: true },
+	});
+	try {
+		const events = [];
+		fixture.router.subscribe((event) => events.push(event));
+		const tools = await yieldedSubagentTools(fixture);
+		const first = await tools.start.execute("start-steering-active", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", sessionName: "Active request", message: "A", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
+		const child = fixture.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: fixture.parentId })[0];
+		assert.ok(child);
+
+		const steered = await tools.start.execute("start-steering-default", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", sessionName: "Active request", message: "B", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		await waitFor(() => childAdapter.sessions[0].prompts.length === 2);
+		assert.deepEqual(childAdapter.sessions[0].prompts.map((prompt) => prompt.text), ["A", "B"]);
+		assert.equal(fixture.router.sessions.get(child.id).getStatus().queuedMessages, 0);
+		assert.equal(events.some((event) => event.type === "message_steered" && event.text === "B" && event.activeEventId), true);
+
+		const cancelledSteeringWait = await tools.cancel.execute("cancel-steering-wait", { runId: steered.details.runId });
+		assert.equal(cancelledSteeringWait.details.status, "cancelled");
+		assert.equal(childAdapter.sessions[0].abortCalls, 0, "cancelling an accepted steering wait must not abort the shared active turn");
+		assert.equal(fixture.router.createRunToolController(fixture.parentId).getRunStatus(first.details.runId).status, "running");
+
+		const queued = await tools.start.execute("start-explicit-queue", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", sessionName: "Queued follow-up", message: "C", threadKey: "shared", queue: true },
+			completionPolicy: "tracked",
+		});
+		await waitFor(() => fixture.router.sessions.get(child.id)?.getStatus().queuedMessages === 1);
+		assert.deepEqual(childAdapter.sessions[0].prompts.map((prompt) => prompt.text), ["A", "B"]);
+
+		const cancelledQueue = await tools.cancel.execute("cancel-explicit-queue", { runId: queued.details.runId });
+		assert.equal(cancelledQueue.details.status, "cancelled");
+		assert.equal(childAdapter.sessions[0].abortCalls, 0);
+
+		const cancelledActive = await tools.cancel.execute("cancel-active-request", { runId: first.details.runId });
+		assert.equal(cancelledActive.details.status, "cancelled");
+		assert.equal(childAdapter.sessions[0].abortCalls, 1);
+	} finally {
+		await fixture.router.disposeAll();
+	}
+});
+
+test("delegated sends fall back to queue when active steering becomes unavailable", async () => {
+	const baseCapabilities = createMinimalAgentRuntimeCapabilities();
+	const fixture = createYieldedSubagentFixture("steering-fallback", { waitForAbort: true }, {
+		...baseCapabilities,
+		input: { ...baseCapabilities.input, steering: true },
+	});
+	try {
+		const tools = await yieldedSubagentTools(fixture);
+		const first = await tools.start.execute("start-steering-fallback-active", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", sessionName: "Active request", message: "A", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		const childAdapter = fixture.registry.requireAgentRuntimeAdapter(fixture.adapterId);
+		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
+		const child = fixture.store.find({ channel: "pibo.subagents", kind: "subagent", parentId: fixture.parentId })[0];
+		assert.ok(child);
+
+		childAdapter.sessions[0].steer = async () => {
+			throw new PiboSteeringUnavailableError();
+		};
+		const fallback = await tools.start.execute("start-steering-fallback", {
+			toolName: "pibo_agents_send_message",
+			arguments: { name: "worker", sessionName: "Fallback request", message: "B", threadKey: "shared" },
+			completionPolicy: "tracked",
+		});
+		await waitFor(() => fixture.router.sessions.get(child.id)?.getStatus().queuedMessages === 1);
+		assert.deepEqual(childAdapter.sessions[0].prompts.map((prompt) => prompt.text), ["A"]);
+
+		await tools.cancel.execute("cancel-steering-fallback", { runId: fallback.details.runId });
+		await tools.cancel.execute("cancel-steering-fallback-active", { runId: first.details.runId });
+	} finally {
+		await fixture.router.disposeAll();
+	}
+});
+
 test("cancelling an active delegated run settles before the next queued request finishes", async () => {
 	const fixture = createYieldedSubagentFixture("active-request-cancellation", { waitForAbort: true });
 	try {
@@ -2024,7 +2131,7 @@ test("cancelling an active delegated run settles before the next queued request 
 
 		const second = await tools.start.execute("start-active-b", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", sessionName: "Request B", message: "B", threadKey: "shared" },
+			arguments: { name: "worker", sessionName: "Request B", message: "B", threadKey: "shared", queue: true },
 			completionPolicy: "tracked",
 		});
 		await waitFor(() => fixture.router.sessions.get(child.id)?.getStatus().queuedMessages === 1);
@@ -2188,7 +2295,7 @@ test("cancelling a queued delegated run leaves the active request on the shared 
 		await waitFor(() => childAdapter.sessions[0]?.getStatus().streaming === true);
 		const second = await startTool.execute("start-shared-b", {
 			toolName: "pibo_agents_send_message",
-			arguments: { name: "worker", sessionName: "Queued request B", message: "B", threadKey: "shared" },
+			arguments: { name: "worker", sessionName: "Queued request B", message: "B", threadKey: "shared", queue: true },
 			completionPolicy: "tracked",
 		});
 		await new Promise((resolve) => setImmediate(resolve));

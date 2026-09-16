@@ -19,18 +19,20 @@ import {
 	type RuntimeQueueCapacityDimension,
 } from "../agent-runtime/routed-session.js";
 import { runtimeSessionErrorDetails } from "./session-errors.js";
-import type {
-	PiboAssistantMessageEvent,
-	PiboEventListener,
-	PiboExecutionEvent,
-	PiboForkCandidate,
-	PiboJsonObject,
-	PiboInputEvent,
-	PiboMessageEvent,
-	PiboMessageProvenance,
-	PiboOutputEvent,
-	PiboSessionOperationResult,
-	PiboSessionStatus,
+import {
+	PiboSteeringUnavailableError,
+	type PiboAssistantMessageEvent,
+	type PiboEventListener,
+	type PiboExecutionEvent,
+	type PiboForkCandidate,
+	type PiboJsonObject,
+	type PiboInputEvent,
+	type PiboMessageDelivery,
+	type PiboMessageEvent,
+	type PiboMessageProvenance,
+	type PiboOutputEvent,
+	type PiboSessionOperationResult,
+	type PiboSessionStatus,
 } from "./events.js";
 import { OutputRenderSequencer, outputRenderHighWaterStore } from "./output-render-sequence.js";
 import {
@@ -1350,12 +1352,108 @@ export class PiboSessionRouter {
 		return this.signalRegistry.subscribeAll(listener);
 	}
 
+	private async emitSteeringMessageAndWaitForReply(
+		event: PiboMessageEvent & { id: string; delivery: "steer" },
+		timeoutMs?: number,
+		signal?: AbortSignal,
+	): Promise<PiboAssistantMessageEvent> {
+		return await new Promise<PiboAssistantMessageEvent>((resolve, reject) => {
+			let settled = false;
+			let steeringAccepted = false;
+			let targetEventId = this.sessions.get(event.piboSessionId)?.getStatus().activeEventId;
+			let dispatchPromise: Promise<PiboOutputEvent> | undefined;
+			let timeout: NodeJS.Timeout | undefined;
+			const assistantMessages = new Map<string, PiboAssistantMessageEvent>();
+			const finishedEventIds = new Set<string>();
+			const sessionErrors = new Map<string, Error>();
+			const claimSettlement = (): boolean => {
+				if (settled) return false;
+				settled = true;
+				if (timeout) clearTimeout(timeout);
+				signal?.removeEventListener("abort", onAbort);
+				unsubscribe();
+				return true;
+			};
+			const finish = (result: PiboAssistantMessageEvent | Error): void => {
+				if (!claimSettlement()) return;
+				if (result instanceof Error) reject(result);
+				else resolve(result);
+			};
+			const finishTargetIfReady = (): void => {
+				if (!steeringAccepted || !targetEventId) return;
+				const error = sessionErrors.get(targetEventId);
+				if (error) {
+					finish(error);
+					return;
+				}
+				if (!finishedEventIds.has(targetEventId)) return;
+				finish(assistantMessages.get(targetEventId)
+					?? new Error(`Pibo session "${event.piboSessionId}" finished without an assistant reply`));
+			};
+			const rejectAfterSteeringCancellation = (error: Error): void => {
+				if (!claimSettlement()) return;
+				void Promise.resolve(dispatchPromise).then(
+					() => reject(error),
+					(dispatchError) => reject(dispatchError instanceof Error ? dispatchError : new Error(String(dispatchError))),
+				);
+			};
+			const onAbort = () => {
+				rejectAfterSteeringCancellation(subagentAbortError());
+			};
+			const unsubscribe = this.subscribe((output) => {
+				if (output.piboSessionId !== event.piboSessionId || !("eventId" in output) || !output.eventId) return;
+				if (output.type === "assistant_message") {
+					assistantMessages.set(output.eventId, output);
+				} else if (output.type === "message_finished") {
+					finishedEventIds.add(output.eventId);
+				} else if (output.type === "session_error") {
+					sessionErrors.set(output.eventId, new Error(output.error));
+				}
+				finishTargetIfReady();
+			});
+
+			if (signal?.aborted) {
+				finish(subagentAbortError());
+				return;
+			}
+			signal?.addEventListener("abort", onAbort, { once: true });
+			if (timeoutMs !== undefined) {
+				timeout = setTimeout(() => {
+					rejectAfterSteeringCancellation(new PiboRunExecutionTimeoutError(
+						`Timed out waiting for assistant reply from Pibo session "${event.piboSessionId}"`,
+						"lifetime",
+					));
+				}, timeoutMs);
+			}
+
+			dispatchPromise = this.emit(event);
+			dispatchPromise.then((output) => {
+				if (output.type !== "message_steered" || !output.activeEventId) {
+					finish(new Error(`Pibo session "${event.piboSessionId}" did not identify the active turn for steering`));
+					return;
+				}
+				targetEventId = output.activeEventId;
+				steeringAccepted = true;
+				finishTargetIfReady();
+			}).catch((error) => {
+				finish(error instanceof Error ? error : new Error(String(error)));
+			});
+		});
+	}
+
 	async emitMessageAndWaitForReply(
 		event: PiboMessageEvent,
 		timeoutMs?: number,
 		signal?: AbortSignal,
 	): Promise<PiboAssistantMessageEvent> {
-		const eventWithId: PiboMessageEvent = { ...event, id: event.id ?? randomUUID() };
+		const eventWithId: PiboMessageEvent & { id: string } = { ...event, id: event.id ?? randomUUID() };
+		if (eventWithId.delivery === "steer") {
+			return await this.emitSteeringMessageAndWaitForReply(
+				eventWithId as PiboMessageEvent & { id: string; delivery: "steer" },
+				timeoutMs,
+				signal,
+			);
+		}
 
 		return await new Promise<PiboAssistantMessageEvent>((resolve, reject) => {
 			let settled = false;
@@ -2398,7 +2496,7 @@ export class PiboSessionRouter {
 
 	private createAgentsController(parentPiboSessionId: string): PiboAgentsController {
 		return {
-			sendMessage: async ({ subagent, sessionName, message, threadKey, toolCallId, requestId, parentProvenance, signal }) => {
+			sendMessage: async ({ subagent, sessionName, message, threadKey, queue, toolCallId, requestId, parentProvenance, signal }) => {
 				if (signal?.aborted) throw subagentAbortError();
 				if (typeof requestId !== "string" || !requestId.trim()) throw new Error("Delegated agent requestId is required.");
 				this.assertSubagentDepth(parentPiboSessionId, subagent);
@@ -2415,10 +2513,14 @@ export class PiboSessionRouter {
 					: parentProvenance?.kind === "subagent-request"
 						? parentProvenance.loopRunId
 						: undefined;
-				const event: PiboMessageEvent = {
+				let delivery: PiboMessageDelivery = queue === true || !this.sessions.get(child.id)?.canSteerMessage()
+					? "queue"
+					: "steer";
+				let event: PiboMessageEvent = {
 					type: "message",
 					piboSessionId: child.id,
 					text: message,
+					delivery,
 					source: "actor",
 					id: randomUUID(),
 					provenance: {
@@ -2458,7 +2560,17 @@ export class PiboSessionRouter {
 				});
 				let settlement: ActiveSubagentRequestSettlement = { status: "fulfilled" };
 				try {
-					const reply = await this.emitMessageAndWaitForReply(event, undefined, requestSignal);
+					let reply: PiboAssistantMessageEvent;
+					try {
+						reply = await this.emitMessageAndWaitForReply(event, undefined, requestSignal);
+					} catch (error) {
+						if (delivery !== "steer" || !(error instanceof PiboSteeringUnavailableError) || requestSignal.aborted) throw error;
+						this.subagentRequestIdsByEvent.delete(subagentRequestEventKey(child.id, event.id!));
+						delivery = "queue";
+						event = { ...event, id: randomUUID(), delivery };
+						this.subagentRequestIdsByEvent.set(subagentRequestEventKey(child.id, event.id!), requestId);
+						reply = await this.emitMessageAndWaitForReply(event, undefined, requestSignal);
+					}
 					return {
 						requestId,
 						agentId: child.id,
@@ -2466,6 +2578,8 @@ export class PiboSessionRouter {
 						profile: child.profile,
 						threadKey: resolvedThreadKey,
 						eventId: event.id!,
+						delivery,
+						...(delivery === "steer" && reply.eventId ? { activeEventId: reply.eventId } : {}),
 						finalMessage: reply.text,
 						reply,
 					};
