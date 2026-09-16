@@ -102,7 +102,7 @@ test("debug delegated-agent inspection lists owned children and applies exact ob
 			"Confirmed the shared query boundary",
 			"Found the routing boundary",
 		]);
-		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message"]);
+		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message", "session_error"]);
 		assert.equal(defaults.filters.cursorMode, "history");
 		assert.equal(defaults.filters.order, "desc");
 		assert.equal(defaults.filters.limit, 20);

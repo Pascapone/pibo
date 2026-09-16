@@ -1537,13 +1537,14 @@ test("agents controller lists, filters observations, kills owned children, and d
 		});
 
 		const defaults = controller.observe({});
-		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message"]);
+		assert.deepEqual(defaults.filters.eventTypes, ["assistant_message", "session_error"]);
 		assert.equal(defaults.filters.order, "desc");
 		assert.equal(defaults.filters.limit, 20);
 		assert.equal(defaults.filters.includeTools, false);
 		assert.equal(defaults.filters.toolDetail, "summary");
-		assert.deepEqual(defaults.observations.map((observation) => observation.eventType), ["assistant_message"]);
-		assert.equal(defaults.observations[0].text, "Alpha complete");
+		assert.deepEqual(defaults.observations.map((observation) => observation.eventType), ["session_error", "assistant_message"]);
+		assert.equal(defaults.observations[0].text, "test failed");
+		assert.equal(defaults.observations[1].text, "Alpha complete");
 		assert.deepEqual(
 			controller.observe({ eventTypes: ["assistant_delta"], limit: 50 }).observations.map((observation) => observation.eventType),
 			["assistant_delta"],
@@ -1569,13 +1570,14 @@ test("agents controller lists, filters observations, kills owned children, and d
 		);
 
 		const withToolSummaries = controller.observe({ includeTools: true, order: "asc", limit: 50 });
-		assert.deepEqual(withToolSummaries.filters.eventTypes, ["assistant_message", "tool_call", "tool_execution_finished"]);
+		assert.deepEqual(withToolSummaries.filters.eventTypes, ["assistant_message", "session_error", "tool_call", "tool_execution_finished"]);
 		assert.deepEqual(withToolSummaries.observations.map((observation) => observation.eventType), [
 			"assistant_message",
 			"tool_call",
 			"tool_execution_finished",
 			"tool_call",
 			"tool_execution_finished",
+			"session_error",
 		]);
 		const summarizedToolResult = withToolSummaries.observations.find((observation) => observation.eventType === "tool_execution_finished");
 		assert.match(summarizedToolResult.text, /"outputBytes":5000/);
