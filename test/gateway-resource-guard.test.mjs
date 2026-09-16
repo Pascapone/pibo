@@ -50,6 +50,19 @@ test('gateway resource guard resolves safe defaults and explicit policy env', ()
 		PIBO_GATEWAY_RESOURCE_GUARD: 'warn',
 		PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '999999999999999',
 	}));
+
+	const highRssOnly = buildGatewayResourceSnapshot({
+		env: {
+			PIBO_GATEWAY_RESOURCE_GUARD: 'block',
+			PIBO_GATEWAY_MAX_RSS_BYTES: '0',
+			PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES: '0',
+			PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES: '0',
+		},
+		includeProcesses: false,
+	});
+	assert.equal(highRssOnly.severity, 'warning');
+	assert.equal(highRssOnly.guardAction, 'warn');
+	assert.match(highRssOnly.checks.find((check) => check.id === 'gateway-rss-limit').message, /admission remains governed/);
 });
 
 test('gateway work admission reserves one yielded-run slot until execution settles', () => {

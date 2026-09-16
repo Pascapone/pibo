@@ -158,8 +158,8 @@ test("cold cutover replaces an active old revision with only retained snapshots 
 	const targetDirectory = join(root, "target");
 	await mkdir(tarballs, { recursive: true });
 	await mkdir(targetDirectory);
-	const pluginId = "pibo.agent-delegation";
-	const packageName = "@pasko70/pibo-plugin-agent-delegation";
+	const pluginId = "test.cold-revision";
+	const packageName = "@pasko70/pibo-plugin-cold-revision";
 	await writeFile(join(targetDirectory, "package.json"), `${JSON.stringify({ name: packageName, version: "1.0.0", type: "module", files: ["pibo.plugin.json"] })}\n`);
 	await writeFile(join(targetDirectory, "pibo.plugin.json"), `${JSON.stringify({ schemaVersion: 1, id: pluginId, name: "Agent delegation", version: "1.0.0", sdk: "^1.0.0", entrypoints: {}, contributions: [] })}\n`);
 	const targetTarball = await npmPack(targetDirectory, tarballs);
@@ -177,7 +177,7 @@ test("cold cutover replaces an active old revision with only retained snapshots 
 	});
 	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	t.after(() => data.close());
-	const oldSource = join(root, "old-agent-delegation");
+	const oldSource = join(root, "old-cold-revision");
 	await mkdir(oldSource);
 	await writeFile(join(oldSource, "pibo.plugin.json"), `${JSON.stringify({ schemaVersion: 1, id: pluginId, name: "Old agent delegation", version: "0.9.0", sdk: "^1.0.0", entrypoints: {}, contributions: [] })}\n`);
 	const seedManager = new PluginManager({ store: data.plugins, artifactRoot: join(root, "artifacts") });

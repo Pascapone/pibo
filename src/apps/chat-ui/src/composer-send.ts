@@ -29,6 +29,71 @@ export type ComposerSendPlan = {
 	optimisticEvent: ChatWebStoredEvent<ComposerUserMessagePayload>;
 };
 
+export type ComposerDraftTracker = {
+	value: string;
+	revision: number;
+	owner?: {
+		clientTxnId: string;
+		submittedText: string;
+		clearedRevision?: number;
+	};
+};
+
+export function createComposerDraftTracker(value = ""): ComposerDraftTracker {
+	return { value, revision: 0 };
+}
+
+export function beginComposerDraftSend(
+	tracker: ComposerDraftTracker,
+	plan: Pick<ComposerSendPlan, "clientTxnId" | "text">,
+): ComposerDraftTracker {
+	return {
+		...tracker,
+		owner: { clientTxnId: plan.clientTxnId, submittedText: plan.text },
+	};
+}
+
+export function updateComposerDraft(tracker: ComposerDraftTracker, value: string): ComposerDraftTracker {
+	const revision = tracker.revision + 1;
+	const owner = tracker.owner?.clearedRevision === undefined && value === ""
+		? { ...tracker.owner, clearedRevision: revision }
+		: undefined;
+	return { value, revision, ...(owner ? { owner } : {}) };
+}
+
+export function settleComposerDraftSend(
+	tracker: ComposerDraftTracker,
+	clientTxnId: string,
+): ComposerDraftTracker {
+	return tracker.owner?.clientTxnId === clientTxnId
+		? { value: tracker.value, revision: tracker.revision }
+		: tracker;
+}
+
+export function restoreComposerDraftSend(
+	tracker: ComposerDraftTracker,
+	plan: Pick<ComposerSendPlan, "clientTxnId" | "text">,
+): { tracker: ComposerDraftTracker; restored: boolean } {
+	const owner = tracker.owner;
+	if (
+		owner?.clientTxnId !== plan.clientTxnId
+		|| owner.clearedRevision === undefined
+		|| owner.clearedRevision !== tracker.revision
+		|| tracker.value !== ""
+	) {
+		return {
+			tracker: owner?.clientTxnId === plan.clientTxnId
+				? { value: tracker.value, revision: tracker.revision }
+				: tracker,
+			restored: false,
+		};
+	}
+	return {
+		tracker: { value: plan.text, revision: tracker.revision + 1 },
+		restored: true,
+	};
+}
+
 export function createComposerSendPlan({
 	piboSessionId,
 	text,

@@ -10,7 +10,12 @@ async function runComposerSendScenario() {
 		import assert from "node:assert/strict";
 		const {
 			appendComposerOptimisticEvent,
+			beginComposerDraftSend,
+			createComposerDraftTracker,
 			createComposerSendPlan,
+			restoreComposerDraftSend,
+			settleComposerDraftSend,
+			updateComposerDraft,
 			withComposerSendDelivery,
 		} = await import("./src/apps/chat-ui/src/composer-send.ts");
 		const { adaptTrace } = await import("./src/apps/chat-ui/src/tracing/adapt.ts");
@@ -116,6 +121,30 @@ async function runComposerSendScenario() {
 
 		const appendedDifferentSession = appendComposerOptimisticEvent({ piboSessionId: "ps-other", events: [existingEvent] }, "ps-1", plan.optimisticEvent);
 		assert.deepEqual(appendedDifferentSession.events.map((event) => event.id), ["web-test-txn"]);
+
+		let draft = beginComposerDraftSend(createComposerDraftTracker("Ship it"), plan);
+		draft = updateComposerDraft(draft, "");
+		let rollback = restoreComposerDraftSend(draft, plan);
+		assert.equal(rollback.restored, true);
+		assert.equal(rollback.tracker.value, "Ship it");
+
+		draft = beginComposerDraftSend(createComposerDraftTracker("Ship it"), plan);
+		draft = updateComposerDraft(draft, "");
+		draft = updateComposerDraft(draft, "new draft");
+		rollback = restoreComposerDraftSend(draft, plan);
+		assert.equal(rollback.restored, false);
+		assert.equal(rollback.tracker.value, "new draft");
+
+		draft = beginComposerDraftSend(createComposerDraftTracker("Ship it"), plan);
+		draft = updateComposerDraft(draft, "");
+		const newerPlan = { ...plan, clientTxnId: "newer-txn", text: "Newer" };
+		draft = beginComposerDraftSend(draft, newerPlan);
+		rollback = restoreComposerDraftSend(draft, plan);
+		assert.equal(rollback.restored, false);
+		assert.equal(rollback.tracker.owner.clientTxnId, "newer-txn");
+
+		draft = settleComposerDraftSend(draft, newerPlan.clientTxnId);
+		assert.equal(draft.owner, undefined);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

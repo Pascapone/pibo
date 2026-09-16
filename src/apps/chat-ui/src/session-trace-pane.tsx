@@ -51,7 +51,12 @@ import {
 } from "./session-trace-view-props";
 import {
   appendComposerOptimisticEvent,
+  beginComposerDraftSend,
+  createComposerDraftTracker,
   createComposerSendPlan,
+  restoreComposerDraftSend,
+  settleComposerDraftSend,
+  updateComposerDraft,
   withComposerSendDelivery,
   type ComposerSendPlan,
   readPendingMessageTransaction,
@@ -222,12 +227,29 @@ export function SessionTracePane({
   }, []);
   const [pendingSendPlan, setPendingSendPlan] =
     useState<ComposerSendPlan | null>(null);
+  const composerDraftRef = useRef(createComposerDraftTracker(composerText));
+  const composerDraftSessionRef = useRef(selectedPiboSessionId);
   const [runtimeApprovals, setRuntimeApprovals] = useState<PiboRuntimeApprovalRequest[]>([]);
   const [runtimeUserInputs, setRuntimeUserInputs] = useState<PiboRuntimeUserInputRequest[]>([]);
   const deliverySendIdsRef = useRef(new Set<string>());
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const steerButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+  useEffect(() => {
+    if (
+      composerDraftSessionRef.current === selectedPiboSessionId
+      && composerDraftRef.current.value === composerText
+    ) return;
+    composerDraftSessionRef.current = selectedPiboSessionId;
+    composerDraftRef.current = createComposerDraftTracker(composerText);
+  }, [composerText, selectedPiboSessionId]);
+
+  const updateTrackedComposerText = useCallback<Dispatch<SetStateAction<string>>>((update) => {
+    const current = composerDraftRef.current.value;
+    const next = typeof update === "function" ? update(current) : update;
+    composerDraftRef.current = updateComposerDraft(composerDraftRef.current, next);
+    onComposerTextChange(next);
+  }, [onComposerTextChange]);
   useEffect(() => {
     const status = bootstrap.runtimeStatus?.piboSessionId === selectedBackendPiboSessionId
       ? bootstrap.runtimeStatus
@@ -524,6 +546,7 @@ export function SessionTracePane({
     );
     retrySendPlanRef.current = null;
     rememberPendingMessageTransaction(null);
+    composerDraftRef.current = settleComposerDraftSend(composerDraftRef.current, sendPlan.clientTxnId);
     void messageReceiptsQuery.refetch();
     clearSelectedWebAnnotationAttachments();
     clearSelectedUploadAttachments();
@@ -547,7 +570,9 @@ export function SessionTracePane({
       else liveTraceOverlayCacheRef.current.delete(sendPlan.piboSessionId);
       return current?.piboSessionId === sendPlan.piboSessionId ? next : current;
     });
-    onComposerTextChange((current) => current || sendPlan.text);
+    const restored = restoreComposerDraftSend(composerDraftRef.current, sendPlan);
+    composerDraftRef.current = restored.tracker;
+    if (restored.restored) onComposerTextChange(restored.tracker.value);
     onError(errorMessage(caught));
   };
 
@@ -569,6 +594,7 @@ export function SessionTracePane({
       now: new Date().toISOString(),
       clientTxnId: samePendingMessageIntent(retrySendPlanRef.current, { piboSessionId: selectedPiboSessionId, text, webAnnotationIds: selectedWebAnnotations.map(a => a.id), fileAttachmentPaths: selectedUploadAttachments.map(a => a.path) }) ? retrySendPlanRef.current!.clientTxnId : createClientTxnId(),
     });
+    composerDraftRef.current = beginComposerDraftSend(composerDraftRef.current, sendPlan);
     if (canSteer) {
       setPendingSendPlan(sendPlan);
       return;
@@ -582,7 +608,9 @@ export function SessionTracePane({
 
   const closeDeliveryDialog = () => {
     if (!pendingSendPlan) return;
-    onComposerTextChange((current) => current || pendingSendPlan.text);
+    const restored = restoreComposerDraftSend(composerDraftRef.current, pendingSendPlan);
+    composerDraftRef.current = restored.tracker;
+    if (restored.restored) onComposerTextChange(restored.tracker.value);
     setPendingSendPlan(null);
   };
 
@@ -918,7 +946,7 @@ export function SessionTracePane({
         focusSignal: composerFocusSignal,
         selectedWebAnnotations,
         selectedUploadAttachments,
-        onValueChange: onComposerTextChange,
+        onValueChange: updateTrackedComposerText,
         onCommand,
         onDetachWebAnnotation: detachWebAnnotationAttachment,
         onClearWebAnnotations: clearSelectedWebAnnotationAttachments,

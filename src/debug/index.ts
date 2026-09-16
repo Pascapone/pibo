@@ -1528,7 +1528,7 @@ Environment:
   PIBO_GATEWAY_RESOURCE_GUARD=block|warn|off (default: block)
   PIBO_GATEWAY_MIN_FREE_MEMORY_BYTES=<bytes>
   PIBO_GATEWAY_MIN_HEAP_AVAILABLE_BYTES=<bytes>
-  PIBO_GATEWAY_MAX_RSS_BYTES=<bytes>
+  PIBO_GATEWAY_MAX_RSS_BYTES=<bytes> (warning threshold; host-memory and V8-heap reserves block admission)
   PIBO_GATEWAY_KNOWN_DAEMON_WARNING_RSS_BYTES=<bytes>
   PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS=<count> (default: 50)
   PIBO_SESSION_CONCURRENT_YIELDED_RUNS=<count> (default: 10)

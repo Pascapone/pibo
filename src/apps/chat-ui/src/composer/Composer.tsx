@@ -455,10 +455,22 @@ export function Composer({
 			inputHookAbort.signal.throwIfAborted();
 			if (!text) return;
 			if (text.split(/\s+/)[0] === "/upload") { openUploadDialog(); return; }
-			if (!(text.startsWith("/") && (await onCommand(text)))) await onSend(text);
+			if (text.startsWith("/") && (await onCommand(text))) {
+				if (!inputHookAbort.signal.aborted && latestValueRef.current === candidate) {
+					latestValueRef.current = "";
+					onValueChange("");
+				}
+			} else {
+				const send = onSend(text);
+				if (!inputHookAbort.signal.aborted && latestValueRef.current === candidate) {
+					latestValueRef.current = "";
+					onValueChange("");
+				}
+				await send;
+			}
 			if (!inputHookAbort.signal.aborted) {
-				historyNavRef.current = null; appendStoredComposerHistory(text);
-				if (latestValueRef.current === candidate) { latestValueRef.current = ""; onValueChange(""); }
+				historyNavRef.current = null;
+				appendStoredComposerHistory(text);
 			}
 		} catch (error) {
 			if (!inputHookAbort.signal.aborted) setUploadStatus({ message: String(error), error: true });

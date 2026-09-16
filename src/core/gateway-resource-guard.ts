@@ -337,8 +337,8 @@ function evaluateGatewayResourceChecks(input: { gateway: GatewayProcessMemorySna
 		? { id: "gateway-heap-reserve", severity: "critical", message: `Gateway heap availability ${input.gateway.heapAvailableBytes} is below reserve ${input.policy.minHeapAvailableBytes}.` }
 		: { id: "gateway-heap-reserve", severity: "ok", message: `Gateway heap availability ${input.gateway.heapAvailableBytes} satisfies reserve ${input.policy.minHeapAvailableBytes}.` });
 	checks.push(input.gateway.rssBytes > input.policy.maxRssBytes
-		? { id: "gateway-rss-limit", severity: "critical", message: `Gateway RSS ${input.gateway.rssBytes} exceeds limit ${input.policy.maxRssBytes}.` }
-		: { id: "gateway-rss-limit", severity: "ok", message: `Gateway RSS ${input.gateway.rssBytes} is within limit ${input.policy.maxRssBytes}.` });
+		? { id: "gateway-rss-limit", severity: "warning", message: `Gateway RSS ${input.gateway.rssBytes} exceeds warning threshold ${input.policy.maxRssBytes}; admission remains governed by host-memory and V8-heap reserves.` }
+		: { id: "gateway-rss-limit", severity: "ok", message: `Gateway RSS ${input.gateway.rssBytes} is within warning threshold ${input.policy.maxRssBytes}.` });
 	const heavyDaemons = input.knownDaemons.filter((process) => process.rssBytes >= input.policy.knownDaemonWarningRssBytes);
 	if (heavyDaemons.length > 0) checks.push({ id: "known-heavy-daemons", severity: "warning", message: `${heavyDaemons.length} known heavy daemon(s) exceed RSS warning threshold: ${heavyDaemons.map((process) => `${process.label ?? process.commandName}:${process.rssBytes}`).join(", ")}.` });
 	return checks;
