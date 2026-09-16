@@ -15,11 +15,22 @@ const COMPAT: NonNullable<OpenAiCompatModelSpec["compat"]> = {
 	maxTokensField: "max_tokens",
 };
 
+const REASONING_LEVELS: NonNullable<OpenAiCompatModelSpec["thinkingLevelMap"]> = {
+	off: null,
+	minimal: "minimal",
+	low: "low",
+	medium: "medium",
+	high: "high",
+	xhigh: "xhigh",
+	max: "max",
+};
+
 export const META_MUSE_MODELS: readonly OpenAiCompatModelSpec[] = [
 	{
 		id: "muse-spark-1.3",
 		name: "Muse Spark 1.3",
 		reasoning: true,
+		thinkingLevelMap: REASONING_LEVELS,
 		compat: COMPAT,
 		contextWindow: 1_000_000,
 		maxTokens: 131_072,
@@ -30,6 +41,7 @@ export const META_MUSE_MODELS: readonly OpenAiCompatModelSpec[] = [
 		id: "muse-spark-1.3-contributor",
 		name: "Muse Spark 1.3 Contributor",
 		reasoning: true,
+		thinkingLevelMap: { ...REASONING_LEVELS, max: null },
 		compat: COMPAT,
 		contextWindow: 1_000_000,
 		maxTokens: 131_072,
