@@ -6,6 +6,8 @@ import type { PluginSourceInput } from "../../plugins/sources.js";
 import type { EffectivePluginPlan } from "../../plugins/contributions.js";
 import { migrateBrowserV1Tabs } from "../../plugins/browser-v1-upgrade.js";
 
+const RETIRED_CORE_PLUGIN_IDS = new Set(["pibo.agent-delegation"]);
+
 export type PluginManagementRoute = {
 	action: "list" | "inspect" | "install" | "show" | "activate" | "uninstall-plan" | "uninstall-confirm" | "recover" | "resume" | "cancel" | "config-read" | "config-write" | "tabs-read" | "tabs-write" | "browser-v1-migrate" | "builds" | "build" | "session-recovery";
 	pluginId?: string;
@@ -65,7 +67,7 @@ export async function handlePluginManagementRoute(options: {
 	try {
 		if (route.piboSessionId) await assertSessionAccess(route.piboSessionId);
 		switch (route.action) {
-			case "list": return responseJson({ installations: store.listInstallations() });
+			case "list": return responseJson({ installations: store.listInstallations().filter((installation) => !RETIRED_CORE_PLUGIN_IDS.has(installation.pluginId)) });
 			case "show": return responseJson(manager.diagnose(route.pluginId!));
 			case "inspect": return responseJson(await manager.inspect((await pluginRequestBody<{ source: PluginSourceInput }>(request)).source));
 			case "install": {

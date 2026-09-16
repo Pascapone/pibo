@@ -45,6 +45,23 @@ test('real Chat Web dispatcher authenticates before consulting plugin services',
 	assert.deepEqual(await response.json(), { installations: [] });
 });
 
+test('plugin management hides packages whose capability moved into Core', async t => {
+	const f = await harness(t);
+	await f.manager.install({ kind: 'local', path: f.source }, { expectedRevision: 0 });
+	const installed = f.store.getInstallation('test.notes');
+	f.store.putInstallation({
+		...installed,
+		pluginId: 'pibo.agent-delegation',
+		manifest: { ...installed.manifest, id: 'pibo.agent-delegation', name: 'Pibo Agent Delegation' },
+		state: 'uninstalled',
+		enabled: false,
+		diagnostic: 'Capability moved into Pibo Core',
+	}, 0);
+	const response = await f.request('/api/chat/plugins');
+	assert.deepEqual(await response.json(), { installations: [installed] });
+	assert.ok(f.store.getInstallation('pibo.agent-delegation'));
+});
+
 test('plugin mutations enforce existing same-origin boundary before manager writes', async t => {
 	const f = await harness(t);
 	await assert.rejects(f.request('/api/chat/sessions/ps_a/plugin-tabs', {
