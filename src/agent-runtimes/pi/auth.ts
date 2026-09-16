@@ -394,6 +394,7 @@ const PI_API_KEY_PROVIDERS = new Set([
 	"minimax",
 	"minimax-cn",
 	"glm",
+	"meta-muse",
 ]);
 const PI_DEVICE_METHOD = { id: "device_code", completion: "explicit" } as const;
 const PI_BROWSER_METHOD = { id: "browser_oauth", completion: "explicit" } as const;
