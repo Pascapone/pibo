@@ -25,6 +25,24 @@ test("registerMetaMuseProvider configures the Meta Model API and current Muse Sp
 	assert.equal(fake.registrations[0].config.baseUrl, META_MUSE_DEFAULT_BASE_URL);
 	assert.equal(fake.registrations[0].config.apiKey, `$${META_MUSE_API_KEY_ENV}`);
 	assert.deepEqual(fake.registrations[0].config.models.map((model) => model.id), META_MUSE_MODELS.map((model) => model.id));
+	assert.deepEqual(fake.registrations[0].config.models[0].thinkingLevelMap, {
+		off: null,
+		minimal: "minimal",
+		low: "low",
+		medium: "medium",
+		high: "high",
+		xhigh: "xhigh",
+		max: "max",
+	});
+	assert.deepEqual(fake.registrations[0].config.models[1].thinkingLevelMap, {
+		off: null,
+		minimal: "minimal",
+		low: "low",
+		medium: "medium",
+		high: "high",
+		xhigh: "xhigh",
+		max: null,
+	});
 });
 
 test("registerMetaMuseProvider honors PIBO_META_MUSE_BASE_URL", () => {
