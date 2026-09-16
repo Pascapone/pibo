@@ -10,8 +10,11 @@ import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { pluginJson, PluginConflictError } from "../../plugins/store.js";
 import type { AgentPluginSelection, EffectivePluginPlan, IndependentPluginResource, PluginCatalog, PluginConfigurationSnapshot, PluginContribution, PluginDiagnostic, PluginResolutionInput, PluginRuntimeTarget } from "../../plugins/sdk.js";
 
+const RETIRED_CORE_PLUGIN_IDS = new Set(["pibo.agent-delegation"]);
+
 export function buildAgentPluginCatalog(catalog: PluginCatalog): AgentPluginCatalog {
 	return { schemaVersion: 1, revision: catalog.revision, plugins: catalog.installations.flatMap((item) => {
+		if (RETIRED_CORE_PLUGIN_IDS.has(item.pluginId)) return [];
 		const contributions = item.manifest.contributions.filter((contribution) => contribution.scope === "agent");
 		if (!contributions.length) return [];
 		return [{

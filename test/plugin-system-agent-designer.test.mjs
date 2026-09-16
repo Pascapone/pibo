@@ -328,6 +328,11 @@ const emptySelection = { schemaVersion: 1, plugins: [] };
 test("retired Delegation plugin selections are removed while Core derives delegation from subagents", () => {
 	const retained = { pluginId: "fixture.search", revision: "hash:fixture.search", enabled: true, contributions: { search: true }, config: {} };
 	const retired = { pluginId: "pibo.agent-delegation", revision: "hash:retired", enabled: true, contributions: { pibo_agents_send_message: true }, config: {} };
+	const designerCatalog = buildAgentPluginCatalog({ schemaVersion: 1, revision: 1, installations: [
+		installation("pibo.agent-delegation", [contribution("pibo_agents_send_message")]),
+		installation("fixture.search", [contribution("search")]),
+	] });
+	assert.deepEqual(designerCatalog.plugins.map((plugin) => plugin.pluginId), ["fixture.search"]);
 	const created = previewCustomAgentCreate({
 		schemaVersion: 2,
 		displayName: "core-delegation-agent",
