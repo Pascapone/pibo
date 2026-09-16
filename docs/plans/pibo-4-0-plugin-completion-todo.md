@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-16T08:00:00Z"
+  at: "2026-09-16T09:30:00Z"
 sources:
   - id: "owner-beta-feedback"
     resource: "scope:owner decisions 2026-09-16 in Pibo Room room_209cf2ff-6b46-4705-a216-a6d2138604bd; conditional Core delegation; complete Codex Native delivery; stable Settings and Sidebar scrolling"
@@ -40,7 +40,7 @@ Arbeitsbranch: `beta-core-delegation-scroll`, Zielbranch `beta/4.0-plugin-system
 | F08 – Legacy-Delivery vollständig entfernen | abgeschlossen | Commit `d37dea0c`; serieller F08-Lauf 105/105; isolierte Gatewayintegration 5/5 | lokal akzeptiert in F10 | separate Release-/Pibo2-Gates |
 | F09 – Dokumentation und Entwicklerweg abschließen | abgeschlossen | strikte OKF-Prüfung, Dokumentationstests und ausführbares externes Beispiel grün | lokal akzeptiert in F10 | Veröffentlichungsdokumentation beim Release erneut prüfen |
 | F10 – Integrierte Abschlussabnahme | abgeschlossen | Kandidat `cb975d3e`; packed Pi-OAuth-Derivation, retained PIBO_HOME-Rebasing und 20-Plugin-Standard geprüft | lokal und auf Pibo2 akzeptiert | Beta-Branch pushen; Publish und Release bleiben eigene Aktionen |
-| F11 – Beta-Feedback: Core-Delegation, Codex Native und Scroll-UX | lokal abgeschlossen | Typecheck, Build, 211 fokussierte Tests, Offline-Cutover und headful Desktop/Mobile | Pibo2 offen | exakten Commit installieren und akzeptieren |
+| F11 – Beta-Feedback: Core-Delegation, Codex Native und Scroll-UX | abgeschlossen | exakter Candidate `2f3159cb`, Assembly `53d311ac…`, Pibo2 Browser- und Luna-Medium-Abnahme | lokal und auf Pibo2 akzeptiert | Release und Publish bleiben getrennt |
 
 # Erledigter Einstieg
 
@@ -184,10 +184,10 @@ Nachweise: `/tmp/f10-full-serial-canonical-summary.log`; `/tmp/f06-final-package
 - [x] F11-07: Raumscrollposition global und Sessionscrollposition pro Raum/Archivansicht über Navigation, Remount und mobile `hidden`-Phasen bewahren.
 - [x] F11-08: Preview, VS Code, Web Annotations, Tool-Ansichtsmodi sowie Debug-/Token-/Cache-Verträge fokussiert erneut prüfen.
 - [x] F11-09: Headful Browserabnahme lokal: Settings 1440×900 und 390×844; Desktop und Mobile Session-/Raumwechsel mit A→B→A-Wiederherstellung.
-- [ ] F11-10: Exakten Commit und content-adressierten Kandidaten auf Pibo2 installieren; Browserpfade und Codex Native mit `openai-codex/gpt-5.6-luna`, Reasoning Effort Medium, akzeptieren.
-- [ ] F11-11: Zielbranch `upstream/beta/4.0-plugin-system` auf den akzeptierten Commit sichern und Remote-Hash verifizieren.
+- [x] F11-10: Exakten Commit und content-adressierten Kandidaten auf Pibo2 installieren; Browserpfade und Codex Native mit `openai-codex/gpt-5.6-luna`, Reasoning Effort Medium, akzeptieren.
+- [x] F11-11: Zielbranch `upstream/beta/4.0-plugin-system` auf den akzeptierten Commit sichern und Remote-Hash verifizieren.
 
-Lokale Nachweise: Root-/UI-Typecheck; vollständiger Build; 20 Pluginartefakte; 25-Tarball-Candidate; 211/211 fokussierte Delegations-, Plugin-, UI-, Tool-Ansichts- und Debugtests; gepackter Candidate-Cutover grün; Screenshots `/tmp/pibo-beta-settings-desktop.png`, `/tmp/pibo-beta-settings-mobile-scrolled.png`, `/tmp/pibo-beta-sidebar-scroll-desktop.png` und `/tmp/pibo-beta-sidebar-scroll-mobile.png`. Keine Controller-Gateway-Mutation.
+Nachweise: Root-/UI-Typecheck; vollständiger Build; 20 Pluginartefakte; 25-Tarball-Candidate; 211/211 fokussierte Delegations-, Plugin-, UI-, Tool-Ansichts- und Debugtests; gepackter Candidate-Cutover grün; finale Katalogregression 38/38; exakter Pibo2-Candidate `2f3159cb64e66081c385668a965593e632f5ca40` mit Assembly-SHA `53d311acff2d15ff5effe97565aa80ef0bf90e8927d0d092ed90cf83c6ecf00c`; [Pibo2-Abnahmebericht](/reports/pibo-4-beta-core-delegation-pibo2-acceptance-2026-09-16.md). Keine Controller-Gateway-Mutation.
 
 # Neue Befunde und Zusatzaufgaben
 

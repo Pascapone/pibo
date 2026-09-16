@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-15T21:05:00Z",
+  "generated_at": "2026-09-16T09:30:00Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -14036,6 +14036,15 @@
       "path": "docs/reports/beta-feedback-pibo2-2026-09-15.md",
       "state": "conformant",
       "classification": "Pibo 4 Beta integrated runtime and canonical Pibo2 acceptance evidence",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/pibo-4-beta-core-delegation-pibo2-acceptance-2026-09-16.md",
+      "state": "conformant",
+      "classification": "Pibo 4 Beta Core delegation and Codex delivery Pibo2 acceptance evidence",
       "type": "Validation Report",
       "authority": "evidentiary",
       "status": "stable",

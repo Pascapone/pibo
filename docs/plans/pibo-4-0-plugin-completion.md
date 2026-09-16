@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai-codex/gpt-6"
-  at: "2026-09-16T08:00:00Z"
+  at: "2026-09-16T09:30:00Z"
 sources:
   - id: "owner-beta-feedback"
     resource: "scope:owner decisions 2026-09-16 in Pibo Room room_209cf2ff-6b46-4705-a216-a6d2138604bd; Core-owned conditional Agent Delegation; independent optional Run Control; complete Codex Native delivery; stable Settings and Sidebar scrolling"
@@ -481,9 +481,9 @@ Die Kandidaten `b30a1e03`, `8ad776f1` und `51bcfcef` bleiben historische Vor-N-0
 - [x] Raum- und Session-Scrollpositionen bei Navigation, Route-Remount und mobilem Aus-/Einblenden bewahren; Sessionpositionen pro Raum und Archivansicht führen.
 - [x] Preview, VS Code, Web Annotations, alle Tool-Ansichtsmodi und Debug-/Token-/Cache-Funktionen über bestehende fokussierte Verträge erneut prüfen.
 - [x] Eine aus früheren Beta-Ständen persistierte `pibo.agent-delegation`-Installation beim gestoppten Start ohne aktive Generation Admissions als deinstallierten Tombstone übernehmen, damit das entfernte Paket weder gestartet noch weiter auswählbar bleibt.
-- [ ] Den exakten festen Commit auf Pibo2 installieren und dort die betroffenen Browser- und Codex-Native-Flows mit `openai-codex/gpt-5.6-luna` und Reasoning Effort Medium akzeptieren.
+- [x] Den exakten festen Commit auf Pibo2 installieren und dort die betroffenen Browser- und Codex-Native-Flows mit `openai-codex/gpt-5.6-luna` und Reasoning Effort Medium akzeptieren.
 
-Lokale Evidenz: vollständiger Typecheck und Build; 20 auswählbare Pluginartefakte; pluginfreier Minimal-Core; Standard mit offizieller Codex-Laufzeit; Candidate-Assembly mit 23 Pibo- und zwei Codex-Tarballs; 211/211 fokussierte Delegations-, Plugin-, UI-, Tool-Ansichts- und Debugtests; vollständige serielle Suite mit 3.075 Tests, 3.065 Pässen, 0 Fehlern und 10 Skips; 83/83 nachgelagerte Produkt-Runtime-, Delegations- und Auswahltests für die Tombstone-Migration; gepackter Offline-Cutover mit leerem npm-Cache; headful Settings-Scroll auf 1440×900 und 390×844; mobile und Desktop A→B→A-Raum-/Sessionnavigation mit erhaltenen Scrollpositionen. Pibo2 bleibt bis zur erneuten Installation offen.
+Evidenz: vollständiger Typecheck und Build; 20 auswählbare Pluginartefakte; pluginfreier Minimal-Core; Standard mit offizieller Codex-Laufzeit; Candidate-Assembly mit 23 Pibo- und zwei Codex-Tarballs; 211/211 fokussierte Delegations-, Plugin-, UI-, Tool-Ansichts- und Debugtests; vollständige serielle Suite mit 3.075 Tests, 3.065 Pässen, 0 Fehlern und 10 Skips; 83/83 nachgelagerte Produkt-Runtime-, Delegations- und Auswahltests für die Tombstone-Migration; finale Katalogregression 38/38; gepackter Offline-Cutover mit leerem npm-Cache; headful Settings-Scroll auf 1440×900 und 390×844; mobile und Desktop A→B→A-Raum-/Sessionnavigation mit erhaltenen Scrollpositionen. Der [Pibo2-Abnahmebericht](/reports/pibo-4-beta-core-delegation-pibo2-acceptance-2026-09-16.md) bindet den exakten Commit `2f3159cb64e66081c385668a965593e632f5ca40`, Assembly-SHA `53d311acff2d15ff5effe97565aa80ef0bf90e8927d0d092ed90cf83c6ecf00c`, Luna-Medium-Dateizugriff und direkte Helper-Delegation ohne Run Control.
 
 # 8. Validierungsphilosophie und Abschlussmatrix
 
