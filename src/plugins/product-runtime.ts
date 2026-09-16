@@ -13,6 +13,26 @@ import { prepareCoreUserResources } from "../core/user-resources.js";
 import { provideCoreCapabilities } from "../core/capabilities.js";
 import { verifyPreparedPibo4Cutover, writePibo4CutoverReceipt, type Pibo4CutoverArtifactBinding, type Pibo4CutoverPlan } from "./cutover-contract.js";
 
+const RETIRED_CORE_PLUGIN_IDS = ["pibo.agent-delegation"] as const;
+
+function retireCoreOwnedPluginInstallations(data: PiboDataStore): void {
+	for (const pluginId of RETIRED_CORE_PLUGIN_IDS) {
+		const installation = data.plugins.getInstallation(pluginId);
+		if (!installation || installation.state === "uninstalled") continue;
+		if (data.plugins.listAdmissions(pluginId).length > 0) {
+			throw new Error(`Retired plugin ${pluginId} still has generation admissions; recover those stopped-process admissions before upgrading`);
+		}
+		data.plugins.putInstallation({
+			...installation,
+			enabled: false,
+			state: "uninstalled",
+			pendingArtifact: undefined,
+			diagnostic: "Capability moved into Pibo Core",
+			updatedAt: new Date().toISOString(),
+		}, installation.stateRevision);
+	}
+}
+
 /** Product wiring exposes core services without manufacturing a plugin installation. */
 export async function startPluginProductRuntime(options: {
 	host: PluginHost;
@@ -44,6 +64,7 @@ export async function startPluginProductRuntime(options: {
 	}
 	const ownsData = options.data === undefined;
 	const data = options.data ?? new PiboDataStore();
+	retireCoreOwnedPluginInstallations(data);
 	const artifactRoot = options.artifactRoot ?? piboHomePath("plugins", "artifacts");
 	const host = options.host;
 	const initialState = host.inspect();

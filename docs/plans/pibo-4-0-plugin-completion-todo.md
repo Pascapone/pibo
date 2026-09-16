@@ -231,6 +231,7 @@ Lokale Nachweise: Root-/UI-Typecheck; vollständiger Build; 20 Pluginartefakte; 
 | N-036 | Settings besaß zwar scrollbaren Inhalt, aber der umgebende Route-Shell gab keine begrenzte Höhe weiter. | F11 | lokal behoben und headful auf Desktop/Mobile gescrollt |
 | N-037 | Raum-/Sessionnavigation remountete beziehungsweise versteckte Sidebar-Scrollcontainer; mobile `hidden`-Phasen überschrieben gespeicherte Werte zusätzlich mit null. | F11 | lokal behoben; sichtbare Werte werden seitenweit und pro Raum/Archivschlüssel behalten, Hidden-Ereignisse ignoriert und beim Öffnen wiederhergestellt |
 | N-038 | Der Offline-Candidate enthielt die neue Runtimeabhängigkeit nicht als installierbare Tarballs. | F11 | lokal behoben; 25-artifact Assembly bindet beide offiziellen Codex-Pakete per Größe/SHA-256 und installiert mit leerem npm-Cache |
+| N-039 | Eine aus dem 21-Paket-Betastand persistierte Delegation-Installation würde ohne explizite Migration trotz Entfernung aus Standard weiter gestartet. | F11 | lokal behoben; Produktstart übernimmt `pibo.agent-delegation` ohne aktive Generation Admissions als deaktivierten, deinstallierten Core-Tombstone; 83/83 fokussierte Runtime-/Delegationstests grün |
 
 # Abnahmestand
 

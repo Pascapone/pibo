@@ -145,6 +145,36 @@ test('Core exposes auth, base Web, Chat, and user resources with zero plugin ins
   assert.equal(host.services.owners()[PIBO_USER_RESOURCES_SERVICE], '@pibo/core');
 });
 
+test('startup retires the former Agent Delegation package after the capability moves into Core', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'plugin-retired-agent-delegation-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
+  const source = join(root, 'agent-delegation');
+  await mkdir(source);
+  await writeFile(join(source, 'pibo.plugin.json'), JSON.stringify({
+    schemaVersion: 1,
+    id: 'pibo.agent-delegation',
+    name: 'Retired Agent Delegation',
+    version: '1.0.0',
+    sdk: '^1.0.0',
+    entrypoints: { backend: 'backend.mjs' },
+    contributions: [{ id: 'observe', kind: 'tool', name: 'pibo_agents_observe', scope: 'agent', required: false, defaultEnabled: true, schemaVersion: 1, context: { kind: 'none', reason: 'retired fixture' } }],
+  }));
+  await writeFile(join(source, 'backend.mjs'), 'export function setup() { throw new Error("retired package must not start"); }\n');
+  const manager = new PluginManager({ store: data.plugins, artifactRoot: join(root, 'artifacts') });
+  await manager.install({ kind: 'local', path: source }, { expectedRevision: 0 });
+  const installed = data.plugins.getInstallation('pibo.agent-delegation');
+  data.plugins.putInstallation({ ...installed, enabled: true, state: 'active', updatedAt: new Date().toISOString() }, installed.stateRevision);
+
+  const host = new PluginHost();
+  const product = await startPluginProductRuntime({ host, data, artifactRoot: join(root, 'artifacts'), installDefaultPlugins: false, collectConsumers: async () => [] });
+  t.after(() => product.dispose());
+  const retired = data.plugins.getInstallation('pibo.agent-delegation');
+  assert.equal(retired.state, 'uninstalled');
+  assert.equal(retired.enabled, false);
+  assert.equal(retired.diagnostic, 'Capability moved into Pibo Core');
+  assert.equal(host.inspect().plugins.some((plugin) => plugin.pluginId === 'pibo.agent-delegation'), false);
+});
+
 test('user resources are Core-owned without an installation and support dynamic updates without shadowing built-ins', async t => {
   const root = await mkdtemp(join(tmpdir(), 'plugin-user-resources-')); t.after(() => rm(root, { recursive: true, force: true }));
   const data = new PiboDataStore(join(root, 'pibo.sqlite'), { payloadRootDir: join(root, 'payloads') }); t.after(() => data.close());
