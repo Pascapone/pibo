@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-16
+
+- **Delegated-agent error observations**: Updated the [delegated-agent contract](/specs/orchestration/subagents.md#observation) so the default bounded observation view includes Session errors alongside completed Assistant messages while Tool events remain hidden. The shared live and persisted observation tests now assert that current default explicitly.
+
 ## 2026-09-13
 
 - **Visible image Tool Calls**: Updated the [Terminal projection contract](/specs/web/trace-terminal-scrolling-and-workflow-projection.md#requirement-web-trace-payload-010) so Default mode groups ordinary Tool Calls separately from purple image rows and image galleries. Updated the [Codex Native adapter contract](/specs/runtime/codex-native-adapter.md#requirement-run-cnx-005) so `imageView` preserves its redacted local path through normalized Tool Call and Tool Result events. Focused Docker tests, desktop and 390x844 headful browser checks, authorized thumbnail responses, and carousel navigation cover the implemented path; OMP remains outside this change.
