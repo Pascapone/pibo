@@ -245,7 +245,7 @@ function toolDescriptor(item: CodexAppServerThreadItem): ToolDescriptor | undefi
 		return { name: "codex_web_search", args: redactCodexNativeValue({ query: item.query, action: item.action }) };
 	}
 	if (item.type === "imageView") {
-		return { name: "codex_image_view", args: { image: "[local image]" } };
+		return { name: "codex_image_view", args: redactCodexNativeValue({ path: item.path }) };
 	}
 	if (item.type === "sleep") {
 		return { name: "codex_sleep", args: redactCodexNativeValue({ durationMs: item.durationMs }) };
@@ -275,7 +275,7 @@ function toolResult(item: CodexAppServerThreadItem): unknown {
 		return redactCodexNativeValue({ status: item.status, success: item.success, contentItems: item.contentItems });
 	}
 	if (item.type === "webSearch") return redactCodexNativeValue({ query: item.query, results: item.results });
-	if (item.type === "imageView") return { status: item.status ?? "completed", image: "[local image]" };
+	if (item.type === "imageView") return redactCodexNativeValue({ status: item.status ?? "completed", path: item.path });
 	if (item.type === "sleep") return redactCodexNativeValue({ status: item.status, durationMs: item.durationMs });
 	if (item.type === "imageGeneration") {
 		return redactCodexNativeValue({ status: item.status, result: item.result, revisedPrompt: item.revisedPrompt });

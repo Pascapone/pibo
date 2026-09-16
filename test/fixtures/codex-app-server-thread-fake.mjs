@@ -289,6 +289,15 @@ if (args[0] === "--version") {
 		});
 		itemCompleted(active, { id: itemId, type: "reasoning", summary: ["Checking the request."], content: [] });
 	};
+	const emitImageView = (active) => {
+		const item = {
+			id: `${active.turnId}-image-view`,
+			type: "imageView",
+			path: "/private/workspace/screenshots/codex-preview.png",
+		};
+		itemStarted(active, item);
+		itemCompleted(active, item);
+	};
 	const emitTools = (active) => {
 		const commandId = `${active.turnId}-command`;
 		itemStarted(active, {
@@ -685,6 +694,7 @@ if (args[0] === "--version") {
 		}
 		emitReasoning(active);
 		if (active.mode.includes("tools")) emitTools(active);
+		if (active.mode.includes("image-view")) emitImageView(active);
 		const answer = active.mode.includes("identifier-preservation")
 			? "pibo-v2-github-flow pibo-docker-system pibo-docker-dev pibo-debug-auth /tmp/pibo-stream-render-determinism-v2"
 			: active.mode.includes("redaction")

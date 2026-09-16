@@ -7,6 +7,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { registerMiniMaxProvider, type MiniMaxModelRegistryLike } from "../../providers/minimax.js";
 import { registerGlmProvider, type GlmModelRegistryLike } from "../../providers/glm.js";
 import { registerQwenTokenPlanProvider, type QwenTokenPlanModelRegistryLike } from "../../providers/qwen-token-plan.js";
+import { registerMetaMuseProvider } from "../../providers/meta-muse.js";
 import { registerOpenAiSupplementalModels, type OpenAiSupplementalModelRegistryLike } from "../../providers/openai-gpt56.js";
 import type { AgentRuntimeAuthStatus, AgentRuntimeModelCatalog } from "../../agent-runtime/types.js";
 import { piAuthMethodsForProvider } from "./auth.js";
@@ -106,6 +107,7 @@ export async function loadModelCatalog(cwd = process.cwd()): Promise<ModelCatalo
 		registerMiniMaxProvider(registry);
 		registerGlmProvider(registry);
 		registerQwenTokenPlanProvider(registry);
+		registerMetaMuseProvider(registry);
 	});
 }
 

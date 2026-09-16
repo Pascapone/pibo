@@ -85,6 +85,20 @@ export async function failAdapterNodeDispatch(options: FailedNodeDispatchOptions
   return failedNodeDispatchFailure(await failNodeDispatch(options));
 }
 
+export function adapterErrorSummaryFromCaught(caught: unknown): WorkflowErrorSummary {
+  if (caught instanceof Error) {
+    return {
+      code: "WorkflowRuntimeError.adapterFailed",
+      message: caught.message,
+    };
+  }
+
+  return {
+    code: "WorkflowRuntimeError.adapterFailed",
+    message: "Workflow adapter failed with a non-Error value.",
+  };
+}
+
 async function failNodeDispatch(options: FailedNodeDispatchOptions): Promise<FailedNodeDispatch> {
   const failedAt = options.timestamp();
   options.nodeAttempt.status = "failed";

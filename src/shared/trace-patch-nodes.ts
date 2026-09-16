@@ -72,6 +72,7 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.startedAt === right.startedAt &&
 		left.completedAt === right.completedAt &&
 		left.durationMs === right.durationMs &&
+		traceFileAttachmentsEqual(left.fileAttachments, right.fileAttachments) &&
 		left.toolMetrics?.durationMs === right.toolMetrics?.durationMs &&
 		left.toolMetrics?.inputTokens === right.toolMetrics?.inputTokens &&
 		left.toolMetrics?.outputTokens === right.toolMetrics?.outputTokens &&
@@ -86,6 +87,18 @@ function traceNodeShallowEqual(left: PiboTraceNode, right: PiboTraceNode): boole
 		left.stableKey === right.stableKey &&
 		traceOrderKeyEqual(left.orderKey, right.orderKey)
 	);
+}
+
+function traceFileAttachmentsEqual(left: PiboTraceNode["fileAttachments"], right: PiboTraceNode["fileAttachments"]): boolean {
+	if (left === right) return true;
+	if (!left || !right || left.length !== right.length) return false;
+	return left.every((attachment, index) => {
+		const other = right[index];
+		return attachment.name === other?.name
+			&& attachment.path === other.path
+			&& attachment.bytes === other.bytes
+			&& attachment.contentType === other.contentType;
+	});
 }
 
 function modelInferenceRecordsEqual(left: PiboTraceNode["modelInferences"], right: PiboTraceNode["modelInferences"]): boolean {

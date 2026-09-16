@@ -333,6 +333,22 @@ test("Codex native maps native command, file, and MCP item lifecycles with bound
 	await session.dispose();
 });
 
+test("Codex native preserves imageView paths in normalized tool events", async (t) => {
+	const root = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "image-view");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "[image-view] inspect the screenshot", source: "rpc" });
+
+	const call = events.find((event) => event.type === "tool_call" && event.toolName === "codex_image_view");
+	const finish = events.find((event) => event.type === "tool_execution_finished" && event.toolName === "codex_image_view");
+	assert.deepEqual(call.args, { path: "/private/workspace/screenshots/codex-preview.png" });
+	assert.deepEqual(finish.result, { status: "completed", path: "/private/workspace/screenshots/codex-preview.png" });
+	assert.equal(finish.isError, false);
+	assert.doesNotMatch(JSON.stringify(events), /\[local image\]/);
+	await session.dispose();
+});
+
 test("Codex native uses stable turn/steer and turn/interrupt against the active native turn", async (t) => {
 	const root = await testRoot(t);
 	const { session } = await openFreshSession(t, root, "control");

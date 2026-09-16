@@ -26,6 +26,7 @@ import {
   persistWorkflowRun,
 } from "./persistence.js";
 import { createTimestampFactory } from "./time.js";
+import { adapterErrorSummaryFromCaught } from "./dispatch-failures.js";
 
 export type WorkflowEdgeTransferOptions = {
   now?: () => Date | string;
@@ -510,18 +511,4 @@ function edgeTransferFailure(
   error: WorkflowErrorSummary,
 ): WorkflowEdgeTransferFailure {
   return { ok: false, diagnostics, error };
-}
-
-function adapterErrorSummaryFromCaught(caught: unknown): WorkflowErrorSummary {
-  if (caught instanceof Error) {
-    return {
-      code: "WorkflowRuntimeError.adapterFailed",
-      message: caught.message,
-    };
-  }
-
-  return {
-    code: "WorkflowRuntimeError.adapterFailed",
-    message: "Workflow adapter failed with a non-Error value.",
-  };
 }

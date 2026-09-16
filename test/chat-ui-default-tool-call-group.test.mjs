@@ -16,5 +16,5 @@ test("default tool bundles expose their live count and use single-click child de
 	assert.match(source, /const singleClickDisclosure = disclosureMode === "single" \|\| row\.isToolCall/);
 	assert.match(source, /onClick=\{row\.expandable && singleClickDisclosure \? handleRowToggle : undefined\}/);
 	assert.match(traceSource, /onClick=\{toolDisplaySpan && !compactToolDisplay \? handleCardClick : undefined\}/, "Full trace tool details should also use one click");
-	assert.match(source, /ml-12 mt-2 border-l border-\[#2a2a2a\] pl-2/, "expanded Slim rows should remain aligned beneath the counted header");
+	assert.match(source, /ml-6 mt-2 border-l border-\[#2a2a2a\] pl-2/, "expanded Slim rows should use the compact tool-call bundle indentation");
 });

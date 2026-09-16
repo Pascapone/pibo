@@ -666,6 +666,63 @@ test("default tool mode bundles consecutive calls and keeps the newest call in t
 	assert.equal(interrupted.filter((row) => row.isToolCall).length, 2);
 });
 
+test("default tool mode keeps image calls separate from ordinary tool bundles", () => {
+	const ordinaryTool = (id, order, title, input) => traceNode("tool.call", id, {
+		order,
+		toolCallId: id.replace(/^tool-/, "call-"),
+		title,
+		input,
+		output: "done",
+	});
+	const imageTool = (id, order, path) => traceNode("tool.call", id, {
+		order,
+		title: "view_image",
+		input: { path },
+		output: { details: { path } },
+	});
+	const build = (nodes) => buildCompactTerminalRows(traceView(nodes), { showThinking: false, toolDisplayMode: "default" });
+
+	const singleImageRows = build([
+		ordinaryTool("tool-read-before", 1, "read", { path: "README.md" }),
+		ordinaryTool("tool-bash-before", 2, "bash", { command: "pwd" }),
+		imageTool("image-single", 3, "/tmp/image-single.png"),
+		ordinaryTool("tool-edit-after", 4, "edit", { path: "src/index.ts" }),
+		ordinaryTool("tool-bash-after", 5, "bash", { command: "npm test" }),
+	]);
+	assert.deepEqual(singleImageRows.map((row) => row.kind), ["tool.group.calls", "tool.image", "tool.group.calls"]);
+	assert.deepEqual(singleImageRows.filter((row) => row.kind === "tool.group.calls").map((row) => row.groupRows.length), [2, 2]);
+	assert.equal(singleImageRows[1].lines[0].tokens[0].tone, "purple");
+	assert.deepEqual(singleImageRows[1].imagePreviews.map((preview) => preview.path), ["/tmp/image-single.png"]);
+
+	const consecutiveImageRows = build([
+		ordinaryTool("tool-read-prefix", 1, "read", { path: "README.md" }),
+		imageTool("image-first", 2, "/tmp/image-first.png"),
+		imageTool("image-second", 3, "/tmp/image-second.webp"),
+		ordinaryTool("tool-bash-suffix", 4, "bash", { command: "pwd" }),
+	]);
+	assert.deepEqual(consecutiveImageRows.map((row) => row.kind), ["tool.call", "tool.group.images", "execution.command"]);
+	assert.equal(consecutiveImageRows[1].lines[0].tokens[0].tone, "purple");
+	assert.deepEqual(consecutiveImageRows[1].imagePreviews.map((preview) => preview.path), [
+		"/tmp/image-first.png",
+		"/tmp/image-second.webp",
+	]);
+});
+
+test("Codex native image-view rows expose their local path as a preview", () => {
+	const rows = buildCompactTerminalRows(traceView([
+		traceNode("tool.call", "codex-image-view", {
+			title: "codex_image_view",
+			input: { path: "/tmp/codex-preview.png" },
+			output: { status: "completed", path: "/tmp/codex-preview.png" },
+		}),
+	]), { showThinking: false, toolDisplayMode: "default" });
+
+	assert.equal(rows.length, 1);
+	assert.equal(rows[0].kind, "tool.image");
+	assert.equal(rows[0].lines[0].tokens[0].tone, "purple");
+	assert.deepEqual(rows[0].imagePreviews.map((preview) => preview.path), ["/tmp/codex-preview.png"]);
+});
+
 test("tool display modes include shell tools rendered as command rows", () => {
 	const view = traceView([
 		traceNode("tool.call", "tool-shell", {

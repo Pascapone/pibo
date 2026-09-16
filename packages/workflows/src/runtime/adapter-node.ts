@@ -16,6 +16,7 @@ import type { WorkflowRunStore } from "../store/index.js";
 import { resolveWorkflowAdapter } from "../registry/index.js";
 import { validateNodeOutput, validateWorkflowPortValue } from "../validation/index.js";
 import {
+  adapterErrorSummaryFromCaught,
   adapterNodeDispatchFailure,
   failAdapterNodeDispatch,
 } from "./dispatch-failures.js";
@@ -230,18 +231,4 @@ export async function dispatchWorkflowAdapterNode(
       error: adapterErrorSummaryFromCaught(caught),
     });
   }
-}
-
-function adapterErrorSummaryFromCaught(caught: unknown): WorkflowErrorSummary {
-  if (caught instanceof Error) {
-    return {
-      code: "WorkflowRuntimeError.adapterFailed",
-      message: caught.message,
-    };
-  }
-
-  return {
-    code: "WorkflowRuntimeError.adapterFailed",
-    message: "Workflow adapter failed with a non-Error value.",
-  };
 }

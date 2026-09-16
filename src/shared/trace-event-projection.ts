@@ -8,7 +8,7 @@ import {
 	isSubagentToolName,
 	type TraceChildSession,
 } from "./trace-subagent-links.js";
-import type { ChatWebStoredEvent, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
+import type { ChatWebStoredEvent, PiboTraceFileAttachment, PiboTraceNode, PiboWebSessionStatus, TracePayloadRef } from "./trace-types.js";
 import { qualifiedToolNodeId } from "./trace-tool-identity.js";
 import { observeCacheUsage } from "./cache-observability.js";
 import { compareInferenceCompletion, type ModelInferenceRecord } from "./model-inference-metrics.js";
@@ -32,6 +32,7 @@ export function applySingleEventToNodes(
 	openTranscriptEventIds: ReadonlySet<string>,
 	sessionStatus: PiboWebSessionStatus,
 ): void {
+	if (applyAcceptedUserMessageMetadata(nodes, storedEvent)) return;
 	const payload = storedEvent.payload as PiboOutputEvent;
 	if (payload.type === "assistant_usage") {
 		attachModelInferenceToLatestOutput(nodes, byId, payload, storedEvent);
@@ -202,6 +203,7 @@ export function applySingleEventToNodes(
 			if (node.type === "user.message") {
 				existing.status = node.status;
 				existing.parentId = node.parentId ?? existing.parentId;
+				existing.fileAttachments = node.fileAttachments ?? existing.fileAttachments;
 				existing.summary = node.summary ?? existing.summary;
 				existing.output = node.output ?? existing.output;
 			} else if (node.type === "execution.command") {
@@ -670,6 +672,86 @@ function normalizedUserMessageText(value: string | undefined): string | undefine
 	return normalized || undefined;
 }
 
+export function reconcileAcceptedUserMessageMetadata(
+	nodes: readonly PiboTraceNode[],
+	events: readonly ChatWebStoredEvent[],
+): void {
+	for (const event of events) applyAcceptedUserMessageMetadata(nodes, event);
+}
+
+function applyAcceptedUserMessageMetadata(
+	nodes: readonly PiboTraceNode[],
+	storedEvent: ChatWebStoredEvent,
+): boolean {
+	const payload = storedEvent.payload;
+	if (!isRecord(payload) || payload.type !== "user.message.accepted") return false;
+	const clientTxnId = typeof payload.clientTxnId === "string" ? payload.clientTxnId : undefined;
+	if (!clientTxnId) return true;
+	const attachments = normalizeTraceFileAttachments(payload.fileAttachments, payload.fileAttachmentPaths);
+	if (!attachments.length) return true;
+	const delivery = payload.delivery === "steer" ? "message_steered" : "message_queued";
+	const canonicalId = `event:${delivery}:${clientTxnId}`;
+	const target = flattenTraceNodes([...nodes]).find((node) =>
+		node.type === "user.message"
+		&& (node.id === canonicalId || node.stableKey === canonicalId || node.eventId === clientTxnId),
+	);
+	if (target) {
+		target.fileAttachments = attachments;
+		const displayText = acceptedUserMessageDisplayText(payload);
+		if (displayText) {
+			target.summary = displayText;
+			target.output = displayText;
+		}
+	}
+	return true;
+}
+
+function acceptedUserMessageDisplayText(payload: Record<string, unknown>): string | undefined {
+	if (typeof payload.userText === "string" && payload.userText.trim()) return payload.userText;
+	if (typeof payload.text !== "string") return undefined;
+	let text = payload.text;
+	for (const key of ["fileAttachmentContext", "webAnnotationContext"]) {
+		const context = typeof payload[key] === "string" ? payload[key] : undefined;
+		if (!context || !text.trimEnd().endsWith(context)) continue;
+		text = text.trimEnd().slice(0, -context.length).trimEnd();
+	}
+	return text.trim() || undefined;
+}
+
+function traceFileAttachmentsFromMessageEvent(event: PiboOutputEvent): readonly PiboTraceFileAttachment[] | undefined {
+	const record = event as unknown as Record<string, unknown>;
+	const attachments = normalizeTraceFileAttachments(record.fileAttachments, record.fileAttachmentPaths);
+	return attachments.length ? attachments : undefined;
+}
+
+function normalizeTraceFileAttachments(attachmentsValue: unknown, pathsValue: unknown): PiboTraceFileAttachment[] {
+	const attachments = Array.isArray(attachmentsValue) ? attachmentsValue.flatMap((value) => {
+		if (!isRecord(value) || typeof value.path !== "string" || !value.path.trim()) return [];
+		const path = value.path.trim();
+		return [{
+			path,
+			name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : traceAttachmentName(path),
+			...(typeof value.bytes === "number" && Number.isFinite(value.bytes) && value.bytes >= 0 ? { bytes: value.bytes } : {}),
+			...(typeof value.contentType === "string" && value.contentType.trim() ? { contentType: value.contentType.trim() } : {}),
+		}];
+	}) : [];
+	if (attachments.length) return attachments.slice(0, 10);
+	if (!Array.isArray(pathsValue)) return [];
+	return pathsValue.flatMap((value) => {
+		if (typeof value !== "string" || !value.trim()) return [];
+		const path = value.trim();
+		return [{ path, name: traceAttachmentName(path) }];
+	}).slice(0, 10);
+}
+
+function traceAttachmentName(path: string): string {
+	return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function traceNodeText(node: PiboTraceNode): string | undefined {
 	if (typeof node.output === "string") return node.output;
 	if (typeof node.summary === "string") return node.summary;
@@ -848,6 +930,7 @@ function traceNodeFromEvent(
 				title: "User Message",
 				status: isOptimisticUserMessageEvent(event) ? "running" : "done",
 				messageDeliveryState: isOptimisticUserMessageEvent(event) ? "sending" : undefined,
+				fileAttachments: traceFileAttachmentsFromMessageEvent(event),
 				summary: event.text,
 				output: event.text,
 			};

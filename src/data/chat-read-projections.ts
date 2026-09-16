@@ -81,38 +81,85 @@ WHEN OLD.session_sequence IS NOT NEW.session_sequence BEGIN
 END;
 `;
 
+type ChatReadBackfillRow = {
+	cursor: number;
+	target: number;
+	event_cursor: number;
+	event_target: number;
+	paused: number;
+};
+
 /** Resumable bounded backfill; concurrent product writes maintain their rows through triggers. */
 export class ChatReadProjectionStore {
- constructor(private readonly db:DatabaseSync) {}
- status() {
-  const r=this.db.prepare("SELECT cursor,target,event_cursor,event_target,paused FROM chat_read_backfill WHERE id=1").get() as {cursor:number;target:number;event_cursor:number;event_target:number;paused:number};
-  return {...r,paused:Boolean(r.paused),historyComplete:r.cursor>=r.target,unreadComplete:r.event_cursor>=r.event_target,complete:r.cursor>=r.target&&r.event_cursor>=r.event_target};
- }
- setPaused(paused:boolean):void {this.db.prepare("UPDATE chat_read_backfill SET paused=? WHERE id=1").run(paused?1:0);}
- step(limit=128, maxMs=4) {
-  if(!Number.isSafeInteger(limit)||limit<1||limit>512)throw Error("Backfill row budget must be 1..512");
-  const state=this.status();if(state.paused||state.complete)return {...state,processed:0};
-  this.db.exec("BEGIN IMMEDIATE");
-  try {
-   const current=this.status();
-   if(current.paused||current.complete){this.db.exec("COMMIT");return {...current,processed:0};}
-   if(current.historyComplete){
-    const rows=this.db.prepare("SELECT stream_id,session_id FROM event_log INDEXED BY idx_event_log_unread_stream WHERE stream_id>? AND stream_id<=? AND type='message_finished' ORDER BY stream_id LIMIT ?").all(current.event_cursor,current.event_target,limit) as Array<{stream_id:number;session_id:string|null}>;
-    const insert=this.db.prepare("INSERT OR IGNORE INTO chat_unread_index VALUES(?,?)");let processed=0;const started=performance.now();
-    for(const row of rows){if(row.session_id)insert.run(row.stream_id,row.session_id);processed++;if(performance.now()-started>=maxMs)break;}
-    const cursor=processed===rows.length&&rows.length<limit?current.event_target:rows[processed-1]!.stream_id;
-    this.db.prepare("UPDATE chat_read_backfill SET event_cursor=? WHERE id=1").run(cursor);this.db.exec("COMMIT");return {...this.status(),processed};
-   }
-   const rows=this.db.prepare("SELECT rowid AS cursor,id FROM chat_messages WHERE rowid>? AND rowid<=? ORDER BY rowid LIMIT ?").all(current.cursor,current.target,limit) as Array<{cursor:number;id:string}>;
-   const insert=this.db.prepare(`INSERT OR IGNORE INTO chat_history_index(message_id,session_id,event_sequence,source_stream_id,role,created_at)
+	constructor(private readonly db: DatabaseSync) {}
+
+	status() {
+		const row = this.db.prepare("SELECT cursor,target,event_cursor,event_target,paused FROM chat_read_backfill WHERE id=1").get() as ChatReadBackfillRow;
+		return {
+			...row,
+			paused: Boolean(row.paused),
+			historyComplete: row.cursor >= row.target,
+			unreadComplete: row.event_cursor >= row.event_target,
+			complete: row.cursor >= row.target && row.event_cursor >= row.event_target,
+		};
+	}
+
+	setPaused(paused: boolean): void {
+		this.db.prepare("UPDATE chat_read_backfill SET paused=? WHERE id=1").run(paused ? 1 : 0);
+	}
+
+	step(limit = 128, maxMs = 4) {
+		if (!Number.isSafeInteger(limit) || limit < 1 || limit > 512) throw Error("Backfill row budget must be 1..512");
+		const state = this.status();
+		if (state.paused || state.complete) return { ...state, processed: 0 };
+		this.db.exec("BEGIN IMMEDIATE");
+		try {
+			const current = this.status();
+			if (current.paused || current.complete) {
+				this.db.exec("COMMIT");
+				return { ...current, processed: 0 };
+			}
+			const processed = current.historyComplete
+				? this.backfillUnread(current.event_cursor, current.event_target, limit, maxMs)
+				: this.backfillHistory(current.cursor, current.target, limit, maxMs);
+			this.db.exec("COMMIT");
+			return { ...this.status(), processed };
+		} catch (error) {
+			this.db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
+	private backfillUnread(cursor: number, target: number, limit: number, maxMs: number): number {
+		const rows = this.db.prepare("SELECT stream_id,session_id FROM event_log INDEXED BY idx_event_log_unread_stream WHERE stream_id>? AND stream_id<=? AND type='message_finished' ORDER BY stream_id LIMIT ?").all(cursor, target, limit) as Array<{ stream_id: number; session_id: string | null }>;
+		const insert = this.db.prepare("INSERT OR IGNORE INTO chat_unread_index VALUES(?,?)");
+		let processed = 0;
+		const started = performance.now();
+		for (const row of rows) {
+			if (row.session_id) insert.run(row.stream_id, row.session_id);
+			processed++;
+			if (performance.now() - started >= maxMs) break;
+		}
+		const nextCursor = processed === rows.length && rows.length < limit ? target : rows[processed - 1]!.stream_id;
+		this.db.prepare("UPDATE chat_read_backfill SET event_cursor=? WHERE id=1").run(nextCursor);
+		return processed;
+	}
+
+	private backfillHistory(cursor: number, target: number, limit: number, maxMs: number): number {
+		const rows = this.db.prepare("SELECT rowid AS cursor,id FROM chat_messages WHERE rowid>? AND rowid<=? ORDER BY rowid LIMIT ?").all(cursor, target, limit) as Array<{ cursor: number; id: string }>;
+		const insert = this.db.prepare(`INSERT OR IGNORE INTO chat_history_index(message_id,session_id,event_sequence,source_stream_id,role,created_at)
     SELECT m.id,m.session_id,COALESCE(e.session_sequence,m.sequence),m.source_stream_id,m.role,m.created_at FROM chat_messages m LEFT JOIN event_log e ON e.stream_id=m.source_stream_id WHERE m.id=?`);
-   let processed=0;const started=performance.now();
-   for(const row of rows){insert.run(row.id);processed++;if(performance.now()-started>=maxMs)break;}
-   const cursor=processed===rows.length && rows.length<limit ? current.target : rows[processed-1]!.cursor;
-   this.db.prepare("UPDATE chat_read_backfill SET cursor=? WHERE id=1").run(cursor);
-   this.db.exec("COMMIT");return {...this.status(),processed};
-  }catch(error){this.db.exec("ROLLBACK");throw error;}
- }
+		let processed = 0;
+		const started = performance.now();
+		for (const row of rows) {
+			insert.run(row.id);
+			processed++;
+			if (performance.now() - started >= maxMs) break;
+		}
+		const nextCursor = processed === rows.length && rows.length < limit ? target : rows[processed - 1]!.cursor;
+		this.db.prepare("UPDATE chat_read_backfill SET cursor=? WHERE id=1").run(nextCursor);
+		return processed;
+	}
 }
 
 export const CHAT_NAVIGATION_REVISION_SCHEMA = `

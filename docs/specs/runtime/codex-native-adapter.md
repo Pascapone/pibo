@@ -6,12 +6,12 @@ tags: ["runtime", "codex-native", "adapter", "app-server"]
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai/codex"
-  at: "2026-09-05T12:20:39Z"
+  by: "openai-codex/gpt-5.6-sol"
+  at: "2026-09-13T13:38:58Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
+  commit: "cedf186fede9a94e955d140ac76eb7259cef434e"
   requirements:
     - id: "RUN-CNX-001"
       status: "implemented"
@@ -75,6 +75,22 @@ traceability:
         - "Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted."
         - "The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal."
       confidence: "high"
+    - id: "RUN-CNX-005"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/codex-native/turn.ts"
+          symbol: "toolDescriptor"
+        - path: "src/agent-runtimes/codex-native/turn.ts"
+          symbol: "toolResult"
+      tests:
+        - path: "test/codex-native-turn.test.mjs"
+          name: "Codex native preserves imageView paths in normalized tool events"
+        - path: "test/session-ui-terminal-rows.test.mjs"
+          name: "Codex native image-view rows expose their local path as a preview"
+      public: ["codex_image_view normalized tool lifecycle"]
+      failures:
+        - "Sensitive values in the local path remain subject to shared Codex Native redaction, and binary image bytes are not embedded in normalized events."
+      confidence: "high"
 ---
 
 # Scope
@@ -89,7 +105,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 - State: Profile and instance are codex-native; the validated App Server is 0.153.2 and compatible stable 0.153.x releases from patch 2 are accepted with protocol codex-app-server-v2; native thread identity is persisted for resume.
 - Failure: Pending requests, retries, timeouts, frame sizes, backpressure, stderr, crashes, malformed JSON, and shutdown are bounded; one redacted terminal failure is emitted.
 - Security: The child uses a private Codex home and environment allowlist; credentials and sensitive diagnostics are redacted; tool leases are scoped and revoked on failure/disposal.
-- Compatibility: Generated protocol schemas are pinned to the supported App Server version; foreign and duplicate notifications do not duplicate terminal output.
+- Compatibility: Generated protocol schemas are pinned to the supported App Server version; foreign and duplicate notifications do not duplicate terminal output; imageView items retain their redacted local path in normalized Tool Call and Tool Result events.
 
 # Requirements and invariants
 
@@ -108,6 +124,10 @@ Codex Native SHALL import portable history with thread/inject_items before the f
 ## Requirement: RUN-CNX-004
 
 Codex Native resource delivery SHALL materialize selected skills/context and verified HTTP MCP access, honor native-subagent overrides, renew bounded leases, and clean or revoke failed generations.
+
+## Requirement: RUN-CNX-005
+
+Codex Native SHALL preserve the App Server imageView path, after shared sensitive-value redaction, in normalized Tool Call and Tool Result events so product projections can display authorized previews without embedding binary image data.
 
 # Interfaces and ownership
 
@@ -140,7 +160,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `cedf186fede9a94e955d140ac76eb7259cef434e`. Requirement confidence measures trace quality, not whether a command ran.
 
 The exact Codex 0.153.2 binary regenerated 83 full and 622 stable-v2 schema definitions. The committed SHA-256 values are `e8284c5cb8157554a3dd1e035aadbd4325aea501af56887e9c2e12eb1b9b9448` for the full schema and `d3eace08be5dca386bfd1f1e8df650058b4113f1e10870a284d775d75517576a` for stable v2. Schema comparison found no removed Pibo-required methods or definitions; the observed changes were additive.
 
@@ -148,6 +168,7 @@ Package verification commands:
 
 - `npm run build`
 - `node --test test/codex-native-client.test.mjs test/codex-native-turn.test.mjs test/codex-native-resources.test.mjs test/agent-runtime-registry.test.mjs`
+- `node --test test/session-ui-terminal-rows.test.mjs test/chat-ui-terminal-image-preview.test.mjs`
 
 # Related concepts
 
