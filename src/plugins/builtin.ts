@@ -7,6 +7,7 @@ export { createDefaultPiboProfile, DEFAULT_PIBO_PROFILE_NAME } from "../core/def
 export { definePiboCoreContributions, provideCoreCapabilities } from "../core/capabilities.js";
 export type { PiboCoreContributionSink } from "../core/capabilities.js";
 export { CODEX_NATIVE_PROFILE_NAME, CODEX_NATIVE_RUNTIME_INSTANCE_ID } from "./codex-native.js";
+export { MUSE_NATIVE_PROFILE_NAME, MUSE_NATIVE_RUNTIME_INSTANCE_ID } from "./muse-native.js";
 export { OMP_PROFILE_NAME, OMP_RUNTIME_INSTANCE_ID } from "./omp.js";
 
 export function selectDefaultPiboProfileName(registry: PiboCapabilityHost): string {

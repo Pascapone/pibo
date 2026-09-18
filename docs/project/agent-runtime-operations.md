@@ -19,9 +19,9 @@ generated:
 ---
 # Agent Runtime Operations
 
-**Updated:** 2026-09-08
+**Updated:** 2026-09-18
 
-This guide covers runtime selection, diagnostics, migration boundaries, private state, and safe troubleshooting for the built-in `pi` and `codex-native` runtimes. Architecture details live in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md); exact integrated evidence and the runtime-auth correction are recorded in [`../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and [`../reports/runtime-auth-control-plane-validation-2026-08-16.md`](../reports/runtime-auth-control-plane-validation-2026-08-16.md).
+This guide covers runtime selection, diagnostics, migration boundaries, private state, and safe troubleshooting for the built-in `pi`, `codex-native`, and `muse-native` runtimes. Architecture details live in [`architecture/agent-runtime-adapters.md`](./architecture/agent-runtime-adapters.md); exact integrated evidence and the runtime-auth correction are recorded in [`../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and [`../reports/runtime-auth-control-plane-validation-2026-08-16.md`](../reports/runtime-auth-control-plane-validation-2026-08-16.md).
 
 ## Discover runtime support
 
@@ -88,6 +88,12 @@ Do not rename or rewrite legacy Pi transcripts to fit the runtime schema.
 `codex-native` requires an official supported Codex App Server executable. The configured instance reports its validated version range and diagnostics. Pibo starts the App Server with a private Codex home and per-generation environment; it does not scrape terminal output.
 
 Native Codex authentication must be established through the Pibo-managed provider settings control plane. Do not copy a developer's local OAuth files, Pi auth records, browser cookies, or ad hoc access tokens into the runtime home.
+
+## Native Muse runtime
+
+`muse-native` requires a `muse` executable that serves the Muse Session Protocol. The configured instance reports its validated `1.3.0` SDK pin and diagnostics. Pibo starts one `muse serve` host per runtime generation with a private Muse home and an environment allowlist; generation state is removed when the session closes.
+
+Native Muse authentication is a stored credential file in the instance's private home, managed through the Pibo provider settings control plane. A stored Meta API key reports connected; an existing subscription (device-login) bundle is preserved as-is and each generation receives it at both `$HOME/.config/muse/auth.json` and `$XDG_CONFIG_HOME/muse/auth.json`, because the host resolves its config root from `XDG_CONFIG_HOME` when set. Device or browser login flows complete outside Pibo. A parked tool approval stays open until Chat Web responds with a server-offered choice; disposing the session aborts parked approvals explicitly.
 
 ## Manage runtime provider authentication
 

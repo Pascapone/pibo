@@ -27,8 +27,8 @@ const codexPlatformPackage = process.platform === "linux" && process.arch === "x
 						: undefined;
 if (!codexPlatformPackage) throw new Error("Pibo Candidate assembly does not support Codex Native on this build platform");
 
-if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 20) {
-	throw new Error("Candidate assembly requires Core, Standard, and exactly 20 plugin packages");
+if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 21) {
+	throw new Error("Candidate assembly requires Core, Standard, and exactly 21 plugin packages");
 }
 
 const packageDirectories = [
@@ -66,7 +66,7 @@ for (const input of packageDirectories) {
 }
 
 const pluginArtifacts = artifacts.filter((entry) => entry.role === "plugin");
-if (artifacts.length !== 25 || pluginArtifacts.length !== 20 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 25) {
+if (artifacts.length !== 26 || pluginArtifacts.length !== 21 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 26) {
 	throw new Error("Candidate assembly package identities are incomplete or duplicated");
 }
 

@@ -19,9 +19,9 @@ generated:
 ---
 # Agent Runtime Adapter Architecture
 
-**Updated:** 2026-09-04
+**Updated:** 2026-09-18
 
-Pibo supports multiple agent harnesses through a Pibo-owned runtime adapter boundary. Pibo remains the product and orchestration layer; Pi Coding Agent and Codex own their native model loops, prompts, tools, and resume state.
+Pibo supports multiple agent harnesses through a Pibo-owned runtime adapter boundary. Pibo remains the product and orchestration layer; Pi Coding Agent, Codex, and Muse own their native model loops, prompts, tools, and resume state.
 
 This document is the canonical implementation overview. Runtime-history details live in [`../agent-runtime-history-and-debug.md`](../agent-runtime-history-and-debug.md), and the message call flow lives in [`chat-runtime-call-stack.md`](./chat-runtime-call-stack.md). Exact integrated evidence is recorded in [`../../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md`](../../reports/multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) and the focused [`runtime auth validation`](../../reports/runtime-auth-control-plane-validation-2026-08-16.md), with requirement status in the [`final audit`](../../reports/multi-agent-runtime-adapter-final-audit-2026-08-16.md).
 
@@ -45,6 +45,7 @@ A configured runtime instance is a named adapter configuration registered in `Ag
 
 - `pi` — embedded Pi Coding Agent; the default.
 - `codex-native` — official Codex App Server v2 over stdio JSON-RPC.
+- `muse-native` — Muse Session Protocol host over stdio, driven through the Meta Muse TypeScript SDK.
 
 The configured-instance registry is separate from live runtime sessions. Multiple instances may use the same adapter with isolated configuration.
 
@@ -130,6 +131,21 @@ The adapter owns:
 Codex's base prompt and standard tools remain native. Pibo adds only explicit product context and selected resources. Stable Codex `0.153.2` does not expose a complete pre-turn native-tool inventory, so inspection is truthfully degraded: selected MCP tools are known immediately, while native names are reported only after stable item notifications prove use. Native-tool yielding remains unsupported.
 
 The existing Pi-backed `codex-compat-openai-web` profile and explicit `codex` alias keep their old meaning. `codex-native` is distinct and has no implicit `codex` alias.
+
+## Native Muse adapter
+
+`muse-native` spawns one `muse serve` host per runtime generation through the pinned `@muse-code/sdk`, completes the Muse Session Protocol handshake before other traffic, and pumps view notifications into the SDK session fold. It does not scrape terminal output and does not reuse Pibo's Pi prompting.
+
+The adapter owns:
+
+- exact executable/version diagnostics, a private per-generation Muse home, and an explicit SDK experimental gate;
+- stable session start/resume/read/list/fork and missing-session handling;
+- turn start/steer/interrupt and inspection/control RPCs with Pibo-owned timeouts and native item/delta/usage normalization;
+- parked tool approvals resolved through the shared runtime-request actions owned by the Codex Native package;
+- model catalog, in-session model switches, reasoning effort, usage, and context pressure;
+- selected portable tools and external MCP servers through session-start MCP configuration, with secrets behind scoped environment references.
+
+Muse's base prompt and standard tools remain native. Stable Muse `1.3.0` does not expose a complete pre-turn native-tool inventory, so inspection is truthfully degraded like Codex: selected MCP tools are known immediately, while native names are reported only after stable item notifications prove use. Native-tool yielding remains unsupported. Skills and context files are declared unsupported: session configuration carries only MCP servers. `muse-native` registers no alias.
 
 ## Portable capabilities
 

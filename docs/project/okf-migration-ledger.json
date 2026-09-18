@@ -14058,6 +14058,18 @@
       "authority": "evidentiary",
       "status": "stable",
       "lineage": null
+    },
+    {
+      "path": "docs/specs/runtime/muse-native-adapter.md",
+      "state": "conformant",
+      "classification": "conformant current concept",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "draft",
+      "lineage": null,
+      "file_bytes": 10594,
+      "file_sha256": "af5089a19290cc39d08f011416cc023a8f0b895ff3a36e6532979d460de18b7d",
+      "body_sha256": "c11aa8c6f660b97a57dbefd6b74d8b94c8e8ad193dc767e43489ee7fef2deb52"
     }
   ]
 }

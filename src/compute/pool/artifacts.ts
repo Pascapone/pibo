@@ -148,8 +148,8 @@ function validateCandidateAssemblyManifest(value: unknown): CandidateAssemblyMan
 	}
 	if (!Array.isArray(manifest.artifacts)) throw new Error("Candidate assembly artifacts are missing");
 	const artifacts = manifest.artifacts as CandidateAssemblyArtifact[];
-	if (artifacts.length !== 25 || artifacts.filter((entry) => entry.role === "plugin").length !== 20 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
-		throw new Error("Candidate assembly must contain one Core, one Cutover runner, one Standard, exactly 20 plugin artifacts, and two runtime dependencies");
+	if (artifacts.length !== 26 || artifacts.filter((entry) => entry.role === "plugin").length !== 21 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
+		throw new Error("Candidate assembly must contain one Core, one Cutover runner, one Standard, exactly 21 plugin artifacts, and two runtime dependencies");
 	}
 	const packages = new Set<string>();
 	const files = new Set<string>();

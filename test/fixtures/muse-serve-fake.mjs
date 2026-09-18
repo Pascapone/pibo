@@ -1,0 +1,426 @@
+#!/usr/bin/env node
+// Minimal fake `muse serve` MSP host for Pibo muse-native adapter tests.
+// Speaks just enough of the Muse Session Protocol for the real @muse-code/sdk
+// client: initialize, session/start|resume|read|list|fork, turn/start,
+// turn/interrupt|turn/cancel, approval/decide, model/list, session/setModel,
+// session/setReasoningEffort and session/compact.
+//
+// Prompt scripting markers (matched against the submitted text):
+//   [tool]       emit a toolCall item round-trip
+//   [approval]   request approval mid-turn and wait for approval/decide
+//   [fail]       end the turn with terminal "failed"
+//   [slow]       delay completion so abort/steer tests can intervene
+//   [context]    emit a session/contextUsage notification
+//   [secretargs] include a secret-bearing key in the toolCall args
+//
+// Environment scripting:
+//   MUSE_FAKE_HANG_METHODS    comma-separated MSP methods that never answer
+//   MUSE_FAKE_VERSION_OUTPUT  verbatim --version output (default "muse 1.3.0")
+// A JSON array at <stateDir>/hang-methods.json hangs the same way and can be
+// written or removed at any time, including mid-test for recovery assertions.
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import readline from "node:readline";
+
+const args = process.argv.slice(2);
+if (args[0] === "--version") {
+	process.stdout.write(`${process.env.MUSE_FAKE_VERSION_OUTPUT ?? "muse 1.3.0"}\n`);
+	process.exit(0);
+}
+
+const stateDir = process.env.MUSE_FAKE_STATE_DIR;
+if (!stateDir) {
+	process.stderr.write("MUSE_FAKE_STATE_DIR is required\n");
+	process.exit(2);
+}
+mkdirSync(stateDir, { recursive: true });
+try {
+	writeFileSync(join(stateDir, `fake-host-${process.pid}.pid`), `${process.pid}\n`);
+} catch {}
+const statePath = join(stateDir, "muse-fake-state.json");
+const hangMethods = () => {
+	const names = new Set((process.env.MUSE_FAKE_HANG_METHODS ?? "").split(",").map((entry) => entry.trim()).filter(Boolean));
+	try {
+		const extra = JSON.parse(readFileSync(join(stateDir, "hang-methods.json"), "utf8"));
+		if (Array.isArray(extra)) for (const entry of extra) if (typeof entry === "string" && entry.trim()) names.add(entry.trim());
+	} catch {}
+	return names;
+};
+
+const load = () => existsSync(statePath)
+	? JSON.parse(readFileSync(statePath, "utf8"))
+	: { nextSession: 1, clock: 1_800_000_000, sessions: {}, startRequests: [], decideRequests: [], interruptRequests: [], steerRequests: [] };
+const save = (state) => {
+	const temporaryPath = `${statePath}.${process.pid}.tmp`;
+	writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
+	renameSync(temporaryPath, statePath);
+};
+const updateState = (operation) => {
+	const state = load();
+	const result = operation(state);
+	save(state);
+	return result;
+};
+
+const cursors = new Map();
+const nextCursor = (sessionId) => {
+	const next = (cursors.get(sessionId) ?? 1) + 1;
+	cursors.set(sessionId, next);
+	return String(next);
+};
+const range = () => ({ first: 1, last: 1, stream: "view" });
+const now = () => new Date().toISOString();
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const interruptedTurns = new Set();
+const approvalWaiters = new Map();
+
+function sessionObject(state, session) {
+	return {
+		sessionId: session.id,
+		activeTurnId: session.activeTurnId ?? null,
+		createdAt: session.createdAt,
+		forkedFrom: session.forkedFrom ?? null,
+		modelId: session.modelId,
+		name: session.id,
+		path: join(stateDir, `${session.id}.log`),
+		providerId: session.providerId ?? null,
+		status: session.activeTurnId ? "running" : "idle",
+		turnCount: session.turns.length,
+		updatedAt: session.updatedAt,
+		workspaceRoot: session.workspaceRoot,
+	};
+}
+
+function notify(method, params) {
+	process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
+}
+
+function respond(id, result) {
+	process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+}
+
+function respondError(id, kind, message) {
+	process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", id, error: { code: -32000, message, data: { kind } } })}\n`);
+}
+
+async function runTurn(sessionId, turnId, text) {
+	const scripted = {
+		tool: text.includes("[tool]"),
+		approval: text.includes("[approval]"),
+		fail: text.includes("[fail]"),
+		slow: text.includes("[slow]"),
+		context: text.includes("[context]"),
+		secretArgs: text.includes("[secretargs]"),
+	};
+	notify("turn/started", { commandId: turnId, sessionId, sourceRange: range(), turnId, viewCursor: nextCursor(sessionId) });
+	if (scripted.slow) await delay(300);
+	else await delay(5);
+	if (interruptedTurns.has(turnId)) return finishTurn(sessionId, turnId, "cancelled");
+
+	const messageId = `item-${turnId}-msg`;
+	const reply = `fake reply to: ${text.slice(0, 120)}`;
+	notify("item/started", {
+		item: { itemId: messageId, kind: "agentMessage", revision: 1, status: "inProgress", turnId, text: "" },
+		sessionId,
+		viewCursor: nextCursor(sessionId),
+	});
+	for (const chunk of [reply.slice(0, 12), reply.slice(12)]) {
+		if (!chunk) continue;
+		notify("item/delta", { delta: chunk, field: "text", itemId: messageId, sessionId, viewCursor: nextCursor(sessionId) });
+		await delay(5);
+	}
+	if (interruptedTurns.has(turnId)) return finishTurn(sessionId, turnId, "cancelled");
+	notify("item/completed", {
+		item: { itemId: messageId, kind: "agentMessage", revision: 2, status: "completed", turnId, text: reply },
+		sessionId,
+		sourceRange: range(),
+		viewCursor: nextCursor(sessionId),
+	});
+
+	if (scripted.tool) {
+		const toolId = `item-${turnId}-tool`;
+		const toolArgs = scripted.secretArgs
+			? JSON.stringify({ command: "echo fake-tool", description: "fake tool call", api_key: "secret-value-123" })
+			: JSON.stringify({ command: "echo fake-tool", description: "fake tool call" });
+		notify("item/started", {
+			item: { itemId: toolId, kind: "toolCall", revision: 1, status: "inProgress", turnId, tool: "bash", args: toolArgs, taskId: `task-${turnId}` },
+			sessionId,
+			viewCursor: nextCursor(sessionId),
+		});
+		await delay(5);
+		if (scripted.approval) {
+			const approvalId = `approval-${turnId}`;
+			notify("approval/requested", {
+				approvalId,
+				availableChoices: [
+					{ choiceId: "approve-once", decision: "approved", label: "Approve", scope: "once" },
+					{ choiceId: "deny-once", decision: "denied", label: "Deny", scope: "once" },
+				],
+				currentRequirementId: { approvalId, sourceIndex: 0 },
+				itemId: toolId,
+				judgeEscalated: false,
+				protectedWrite: false,
+				rawArgs: toolArgs,
+				sessionId,
+				sourceRange: range(),
+				subject: { kind: "tool", toolName: "bash" },
+				taskId: `task-${turnId}`,
+				toolCallId: toolId,
+				toolName: "bash",
+				turnId,
+				viewCursor: nextCursor(sessionId),
+			});
+			await new Promise((resolve) => approvalWaiters.set(approvalId, resolve));
+			approvalWaiters.delete(approvalId);
+		}
+		if (interruptedTurns.has(turnId)) return finishTurn(sessionId, turnId, "cancelled");
+		notify("item/delta", { delta: "fake-tool\n", field: "output", itemId: toolId, sessionId, viewCursor: nextCursor(sessionId) });
+		await delay(5);
+		notify("item/completed", {
+			item: { itemId: toolId, kind: "toolCall", revision: 2, status: "completed", turnId, tool: "bash", args: toolArgs, taskId: `task-${turnId}`, visibleOutput: "fake-tool\n" },
+			sessionId,
+			sourceRange: range(),
+			viewCursor: nextCursor(sessionId),
+		});
+	}
+	if (scripted.context) {
+		notify("session/contextUsage", {
+			pressure: "normal",
+			sessionId,
+			sourceRange: range(),
+			usedTokens: 1200,
+			viewCursor: nextCursor(sessionId),
+			windowTokens: 100_000,
+		});
+	}
+	if (scripted.fail) return finishTurn(sessionId, turnId, "failed");
+	return finishTurn(sessionId, turnId, "completed");
+}
+
+function finishTurn(sessionId, turnId, terminal) {
+	updateState((state) => {
+		const session = state.sessions[sessionId];
+		if (session) {
+			session.activeTurnId = null;
+			session.updatedAt = now();
+			session.turns.push({ turnId, terminal });
+		}
+	});
+	const params = {
+		sessionId,
+		sourceRange: range(),
+		terminal,
+		turnId,
+		viewCursor: nextCursor(sessionId),
+		usage: { cachedTokens: 0, inputTokens: 10, outputTokens: 5, reasoningTokens: 0 },
+	};
+	if (terminal === "failed") params.error = { kind: "scriptedFailure", message: "scripted fake failure", retryable: false };
+	notify("turn/completed", params);
+}
+
+const handlers = {
+	initialize: (params) => ({
+		experimentalApi: false,
+		grantedCapabilities: [...(params?.capabilities?.requestedCapabilities ?? []), "sessionMcp"],
+		museHome: stateDir,
+		platformFamily: "unix",
+		platformOs: process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux",
+		schema: { fingerprint: "fake-fingerprint", version: "1.3.0" },
+		serverInfo: { name: "muse-fake", version: "1.3.0" },
+		sessionDurability: "durable",
+		userAgent: "muse-fake/1.3.0",
+	}),
+	"session/start": (params) => updateState((state) => {
+		const id = `muse-fake-session-${state.nextSession++}`;
+		const createdAt = now();
+		state.sessions[id] = {
+			id,
+			workspaceRoot: params.workspaceRoot ?? process.cwd(),
+			modelId: params.modelId ?? "fake-model-a",
+			providerId: params.providerId ?? null,
+			approvalMode: params.approvalMode ?? "onRequest",
+			config: params.config ?? null,
+			createdAt,
+			updatedAt: createdAt,
+			activeTurnId: null,
+			forkedFrom: null,
+			turns: [],
+		};
+		state.startRequests.push({
+			sessionId: id,
+			workspaceRoot: state.sessions[id].workspaceRoot,
+			config: state.sessions[id].config ?? null,
+			hostEnvScopedMcpKeys: Object.keys(process.env).filter((key) => key.startsWith("PIBO_RUNTIME_MCP_")).sort(),
+			hostEnvPiboKeys: Object.keys(process.env).filter((key) => key.startsWith("PIBO_")).sort(),
+		});
+		cursors.set(id, 1);
+		return { session: sessionObject(state, state.sessions[id]), viewCursor: "1" };
+	}),
+	"session/resume": (params, id) => {
+		const state = load();
+		const session = state.sessions[params.sessionId];
+		if (!session) {
+			respondError(id, "sessionNotFound", `session ${params.sessionId} not found`);
+			return undefined;
+		}
+		cursors.set(session.id, 1);
+		return {
+			history: { items: [], mode: "none", snapshot: {} },
+			pendingRequests: [],
+			session: sessionObject(state, session),
+			viewCursor: "1",
+		};
+	},
+	"session/read": (params, id) => {
+		const state = load();
+		const session = state.sessions[params.sessionId];
+		if (!session) {
+			respondError(id, "sessionNotFound", `session ${params.sessionId} not found`);
+			return undefined;
+		}
+		return {
+			history: { items: [], mode: "none", snapshot: {} },
+			pendingRequests: [],
+			session: sessionObject(state, session),
+			viewCursor: "1",
+		};
+	},
+	"session/list": () => {
+		const state = load();
+		return {
+			nextCursor: null,
+			sessions: Object.values(state.sessions).map((session) => sessionObject(state, session)),
+		};
+	},
+	"session/fork": (params, id) => updateState((state) => {
+		const source = state.sessions[params.sessionId];
+		if (!source) {
+			respondError(id, "sessionNotFound", `session ${params.sessionId} not found`);
+			return undefined;
+		}
+		const lastTurnId = params.cutPoint?.lastTurnId;
+		if (lastTurnId && !source.turns.some((turn) => turn.turnId === lastTurnId)) {
+			respondError(id, "forkBoundaryInvalid", `turn ${lastTurnId} is not a fork boundary`);
+			return undefined;
+		}
+		const createdAt = now();
+		const forkId = `muse-fake-session-${state.nextSession++}`;
+		state.sessions[forkId] = {
+			...structuredClone(source),
+			id: forkId,
+			createdAt,
+			updatedAt: createdAt,
+			activeTurnId: null,
+			forkedFrom: { commandId: params.commandId ?? "cmd-fork", sessionId: source.id },
+		};
+		cursors.set(forkId, 1);
+		return {
+			history: { items: [], mode: "none", snapshot: {} },
+			pendingRequests: [],
+			session: sessionObject(state, state.sessions[forkId]),
+			viewCursor: "1",
+		};
+	}),
+	"turn/start": (params) => {
+		const turnId = params.commandId;
+		updateState((state) => {
+			const session = state.sessions[params.sessionId];
+			if (session) session.activeTurnId = turnId;
+		});
+		const text = (params.input ?? []).map((part) => (part.text ?? "")).join("\n");
+		const disposition = params.ifBusy === "steer" ? "steered" : "started";
+		setImmediate(() => {
+			runTurn(params.sessionId, turnId, text).catch((error) => process.stderr.write(`fake turn failed: ${error?.message}\n`));
+		});
+		return { commandId: turnId, disposition, startedNewTurn: disposition === "started", status: "accepted", turnId };
+	},
+	"turn/interrupt": (params) => {
+		interruptedTurns.add(params.turnId ?? "");
+		updateState((state) => state.interruptRequests.push({ sessionId: params.sessionId, turnId: params.turnId ?? null }));
+		return { commandId: params.commandId, status: "accepted", turnId: params.turnId ?? "" };
+	},
+	"turn/steer": (params, id) => {
+		const state = load();
+		const session = state.sessions[params.sessionId];
+		if (!session) {
+			respondError(id, "sessionNotFound", `session ${params.sessionId} not found`);
+			return undefined;
+		}
+		if (!params.expectedTurnId || session.activeTurnId !== params.expectedTurnId) {
+			respondError(id, "commandRejected", `turn ${params.expectedTurnId ?? "(missing)"} is not the running turn`);
+			return undefined;
+		}
+		const text = (params.input ?? []).map((part) => (part.text ?? "")).join("\n");
+		updateState((state) => state.steerRequests.push({ sessionId: params.sessionId, turnId: params.expectedTurnId }));
+		const steerId = `item-${params.expectedTurnId}-steer`;
+		const reply = `steered: ${text.slice(0, 120)}`;
+		notify("item/started", {
+			item: { itemId: steerId, kind: "agentMessage", revision: 1, status: "inProgress", turnId: params.expectedTurnId, text: "" },
+			sessionId: params.sessionId,
+			viewCursor: nextCursor(params.sessionId),
+		});
+		notify("item/completed", {
+			item: { itemId: steerId, kind: "agentMessage", revision: 2, status: "completed", turnId: params.expectedTurnId, text: reply },
+			sessionId: params.sessionId,
+			sourceRange: range(),
+			viewCursor: nextCursor(params.sessionId),
+		});
+		return { commandId: params.commandId, status: "accepted", turnId: params.expectedTurnId };
+	},
+	"turn/cancel": (params) => {
+		interruptedTurns.add(params.turnId ?? "");
+		return { commandId: params.commandId, status: "accepted", turnId: params.turnId ?? "" };
+	},
+	"approval/decide": (params) => {
+		updateState((state) => state.decideRequests.push({ approvalId: params.approvalId, choiceId: params.choiceId }));
+		approvalWaiters.get(params.approvalId)?.();
+		return { commandId: params.commandId, status: "accepted" };
+	},
+	"model/list": () => ({
+		models: [
+			{ contextLimit: 1_000_000, cost: null, description: "fake model a", displayLabel: "Fake A", isActive: true, isDefault: true, modelId: "fake-model-a", outputLimit: null, profileId: null, providerId: "fake", releaseDate: null },
+			{ contextLimit: 500_000, cost: null, description: "fake model b", displayLabel: "Fake B", isActive: false, isDefault: false, modelId: "fake-model-b", outputLimit: null, profileId: null, providerId: "fake", releaseDate: null },
+		],
+		profileId: null,
+		providerId: "fake",
+		source: "fakeCatalog",
+	}),
+	"session/setModel": (params) => {
+		updateState((state) => {
+			const session = state.sessions[params.sessionId];
+			if (session) {
+				session.modelId = params.model?.modelId ?? session.modelId;
+				session.updatedAt = now();
+			}
+		});
+		return { commandId: params.commandId, status: "accepted" };
+	},
+	"session/setReasoningEffort": (params) => ({ commandId: params.commandId, status: "accepted" }),
+	"session/compact": (params) => ({ commandId: params.commandId, status: "accepted" }),
+};
+
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on("line", (line) => {
+	if (!line.trim()) return;
+	let frame;
+	try {
+		frame = JSON.parse(line);
+	} catch {
+		return;
+	}
+	if (frame.id === undefined) return;
+	if (hangMethods().has(frame.method)) return;
+	const handler = handlers[frame.method];
+	if (!handler) {
+		respondError(frame.id, "methodNotFound", `method ${frame.method} not found`);
+		return;
+	}
+	try {
+		const result = handler(frame.params ?? {}, frame.id);
+		if (result !== undefined) respond(frame.id, result);
+	} catch (error) {
+		respondError(frame.id, "internal", error instanceof Error ? error.message : "fake host failed");
+	}
+});
+rl.on("close", () => process.exit(0));

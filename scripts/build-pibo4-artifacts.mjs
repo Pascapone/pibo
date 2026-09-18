@@ -20,6 +20,7 @@ const packages = [
 	["workflows", defaults.workflowsPackageManifest, "src/plugins/packaged-workflows.ts", "setupWorkflows", [["WorkflowsView", "src/apps/chat-ui/src/plugins/workflows-view.tsx"]]],
 	["runtime-pi", defaults.piRuntimePackageManifest, "src/plugins/packaged-runtime-pi.ts", "setupPiRuntime", []],
 	["runtime-codex-native", defaults.codexNativeRuntimePackageManifest, "src/plugins/packaged-runtime-codex-native.ts", "setupCodexNativeRuntime", [["RuntimeRequestsView", "src/apps/chat-ui/src/plugins/runtime-requests-view.tsx"]]],
+	["runtime-muse-native", defaults.museNativeRuntimePackageManifest, "src/plugins/packaged-runtime-muse-native.ts", "setupMuseNativeRuntime", [["RuntimeRequestsView", "src/apps/chat-ui/src/plugins/runtime-requests-view.tsx"]]],
 	["runtime-omp", defaults.ompRuntimePackageManifest, "src/plugins/packaged-runtime-omp.ts", "setupOmpRuntime", []],
 	["code-runtime", defaults.codeRuntimePackageManifest, "src/plugins/packaged-code-runtime.ts", "setupCodeRuntime", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],
 	["file-editing", defaults.fileEditingPackageManifest, "src/plugins/packaged-file-editing.ts", "setupFileEditing", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"]]],

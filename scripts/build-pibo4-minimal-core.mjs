@@ -186,6 +186,7 @@ const executableFiles = [...Object.keys(entries).map((name) => `${name}.js`), "d
 const forbiddenSymbols = [
 	"PI_AGENT_RUNTIME_DRIVER",
 	"CODEX_NATIVE_AGENT_RUNTIME_DRIVER",
+	"MUSE_NATIVE_AGENT_RUNTIME_DRIVER",
 	"OMP_AGENT_RUNTIME_DRIVER",
 	"createPiboGoalToolDefinitions",
 	"formatPiboRunReminderMessage",

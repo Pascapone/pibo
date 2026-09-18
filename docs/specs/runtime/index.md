@@ -7,6 +7,7 @@
 * [Adapter&#45;Native History Providers and Reconciliation](history-providers.md) - Defines normalized adapter&#45;native history inspection, pagination, source labeling, bounds, and trusted complete reconciliation proof&#46;
 * [Agent Runtime Adapter Contract](adapter-contract.md) - Defines the adapter, driver, live&#45;session, capability, semantic&#45;event, inspection, auth, history, and lifecycle SPI shared by runtimes&#46;
 * [Codex Native App Server Adapter](codex-native-adapter.md) - Defines the native Codex App Server runtime registration, process/protocol boundary, thread and turn lifecycle, resources, controls, and normalized events&#46;
+* [Muse Native Runtime Adapter](muse-native-adapter.md) - Defines the native Muse &#40;MSP&#41; runtime registration, SDK&#45;driven host lifecycle, session and turn operations, approvals, models, auth, and normalized events&#46;
 * [Oh My Pi RPC Adapter](omp-adapter.md) - Defines the ORP&#45;registered Oh My Pi RPC runtime, its operator configuration, process/RPC lifecycle, host tools, resources, history, models, and controls&#46;
 * [Pi Coding Agent Adapter](pi-adapter.md) - Defines the built&#45;in Pi adapter registration, package/protocol compatibility, direct tool delivery, lifecycle, event normalization, and Pi&#45;owned transcript behavior&#46;
 * [Runtime Capacity and Durable Message Scheduling](capacity-and-scheduling.md) - Defines bounded durable admission, room fairness, cold&#45;start and provider reservations, and capacity diagnostics&#46;

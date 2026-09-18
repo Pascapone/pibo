@@ -28,6 +28,7 @@ export const GOAL_CONTROL_PLUGIN_ID = "pibo.goal-control";
 export const AGENT_DELEGATION_PLUGIN_ID = "pibo.agent-delegation";
 export const PI_RUNTIME_PLUGIN_ID = "pibo.runtime-pi";
 export const CODEX_NATIVE_RUNTIME_PLUGIN_ID = "pibo.runtime-codex-native";
+export const MUSE_NATIVE_RUNTIME_PLUGIN_ID = "pibo.runtime-muse-native";
 export const OMP_RUNTIME_PLUGIN_ID = "pibo.runtime-omp";
 export const BUILTIN_PROFILES_PLUGIN_ID = "pibo.builtin-profiles";
 export const MCP_CLI_PLUGIN_ID = "pibo.mcp-cli";
@@ -384,6 +385,22 @@ export const codexNativeRuntimePackageManifest = (): PluginManifest => ({
 	]),
 	entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
 });
+export const museNativeRuntimePackageManifest = (): PluginManifest => ({
+	...runtimeAdapterManifest(MUSE_NATIVE_RUNTIME_PLUGIN_ID, "Pibo Native Muse Runtime Adapter", [
+		systemContribution("driver", "agent-runtime-driver", "muse-native"),
+		systemContribution("instance", "agent-runtime-instance", "muse-native"),
+		systemContribution("profile", "profile", "muse-native"),
+		{
+			...productView("runtime-requests", "Runtime Requests", "RuntimeRequestsView"),
+			scope: "agent",
+			required: false,
+			defaultEnabled: true,
+			runtime: { adapterIds: ["muse-native"], capabilities: ["approvals.supported"] },
+			metadata: { surface: "runtime-requests" },
+		},
+	]),
+	entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+});
 export const ompRuntimePackageManifest = (): PluginManifest => runtimeAdapterManifest(OMP_RUNTIME_PLUGIN_ID, "Pibo OMP Runtime Adapter", [systemContribution("driver", "agent-runtime-driver", "omp"), systemContribution("instance", "agent-runtime-instance", "omp-native"), systemContribution("profile", "profile", "orp")]);
 export const builtinProfilesPackageManifest = (): PluginManifest => runtimeAdapterManifest(BUILTIN_PROFILES_PLUGIN_ID, "Pibo Built-in Profiles", [
 	...PIBO_STANDARD_SKILL_NAMES.map((name) => ({
@@ -434,7 +451,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "runtime-pi" | "runtime-codex-native" | "runtime-omp" | "profiles" | "mcp-cli";
+	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "runtime-pi" | "runtime-codex-native" | "runtime-muse-native" | "runtime-omp" | "profiles" | "mcp-cli";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
@@ -458,6 +475,7 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: builtinProfilesPackageManifest, backendExport: "setupBuiltinProfiles", backendModule: "profiles" },
 	{ manifest: piRuntimePackageManifest, backendExport: "setupPiRuntime", backendModule: "runtime-pi" },
 	{ manifest: codexNativeRuntimePackageManifest, backendExport: "setupCodexNativeRuntime", backendModule: "runtime-codex-native", browserModules: [{ exports: "RuntimeRequestsView", asset: "pibo-plugin-runtime-requests.js" }] },
+	{ manifest: museNativeRuntimePackageManifest, backendExport: "setupMuseNativeRuntime", backendModule: "runtime-muse-native", browserModules: [{ exports: "RuntimeRequestsView", asset: "pibo-plugin-runtime-requests.js" }] },
 	{ manifest: ompRuntimePackageManifest, backendExport: "setupOmpRuntime", backendModule: "runtime-omp" },
 	{ manifest: mcpCliPackageManifest, backendExport: "setupMcpCli", backendModule: "mcp-cli", browserModules: [{ exports: "ToolFamilyView", asset: "pibo-plugin-tool-family.js" }] },
 ];

@@ -62,10 +62,10 @@ test("debug adapter lookup resolves enabled installed runtime packages without s
 	for (const path of ["src/debug/trace.ts", "src/debug/output-repair.ts"]) {
 		const text = readFileSync(path, "utf8");
 		assert.match(text, /withInstalledRuntimeAdapter/);
-		assert.doesNotMatch(text, /packaged-runtime-adapters|agent-runtimes\/(?:pi|codex-native|omp)/);
+		assert.doesNotMatch(text, /packaged-runtime-adapters|agent-runtimes\/(?:pi|codex-native|muse-native|omp)/);
 	}
 	const resolver = readFileSync("src/debug/installed-runtime-adapter.ts", "utf8");
 	assert.match(resolver, /candidate\.manifest\.contributions\.some/);
 	assert.match(resolver, /contribution\.kind === "agent-runtime-instance"/);
-	assert.doesNotMatch(resolver, /agent-runtimes\/(?:pi|codex-native|omp)|createBuiltinRuntimeAdapter/);
+	assert.doesNotMatch(resolver, /agent-runtimes\/(?:pi|codex-native|muse-native|omp)|createBuiltinRuntimeAdapter/);
 });
