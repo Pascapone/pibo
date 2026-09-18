@@ -11,7 +11,7 @@ generated:
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "efaaf5d0269a5f5b4e29d8c438dcb06cd905f853"
+  commit: "64064fded224866ead9981b94b4197e1e616ea3d"
   requirements:
     - id: "RUN-MUS-001"
       status: "implemented"
