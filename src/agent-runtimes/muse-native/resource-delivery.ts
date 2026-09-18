@@ -116,6 +116,33 @@ function assertScopedReferences(
 	}
 }
 
+function resolveEnvironmentReferences(
+	serverName: string,
+	label: string,
+	value: string,
+	environment: Readonly<NodeJS.ProcessEnv>,
+): string {
+	ENV_REFERENCE_PATTERN.lastIndex = 0;
+	return value.replace(ENV_REFERENCE_PATTERN, (match, name: string) => {
+		const resolved = environment[name];
+		if (resolved === undefined) {
+			throw new Error(`Muse MCP server "${serverName}" references missing scoped environment value "${name}" (${label}).`);
+		}
+		return resolved;
+	});
+}
+
+function resolveStringRecord(
+	serverName: string,
+	record: Record<string, string> | undefined,
+	environment: Readonly<NodeJS.ProcessEnv>,
+): Record<string, string> | undefined {
+	if (!record) return undefined;
+	const resolved: Record<string, string> = {};
+	for (const [key, value] of Object.entries(record)) resolved[key] = resolveEnvironmentReferences(serverName, key, value, environment);
+	return resolved;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -157,8 +184,9 @@ export class MuseNativeResourceDelivery {
 		const servers: MuseNativeSessionMcpConfig = {};
 		const externalNames = new Set<string>();
 		const resourceEnvironment = input.resources?.getAdapterEnvironment() ?? {};
-		// The materialized config carries ${VAR} references; resolved values stay in the scoped child
-		// environment and are interpolated by the Muse host, never embedded in the delivered config.
+		// The Muse host sends streamableHttp headers verbatim and does not interpolate
+		// ${VAR} references, so values are resolved here against the scoped environment
+		// before delivery. The child environment still carries the same values.
 		const materialized = await readMaterializedMcpServers(input.resources);
 		for (const [name, entry] of Object.entries(materialized)) {
 			const serverName = safeServerName(name);
@@ -173,8 +201,8 @@ export class MuseNativeResourceDelivery {
 				assertScopedReferences(serverName, [...Object.entries(headers ?? {}), ["url", url]], resourceEnvironment);
 				servers[serverName] = {
 					transport: "streamableHttp",
-					url,
-					...(headers ? { headers } : {}),
+					url: resolveEnvironmentReferences(serverName, "url", url, resourceEnvironment),
+					...(headers ? { headers: resolveStringRecord(serverName, headers, resourceEnvironment) } : {}),
 					mode: "required",
 				};
 			} else {
@@ -188,9 +216,9 @@ export class MuseNativeResourceDelivery {
 				);
 				servers[serverName] = {
 					transport: "stdio",
-					command,
-					...(args ? { args } : {}),
-					...(env ? { env } : {}),
+					command: resolveEnvironmentReferences(serverName, "command", command, resourceEnvironment),
+					...(args ? { args: args.map((value, index) => resolveEnvironmentReferences(serverName, `args[${index}]`, value, resourceEnvironment)) } : {}),
+					...(env ? { env: resolveStringRecord(serverName, env, resourceEnvironment) } : {}),
 					mode: "required",
 				};
 			}
@@ -205,13 +233,13 @@ export class MuseNativeResourceDelivery {
 			}
 			access = await input.portableTools.issueMcpAccess({ ttlMs: PIBO_TOOL_TOKEN_TTL_MS });
 			enabledToolNames = [...access.allowedToolNames];
-			// The credential travels as an environment reference resolved from
-			// the scoped child environment; the delivered config never carries
-			// the resolved token.
+			// The host does not interpolate ${VAR} references, so the credential is
+			// embedded resolved. It stays scoped: 5-minute TTL, same-token renewal,
+			// revoked on disposal, and the adapter never logs the delivered config.
 			servers[uniquePiboServerName(externalNames)] = {
 				transport: "streamableHttp",
 				url: access.url,
-				headers: { authorization: `Bearer \${${PIBO_TOOL_TOKEN_ENVIRONMENT_VARIABLE}}` },
+				headers: { authorization: `Bearer ${access.token}` },
 				mode: "required",
 			};
 		}

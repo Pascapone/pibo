@@ -754,6 +754,11 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			if (requestedModel && requestedModel.provider !== MUSE_NATIVE_MODEL_PROVIDER_ID) {
 				throw new Error(`Native Muse models use provider "${MUSE_NATIVE_MODEL_PROVIDER_ID}", not "${requestedModel.provider}".`);
 			}
+			if (resourceDelivery.sessionMcpConfig && !host.spawned.initializeResult.grantedCapabilities.includes("sessionMcp")) {
+				throw new Error(
+					`Native Muse session MCP configuration requires the sessionMcp capability, which the host for runtime instance "${this.instanceId}" did not grant.`,
+				);
+			}
 			const controller = await withTimeout(
 				binding.state === "bound" && binding.nativeSessionId
 					? MuseNativeSessionController.resume(

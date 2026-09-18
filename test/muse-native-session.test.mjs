@@ -46,8 +46,8 @@ async function testRoot(t) {
 
 function runtimeConfig(root, overrides = {}) {
 	const allowlist = process.platform === "win32"
-		? ["PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC", "MUSE_FAKE_STATE_DIR"]
-		: ["PATH", "MUSE_FAKE_STATE_DIR"];
+		? ["PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC", "MUSE_FAKE_STATE_DIR", "MUSE_FAKE_DENY_CAPABILITIES"]
+		: ["PATH", "MUSE_FAKE_STATE_DIR", "MUSE_FAKE_DENY_CAPABILITIES"];
 	return parseMuseNativeRuntimeConfig({
 		executable: fixturePath,
 		homeRoot: join(root, "runtime-state"),
@@ -561,4 +561,32 @@ test("Muse native turn controller rejects unknown reasoning effort", async () =>
 	await assert.rejects(() => controller.start("hello", { reasoningEffort: "turbo" }), /reasoning effort/);
 	await assert.rejects(() => controller.steer("hello", { reasoningEffort: "turbo" }), /requires a running turn/);
 	controller.dispose();
+});
+
+test("Muse native session open fails clearly when the host withholds sessionMcp", async (t) => {
+	const { root } = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "muse-native-capdeny");
+	const mcpConfigPath = join(root, "mcp-servers.json");
+	await writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: { external: { url: "http://127.0.0.1:49191/mcp" } } })}\n`);
+	const input = (overrides = {}) => ({
+		...openInput(instanceId, root, unboundBinding(instanceId, "ps_muse_capdeny")),
+		services: {
+			resources: {
+				sessionGeneration: "gen-capdeny-1",
+				getAdapterEnvironment: () => ({}),
+				getMcpConfigPath: () => mcpConfigPath,
+			},
+		},
+		...overrides,
+	});
+	process.env.MUSE_FAKE_DENY_CAPABILITIES = "sessionMcp";
+	t.after(() => {
+		delete process.env.MUSE_FAKE_DENY_CAPABILITIES;
+	});
+	await assert.rejects(() => registry.openSession(instanceId, input()), /sessionMcp capability/);
+	delete process.env.MUSE_FAKE_DENY_CAPABILITIES;
+	const session = await registry.openSession(instanceId, input());
+	t.after(() => session.dispose());
+	const delivered = JSON.parse(await readFile(join(root, "fake-state", "muse-fake-state.json"), "utf8"));
+	assert.equal(delivered.startRequests.at(-1).config.mcpServers.external.transport, "streamableHttp");
 });

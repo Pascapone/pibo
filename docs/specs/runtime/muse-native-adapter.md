@@ -86,12 +86,12 @@ Planned changes and behavior owned by related concepts are outside its normative
 
 # Current behavior
 
-- Lifecycle: The adapter spawns one `muse serve` host per runtime generation through `@muse-code/sdk` 1.3.0, completes the MSP handshake before other traffic, opens exactly one native session per host (start or resume), pumps view notifications into the SDK fold, and closes the host idempotently on dispose.
+- Lifecycle: The adapter spawns one `muse serve` host per runtime generation through `@muse-code/sdk` 1.3.0, completes the MSP handshake before other traffic, opens exactly one native session per host (start or resume), pumps view notifications into the SDK fold, and closes the host idempotently on dispose. The handshake requests the `sessionMcp` and `sessionListStream` capabilities; session start fails explicitly when MCP config is selected but the `sessionMcp` grant is withheld.
 - State: Profile and instance are muse-native; the validated SDK/CLI pin is 1.3.0 with protocol muse-session-protocol; native session identity is persisted for resume.
 - Turns: Prompts submit `turn/start` with text input and per-turn reasoning effort; deltas, items, usage, and terminals map to normalized semantic events. Steering submits on the steer lane while a turn runs; abort issues `turn/interrupt`.
 - Approvals: Native approval requests park in the adapter until Pibo responds with a server-offered choice; disposal aborts parked approvals explicitly.
 - Models: The catalog reads `model/list`; in-session switches use `session/setModel`; reasoning defaults sync with `session/setReasoningEffort` while per-turn options always carry the selected value.
-- Resources: Selected Pibo tools ride the session-scoped tool MCP bridge as a `streamableHttp` session server; selected external MCP servers map to `streamableHttp`/`stdio` session servers. Secret values stay behind `${VAR}` references resolved from the scoped child environment, including the portable-tool credential.
+- Resources: Selected Pibo tools ride the session-scoped tool MCP bridge as a `streamableHttp` session server; selected external MCP servers map to `streamableHttp`/`stdio` session servers. The host sends headers verbatim without `${VAR}` interpolation, so secret values are resolved against the scoped environment before delivery; the portable-tool credential keeps its 5-minute TTL, same-token renewal, and revocation on disposal.
 - Failure: Only the normalized `sessionNotFound` outcome is authoritative absence. Auth, startup, protocol, permission, and transient inspection failures remain unavailable errors and never authorize reconstruction.
 - Security: The child uses a private generation home and environment allowlist; credentials and sensitive diagnostics are redacted; tool credentials are scoped and revoked on disposal.
 - Auth seeding: Each generation copies the instance `auth.json` to both `$HOME/.config/muse/auth.json` and `$XDG_CONFIG_HOME/muse/auth.json`, because the host resolves its config root from `XDG_CONFIG_HOME` when the adapter sets it. `startAuth` merges `providers.meta.api_key` into the stored file and preserves subscription (device-login) bundles and other providers.
@@ -112,7 +112,7 @@ Muse Native SHALL submit turns with Pibo-owned timeouts, normalize assistant, re
 
 ## Requirement: RUN-MUS-004
 
-Muse Native resource delivery SHALL assemble selected Pibo tools and external MCP servers into session-start configuration, keep secrets behind environment references, renew credentials while idle, and revoke access on disposal.
+Muse Native resource delivery SHALL assemble selected Pibo tools and external MCP servers into session-start configuration, resolve secret references against the scoped environment before delivery, renew credentials while idle, and revoke access on disposal.
 
 ## Requirement: RUN-MUS-005
 

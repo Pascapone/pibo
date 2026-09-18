@@ -16,6 +16,7 @@
 // Environment scripting:
 //   MUSE_FAKE_HANG_METHODS    comma-separated MSP methods that never answer
 //   MUSE_FAKE_VERSION_OUTPUT  verbatim --version output (default "muse 1.3.0")
+//   MUSE_FAKE_DENY_CAPABILITIES comma-separated capability names withheld from grantedCapabilities
 // A JSON array at <stateDir>/hang-methods.json hangs the same way and can be
 // written or removed at any time, including mid-test for recovery assertions.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -219,10 +220,14 @@ function finishTurn(sessionId, turnId, terminal) {
 	notify("turn/completed", params);
 }
 
+let grantedCapabilities = [];
 const handlers = {
-	initialize: (params) => ({
+	initialize: (params) => {
+		const denied = new Set((process.env.MUSE_FAKE_DENY_CAPABILITIES ?? "").split(",").map((entry) => entry.trim()).filter(Boolean));
+		grantedCapabilities = [...(params?.capabilities?.requestedCapabilities ?? [])].filter((name) => !denied.has(name));
+		return {
 		experimentalApi: false,
-		grantedCapabilities: [...(params?.capabilities?.requestedCapabilities ?? []), "sessionMcp"],
+		grantedCapabilities,
 		museHome: stateDir,
 		platformFamily: "unix",
 		platformOs: process.platform === "darwin" ? "macos" : process.platform === "win32" ? "windows" : "linux",
@@ -230,8 +235,14 @@ const handlers = {
 		serverInfo: { name: "muse-fake", version: "1.3.0" },
 		sessionDurability: "durable",
 		userAgent: "muse-fake/1.3.0",
-	}),
-	"session/start": (params) => updateState((state) => {
+		};
+	},
+	"session/start": (params, id) => {
+		if (params.config !== undefined && params.config !== null && !grantedCapabilities.includes("sessionMcp")) {
+			respondError(id, "capabilityDenied", "Session MCP configuration requires the sessionMcp capability");
+			return undefined;
+		}
+		return updateState((state) => {
 		const id = `muse-fake-session-${state.nextSession++}`;
 		const createdAt = now();
 		state.sessions[id] = {
@@ -256,7 +267,8 @@ const handlers = {
 		});
 		cursors.set(id, 1);
 		return { session: sessionObject(state, state.sessions[id]), viewCursor: "1" };
-	}),
+		});
+	},
 	"session/resume": (params, id) => {
 		const state = load();
 		const session = state.sessions[params.sessionId];
@@ -286,7 +298,11 @@ const handlers = {
 			viewCursor: "1",
 		};
 	},
-	"session/list": () => {
+	"session/list": (params, id) => {
+		if (!grantedCapabilities.includes("sessionListStream")) {
+			respondError(id, "capabilityDenied", "Session listing requires the sessionListStream capability");
+			return undefined;
+		}
 		const state = load();
 		return {
 			nextCursor: null,

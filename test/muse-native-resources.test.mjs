@@ -210,19 +210,20 @@ test("Muse native delivers portable tools and external MCP servers through sessi
 	const delivered = state.startRequests.at(-1).config.mcpServers;
 	assert.equal(delivered["pibo-session-tools"].transport, "streamableHttp");
 	assert.equal(delivered["pibo-session-tools"].url, access.url);
-	assert.equal(delivered["pibo-session-tools"].headers.authorization, "Bearer ${PIBO_MUSE_NATIVE_TOOL_TOKEN}");
+	assert.equal(delivered["pibo-session-tools"].headers.authorization, `Bearer ${access.token}`);
 	assert.equal(delivered.external.transport, "streamableHttp");
 	assert.equal(delivered.external.url, "http://127.0.0.1:49191/mcp");
 	assert.equal(delivered["external-stdio"].transport, "stdio");
 	assert.equal(delivered["external-stdio"].command, process.execPath);
 	assert.equal("unselected" in delivered, false);
 	const deliveredJson = JSON.stringify(delivered);
-	assert.equal(deliveredJson.includes("external-session-secret"), false);
-	assert.equal(deliveredJson.includes("stdio-environment-secret"), false);
-	assert.equal(deliveredJson.includes(access.token), false);
+	// The host sends headers verbatim, so references arrive resolved.
+	assert.equal(deliveredJson.includes("external-session-secret"), true);
+	assert.equal(deliveredJson.includes("stdio-environment-secret"), true);
+	assert.equal(deliveredJson.includes(access.token), true);
+	assert.equal(deliveredJson.includes("${"), false);
 	const expectedScopedKeys = resources.getInspection().mcpServers.flatMap((server) => server.secretEnvironmentKeys ?? []);
 	assert.ok(expectedScopedKeys.length >= 2);
-	for (const key of expectedScopedKeys) assert.equal(deliveredJson.includes(`\${${key}}`), true);
 	const hostScopedKeys = state.startRequests.at(-1).hostEnvScopedMcpKeys;
 	for (const key of expectedScopedKeys) assert.equal(hostScopedKeys.includes(key), true);
 	assert.ok(state.startRequests.at(-1).hostEnvPiboKeys.includes("PIBO_MUSE_NATIVE_TOOL_TOKEN"));

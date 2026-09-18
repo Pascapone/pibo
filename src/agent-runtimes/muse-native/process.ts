@@ -304,7 +304,11 @@ export async function startMuseNativeHost(input: StartMuseNativeHostInput): Prom
 		}
 		try {
 			spawned = await withTimeout(
-				handshake.initialize({ clientInfo: { name: "pibo", version: MUSE_NATIVE_ADAPTER_VERSION } }),
+				handshake.initialize({
+				clientInfo: { name: "pibo", version: MUSE_NATIVE_ADAPTER_VERSION },
+				// The host withholds MCP session config and session listing unless granted here.
+				capabilities: { requestedCapabilities: ["sessionMcp", "sessionListStream"] },
+			}),
 				input.config.startupTimeoutMs,
 				`Muse host startup timed out after ${input.config.startupTimeoutMs}ms.`,
 			);
