@@ -194,6 +194,8 @@ test("chat gateway-settings API validates and persists yielded-run concurrency",
 		assert.deepEqual(current.data.gatewaySettings, {
 			maxConcurrentYieldedRuns: 60,
 			sessionConcurrentYieldedRuns: 12,
+			maxProviderTurns: 100,
+			providerTurnsPerRoom: 20,
 		});
 
 		const missingOrigin = await fetch(`${baseURL}/api/chat/gateway-settings`, {
@@ -211,21 +213,33 @@ test("chat gateway-settings API validates and persists yielded-run concurrency",
 		assert.equal(invalid.response.status, 400);
 		assert.match(invalid.data.error, /Invalid gateway yielded-run concurrency/);
 
+		const invalidProvider = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
+			method: "PATCH",
+			headers: authHeaders(baseURL),
+			body: JSON.stringify({ maxProviderTurns: 0 }),
+		});
+		assert.equal(invalidProvider.response.status, 400);
+		assert.match(invalidProvider.data.error, /Invalid gateway provider-turn concurrency/);
+
 		const saved = await fetchJson(`${baseURL}/api/chat/gateway-settings`, {
 			method: "PATCH",
 			headers: authHeaders(baseURL),
-			body: JSON.stringify({ maxConcurrentYieldedRuns: 80, sessionConcurrentYieldedRuns: 16 }),
+			body: JSON.stringify({ maxConcurrentYieldedRuns: 80, sessionConcurrentYieldedRuns: 16, maxProviderTurns: 90, providerTurnsPerRoom: 18 }),
 		});
 		assert.equal(saved.response.status, 200);
 		assert.deepEqual(saved.data.gatewaySettings, {
 			maxConcurrentYieldedRuns: 80,
 			sessionConcurrentYieldedRuns: 16,
+			maxProviderTurns: 90,
+			providerTurnsPerRoom: 18,
 		});
 
 		const persisted = JSON.parse(readFileSync(join(process.env.PIBO_HOME, "gateway-settings.json"), "utf-8"));
 		assert.deepEqual(persisted.settings, {
 			maxConcurrentYieldedRuns: 80,
 			sessionConcurrentYieldedRuns: 16,
+			maxProviderTurns: 90,
+			providerTurnsPerRoom: 18,
 		});
 	} finally {
 		await channel.stop?.();

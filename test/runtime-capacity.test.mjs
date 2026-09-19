@@ -83,3 +83,39 @@ test('capacity resolves generous provider turn defaults with environment overrid
  const env = resolveRuntimeCapacityOptions({ PIBO_GATEWAY_MAX_PROVIDER_TURNS:'7', PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM:'3' });
  assert.equal(env.providerTurns,7);assert.equal(env.providerTurnsPerRoom,3);
 });
+
+test('provider pools follow the gateway settings file live unless explicitly configured', async()=>{
+ const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+ const { tmpdir } = await import('node:os');
+ const { join } = await import('node:path');
+ const originalHome=process.env.PIBO_HOME;
+ const originalTurns=process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS;
+ const originalPerRoom=process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM;
+ const dir=mkdtempSync(join(tmpdir(),'pibo-capacity-settings-'));
+ process.env.PIBO_HOME=dir;
+ delete process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS;
+ delete process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM;
+ try {
+  writeFileSync(join(dir,'gateway-settings.json'),JSON.stringify({settings:{maxProviderTurns:7,providerTurnsPerRoom:3}}));
+  const capacity=new RuntimeCapacity();
+  const first=await capacity.acquireProvider('muse-cap-test','room-a');
+  let snap=capacity.snapshot().providers.find(p=>p.provider==='muse-cap-test');
+  assert.equal(snap.limit,7);assert.equal(snap.perRoom,3);
+  first.release();
+  writeFileSync(join(dir,'gateway-settings.json'),JSON.stringify({settings:{maxProviderTurns:9,providerTurnsPerRoom:4}}));
+  const second=await capacity.acquireProvider('muse-cap-test','room-a');
+  snap=capacity.snapshot().providers.find(p=>p.provider==='muse-cap-test');
+  assert.equal(snap.limit,9);assert.equal(snap.perRoom,4);
+  second.release();
+  const explicit=new RuntimeCapacity({providerTurns:2,providerTurnsPerRoom:1});
+  const third=await explicit.acquireProvider('muse-cap-test','room-a');
+  snap=explicit.snapshot().providers.find(p=>p.provider==='muse-cap-test');
+  assert.equal(snap.limit,2);assert.equal(snap.perRoom,1);
+  third.release();
+ } finally {
+  if(originalHome===undefined)delete process.env.PIBO_HOME;else process.env.PIBO_HOME=originalHome;
+  if(originalTurns===undefined)delete process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS;else process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS=originalTurns;
+  if(originalPerRoom===undefined)delete process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM;else process.env.PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM=originalPerRoom;
+  rmSync(dir,{recursive:true,force:true});
+ }
+});

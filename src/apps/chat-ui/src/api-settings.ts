@@ -89,6 +89,8 @@ export type UserSettings = {
 export type GatewaySettings = {
 	maxConcurrentYieldedRuns: number;
 	sessionConcurrentYieldedRuns: number;
+	maxProviderTurns: number;
+	providerTurnsPerRoom: number;
 };
 
 export async function getBasePrompt(): Promise<BasePromptSnapshot> {
@@ -155,7 +157,7 @@ export async function getGatewaySettings(): Promise<GatewaySettings> {
 	return (await requestJson<{ gatewaySettings: GatewaySettings }>("/api/chat/gateway-settings")).gatewaySettings;
 }
 
-export async function patchGatewaySettings(input: GatewaySettings): Promise<GatewaySettings> {
+export async function patchGatewaySettings(input: Partial<GatewaySettings>): Promise<GatewaySettings> {
 	return (await requestJson<{ gatewaySettings: GatewaySettings }>("/api/chat/gateway-settings", {
 		method: "PATCH",
 		headers: { "content-type": "application/json" },

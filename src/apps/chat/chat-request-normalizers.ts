@@ -102,6 +102,8 @@ export type ChatUserSettingsBody = {
 export type ChatGatewaySettingsBody = {
 	maxConcurrentYieldedRuns?: unknown;
 	sessionConcurrentYieldedRuns?: unknown;
+	maxProviderTurns?: unknown;
+	providerTurnsPerRoom?: unknown;
 };
 
 export type ChatTelemetryRetentionPruneBody = {

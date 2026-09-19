@@ -2,7 +2,7 @@ import { readPiboBasePrompt, savePiboCustomBasePrompt, setPiboBasePromptMode } f
 import { readPiboCompactionPrompt, savePiboCustomCompactionPrompt, setPiboCompactionPromptMode } from "../../core/compaction-prompt.js";
 import {
 	loadPiboGatewaySettings,
-	sanitizeConcurrentYieldedRuns,
+	sanitizePositiveInteger,
 	updatePiboGatewaySettings,
 } from "../../core/gateway-settings.js";
 import { sanitizePreviewServerSettings } from "../../core/preview-server-settings.js";
@@ -117,14 +117,24 @@ export async function handleChatSettingsRoute(input: {
 function gatewaySettingsPatch(body: ChatGatewaySettingsBody): Parameters<typeof updatePiboGatewaySettings>[0] {
 	const patch: Parameters<typeof updatePiboGatewaySettings>[0] = {};
 	if (body.maxConcurrentYieldedRuns !== undefined) {
-		const value = sanitizeConcurrentYieldedRuns(body.maxConcurrentYieldedRuns);
+		const value = sanitizePositiveInteger(body.maxConcurrentYieldedRuns);
 		if (!value) throw new PiboWebHttpError("Invalid gateway yielded-run concurrency", 400);
 		patch.maxConcurrentYieldedRuns = value;
 	}
 	if (body.sessionConcurrentYieldedRuns !== undefined) {
-		const value = sanitizeConcurrentYieldedRuns(body.sessionConcurrentYieldedRuns);
+		const value = sanitizePositiveInteger(body.sessionConcurrentYieldedRuns);
 		if (!value) throw new PiboWebHttpError("Invalid session yielded-run concurrency", 400);
 		patch.sessionConcurrentYieldedRuns = value;
+	}
+	if (body.maxProviderTurns !== undefined) {
+		const value = sanitizePositiveInteger(body.maxProviderTurns);
+		if (!value) throw new PiboWebHttpError("Invalid gateway provider-turn concurrency", 400);
+		patch.maxProviderTurns = value;
+	}
+	if (body.providerTurnsPerRoom !== undefined) {
+		const value = sanitizePositiveInteger(body.providerTurnsPerRoom);
+		if (!value) throw new PiboWebHttpError("Invalid per-room provider-turn concurrency", 400);
+		patch.providerTurnsPerRoom = value;
 	}
 	if (Object.keys(patch).length === 0) throw new PiboWebHttpError("No gateway settings provided", 400);
 	return patch;

@@ -15,13 +15,19 @@ test("gateway settings resolve requested defaults and environment overrides", ()
 	assert.deepEqual(resolvePiboGatewaySettings({}), {
 		maxConcurrentYieldedRuns: 50,
 		sessionConcurrentYieldedRuns: 10,
+		maxProviderTurns: 100,
+		providerTurnsPerRoom: 20,
 	});
 	assert.deepEqual(resolvePiboGatewaySettings({
 		PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS: "75",
 		PIBO_SESSION_CONCURRENT_YIELDED_RUNS: "15",
+		PIBO_GATEWAY_MAX_PROVIDER_TURNS: "120",
+		PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM: "25",
 	}), {
 		maxConcurrentYieldedRuns: 75,
 		sessionConcurrentYieldedRuns: 15,
+		maxProviderTurns: 120,
+		providerTurnsPerRoom: 25,
 	});
 	assert.equal(sanitizeConcurrentYieldedRuns(0), undefined);
 	assert.equal(sanitizeConcurrentYieldedRuns("1.5"), undefined);
@@ -40,25 +46,37 @@ test("gateway settings persist Web overrides above environment fallbacks", () =>
 		assert.deepEqual(loadPiboGatewaySettings(env), {
 			maxConcurrentYieldedRuns: 60,
 			sessionConcurrentYieldedRuns: 12,
+			maxProviderTurns: 100,
+			providerTurnsPerRoom: 20,
 		});
 		assert.deepEqual(updatePiboGatewaySettings({
 			maxConcurrentYieldedRuns: 80,
 			sessionConcurrentYieldedRuns: 16,
+			maxProviderTurns: 90,
+			providerTurnsPerRoom: 18,
 		}, env), {
 			maxConcurrentYieldedRuns: 80,
 			sessionConcurrentYieldedRuns: 16,
+			maxProviderTurns: 90,
+			providerTurnsPerRoom: 18,
 		});
 		assert.deepEqual(loadPiboGatewaySettings({
 			PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS: "2",
 			PIBO_SESSION_CONCURRENT_YIELDED_RUNS: "1",
+			PIBO_GATEWAY_MAX_PROVIDER_TURNS: "3",
+			PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM: "1",
 		}), {
 			maxConcurrentYieldedRuns: 80,
 			sessionConcurrentYieldedRuns: 16,
+			maxProviderTurns: 90,
+			providerTurnsPerRoom: 18,
 		});
 		const persisted = JSON.parse(readFileSync(join(dir, "gateway-settings.json"), "utf8"));
 		assert.deepEqual(persisted.settings, {
 			maxConcurrentYieldedRuns: 80,
 			sessionConcurrentYieldedRuns: 16,
+			maxProviderTurns: 90,
+			providerTurnsPerRoom: 18,
 		});
 	} finally {
 		if (originalPiboHome === undefined) delete process.env.PIBO_HOME;

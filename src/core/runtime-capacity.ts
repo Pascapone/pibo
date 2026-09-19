@@ -1,4 +1,5 @@
 import type { AsyncTelemetryWriter } from "../data/telemetry-writer.js";
+import { loadPiboGatewaySettings } from "./gateway-settings.js";
 export type RuntimeInitializationTiming = { sessionId: string; waitMs: number; totalMs: number; phases: Record<string,number>; outcome: "ready" | "failed" };
 export type RuntimeCapacityStatus = ReturnType<RuntimeCapacity["snapshot"]> & {
  activeRuntimes: number; initializingRuntimes: number; recentInitializations: RuntimeInitializationTiming[];
@@ -36,10 +37,19 @@ export class FairCapacityPool {
  private readonly generalRooms = new Map<string,number>();
  private waiting = 0;
  private closed = false;
- constructor(private readonly limit: number, private readonly perRoom: number,
+ private limit: number;
+ private perRoom: number;
+ constructor(limit: number, perRoom: number,
   private readonly maxWaiting: number, private readonly maxWaitMs: number, private readonly reserved = 0) {
   if(!Number.isSafeInteger(reserved)||reserved<0||reserved>=limit)throw new Error("Reserved capacity must leave at least one normal slot.");
   for (const n of [limit,perRoom,maxWaiting,maxWaitMs]) if (!Number.isSafeInteger(n)||n<1) throw new Error("Capacity limits must be positive integers.");
+  this.limit=limit;this.perRoom=perRoom;
+ }
+ /** Live limit refresh from gateway settings; lowering below active counts only stalls new admissions until drain. */
+ updateLimits(limit: number, perRoom: number): void {
+  for (const n of [limit,perRoom]) if (!Number.isSafeInteger(n)||n<1) throw new Error("Capacity limits must be positive integers.");
+  this.limit=limit;this.perRoom=perRoom;
+  this.drain();
  }
  acquire(room: string, signal?: AbortSignal, reserved = false): Promise<CapacityLease> {
   if(this.closed) return Promise.reject(capacityError("Runtime capacity is closed."));
@@ -94,19 +104,34 @@ export class RuntimeCapacity {
  private readonly providers=new Map<string,FairCapacityPool>();
  private closed=false;
  private readonly options: Required<RuntimeCapacityOptions>;
+ private readonly explicitProviderTurns: boolean;
+ private readonly explicitProviderTurnsPerRoom: boolean;
  constructor(options: RuntimeCapacityOptions={}) {
   this.options={...resolveRuntimeCapacityOptions(),...options};
+  this.explicitProviderTurns=options.providerTurns!==undefined;
+  this.explicitProviderTurnsPerRoom=options.providerTurnsPerRoom!==undefined;
+  this.refreshProviderOptionsFromFile();
   for(const n of Object.values(this.options))if(!Number.isSafeInteger(n)||n<1)throw new Error("Runtime capacity limits must be positive integers.");
   this.maxRuntimes=this.options.maxRuntimes;
   this.starts=new FairCapacityPool(this.options.coldStarts,1,this.options.maxWaiting,this.options.maxWaitMs);
  }
+ /** Gateway settings file wins over environment; explicit constructor options win over both. */
+ private refreshProviderOptionsFromFile(): void {
+  if(this.explicitProviderTurns&&this.explicitProviderTurnsPerRoom)return;
+  const file=loadPiboGatewaySettings();
+  if(!this.explicitProviderTurns)this.options.providerTurns=file.maxProviderTurns;
+  if(!this.explicitProviderTurnsPerRoom)this.options.providerTurnsPerRoom=file.providerTurnsPerRoom;
+ }
  async acquireProvider(provider: string,room: string,signal?: AbortSignal, nested = false): Promise<CapacityLease> {
   if(this.closed)throw capacityError("Runtime capacity is closed.");
+  this.refreshProviderOptionsFromFile();
   let pool=this.providers.get(provider);
   if(!pool){
    if(this.providers.size>=64)throw capacityError("Active provider capacity registry is full.");
    pool=new FairCapacityPool(this.options.providerTurns,this.options.providerTurnsPerRoom,this.options.maxWaiting,this.options.maxWaitMs,Math.min(2,this.options.providerTurns-1));
    this.providers.set(provider,pool);
+  } else {
+   pool.updateLimits(this.options.providerTurns,this.options.providerTurnsPerRoom);
   }
   try {
    const lease=await pool.acquire(room,signal,nested);

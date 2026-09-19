@@ -140,6 +140,9 @@ export function SettingsView({
 				<DesignerPanel title="Yielded runs">
 					<YieldedRunConcurrencySettings />
 				</DesignerPanel>
+				<DesignerPanel title="Provider turns">
+					<ProviderTurnConcurrencySettings />
+				</DesignerPanel>
 			</div>
 		);
 	}
@@ -350,6 +353,102 @@ function YieldedRunConcurrencySettings() {
 			{error ? <div className="mt-3 text-xs text-red-300">{error}</div> : null}
 			<p className="mt-4 font-mono text-[10px] text-slate-500">
 				Environment fallbacks: PIBO_GATEWAY_MAX_CONCURRENT_YIELDED_RUNS and PIBO_SESSION_CONCURRENT_YIELDED_RUNS.
+			</p>
+		</div>
+	);
+}
+
+function ProviderTurnConcurrencySettings() {
+	const queryClient = useQueryClient();
+	const { data, isLoading } = useQuery({ queryKey: ["gateway-settings"], queryFn: getGatewaySettings });
+	const [gatewayLimit, setGatewayLimit] = useState("100");
+	const [roomLimit, setRoomLimit] = useState("20");
+	const [saving, setSaving] = useState(false);
+	const [message, setMessage] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!data) return;
+		setGatewayLimit(String(data.maxProviderTurns));
+		setRoomLimit(String(data.providerTurnsPerRoom));
+	}, [data]);
+
+	const save = async () => {
+		const maxProviderTurns = Number(gatewayLimit);
+		const providerTurnsPerRoom = Number(roomLimit);
+		if (!Number.isSafeInteger(maxProviderTurns) || maxProviderTurns < 1) {
+			setError("Gateway concurrency must be a positive integer.");
+			return;
+		}
+		if (!Number.isSafeInteger(providerTurnsPerRoom) || providerTurnsPerRoom < 1) {
+			setError("Per-room concurrency must be a positive integer.");
+			return;
+		}
+		setSaving(true);
+		setMessage(null);
+		setError(null);
+		try {
+			const saved = await patchGatewaySettings({ maxProviderTurns, providerTurnsPerRoom });
+			setGatewayLimit(String(saved.maxProviderTurns));
+			setRoomLimit(String(saved.providerTurnsPerRoom));
+			queryClient.setQueryData(["gateway-settings"], saved);
+			setMessage("Concurrency settings saved. New turns use these limits immediately.");
+		} catch (err) {
+			setError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<div className="max-w-xl">
+			<p className="mb-4 text-xs text-slate-400">
+				Limit concurrent provider turns across the gateway and within each Room. Turns waiting longer than 60 seconds fail with a capacity error.
+			</p>
+			<div className="grid gap-4 sm:grid-cols-2 @max-[520px]:grid-cols-1">
+				<label className="block text-xs text-slate-300" htmlFor="gateway-concurrent-provider-turns">
+					<span className="mb-1 block font-semibold">Gateway limit</span>
+					<input
+						id="gateway-concurrent-provider-turns"
+						type="number"
+						min="1"
+						step="1"
+						value={gatewayLimit}
+						disabled={isLoading || saving}
+						onChange={(event) => setGatewayLimit(event.target.value)}
+						className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="mt-1 block text-[11px] text-slate-500">Default: 100 across this gateway.</span>
+				</label>
+				<label className="block text-xs text-slate-300" htmlFor="room-concurrent-provider-turns">
+					<span className="mb-1 block font-semibold">Per-room limit</span>
+					<input
+						id="room-concurrent-provider-turns"
+						type="number"
+						min="1"
+						step="1"
+						value={roomLimit}
+						disabled={isLoading || saving}
+						onChange={(event) => setRoomLimit(event.target.value)}
+						className="w-full rounded-sm border border-slate-700 bg-[#0e1116] px-3 py-2 font-mono text-sm outline-none focus:border-[#11a4d4] disabled:opacity-60"
+					/>
+					<span className="mt-1 block text-[11px] text-slate-500">Default: 20 for each Room.</span>
+				</label>
+			</div>
+			<div className="mt-4 flex items-center gap-3">
+				<button
+					type="button"
+					disabled={isLoading || saving}
+					onClick={() => void save()}
+					className="whitespace-nowrap rounded-sm bg-[#11a4d4] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0d8db7] disabled:opacity-60"
+				>
+					{saving ? "Saving…" : "Save limits"}
+				</button>
+				{message ? <span className="text-xs text-green-400">{message}</span> : null}
+			</div>
+			{error ? <div className="mt-3 text-xs text-red-300">{error}</div> : null}
+			<p className="mt-4 font-mono text-[10px] text-slate-500">
+				Environment fallbacks: PIBO_GATEWAY_MAX_PROVIDER_TURNS and PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM.
 			</p>
 		</div>
 	);
