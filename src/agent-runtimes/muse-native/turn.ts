@@ -177,16 +177,32 @@ export class MuseNativeTurnController {
 		const seenItems = new Map<string, string>();
 		const completedTools = new Set<string>();
 		let timedOut = false;
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		let rejectTimeout: ((error: Error) => void) | undefined;
 		const timeout = new Promise<never>((_resolve, reject) => {
-			const timer = setTimeout(() => {
+			rejectTimeout = reject;
+		});
+		const noteActivity = (): void => {
+			// Idle budget, not a total budget: a turn doing productive work
+			// across many tool calls must survive; only silence is fatal.
+			if (settled) return;
+			if (timer) clearTimeout(timer);
+			timer = setTimeout(() => {
 				timedOut = true;
+				settled = true;
 				void this.connection.command("turn/interrupt", { sessionId: this.sessionId, turnId }).catch(() => {});
-				reject(new Error(`Muse turn timed out after ${this.requestTimeoutMs}ms for prompt "${boundedText(promptText).slice(0, 120)}".`));
+				rejectTimeout?.(new Error(`Muse turn timed out after ${this.requestTimeoutMs}ms without activity for prompt "${boundedText(promptText).slice(0, 120)}".`));
 			}, this.requestTimeoutMs);
 			timer.unref?.();
-			void finished.promise.finally(() => clearTimeout(timer));
+		};
+		noteActivity();
+		void finished.promise.finally(() => {
+			settled = true;
+			if (timer) clearTimeout(timer);
 		});
 		const fail = (error: Error): void => {
+			settled = true;
 			if (this.active?.turnId === turnId) this.active = undefined;
 			this.emit({ type: "turn_failed", turnId, message: error.message });
 			finished.resolve();
@@ -194,15 +210,18 @@ export class MuseNativeTurnController {
 		try {
 			const itemPump = (async () => {
 				for await (const item of turn.items()) {
+					noteActivity();
 					this.routeItem(item as unknown as Record<string, unknown>, seenItems, completedTools);
 				}
 			})();
 			const deltaPump = (async () => {
 				for await (const delta of turn.deltas()) {
+					noteActivity();
 					this.routeDelta(delta as unknown as { itemId?: unknown; field?: unknown; delta?: unknown });
 				}
 			})();
 			const outcome = await Promise.race([turn.completed, timeout]);
+			settled = true;
 			await Promise.allSettled([itemPump, deltaPump]);
 			if (this.active?.turnId === turnId) this.active = undefined;
 			if (outcome.kind !== "completed") {

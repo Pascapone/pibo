@@ -51,7 +51,7 @@ traceability:
         - path: "test/muse-native-session.test.mjs"
           name: "Muse native abort, steer, and failure terminals behave"
       failures:
-        - "Turns carry a Pibo-owned request timeout; expiry interrupts the native turn and fails explicitly."
+        - "Turns carry a Pibo-owned request idle timeout; silent expiry interrupts the native turn and fails explicitly."
         - "Launch failures, failed terminals, and cancelled terminals map to distinct normalized outcomes."
       confidence: "high"
     - id: "RUN-MUS-004"
@@ -88,7 +88,7 @@ Planned changes and behavior owned by related concepts are outside its normative
 
 - Lifecycle: The adapter spawns one `muse serve` host per runtime generation through `@muse-code/sdk` 1.3.0, completes the MSP handshake before other traffic, opens exactly one native session per host (start or resume), pumps view notifications into the SDK fold, and closes the host idempotently on dispose. The handshake requests the `sessionMcp` and `sessionListStream` capabilities; session start fails explicitly when MCP config is selected but the `sessionMcp` grant is withheld.
 - State: Profile and instance are muse-native; the validated SDK/CLI pin is 1.3.0 with protocol muse-session-protocol; native session identity is persisted for resume.
-- Turns: Prompts submit `turn/start` with text input and per-turn reasoning effort; deltas, items, usage, and terminals map to normalized semantic events. Steering submits on the steer lane while a turn runs; abort issues `turn/interrupt`.
+- Turns: Prompts submit `turn/start` with text input and per-turn reasoning effort; deltas, items, usage, and terminals map to normalized semantic events. Steering submits on the steer lane while a turn runs; abort issues `turn/interrupt`. The turn timeout is idle-based: streamed items and deltas extend the `requestTimeoutMs` budget, and only silence trips it.
 - Approvals: Native approval requests park in the adapter until Pibo responds with a server-offered choice; disposal aborts parked approvals explicitly.
 - Models: The catalog reads `model/list`; in-session switches use `session/setModel`; reasoning defaults sync with `session/setReasoningEffort` while per-turn options always carry the selected value.
 - Profiles: `runtimeOptions.approvalMode` is exposed through the models `optionsSchema` and applied at session start. The profile thinking level seeds the initial reasoning effort (`off` maps to `none`); persisted session settings take precedence on resume. Mid-session reasoning changes accept `off` as `none`, matching the seed mapping.

@@ -10,6 +10,7 @@
 //   [approval]   request approval mid-turn and wait for approval/decide
 //   [fail]       end the turn with terminal "failed"
 //   [slow]       delay completion so abort/steer tests can intervene
+//   [drip]       emit steady items over ~200ms so activity-timeout tests can intervene
 //   [context]    emit a session/contextUsage notification
 //   [secretargs] include a secret-bearing key in the toolCall args
 //
@@ -111,6 +112,7 @@ async function runTurn(sessionId, turnId, text) {
 		approval: text.includes("[approval]"),
 		fail: text.includes("[fail]"),
 		slow: text.includes("[slow]"),
+		drip: text.includes("[drip]"),
 		context: text.includes("[context]"),
 		secretArgs: text.includes("[secretargs]"),
 	};
@@ -184,6 +186,23 @@ async function runTurn(sessionId, turnId, text) {
 			sourceRange: range(),
 			viewCursor: nextCursor(sessionId),
 		});
+	}
+	if (scripted.drip) {
+		for (let index = 0; index < 8; index += 1) {
+			if (interruptedTurns.has(turnId)) return finishTurn(sessionId, turnId, "cancelled");
+			const dripId = `item-${turnId}-drip-${index}`;
+			notify("item/started", {
+				item: { itemId: dripId, kind: "agentMessage", revision: 1, status: "inProgress", turnId, text: "" },
+				sessionId,
+				viewCursor: nextCursor(sessionId),
+			});
+			await delay(25);
+			notify("item/completed", {
+				item: { itemId: dripId, kind: "agentMessage", revision: 2, status: "completed", turnId, text: `drip ${index}` },
+				sessionId,
+				sourceRange: range(),
+			});
+		}
 	}
 	if (scripted.context) {
 		notify("session/contextUsage", {

@@ -468,6 +468,25 @@ test("Muse native timeout errors redact prompt text", async (t) => {
 	assert.equal(failure.message.includes("hunter2"), false);
 });
 
+test("Muse native turn timeout is idle-based and survives steady activity", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const active = new AgentRuntimeAdapterRegistry();
+	active.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);
+	active.registerInstance({
+		id: "muse-native-drip",
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		config: runtimeConfig(root, { requestTimeoutMs: 100 }),
+	});
+	const session = await active.openSession("muse-native-drip", openInput("muse-native-drip", root, unboundBinding("muse-native-drip", "ps_muse_drip")));
+	disposers.push(() => session.dispose());
+	// ~200ms of steady items with a 100ms budget: only an idle timeout survives this.
+	await session.prompt({ text: "steady work [drip]", source: "interactive" });
+	await assert.rejects(
+		() => session.prompt({ text: "slow work [slow]", source: "interactive" }),
+		/timed out after 100ms without activity/,
+	);
+});
+
 test("Muse native compaction times out on a hanging host", async (t) => {
 	const { root, fakeStateDir, disposers } = await testRoot(t);
 	const { session } = await openFreshSession(t, root, "compacthang", disposers, { requestTimeoutMs: 500 });
