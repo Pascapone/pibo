@@ -373,3 +373,29 @@ test('app contribution cannot acquire a dependency on a selected agent tool', ()
 	assert.equal(plan.valid, false);
 	assert.equal(plan.contributions.some(c => c.id === 'mixed/app'), false);
 });
+
+test('runtime-unsupported diagnostics attribute the failing contribution, not the dependency root', () => {
+	const request = input([
+		installation('a', [contribution('entry', { required: true, dependsOn: ['b/private'] })]),
+		installation('b', [contribution('private', { defaultEnabled: false, runtime: { adapterIds: ['pi'] } })]),
+	], { runtime: { adapterId: 'omp', instanceId: 'omp', capabilities: {} } });
+	const plan = resolvePluginContributions(request);
+	const diagnostic = plan.diagnostics.find((entry) => entry.code === 'runtime-unsupported');
+	assert.ok(diagnostic);
+	assert.equal(diagnostic.pluginId, 'b');
+	assert.equal(diagnostic.contributionId, 'b/private');
+	assert.deepEqual(diagnostic.path, ['a/entry', 'b/private']);
+});
+
+test('delivery-mode requirements test the runtime delivery vocabulary', () => {
+	const installs = [installation('a', [contribution('delivery', { runtime: { deliveryModes: ['mcp'] } })])];
+	const missing = resolvePluginContributions(input(installs, { runtime: { adapterId: 'pi', instanceId: 'pi', capabilities: {} } }));
+	assert.ok(missing.diagnostics.some((diagnostic) =>
+		diagnostic.code === 'runtime-unsupported' && diagnostic.message === 'Delivery mode mcp is required'
+		&& diagnostic.pluginId === 'a' && diagnostic.contributionId === 'a/delivery'));
+	const satisfied = resolvePluginContributions(input(installs, {
+		runtime: { adapterId: 'pi', instanceId: 'pi', capabilities: {}, deliveryModes: ['mcp', 'stdio'] },
+	}));
+	assert.equal(satisfied.diagnostics.some((diagnostic) => diagnostic.code === 'runtime-unsupported'), false);
+	assert.deepEqual(satisfied.contributions.map((entry) => entry.id), ['a/delivery']);
+});

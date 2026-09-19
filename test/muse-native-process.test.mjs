@@ -189,6 +189,8 @@ test("Muse native generation auth seeds both HOME and XDG config roots", async (
 				sessionGeneration,
 				getAdapterEnvironment: () => ({}),
 				getMcpConfigPath: () => undefined,
+				getInspection: () => ({ skills: [], diagnostics: [] }),
+				getContextContributions: () => [],
 			},
 		},
 	});

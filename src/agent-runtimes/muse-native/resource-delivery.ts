@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 import type { PiboRuntimeResourceSession } from "../../agent-runtime/resources.js";
 import type { PiboPortableToolSession, PiboToolMcpAccess } from "../../tools/session-service.js";
 
@@ -44,6 +45,32 @@ export type MuseNativeResourceDeliveryInput = {
 export type MuseNativeResourceWarning = {
 	code: "muse_native_tool_credential_expiring" | "muse_native_tool_credential_expired";
 	message: string;
+};
+
+/** Degraded delivery mode: selected skills and context ride the first turn text. */
+export const MUSE_TURN_PREFIX_DELIVERY_MODE = "muse-turn-prefix";
+
+const MAX_PREFIX_SECTIONS = 128;
+const MAX_PREFIX_SECTION_BYTES = 256 * 1024;
+const MAX_PREFIX_BYTES = 1024 * 1024;
+const MAX_SKILL_SIBLINGS = 128;
+
+export type MuseNativeSelectedSkill = {
+	contributionId: string;
+	name: string;
+	sourcePath: string;
+	/** SKILL.md body; undefined when the skill already failed resource preparation. */
+	content?: string;
+	/** Skill-directory entries besides SKILL.md; never delivered through the turn prefix. */
+	siblingFiles: readonly string[];
+};
+
+export type MuseNativeTurnPrefix = {
+	text: string;
+	/** Canonical hash over the selected skills and context contents. */
+	hash: string;
+	skillContributionIds: readonly string[];
+	contextContributionIds: readonly string[];
 };
 
 function boundedString(value: unknown, label: string, maxLength: number): string {
@@ -168,6 +195,103 @@ async function readMaterializedMcpServers(resources: PiboRuntimeResourceSession 
 	return servers;
 }
 
+function singleLine(value: string, maxLength: number): string {
+	return value.replace(/[\r\n]+/g, " ").slice(0, maxLength);
+}
+
+async function readSelectedSkills(resources: PiboRuntimeResourceSession | undefined): Promise<MuseNativeSelectedSkill[]> {
+	if (!resources) return [];
+	const inspection = resources.getInspection();
+	const failed = new Set(
+		inspection.diagnostics
+			.filter((diagnostic) => diagnostic.severity === "error" && diagnostic.contributionId)
+			.map((diagnostic) => diagnostic.contributionId as string),
+	);
+	const selected: MuseNativeSelectedSkill[] = [];
+	for (const skill of inspection.skills) {
+		const skillFile = basename(skill.sourcePath);
+		const siblings = await readdir(dirname(skill.sourcePath)).then(
+			(entries) => entries.filter((entry) => entry !== skillFile).slice(0, MAX_SKILL_SIBLINGS).sort(),
+			() => [] as string[],
+		);
+		if (failed.has(skill.contributionId)) {
+			selected.push({ contributionId: skill.contributionId, name: skill.name, sourcePath: skill.sourcePath, siblingFiles: siblings });
+			continue;
+		}
+		let content: string;
+		try {
+			content = await readFile(skill.sourcePath, "utf8");
+		} catch (error) {
+			throw new Error(`Native Muse skill "${skill.name}" could not be loaded: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		if (!content.trim()) throw new Error(`Native Muse skill "${skill.name}" is empty.`);
+		selected.push({ contributionId: skill.contributionId, name: skill.name, sourcePath: skill.sourcePath, content, siblingFiles: siblings });
+	}
+	return selected;
+}
+
+/**
+ * MSP 1.3.0 session config carries only MCP servers, so selected skills and
+ * context are rendered once as turn text. The canonical hash covers the exact
+ * selection contents; resume compares it to detect changed selections.
+ */
+export function buildMuseNativeTurnPrefix(
+	skills: readonly MuseNativeSelectedSkill[],
+	context: ReturnType<PiboRuntimeResourceSession["getContextContributions"]>,
+	kind: "initial" | "updated" = "initial",
+): MuseNativeTurnPrefix | undefined {
+	const skillSections = skills.filter((skill) => skill.content?.trim());
+	const contextSections = context.filter((contribution) =>
+		!contribution.nativeDiscovered && contribution.content?.trim());
+	if (skillSections.length + contextSections.length === 0) return undefined;
+	if (skillSections.length + contextSections.length > MAX_PREFIX_SECTIONS) {
+		throw new Error(`Native Muse turn prefix exceeds ${MAX_PREFIX_SECTIONS} sections.`);
+	}
+	const hash = createHash("sha256").update(JSON.stringify({
+		skills: skillSections.map((skill) => [skill.contributionId, skill.content]),
+		context: contextSections.map((contribution) => [contribution.id, contribution.content]),
+	})).digest("hex");
+	let totalBytes = 0;
+	const renderSection = (heading: string, content: string): string => {
+		const bytes = Buffer.byteLength(content, "utf8");
+		if (bytes > MAX_PREFIX_SECTION_BYTES) {
+			throw new Error(`Native Muse turn prefix section "${heading}" exceeds ${MAX_PREFIX_SECTION_BYTES} bytes.`);
+		}
+		totalBytes += bytes;
+		if (totalBytes > MAX_PREFIX_BYTES) throw new Error(`Native Muse turn prefix exceeds ${MAX_PREFIX_BYTES} bytes.`);
+		return [`## ${singleLine(heading, 256)}`, "", content].join("\n");
+	};
+	const blocks: string[] = [];
+	if (skillSections.length > 0) {
+		blocks.push([
+			"# Pibo-Selected Skills",
+			"",
+			kind === "updated"
+				? "The skill selection changed since this session started; the following replaces the earlier injected skills. Skills listed here are Pibo knowledge, not host-invocable skills unless the host catalog matches them by name."
+				: "The following Pibo-selected skills are injected because the Muse host exposes skills only as a read-only catalog with no delivery seam. Skills listed here are Pibo knowledge, not host-invocable skills unless the host catalog matches them by name.",
+			"",
+			...skillSections.map((skill) => renderSection(skill.name, skill.content as string)),
+		].join("\n\n"));
+	}
+	if (contextSections.length > 0) {
+		blocks.push([
+			"# Pibo-Selected Context",
+			"",
+			kind === "updated"
+				? "The context selection changed since this session started; the following replaces the earlier injected context. They do not replace Muse native system instructions or native tools."
+				: "The following contributions are additive context selected by Pibo. They do not replace Muse native system instructions or native tools.",
+			"",
+			...contextSections.map((contribution) => renderSection(contribution.label, contribution.content as string)),
+		].join("\n\n"));
+	}
+	return {
+		text: blocks.join("\n\n---\n\n"),
+		hash,
+		skillContributionIds: skillSections.map((skill) => skill.contributionId),
+		contextContributionIds: contextSections.map((contribution) => contribution.id),
+	};
+}
+
 export class MuseNativeResourceDelivery {
 	private constructor(
 		private readonly access: PiboToolMcpAccess | undefined,
@@ -176,11 +300,25 @@ export class MuseNativeResourceDelivery {
 		readonly environment: Readonly<NodeJS.ProcessEnv>,
 		readonly enabledToolNames: readonly string[],
 		readonly hasMcpServers: boolean,
+		readonly selectedSkills: readonly MuseNativeSelectedSkill[],
+		readonly turnPrefix: MuseNativeTurnPrefix | undefined,
+		private readonly contextContributions: ReturnType<PiboRuntimeResourceSession["getContextContributions"]>,
 		private expiresAtMs: number | undefined,
 		private disposed = false,
 	) {}
 
+	/** Re-renders the armed prefix; the canonical hash is kind-independent. */
+	renderTurnPrefix(kind: "initial" | "updated"): MuseNativeTurnPrefix | undefined {
+		if (!this.turnPrefix) return undefined;
+		if (kind === "initial") return this.turnPrefix;
+		return buildMuseNativeTurnPrefix(this.selectedSkills, this.contextContributions, kind);
+	}
+
 	static async prepare(input: MuseNativeResourceDeliveryInput): Promise<MuseNativeResourceDelivery> {
+		// Skills and context first: bounds and IO failures abort before any tool credential is issued.
+		const selectedSkills = await readSelectedSkills(input.resources);
+		const contextContributions = input.resources?.getContextContributions() ?? [];
+		const turnPrefix = buildMuseNativeTurnPrefix(selectedSkills, contextContributions);
 		const servers: MuseNativeSessionMcpConfig = {};
 		const externalNames = new Set<string>();
 		const resourceEnvironment = input.resources?.getAdapterEnvironment() ?? {};
@@ -260,6 +398,9 @@ export class MuseNativeResourceDelivery {
 			environment,
 			enabledToolNames,
 			Object.keys(servers).length > 0,
+			selectedSkills,
+			turnPrefix,
+			contextContributions,
 			Number.isSafeInteger(expiresAtMs) ? (expiresAtMs as number) : undefined,
 		);
 	}

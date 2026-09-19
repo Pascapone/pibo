@@ -661,6 +661,8 @@ test("Muse native session open fails clearly when the host withholds sessionMcp"
 				sessionGeneration: "gen-capdeny-1",
 				getAdapterEnvironment: () => ({}),
 				getMcpConfigPath: () => mcpConfigPath,
+				getInspection: () => ({ skills: [], diagnostics: [] }),
+				getContextContributions: () => [],
 			},
 		},
 		...overrides,
@@ -954,6 +956,8 @@ test("Muse native sandbox toggle restarts the host and preserves the session", a
 				sessionGeneration: "gen-sandbox-toggle-1",
 				getAdapterEnvironment: () => ({}),
 				getMcpConfigPath: () => mcpConfigPath,
+				getInspection: () => ({ skills: [], diagnostics: [] }),
+				getContextContributions: () => [],
 			},
 		},
 	};
