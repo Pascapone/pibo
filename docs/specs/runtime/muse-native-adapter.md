@@ -1,7 +1,7 @@
 ---
 type: "Specification"
 title: "Muse Native Runtime Adapter"
-description: "Defines the native Muse (MSP) runtime registration, SDK-driven host lifecycle, session and turn operations, approvals, models, auth, and normalized events."
+description: "Defines the native Muse (MSP) runtime registration, SDK-driven host lifecycle, session and turn operations, approvals, models, sandbox control, auth, and normalized events."
 tags: ["runtime", "muse-native", "adapter", "msp", "sdk"]
 status: "draft"
 authority: "normative"
@@ -11,7 +11,7 @@ generated:
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "64064fded224866ead9981b94b4197e1e616ea3d"
+  commit: "ad7d33bc4f70e6a407c93c727e4881e2f697bdec"
   requirements:
     - id: "RUN-MUS-001"
       status: "implemented"
@@ -113,6 +113,27 @@ traceability:
         - "Intent rides tool_call and tool_execution_started only; updated and finished carry none."
         - "Tools without a model-authored description omit intent and are hidden in intent display modes."
       confidence: "high"
+    - id: "RUN-MUS-007"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/muse-native/adapter.ts"
+          symbol: "MuseNativeSession.setSandbox"
+        - path: "src/core/capabilities.ts"
+          symbol: "CoreCapabilitiesPlugin.register"
+      tests:
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native sandbox toggle restarts the host and preserves the session"
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native session open resolves profile sandbox options above instance config"
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native sandbox toggle override wins on reopen"
+        - path: "test/sandbox-gateway-action.test.mjs"
+          name: "sandbox gateway action toggles the runtime sandbox"
+      failures:
+        - "Sandbox changes are idle-only and replace the host before changing the live session reference."
+        - "The same native session id and selected session MCP configuration survive the replacement host resume."
+        - "The explicit toggle override persists in binding metadata and wins when the Pibo Session reopens."
+      confidence: "high"
 ---
 
 # Scope
@@ -128,12 +149,12 @@ Planned changes and behavior owned by related concepts are outside its normative
 - Turns: Prompts submit `turn/start` with text input and per-turn reasoning effort; deltas, items, usage, and terminals map to normalized semantic events. Steering submits on the steer lane while a turn runs; abort issues `turn/interrupt`. The turn timeout is idle-based: streamed items and deltas extend the `requestTimeoutMs` budget, and only silence trips it. A silent window triggers an `approval/listPending` host liveness probe; a responsive host earns up to three windows total (provider retry backoff stays silent on the turn streams), while an unresponsive host fails at the first window. The timeout message reports total silence and host responsiveness. The default `requestTimeoutMs` is 30 minutes with a 30-minute ceiling; long silent-but-healthy work such as builds and test suites is expected to fit one window.
 - Approvals: Native approval requests park in the adapter until Pibo responds with a server-offered choice; disposal aborts parked approvals explicitly.
 - Models: The catalog reads `model/list`; in-session switches use `session/setModel`; reasoning defaults sync with `session/setReasoningEffort` while per-turn options always carry the selected value.
-- Profiles: `runtimeOptions.approvalMode` is exposed through the models `optionsSchema` and applied at session start. The profile thinking level seeds the initial reasoning effort (`off` maps to `none`); persisted session settings take precedence on resume. Mid-session reasoning changes accept `off` as `none`, matching the seed mapping.
-- Resources: Selected Pibo tools ride the session-scoped tool MCP bridge as a `streamableHttp` session server; selected external MCP servers map to `streamableHttp`/`stdio` session servers. The host sends headers verbatim without `${VAR}` interpolation, so secret values are resolved against the scoped environment before delivery; the portable-tool credential keeps its 5-minute TTL, same-token renewal, and revocation on disposal. Reopen re-sends the fresh session MCP config on `session/resume` so rotated credentials reach the host (host honor of resume config is not yet live-verified).
+- Profiles: `runtimeOptions.approvalMode` and `runtimeOptions.sandbox` (`auto`, `enabled`, or `disabled`) are exposed through the models `optionsSchema` and applied at session start. The profile thinking level seeds the initial reasoning effort (`off` maps to `none`); persisted session settings take precedence on resume. Mid-session reasoning changes accept `off` as `none`, matching the seed mapping.
+- Resources: Selected Pibo tools ride the session-scoped tool MCP bridge as a `streamableHttp` session server; selected external MCP servers map to `streamableHttp`/`stdio` session servers. The host sends headers verbatim without `${VAR}` interpolation, so secret values are resolved against the scoped environment before delivery; the portable-tool credential keeps its 5-minute TTL, same-token renewal, and revocation on disposal. Reopen, same-host intake recovery, and sandbox host replacement all re-send the current session MCP config on `session/resume` so selected servers and rotated credentials reach the host (host honor of resume config is not yet live-verified).
 - Intent: Tool calls move a trimmed, redacted, 512-char-bounded model-authored `description` arg (when present) into the shared `intent` slot on `tool_call` and `tool_execution_started` and strip it from the emitted args (Pi-style), so views never show it twice; the full wire args stay available in the native session log. Intent is opportunistic: only tools whose schema carries `description` (observed: shell) emit it; tools without one omit intent and are hidden in intent display modes, matching OMP. `tools.intentTracing` reports supported, non-configurable, enabled-by-default.
 - Failure: Only the normalized `sessionNotFound` outcome is authoritative absence. Auth, startup, protocol, permission, and transient inspection failures remain unavailable errors and never authorize reconstruction.
 - Security: The child uses a private generation home and environment allowlist; credentials and sensitive diagnostics are redacted; tool credentials are scoped and revoked on disposal.
-- Sandbox: Shell sandboxing follows config `sandbox` (`auto` by default). On Linux, `auto` starts the host with `--disable-sandbox` and a warning diagnostic when bubblewrap is missing or non-functional, or when the muse executable lives inside the session workspace (which the sandbox refuses); `enabled` forces sandboxing and `disabled` always turns it off. Other platforms keep the default host posture.
+- Sandbox: Shell sandboxing follows the persisted Session override, then profile `runtimeOptions.sandbox`, then instance config `sandbox` (`auto` by default). On Linux, `auto` starts the host with `--disable-sandbox` and a warning diagnostic when bubblewrap is missing or non-functional, or when the muse executable lives inside the session workspace (which the sandbox refuses); `enabled` forces sandboxing and `disabled` always turns it off. Other platforms keep the default host posture. The `sandbox` gateway action and `/sandbox` command are idle-only controls: they start a replacement host with the opposite effective posture, require `sessionMcp` again when selected resources need it, resume the same native session with the current MCP config, atomically adopt the replacement only after resume succeeds, persist the explicit override in binding metadata, then close the prior host. Runtimes without sandbox controls return an unsupported result without mutation.
 - Auth seeding: Each generation copies the instance `auth.json` to both `$HOME/.config/muse/auth.json` and `$XDG_CONFIG_HOME/muse/auth.json`, because the host resolves its config root from `XDG_CONFIG_HOME` when the adapter sets it. `startAuth` merges `providers.meta.api_key` into the stored file and preserves subscription (device-login) bundles and other providers. Logout removes only `providers.meta.api_key` and refuses to delete an unparseable file.
 
 # Requirements and invariants
@@ -162,6 +183,10 @@ Muse Native binding inspection SHALL re-read the bound native session through a 
 
 Muse Native SHALL expose a model-authored tool `description` as normalized intent on `tool_call` and `tool_execution_started` events (trimmed, redacted, bounded to 512 characters), strip it from the emitted args so views never show it twice, omit intent when no description is present, and report `tools.intentTracing` as supported, non-configurable, and enabled by default.
 
+## Requirement: RUN-MUS-007
+
+Muse Native SHALL expose validated profile sandbox options and an idle-only runtime sandbox toggle that replaces the host without replacing the native session, retains selected session MCP delivery, persists the explicit Session override, and leaves the current host and binding untouched when replacement startup or resume fails.
+
 # Interfaces and ownership
 
 Implemented public contracts:
@@ -187,11 +212,12 @@ Related ownership boundaries:
 
 - Startup, request, and shutdown budgets are bounded; one redacted terminal failure is emitted per failed turn.
 - A turn submit rejected as conflicting with an existing event triggers one same-host session re-sync and a single prompt retry; all other rejections surface immediately.
+- Sandbox replacement starts and resumes the candidate host before the live host reference changes; a failed candidate is closed, while the existing host and binding remain active.
 - The child uses a private generation home and environment allowlist; credentials and sensitive diagnostics are redacted; tool credentials are scoped and revoked on disposal.
 
 # Known limits
 
-- Live-host verification: the core path (auth merge, provider catalog, session open, reasoning selection, one inference turn) is verified against released `muse` 1.3.0 with subscription auth (`muse-spark-1.3-contributor`, reasoning `none`). Remaining live-host gaps before production use: honoring of `config.mcpServers` on start and resume, approval-mode enforcement, and fork/cancel edge semantics.
+- Live-host verification: the core path (auth merge, provider catalog, session open, reasoning selection, one inference turn) is verified against released `muse` 1.3.0 with subscription auth (`muse-spark-1.3-contributor`, reasoning `none`). Remaining live-host gaps before production use: honoring of `config.mcpServers` on start and resume, the sandbox replacement/resume control, approval-mode enforcement, and fork/cancel edge semantics.
 - Session-stable native session store (fixed 2026-09-19; previously generation-scoped, proven against released `muse` 1.3.0): the host persists native sessions under `XDG_DATA_HOME`, which now points at `<sessionRoot>/xdg-data` outside the wiped generation root, so resume survives rebind, restart, and disposal with per-Pibo-session isolation preserved; `MUSE_HOME` is ignored by the host. The sticky probe session now survives its inspection host as well (retiring on host-authored rejection remains as a self-heal).
 - No durable first-use claim: unlike Codex Native, the first native turn has no cross-process exactly-once binding claim; concurrent routers opening the same unbound binding can start duplicate native sessions.
 - Portable history import is unsupported; cross-runtime continuation reseeds from Pibo product history only.
