@@ -14070,6 +14070,18 @@
       "file_bytes": 11794,
       "file_sha256": "59b08d324f93b9daef2a255dd47d7ae09f2478d72d4624f7d9ce55edb6e1ecdb",
       "body_sha256": "84efc22165fb37581e45f030d1fd5757dfeccf3898a8ff5f4ebdba58eeb56310"
+    },
+    {
+      "path": "docs/plans/muse-turn-timeout-user-nudge-and-snooze.md",
+      "state": "conformant",
+      "classification": "Muse turn timeout user nudge and snooze plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null,
+      "file_bytes": 4550,
+      "file_sha256": "f75c675646502794f27800d871ace037de6e7d4d2774b03c4a5fc214300b1729",
+      "body_sha256": "de2be8d0e2c46c8e7794dcb6475f8a52fbe0fbefbc93027290344b17680e4fbf"
     }
   ]
 }
