@@ -121,7 +121,7 @@ function discoverMarkdown(projectRoot) {
 	};
 }
 
-function validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer }) {
+function validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer, validDirs }) {
 	const prefix = layer === "okf-core" ? "OKF_PATH" : "MIGRATION_PATH";
 	if (typeof path !== "string" || !path || path.includes("\\") || posix.isAbsolute(path)) {
 		reporter.error(`${prefix}_INVALID`, String(path), "Markdown paths must be normalized repository-relative paths.", layer);
@@ -142,7 +142,9 @@ function validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer }) 
 	try {
 		for (const [index, segment] of segments.entries()) {
 			current = join(current, segment);
+			if (index < segments.length - 1 && validDirs?.has(current)) continue;
 			const stat = lstatSync(current);
+			if (index < segments.length - 1 && stat.isDirectory() && !stat.isSymbolicLink()) validDirs?.add(current);
 			if (stat.isSymbolicLink()) {
 				reporter.error(`${prefix}_SYMLINK`, path, `Markdown path contains a symbolic link at ${normalizePath(relative(root, current))}.`, layer);
 				return false;
@@ -163,9 +165,9 @@ function validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer }) 
 	return true;
 }
 
-function validateRepositoryMarkdownPaths({ projectRoot, paths, reporter, layer }) {
+function validateRepositoryMarkdownPaths({ projectRoot, paths, reporter, layer, validDirs }) {
 	const result = new Map();
-	for (const path of paths) result.set(path, validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer }));
+	for (const path of paths) result.set(path, validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer, validDirs }));
 	return result;
 }
 
@@ -222,7 +224,7 @@ function createReporter(mode) {
 	};
 }
 
-function validateReserved({ content, path, docsRoot, projectRoot, strictLinks, requirePiboVersion, requirePiboLog, reporter }) {
+function validateReserved({ content, path, docsRoot, projectRoot, strictLinks, requirePiboVersion, requirePiboLog, reporter, pathCache }) {
 	const basename = posix.basename(path);
 	const isRootIndex = basename === "index.md" && resolve(projectRoot, path) === join(docsRoot, "index.md");
 	const issues = basename === "index.md"
@@ -236,14 +238,14 @@ function validateReserved({ content, path, docsRoot, projectRoot, strictLinks, r
 			reporter.error("PIBO_OKF_VERSION", path, 'The bundle root must declare okf_version: "0.2".', "pibo-profile");
 		}
 	}
-	if (strictLinks) validateLinks({ content, path, docsRoot, projectRoot, reporter });
+	if (strictLinks) validateLinks({ content, path, docsRoot, projectRoot, reporter, pathCache });
 }
 
 function validateCoreConcept({ content, path, reporter }) {
 	for (const issue of validateCoreConceptContent(content)) reporter.error(issue.code, path, issue.message, "okf-core");
 }
 
-function inspectLocalLinks({ content, path, docsRoot, projectRoot, reporter }) {
+function inspectLocalLinks({ content, path, docsRoot, projectRoot, reporter, pathCache }) {
 	const failures = [];
 	for (const link of markdownLinks(content)) {
 		let target;
@@ -258,7 +260,7 @@ function inspectLocalLinks({ content, path, docsRoot, projectRoot, reporter }) {
 			failures.push({ code: "PIBO_LINK_ESCAPE", target: link, message: `Internal link escapes the bundle: ${link}` });
 			continue;
 		}
-		if (!existsSync(target)) failures.push({ code: "PIBO_LINK_MISSING", target: link, message: `Internal link target does not exist: ${link}` });
+		if (!cachedExists(pathCache, target)) failures.push({ code: "PIBO_LINK_MISSING", target: link, message: `Internal link target does not exist: ${link}` });
 	}
 	return failures;
 
@@ -343,28 +345,37 @@ function validatePreservedBodyLinks({ data, body, failures, path, reporter }) {
 	}
 }
 
-function validateLinks({ content, path, docsRoot, projectRoot, reporter, data, body }) {
-	const failures = inspectLocalLinks({ content, path, docsRoot, projectRoot, reporter });
+function validateLinks({ content, path, docsRoot, projectRoot, reporter, data, body, pathCache }) {
+	const failures = inspectLocalLinks({ content, path, docsRoot, projectRoot, reporter, pathCache });
 	if (data) validatePreservedBodyLinks({ data, body, failures, path, reporter });
 	else for (const failure of failures) reporter.error(failure.code, path, failure.message);
 }
 
-function validateSourceResource({ resource, path, docsRoot, projectRoot, reporter }) {
+function validateSourceResource({ resource, path, docsRoot, projectRoot, reporter, pathCache }) {
 	if (typeof resource !== "string" || !resource.trim()) {
 		reporter.error("PIBO_SOURCE_RESOURCE", path, "Each sources entry requires a non-empty resource.");
 		return;
 	}
 	if (resource.startsWith("scope:") || isExternal(resource)) return;
 	const target = resolveLocalPath({ projectRoot, docsRoot, documentPath: path, value: resource });
-	if (target && !existsSync(target)) reporter.error("PIBO_SOURCE_PATH", path, `Declared source path does not exist: ${resource}`);
+	if (target && !cachedExists(pathCache, target)) reporter.error("PIBO_SOURCE_PATH", path, `Declared source path does not exist: ${resource}`);
 }
 
-function gitCommitExists(projectRoot, commit) {
+const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+
+function createGitCache() {
+	return { commits: new Map(), trees: new Map() };
+}
+
+function gitCommitExists(projectRoot, commit, commitCache) {
+	if (commitCache?.has(commit)) return commitCache.get(commit);
 	const result = spawnSync("git", ["-C", projectRoot, "cat-file", "-e", `${commit}^{commit}`], { encoding: "utf8" });
-	return result.status === 0;
+	const exists = result.status === 0;
+	commitCache?.set(commit, exists);
+	return exists;
 }
 
-function deriveLedgerTrustAnchor(projectRoot, ledgerRepositoryPath) {
+function deriveLedgerTrustAnchor(projectRoot, ledgerRepositoryPath, gitCache) {
 	const shallow = spawnSync("git", ["-C", projectRoot, "rev-parse", "--is-shallow-repository"], { encoding: "utf8" });
 	if (shallow.status !== 0 || shallow.stdout.trim() !== "false") return { error: "Ledger introduction requires a complete, non-shallow reachable history." };
 	const history = spawnSync("git", ["-C", projectRoot, "rev-list", "--parents", "HEAD"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
@@ -394,7 +405,7 @@ function deriveLedgerTrustAnchor(projectRoot, ledgerRepositoryPath) {
 	introductions.sort();
 	if (introductions.length !== 1) return { error: `Expected exactly one ledger introduction in complete reachable history, found ${introductions.length}${introductions.length ? `: ${introductions.join(", ")}` : ""}.` };
 	const introduction = introductions[0];
-	if (!gitFileAtCommit(projectRoot, introduction, ledgerRepositoryPath)) return { error: `Ledger introduction is not a regular Git blob at ${introduction}.` };
+	if (!gitFileAtCommit(projectRoot, introduction, ledgerRepositoryPath, gitCache?.trees)) return { error: `Ledger introduction is not a regular Git blob at ${introduction}.` };
 	const parents = graph.get(introduction);
 	if (parents.length !== 1) {
 		return { error: `Ledger introduction commit ${introduction} must have exactly one resolvable parent.` };
@@ -412,17 +423,66 @@ function readRepositoryControlFile({ projectRoot, repositoryPath, reporter, code
 	}
 }
 
-function normalizedEvidencePath(projectRoot, value) {
+function createPathCache(projectRoot) {
+	return { root: resolve(projectRoot), realRoot: null, realpaths: new Map(), exists: new Map(), content: new Map() };
+}
+
+function cachedExists(pathCache, absolute) {
+	if (!pathCache) return existsSync(absolute);
+	let hit = pathCache.exists.get(absolute);
+	if (hit === undefined) {
+		hit = existsSync(absolute);
+		pathCache.exists.set(absolute, hit);
+	}
+	return hit;
+}
+
+function cachedReadFile(pathCache, absolute) {
+	if (!pathCache) return readFileSync(absolute, "utf8");
+	let content = pathCache.content.get(absolute);
+	if (content === undefined) {
+		content = readFileSync(absolute, "utf8");
+		pathCache.content.set(absolute, content);
+	}
+	return content;
+}
+
+function cachedRealpath(pathCache, absolute) {
+	if (!pathCache) return realpathSync(absolute);
+	let resolved = pathCache.realpaths.get(absolute);
+	if (resolved === undefined) {
+		resolved = realpathSync(absolute);
+		pathCache.realpaths.set(absolute, resolved);
+	}
+	return resolved;
+}
+
+function normalizedEvidencePath(projectRoot, value, pathCache) {
 	if (typeof value !== "string" || value !== value.trim() || !value || value.includes("\\") || /\p{Cc}/u.test(value) || posix.isAbsolute(value) || /[*?{}[\]]/.test(value)) return null;
 	const segments = value.split("/");
 	if (segments.some((segment) => !segment || segment === "." || segment === "..") || posix.normalize(value) !== value) return null;
 	const absolute = resolve(projectRoot, value);
 	if (!isInside(projectRoot, absolute)) return null;
-	if (existsSync(absolute) && !isInside(realpathSync(projectRoot), realpathSync(absolute))) return null;
+	if (pathCache) {
+		pathCache.realRoot ??= realpathSync(pathCache.root);
+		if (cachedExists(pathCache, absolute) && !isInside(pathCache.realRoot, cachedRealpath(pathCache, absolute))) return null;
+	} else if (existsSync(absolute) && !isInside(realpathSync(projectRoot), realpathSync(absolute))) return null;
 	return value;
 }
 
-function gitFileAtCommit(projectRoot, commit, evidencePath) {
+export function gitCommitRegularFiles(projectRoot, commit, treeCache) {
+	if (treeCache?.has(commit)) return treeCache.get(commit);
+	const files = gitRegularFilesAtCommit(projectRoot, commit);
+	const result = files ? new Set(files.keys()) : null;
+	treeCache?.set(commit, result);
+	return result;
+}
+
+export function gitFileAtCommit(projectRoot, commit, evidencePath, treeCache) {
+	if (treeCache) {
+		const tree = gitCommitRegularFiles(projectRoot, commit, treeCache);
+		if (tree) return tree.has(evidencePath);
+	}
 	const result = spawnSync("git", ["-C", projectRoot, "ls-tree", "-z", commit, "--", evidencePath], { encoding: "utf8" });
 	if (result.status !== 0 || !result.stdout) return false;
 	const entries = result.stdout.split("\0").filter(Boolean);
@@ -430,7 +490,7 @@ function gitFileAtCommit(projectRoot, commit, evidencePath) {
 	const tab = entries[0].indexOf("\t");
 	if (tab < 0 || entries[0].slice(tab + 1) !== evidencePath) return false;
 	const [mode, type] = entries[0].slice(0, tab).split(" ", 3);
-	return type === "blob" && ["100644", "100755"].includes(mode);
+	return type === "blob" && REGULAR_FILE_MODES.has(mode);
 }
 
 function gitRegularFilesAtCommit(projectRoot, commit) {
@@ -444,7 +504,7 @@ function gitRegularFilesAtCommit(projectRoot, commit) {
 		const tab = entry.indexOf("\t");
 		if (tab < 0) continue;
 		const [mode, type, object] = entry.slice(0, tab).split(" ");
-		if (type === "blob" && ["100644", "100755"].includes(mode)) files.set(entry.slice(tab + 1), object);
+		if (type === "blob" && REGULAR_FILE_MODES.has(mode)) files.set(entry.slice(tab + 1), object);
 	}
 	return files;
 }
@@ -493,16 +553,16 @@ function scanSpecificationBody(body) {
 	return { headings, commentDelimiters };
 }
 
-function validateTraceEvidencePath({ value, commit, label, id, path, projectRoot, reporter }) {
-	const normalized = normalizedEvidencePath(projectRoot, value);
+function validateTraceEvidencePath({ value, commit, label, id, path, projectRoot, reporter, gitCache, pathCache }) {
+	const normalized = normalizedEvidencePath(projectRoot, value, pathCache);
 	if (!normalized) {
 		reporter.error(`PIBO_TRACE_${label}_PATH`, path, `Requirement ${id ?? "<unknown>"} has an invalid repository-relative ${label.toLowerCase()} path: ${String(value)}`);
 		return;
 	}
-	if (!gitFileAtCommit(projectRoot, commit, normalized)) reporter.error(`PIBO_TRACE_${label}_PATH`, path, `Requirement ${id ?? "<unknown>"} ${label.toLowerCase()} path is not a regular file at traceability.commit: ${normalized}`);
+	if (!gitFileAtCommit(projectRoot, commit, normalized, gitCache?.trees)) reporter.error(`PIBO_TRACE_${label}_PATH`, path, `Requirement ${id ?? "<unknown>"} ${label.toLowerCase()} path is not a regular file at traceability.commit: ${normalized}`);
 }
 
-function validateTraceability({ data, body, path, projectRoot, reporter, requirementIds }) {
+function validateTraceability({ data, body, path, projectRoot, reporter, requirementIds, gitCache, pathCache }) {
 	if (data.type !== "Specification") return;
 	const bodySyntax = scanSpecificationBody(body);
 	for (const occurrence of bodySyntax.commentDelimiters) {
@@ -514,7 +574,7 @@ function validateTraceability({ data, body, path, projectRoot, reporter, require
 		return;
 	}
 	const commit = trace.commit;
-	const commitValid = GIT_SHA_RE.test(commit ?? "") && gitCommitExists(projectRoot, commit);
+	const commitValid = GIT_SHA_RE.test(commit ?? "") && gitCommitExists(projectRoot, commit, gitCache?.commits);
 	if (!commitValid) reporter.error("PIBO_TRACE_COMMIT", path, "traceability.commit must identify a real commit in the current repository.");
 	if (!Array.isArray(trace.requirements) || trace.requirements.length === 0) {
 		reporter.error("PIBO_TRACE_REQUIREMENTS", path, "traceability.requirements must be a non-empty list.");
@@ -536,16 +596,16 @@ function validateTraceability({ data, body, path, projectRoot, reporter, require
 			reporter.error("PIBO_TRACE_SOURCES", path, `Requirement ${id ?? "<unknown>"} requires source paths.`);
 		} else {
 			for (const source of requirement.sources) {
-				if (commitValid) validateTraceEvidencePath({ value: source?.path, commit, label: "SOURCE", id, path, projectRoot, reporter });
-				else if (!normalizedEvidencePath(projectRoot, source?.path)) reporter.error("PIBO_TRACE_SOURCE_PATH", path, `Requirement ${id ?? "<unknown>"} has an invalid repository-relative source path: ${String(source?.path)}`);
+				if (commitValid) validateTraceEvidencePath({ value: source?.path, commit, label: "SOURCE", id, path, projectRoot, reporter, gitCache, pathCache });
+				else if (!normalizedEvidencePath(projectRoot, source?.path, pathCache)) reporter.error("PIBO_TRACE_SOURCE_PATH", path, `Requirement ${id ?? "<unknown>"} has an invalid repository-relative source path: ${String(source?.path)}`);
 				const symbolValid = typeof source?.symbol === "string" && source.symbol === source.symbol.trim() && source.symbol.length > 0 && !/\p{Cc}/u.test(source.symbol);
 				if (!symbolValid && !(requirement?.public !== undefined && publicSurfacesValid)) reporter.error("PIBO_TRACE_SYMBOL", path, `Requirement ${id ?? "<unknown>"} needs a non-empty source symbol or approved public surface.`);
 			}
 		}
 		if (Array.isArray(requirement?.tests) && requirement.tests.length > 0) {
 			for (const test of requirement.tests) {
-				if (commitValid) validateTraceEvidencePath({ value: test?.path, commit, label: "TEST", id, path, projectRoot, reporter });
-				else if (!normalizedEvidencePath(projectRoot, test?.path)) reporter.error("PIBO_TRACE_TEST_PATH", path, `Requirement ${id ?? "<unknown>"} has an invalid repository-relative test path: ${String(test?.path)}`);
+				if (commitValid) validateTraceEvidencePath({ value: test?.path, commit, label: "TEST", id, path, projectRoot, reporter, gitCache, pathCache });
+				else if (!normalizedEvidencePath(projectRoot, test?.path, pathCache)) reporter.error("PIBO_TRACE_TEST_PATH", path, `Requirement ${id ?? "<unknown>"} has an invalid repository-relative test path: ${String(test?.path)}`);
 				if (typeof test?.name !== "string" || test.name !== test.name.trim() || !test.name || /\p{Cc}/u.test(test.name)) reporter.error("PIBO_TRACE_TEST_NAME", path, `Requirement ${id ?? "<unknown>"} test evidence requires a non-empty name.`);
 			}
 		} else if (requirement?.source_inspected !== true || typeof requirement?.follow_up !== "string" || !requirement.follow_up.trim()) {
@@ -575,7 +635,7 @@ function validateTraceability({ data, body, path, projectRoot, reporter, require
 	}
 }
 
-function validateConcept({ content, path, docsRoot, projectRoot, reporter, requirementIds = new Map(), strictLinks = false }) {
+function validateConcept({ content, path, docsRoot, projectRoot, reporter, requirementIds = new Map(), strictLinks = false, gitCache, pathCache }) {
 	if (!FILENAME_RE.test(posix.basename(path))) reporter.error("PIBO_FILENAME", path, "Concept filenames must use lowercase kebab-case.");
 	const parsed = parseFrontmatter(content);
 	if (parsed.error) {
@@ -614,10 +674,10 @@ function validateConcept({ content, path, docsRoot, projectRoot, reporter, requi
 		if (!policy.authorities.has(data.authority)) reporter.error("PIBO_AUTHORITY_TAXONOMY", path, `${data.authority} is not allowed under docs/${category}/.`);
 	}
 	if (TYPE_AUTHORITIES[data.type] && !TYPE_AUTHORITIES[data.type].has(data.authority)) reporter.error("PIBO_TYPE_AUTHORITY", path, `${data.type} cannot use authority ${String(data.authority)}.`);
-	if (Array.isArray(data.sources)) for (const source of data.sources) validateSourceResource({ resource: source?.resource, path, docsRoot, projectRoot, reporter });
+	if (Array.isArray(data.sources)) for (const source of data.sources) validateSourceResource({ resource: source?.resource, path, docsRoot, projectRoot, reporter, pathCache });
 	else if (data.sources !== undefined) reporter.error("PIBO_SOURCES", path, "sources must be a list.");
-	validateTraceability({ data, body: parsed.body, path, projectRoot, reporter, requirementIds });
-	if (strictLinks) validateLinks({ content, path, docsRoot, projectRoot, reporter, data, body: parsed.body });
+	validateTraceability({ data, body: parsed.body, path, projectRoot, reporter, requirementIds, gitCache, pathCache });
+	if (strictLinks) validateLinks({ content, path, docsRoot, projectRoot, reporter, data, body: parsed.body, pathCache });
 	return data;
 }
 
@@ -659,7 +719,7 @@ function validatePendingDestination({ record, target, records, destinationOwners
 	}
 }
 
-function validateLedger({ ledger, ledgerRepositoryPath, markdownPaths, projectRoot, docsRoot, mode, reporter, requirementIds, pathSafety }) {
+function validateLedger({ ledger, ledgerRepositoryPath, markdownPaths, projectRoot, docsRoot, mode, reporter, requirementIds, pathSafety, gitCache, pathCache, validDirs }) {
 	if (ledger.schema_version !== "pibo-okf-migration-ledger/1" || !Array.isArray(ledger.records)) {
 		reporter.error("MIGRATION_LEDGER_SCHEMA", "docs/project/okf-migration-ledger.json", "Unsupported or malformed migration ledger.");
 		return { records: new Map(), concepts: new Map() };
@@ -675,7 +735,7 @@ function validateLedger({ ledger, ledgerRepositoryPath, markdownPaths, projectRo
 		else records.set(record.path, record);
 	}
 	for (const path of records.keys()) {
-		if (!pathSafety.has(path)) pathSafety.set(path, validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer: "pibo-migration" }));
+		if (!pathSafety.has(path)) pathSafety.set(path, validateRepositoryMarkdownPath({ projectRoot, path, reporter, layer: "pibo-migration", validDirs }));
 	}
 	const actual = new Set(markdownPaths);
 	const sourceOwners = new Map();
@@ -741,11 +801,11 @@ function validateLedger({ ledger, ledgerRepositoryPath, markdownPaths, projectRo
 	}
 	const pendingRecords = [...records.values()].filter((record) => record.state === "pending");
 	const declaredBaseCommit = ledger.base_commit;
-	const declaredBaseCommitValid = GIT_SHA_RE.test(declaredBaseCommit ?? "") && gitCommitExists(projectRoot, declaredBaseCommit);
+	const declaredBaseCommitValid = GIT_SHA_RE.test(declaredBaseCommit ?? "") && gitCommitExists(projectRoot, declaredBaseCommit, gitCache?.commits);
 	if (pendingRecords.length > 0 && !declaredBaseCommitValid) {
 		reporter.error("MIGRATION_BASE_COMMIT", "docs/project/okf-migration-ledger.json", "A ledger with pending records requires a real 40-hex base_commit.");
 	}
-	const trust = pendingRecords.length > 0 ? deriveLedgerTrustAnchor(projectRoot, ledgerRepositoryPath) : null;
+	const trust = pendingRecords.length > 0 ? deriveLedgerTrustAnchor(projectRoot, ledgerRepositoryPath, gitCache) : null;
 	if (trust?.error) {
 		reporter.error("MIGRATION_BASE_HISTORY", ledgerRepositoryPath, trust.error);
 	} else if (trust && declaredBaseCommit !== trust.anchor) {
@@ -795,21 +855,21 @@ function validateLedger({ ledger, ledgerRepositoryPath, markdownPaths, projectRo
 	for (const [path, record] of records) {
 		if (!actual.has(path) || !pathSafety.get(path)) continue;
 		const absolute = resolve(projectRoot, path);
-		const content = readFileSync(absolute, "utf8");
+		const content = cachedReadFile(pathCache, absolute);
 		if (record.state === "conformant") {
 			const data = mode === "migration"
-				? validateConcept({ content, path, docsRoot, projectRoot, reporter, requirementIds })
+				? validateConcept({ content, path, docsRoot, projectRoot, reporter, requirementIds, gitCache, pathCache })
 				: parseFrontmatter(content).data;
 			if (data) concepts.set(path, data);
 			for (const field of ["type", "authority", "status"]) if (data?.[field] !== record[field]) reporter.error("MIGRATION_CONFORMANT_METADATA", path, `Ledger ${field} does not match the concept: ${String(record[field])} != ${String(data?.[field])}`);
 		}
-		if (mode === "migration" && record.state === "reserved") validateReserved({ content, path, docsRoot, projectRoot, strictLinks: false, requirePiboVersion: true, requirePiboLog: true, reporter });
+		if (mode === "migration" && record.state === "reserved") validateReserved({ content, path, docsRoot, projectRoot, strictLinks: false, requirePiboVersion: true, requirePiboLog: true, reporter, pathCache });
 		if (mode === "strict" && record.state === "pending") reporter.error("STRICT_PENDING", path, "Strict mode rejects pending migration entries.");
 	}
 	return { records, concepts };
 }
 
-function validateIndexes({ docsRoot, projectRoot, docsMarkdown, reporter }) {
+function validateIndexes({ docsRoot, projectRoot, docsMarkdown, reporter, pathCache }) {
 	const directories = new Set([docsRoot]);
 	for (const path of docsMarkdown) {
 		let directory = dirname(resolve(projectRoot, path));
@@ -822,11 +882,11 @@ function validateIndexes({ docsRoot, projectRoot, docsMarkdown, reporter }) {
 	for (const directory of [...directories].sort()) {
 		const indexPath = join(directory, "index.md");
 		const display = normalizePath(relative(projectRoot, indexPath));
-		if (!existsSync(indexPath)) {
+		if (!cachedExists(pathCache, indexPath)) {
 			reporter.error("PIBO_INDEX_MISSING", display, "Every bundle directory containing Markdown or bundle subdirectories requires index.md.");
 			continue;
 		}
-		const content = readFileSync(indexPath, "utf8");
+		const content = cachedReadFile(pathCache, indexPath);
 		const indexLinks = markdownLinks(content).map((link) => link.split("#", 1)[0].replace(/^\.\//, ""));
 		const links = new Set(indexLinks);
 		for (const link of links) if (indexLinks.filter((candidate) => candidate === link).length > 1) reporter.error("PIBO_INDEX_DUPLICATE", display, `Index lists a target more than once: ${link}`);
@@ -837,7 +897,7 @@ function validateIndexes({ docsRoot, projectRoot, docsMarkdown, reporter }) {
 	}
 }
 
-function validateConformantIndexCoverage({ concepts, records, projectRoot, pathSafety, reporter }) {
+function validateConformantIndexCoverage({ concepts, records, projectRoot, pathSafety, reporter, pathCache }) {
 	const indexes = new Map();
 	for (const path of concepts.keys()) {
 		let directory = posix.dirname(path);
@@ -850,7 +910,7 @@ function validateConformantIndexCoverage({ concepts, records, projectRoot, pathS
 			} else if (pathSafety.get(indexPath)) {
 				let links = indexes.get(indexPath);
 				if (!links) {
-					links = markdownLinks(readFileSync(resolve(projectRoot, indexPath), "utf8"))
+					links = markdownLinks(cachedReadFile(pathCache, resolve(projectRoot, indexPath)))
 						.map((link) => link.split("#", 1)[0].replace(/^\.\//, ""));
 					indexes.set(indexPath, links);
 				}
@@ -918,20 +978,24 @@ export function validateRepository(options = {}) {
 	const discovery = discoverMarkdown(projectRoot);
 	const docsPrefix = `${normalizePath(relative(projectRoot, docsRoot))}/`;
 	const docsMarkdown = discovery.paths.filter((path) => path.startsWith(docsPrefix));
+	const requirementIds = new Map();
+	const gitCache = createGitCache();
+	const pathCache = createPathCache(projectRoot);
+	const validDirs = new Set();
 	const pathSafety = validateRepositoryMarkdownPaths({
 		projectRoot,
 		paths: mode === "core" ? docsMarkdown : discovery.paths,
 		reporter,
 		layer: mode === "core" ? "okf-core" : "pibo-migration",
+		validDirs,
 	});
-	const requirementIds = new Map();
 	let records = new Map();
 	let migrationConcepts = new Map();
 	if (mode === "core") {
 		for (const path of docsMarkdown) {
 			if (!pathSafety.get(path)) continue;
-			const content = readFileSync(resolve(projectRoot, path), "utf8");
-			if (["index.md", "log.md"].includes(posix.basename(path))) validateReserved({ content, path, docsRoot, projectRoot, strictLinks: false, requirePiboVersion: false, requirePiboLog: false, reporter });
+			const content = cachedReadFile(pathCache, resolve(projectRoot, path));
+			if (["index.md", "log.md"].includes(posix.basename(path))) validateReserved({ content, path, docsRoot, projectRoot, strictLinks: false, requirePiboVersion: false, requirePiboLog: false, reporter, pathCache });
 			else validateCoreConcept({ content, path, reporter });
 		}
 	} else {
@@ -947,30 +1011,30 @@ export function validateRepository(options = {}) {
 				ledger = { records: [] };
 			}
 		}
-		({ records, concepts: migrationConcepts } = validateLedger({ ledger, ledgerRepositoryPath, markdownPaths: discovery.paths, projectRoot, docsRoot, mode, reporter, requirementIds, pathSafety }));
+		({ records, concepts: migrationConcepts } = validateLedger({ ledger, ledgerRepositoryPath, markdownPaths: discovery.paths, projectRoot, docsRoot, mode, reporter, requirementIds, pathSafety, gitCache, pathCache, validDirs }));
 		if (mode === "migration") {
-			validateConformantIndexCoverage({ concepts: migrationConcepts, records, projectRoot, pathSafety, reporter });
+			validateConformantIndexCoverage({ concepts: migrationConcepts, records, projectRoot, pathSafety, reporter, pathCache });
 			validateEvidence({ docsRoot, projectRoot, concepts: migrationConcepts, reporter, controlReadHooks: options.controlReadHooks?.manifest });
 		}
 	}
 	const concepts = new Map();
 	if (mode === "strict") {
-		if (!existsSync(join(docsRoot, "index.md"))) reporter.error("PIBO_ROOT_INDEX", "docs/index.md", "The bundle requires a root index.");
-		if (!existsSync(join(docsRoot, "log.md"))) reporter.error("PIBO_ROOT_LOG", "docs/log.md", "The bundle requires a root log.");
-		if (!existsSync(join(docsRoot, "project", "documentation-profile.md"))) reporter.error("PIBO_PROFILE_MISSING", "docs/project/documentation-profile.md", "The bundle requires the normative Pibo documentation profile.");
+		if (!cachedExists(pathCache, join(docsRoot, "index.md"))) reporter.error("PIBO_ROOT_INDEX", "docs/index.md", "The bundle requires a root index.");
+		if (!cachedExists(pathCache, join(docsRoot, "log.md"))) reporter.error("PIBO_ROOT_LOG", "docs/log.md", "The bundle requires a root log.");
+		if (!cachedExists(pathCache, join(docsRoot, "project", "documentation-profile.md"))) reporter.error("PIBO_PROFILE_MISSING", "docs/project/documentation-profile.md", "The bundle requires the normative Pibo documentation profile.");
 		for (const category of Object.keys(TAXONOMY)) {
-			if (!existsSync(join(docsRoot, category, "index.md"))) reporter.error("PIBO_TAXONOMY_INDEX", `docs/${category}/index.md`, "Each Pibo taxonomy directory requires a reserved index.");
+			if (!cachedExists(pathCache, join(docsRoot, category, "index.md"))) reporter.error("PIBO_TAXONOMY_INDEX", `docs/${category}/index.md`, "Each Pibo taxonomy directory requires a reserved index.");
 		}
 		for (const path of docsMarkdown) {
 			if (!pathSafety.get(path)) continue;
-			const content = readFileSync(resolve(projectRoot, path), "utf8");
-			if (["index.md", "log.md"].includes(posix.basename(path))) validateReserved({ content, path, docsRoot, projectRoot, strictLinks: true, requirePiboVersion: true, requirePiboLog: true, reporter });
+			const content = cachedReadFile(pathCache, resolve(projectRoot, path));
+			if (["index.md", "log.md"].includes(posix.basename(path))) validateReserved({ content, path, docsRoot, projectRoot, strictLinks: true, requirePiboVersion: true, requirePiboLog: true, reporter, pathCache });
 			else {
-				const data = validateConcept({ content, path, docsRoot, projectRoot, reporter, requirementIds, strictLinks: true });
+				const data = validateConcept({ content, path, docsRoot, projectRoot, reporter, requirementIds, strictLinks: true, gitCache, pathCache });
 				if (data) concepts.set(path, data);
 			}
 		}
-		validateIndexes({ docsRoot, projectRoot, docsMarkdown: docsMarkdown.filter((path) => pathSafety.get(path)), reporter });
+		validateIndexes({ docsRoot, projectRoot, docsMarkdown: docsMarkdown.filter((path) => pathSafety.get(path)), reporter, pathCache });
 		validateEvidence({ docsRoot, projectRoot, concepts, reporter, controlReadHooks: options.controlReadHooks?.manifest });
 	}
 	const states = { pending: 0, conformant: 0, reserved: 0, "host-exception": 0 };

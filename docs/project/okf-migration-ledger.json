@@ -45,6 +45,15 @@
       "lineage": null
     },
     {
+      "path": "docs/reports/okf-validator-performance-optimization-2026-09-19.md",
+      "state": "conformant",
+      "classification": "OKF validator performance optimization validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/muse-native-session-settlement-investigation-2026-09-19.md",
       "state": "conformant",
       "classification": "Muse-native session settlement incident investigation",
