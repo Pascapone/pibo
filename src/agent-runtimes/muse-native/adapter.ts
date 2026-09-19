@@ -60,7 +60,7 @@ import {
 	MUSE_PROTOCOL_VERSION,
 	MUSE_NATIVE_ADAPTER_VERSION,
 } from "./protocol-version.js";
-import { MuseNativeTurnController } from "./turn.js";
+import { MUSE_FALLBACK_TOOL_NAME, MuseNativeTurnController } from "./turn.js";
 import { MuseNativeRequestController } from "./requests.js";
 import { MuseNativeResourceDelivery } from "./resource-delivery.js";
 import {
@@ -124,9 +124,9 @@ function museNativeCapabilities(): AgentRuntimeCapabilities {
 				"Muse native tools remain harness-owned and are not wrapped as Pibo yielded tools.",
 			),
 			intentTracing: {
-				supported: false,
+				supported: true,
 				configurable: false,
-				enabledByDefault: false,
+				enabledByDefault: true,
 			},
 		},
 		mcp: {
@@ -193,7 +193,14 @@ function museNativeCapabilities(): AgentRuntimeCapabilities {
 	};
 }
 
+// Shared by the static driver descriptor; immutable by convention (adapter instances build fresh copies).
 export const MUSE_NATIVE_SESSION_CAPABILITIES = museNativeCapabilities();
+
+function stripStaleBindingDiagnostics(metadata: PiboJsonObject | undefined): PiboJsonObject {
+	if (!metadata) return {};
+	const { diagnosticCode: _diagnosticCode, diagnosticMessage: _diagnosticMessage, ...rest } = metadata;
+	return rest;
+}
 
 function bindingForSession(input: {
 	piboSessionId: string;
@@ -214,7 +221,7 @@ function bindingForSession(input: {
 		adapterVersion: MUSE_NATIVE_ADAPTER_VERSION,
 		locator: { kind: "adapter-resolved" },
 		metadata: {
-			...(input.previous?.metadata ?? {}),
+			...stripStaleBindingDiagnostics(input.previous?.metadata),
 			...(input.settings ?? {}),
 			persistent: true,
 			nativePresenceExpected: true,
@@ -273,6 +280,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	private selectedToolNames = new Set<string>();
 	private readonly observedToolNames = new Set<string>();
 	private toolInventoryWarning?: string;
+	private lastResourceWarningKey: string | undefined;
 
 	constructor(
 		readonly runtimeInstanceId: string,
@@ -428,6 +436,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
+		await this.turns.interrupt().catch(() => {});
 		this.pump.setObserver(undefined);
 		this.requests.dispose();
 		this.turns.dispose();
@@ -459,7 +468,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				...diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
 				...this.resourceDelivery.warnings.map((entry) => entry.message),
 				...(this.toolInventoryWarning ? [this.toolInventoryWarning] : []),
-				...(this.settings.pendingSyncWarning ? [this.settings.pendingSyncWarning] : []),
+				...this.settings.pendingSyncWarnings,
 			],
 			errors: [
 				...diagnostics.filter((entry) => entry.level === "error").map((entry) => entry.message),
@@ -527,7 +536,11 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	}
 
 	private emitPendingResourceWarnings(): void {
-		for (const warning of this.resourceDelivery.warnings) {
+		const warnings = this.resourceDelivery.warnings;
+		const key = warnings.map((warning) => warning.code).join(",");
+		if (key === this.lastResourceWarningKey) return;
+		this.lastResourceWarningKey = key;
+		for (const warning of warnings) {
 			this.emit({ type: "warning", message: warning.message, details: { code: warning.code } });
 		}
 	}
@@ -545,6 +558,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		if (
 			event.type === "tool_call"
 			&& event.toolName.trim()
+			&& event.toolName !== MUSE_FALLBACK_TOOL_NAME
 			&& event.toolName.length <= 512
 			&& (this.observedToolNames.has(event.toolName) || this.observedToolNames.size < MAX_INSPECTED_TOOL_NAMES)
 		) {
@@ -784,6 +798,7 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 						durability,
 						binding.nativeSessionId,
 						input.workspace,
+						resourceDelivery.sessionMcpConfig,
 					)
 					: MuseNativeSessionController.start(
 						host.spawned.connection,

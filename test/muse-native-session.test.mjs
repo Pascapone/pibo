@@ -15,7 +15,8 @@ import {
 } from "../dist/agent-runtimes/muse-native/adapter.js";
 import { museAuthConfigPath } from "../dist/agent-runtimes/muse-native/auth.js";
 import { parseMuseNativeRuntimeConfig } from "../dist/agent-runtimes/muse-native/config.js";
-import { MuseNativeTurnController } from "../dist/agent-runtimes/muse-native/turn.js";
+import { MuseNativeTurnController, splitMuseToolIntent } from "../dist/agent-runtimes/muse-native/turn.js";
+import { MuseNativeConnectionPump } from "../dist/agent-runtimes/muse-native/sessions.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/muse-serve-fake.mjs", import.meta.url));
 
@@ -166,7 +167,7 @@ test("Muse native prompt streams tool events, usage, and context pressure", asyn
 	assert.match(message.text, /fake reply to/);
 	const toolCall = events.find((event) => event.type === "tool_call");
 	assert.equal(toolCall.toolName, "bash");
-	assert.deepEqual(toolCall.args, { command: "echo fake-tool", description: "fake tool call" });
+	assert.deepEqual(toolCall.args, { command: "echo fake-tool" });
 	const finished = events.find((event) => event.type === "tool_execution_finished");
 	assert.equal(finished.isError, false);
 	assert.equal(finished.result, "fake-tool\n");
@@ -401,6 +402,15 @@ test("Muse native diagnose, auth, timeouts, and import rejection behave", async 
 	assert.equal(adapter.cancelAuth, undefined);
 	const loggedOutAgain = await adapter.logoutAuth({ providerId: "meta" });
 	assert.equal(loggedOutAgain.state, "disconnected");
+	const afterLogout = JSON.parse(await readFile(join(authDir, "auth.json"), "utf8"));
+	assert.equal(afterLogout.providers.other.token, "keep-me");
+	assert.equal("api_key" in (afterLogout.providers.meta ?? {}), false);
+	const statusAfterLogout = await adapter.getAuthStatus();
+	assert.equal(statusAfterLogout[0].state, "disconnected");
+	assert.equal(statusAfterLogout[0].configured, false);
+	await writeFile(join(authDir, "auth.json"), "{not-json");
+	await assert.rejects(() => adapter.logoutAuth({ providerId: "meta" }), /not valid JSON/);
+	assert.equal(await readFile(join(authDir, "auth.json"), "utf8"), "{not-json");
 
 	const { registry } = createAdapter(root, "muse-native-timeout");
 	await assert.rejects(
@@ -658,4 +668,179 @@ test("Muse native session open fails clearly when the host withholds sessionMcp"
 	t.after(() => session.dispose());
 	const delivered = JSON.parse(await readFile(join(root, "fake-state", "muse-fake-state.json"), "utf8"));
 	assert.equal(delivered.startRequests.at(-1).config.mcpServers.external.transport, "streamableHttp");
+});
+
+test("Muse native tool calls expose the model description as intent", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "intent", disposers);
+	assert.deepEqual(session.capabilities.tools.intentTracing, { supported: true, configurable: false, enabledByDefault: true });
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [tool]", source: "interactive" });
+	const toolCall = events.find((event) => event.type === "tool_call");
+	assert.equal(toolCall.intent, "fake tool call");
+	assert.deepEqual(toolCall.args, { command: "echo fake-tool" });
+	const started = events.find((event) => event.type === "tool_execution_started");
+	assert.equal(started.intent, "fake tool call");
+	const updated = events.find((event) => event.type === "tool_execution_updated");
+	assert.equal("intent" in updated, false);
+	const finished = events.find((event) => event.type === "tool_execution_finished");
+	assert.equal("intent" in finished, false);
+});
+
+test("Muse native tool intent extraction trims, bounds, and redacts", () => {
+	assert.deepEqual(splitMuseToolIntent({ command: "echo", description: "  fake tool call  " }), {
+		args: { command: "echo" },
+		intent: "fake tool call",
+	});
+	assert.deepEqual(splitMuseToolIntent({ command: "echo fake-tool" }), {
+		args: { command: "echo fake-tool" },
+		intent: undefined,
+	});
+	assert.deepEqual(splitMuseToolIntent({ description: "   " }), {
+		args: { description: "   " },
+		intent: undefined,
+	});
+	assert.deepEqual(splitMuseToolIntent({ description: 42 }), { args: { description: 42 }, intent: undefined });
+	assert.deepEqual(splitMuseToolIntent("nope"), { args: "nope", intent: undefined });
+	assert.deepEqual(splitMuseToolIntent(null), { args: null, intent: undefined });
+	assert.deepEqual(splitMuseToolIntent([{ description: "listed" }]), { args: [{ description: "listed" }], intent: undefined });
+	const long = `call with password=hunter2 ${"x".repeat(600)}`;
+	const split = splitMuseToolIntent({ description: long, other: 1 });
+	assert.equal(split.intent.length <= 512, true);
+	assert.equal(split.intent.includes("hunter2"), false);
+	assert.ok(split.intent.startsWith("call with password=[redacted]"));
+	assert.deepEqual(split.args, { other: 1 });
+});
+
+test("Muse native tool calls without description emit no intent", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "intent-missing", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [tool] [nodesc]", source: "interactive" });
+	const toolCall = events.find((event) => event.type === "tool_call");
+	assert.equal("intent" in toolCall, false);
+	const started = events.find((event) => event.type === "tool_execution_started");
+	assert.equal("intent" in started, false);
+});
+
+test("Muse native reclaimed turns fail instead of completing", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "reclaim", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [reclaim]", source: "interactive" });
+	const failed = events.find((event) => event.type === "turn_failed");
+	assert.ok(failed);
+	assert.match(failed.message, /reclaimed before launch/);
+	assert.equal(events.some((event) => event.type === "turn_completed"), false);
+});
+
+test("Muse native patch summaries emit one diff update per change", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "patch", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [tool] [patch]", source: "interactive" });
+	const diffs = events.filter((event) => event.type === "diff_updated");
+	assert.equal(diffs.length, 1);
+	assert.deepEqual(diffs[0].diff, { filesChanged: 2, insertions: 10, deletions: 3 });
+	assert.ok(events.some((event) => event.type === "tool_execution_finished"));
+	assert.ok(events.some((event) => event.type === "turn_completed"));
+});
+
+test("Muse native rebind drops stale diagnostic metadata", async (t) => {
+	const { root } = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "muse-native-rebind");
+	const binding = {
+		...unboundBinding(instanceId, "ps_muse_rebind"),
+		metadata: { diagnosticCode: "stale", diagnosticMessage: "stale", keepMe: "kept" },
+	};
+	const session = await registry.openSession(instanceId, openInput(instanceId, root, binding));
+	t.after(() => session.dispose());
+	const metadata = session.getBinding().metadata ?? {};
+	assert.equal("diagnosticCode" in metadata, false);
+	assert.equal("diagnosticMessage" in metadata, false);
+	assert.equal(metadata.keepMe, "kept");
+});
+
+test("Muse native reasoning streams deltas between start and finish", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "reasoning", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [reasoning]", source: "interactive" });
+	const kinds = events.map((event) => event.type);
+	assert.ok(kinds.includes("reasoning_started"));
+	assert.ok(kinds.includes("reasoning_finished"));
+	const delta = events.find((event) => event.type === "reasoning_delta");
+	assert.equal(delta.text, "considering options");
+	assert.ok(kinds.indexOf("reasoning_started") < kinds.indexOf("reasoning_delta"));
+	assert.ok(kinds.indexOf("reasoning_delta") < kinds.indexOf("reasoning_finished"));
+});
+
+test("Muse native dispose interrupts a running turn", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "dispose-busy", disposers);
+	const promptPromise = session.prompt({ text: "slow work [slow]", source: "interactive" });
+	promptPromise.catch(() => {});
+	await waitFor(() => session.getStatus().streaming === true);
+	const startedAt = Date.now();
+	await session.dispose();
+	assert.ok(Date.now() - startedAt < 10_000);
+	await promptPromise;
+	assert.equal(session.getStatus().streaming, false);
+});
+
+test("Muse native large tool args parse to a bounded object", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "bigargs", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [tool] [bigargs]", source: "interactive" });
+	const toolCall = events.find((event) => event.type === "tool_call");
+	assert.equal(toolCall.argsComplete, true);
+	assert.equal(typeof toolCall.args, "object");
+	assert.equal(toolCall.args.command, "echo big");
+	assert.ok(toolCall.args.blob.endsWith("…[truncated]"));
+	assert.ok(toolCall.args.blob.length < 20_000);
+});
+
+test("Muse native fallback tool names stay out of the observed inventory", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "noname", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "hello [tool] [noname]", source: "interactive" });
+	const toolCall = events.find((event) => event.type === "tool_call");
+	assert.equal(toolCall.toolName, "muse-tool");
+	assert.equal(session.getStatus().enabledTools.includes("muse-tool"), false);
+});
+
+test("Muse native connection pump drops per-session ledgers on unregister", () => {
+	let handler;
+	const pump = new MuseNativeConnectionPump({ onNotification: (fn) => { handler = fn; } });
+	pump.register("session-1", { apply: () => {} });
+	handler({ method: "turn/completed", params: { sessionId: "session-1", turnId: "turn-1", terminal: "completed" } });
+	assert.deepEqual(pump.completedTurns.get("session-1"), ["turn-1"]);
+	pump.unregister("session-1");
+	assert.equal(pump.completedTurns.has("session-1"), false);
+});
+
+test("Muse native unknown terminals fail instead of completing", async () => {
+	const events = [];
+	const stubTurn = {
+		turnId: "turn-stub-unknown",
+		observedStart: true,
+		completed: Promise.resolve({ kind: "terminalUnknown" }),
+		async *items() {},
+		async *deltas() {},
+	};
+	const stubSession = { sendUserTurn: async () => stubTurn };
+	const stubConnection = { command: async () => ({}) };
+	const controller = new MuseNativeTurnController(stubConnection, stubSession, "session-1", 1_000, (event) => events.push(event));
+	await controller.start("hello");
+	assert.ok(events.some((event) => event.type === "turn_failed" && /host died/.test(event.message)));
+	assert.equal(events.some((event) => event.type === "turn_completed"), false);
 });

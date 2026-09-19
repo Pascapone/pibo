@@ -14,6 +14,12 @@
 //   [drip]       emit steady items over ~200ms so activity-timeout tests can intervene
 //   [context]    emit a session/contextUsage notification
 //   [secretargs] include a secret-bearing key in the toolCall args
+//   [nodesc]     omit description from the toolCall args
+//   [reclaim]    reclaim the turn before launch (turn/unqueued, no terminal)
+//   [patch]      repeat an identical patchSummary across tool item revisions
+//   [reasoning]  emit a reasoning item with summary deltas
+//   [bigargs]    send toolCall args larger than the adapter arg bound
+//   [noname]     send a toolCall without a tool name
 //
 // Environment scripting:
 //   MUSE_FAKE_HANG_METHODS    comma-separated MSP methods that never answer
@@ -117,7 +123,17 @@ async function runTurn(sessionId, turnId, text) {
 		drip: text.includes("[drip]"),
 		context: text.includes("[context]"),
 		secretArgs: text.includes("[secretargs]"),
+		noDescription: text.includes("[nodesc]"),
+		reclaim: text.includes("[reclaim]"),
+		patch: text.includes("[patch]"),
+		reasoning: text.includes("[reasoning]"),
+		bigArgs: text.includes("[bigargs]"),
+		noName: text.includes("[noname]"),
 	};
+	if (scripted.reclaim) {
+		notify("turn/unqueued", { commandId: turnId, sessionId, sourceRange: range(), turnId, viewCursor: nextCursor(sessionId) });
+		return;
+	}
 	notify("turn/started", { commandId: turnId, sessionId, sourceRange: range(), turnId, viewCursor: nextCursor(sessionId) });
 	if (scripted.hang) await delay(60_000);
 	else if (scripted.slow) await delay(300);
@@ -144,17 +160,50 @@ async function runTurn(sessionId, turnId, text) {
 		viewCursor: nextCursor(sessionId),
 	});
 
-	if (scripted.tool) {
-		const toolId = `item-${turnId}-tool`;
-		const toolArgs = scripted.secretArgs
-			? JSON.stringify({ command: "echo fake-tool", description: "fake tool call", api_key: "secret-value-123" })
-			: JSON.stringify({ command: "echo fake-tool", description: "fake tool call" });
+	if (scripted.reasoning) {
+		const reasoningId = `item-${turnId}-reasoning`;
 		notify("item/started", {
-			item: { itemId: toolId, kind: "toolCall", revision: 1, status: "inProgress", turnId, tool: "bash", args: toolArgs, taskId: `task-${turnId}` },
+			item: { itemId: reasoningId, kind: "reasoning", revision: 1, status: "inProgress", turnId, summary: [""] },
 			sessionId,
 			viewCursor: nextCursor(sessionId),
 		});
 		await delay(5);
+		notify("item/delta", { delta: "considering options", field: "summary.0", itemId: reasoningId, sessionId, viewCursor: nextCursor(sessionId) });
+		await delay(5);
+		if (interruptedTurns.has(turnId)) return finishTurn(sessionId, turnId, "cancelled");
+		notify("item/completed", {
+			item: { itemId: reasoningId, kind: "reasoning", revision: 2, status: "completed", turnId, summary: ["considering options"] },
+			sessionId,
+			sourceRange: range(),
+			viewCursor: nextCursor(sessionId),
+		});
+	}
+	if (scripted.tool) {
+		const toolId = `item-${turnId}-tool`;
+		const toolArgs = scripted.bigArgs
+			? JSON.stringify({ command: "echo big", description: "big args call", blob: "x".repeat(20_000) })
+			: scripted.secretArgs
+				? JSON.stringify({ command: "echo fake-tool", description: "fake tool call", api_key: "secret-value-123" })
+				: scripted.noDescription
+					? JSON.stringify({ command: "echo fake-tool" })
+					: JSON.stringify({ command: "echo fake-tool", description: "fake tool call" });
+		const toolName = scripted.noName ? "" : "bash";
+		const patchSummary = scripted.patch ? { filesChanged: 2, insertions: 10, deletions: 3 } : undefined;
+		notify("item/started", {
+			item: { itemId: toolId, kind: "toolCall", revision: 1, status: "inProgress", turnId, tool: toolName, args: toolArgs, taskId: `task-${turnId}`, ...(patchSummary ? { patchSummary } : {}) },
+			sessionId,
+			viewCursor: nextCursor(sessionId),
+		});
+		await delay(5);
+		if (scripted.patch) {
+			notify("item/updated", {
+				item: { itemId: toolId, kind: "toolCall", revision: 2, status: "inProgress", turnId, tool: toolName, args: toolArgs, taskId: `task-${turnId}`, patchSummary },
+				sessionId,
+				sourceRange: range(),
+				viewCursor: nextCursor(sessionId),
+			});
+			await delay(5);
+		}
 		if (scripted.approval) {
 			const approvalId = `approval-${turnId}`;
 			notify("approval/requested", {
@@ -170,7 +219,7 @@ async function runTurn(sessionId, turnId, text) {
 				rawArgs: toolArgs,
 				sessionId,
 				sourceRange: range(),
-				subject: { kind: "tool", toolName: "bash" },
+				subject: { kind: "tool", toolName: toolName || "bash" },
 				taskId: `task-${turnId}`,
 				toolCallId: toolId,
 				toolName: "bash",
@@ -184,7 +233,7 @@ async function runTurn(sessionId, turnId, text) {
 		notify("item/delta", { delta: "fake-tool\n", field: "output", itemId: toolId, sessionId, viewCursor: nextCursor(sessionId) });
 		await delay(5);
 		notify("item/completed", {
-			item: { itemId: toolId, kind: "toolCall", revision: 2, status: "completed", turnId, tool: "bash", args: toolArgs, taskId: `task-${turnId}`, visibleOutput: "fake-tool\n" },
+			item: { itemId: toolId, kind: "toolCall", revision: scripted.patch ? 3 : 2, status: "completed", turnId, tool: toolName, args: toolArgs, taskId: `task-${turnId}`, visibleOutput: "fake-tool\n", ...(patchSummary ? { patchSummary } : {}) },
 			sessionId,
 			sourceRange: range(),
 			viewCursor: nextCursor(sessionId),
@@ -298,6 +347,8 @@ const handlers = {
 			respondError(id, "sessionNotFound", `session ${params.sessionId} not found`);
 			return undefined;
 		}
+		(state.resumeRequests ??= []).push({ sessionId: params.sessionId, config: params.config ?? null });
+		save(state);
 		cursors.set(session.id, 1);
 		return {
 			history: { items: [], mode: "none", snapshot: {} },

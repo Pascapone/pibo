@@ -126,6 +126,8 @@ export class MuseNativeConnectionPump {
 
 	unregister(sessionId: string): void {
 		this.sessions.delete(sessionId);
+		this.completedTurns.delete(sessionId);
+		this.turnCompletions.delete(sessionId);
 	}
 
 	private route(method: string, params: unknown): void {
@@ -202,10 +204,14 @@ export class MuseNativeSessionController {
 		durability: SessionDurabilityProfile,
 		sessionId: string,
 		workspaceRoot: string,
+		mcpConfig?: MuseNativeSessionMcpConfig,
 	): Promise<MuseNativeSessionController> {
 		let result: Record<string, unknown>;
 		try {
-			result = await connection.command("session/resume", { sessionId });
+			result = await connection.command("session/resume", {
+				sessionId,
+				...(mcpConfig ? { config: { mcpServers: mcpConfig } } : {}),
+			});
 		} catch (error) {
 			if (isSessionNotFound(error)) throw new MuseNativeSessionMissingError(sessionId);
 			throw error;
@@ -256,6 +262,8 @@ export class MuseNativeSessionController {
 	): Promise<MuseNativeSessionSummary[]> {
 		const summaries: MuseNativeSessionSummary[] = [];
 		let cursor: string | null | undefined;
+		// Fill-to-limit paging: sparse pages can return fewer than the limit
+		// with a cursor, so up to five pages are fetched to collect 100.
 		for (let page = 0; page < 5; page += 1) {
 			const params: Record<string, unknown> = { limit: SESSION_LIST_LIMIT };
 			if (cursor) params.cursor = cursor;

@@ -1,6 +1,7 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { AgentRuntimeAuthError } from "../../agent-runtime/errors.js";
+import { protectPrivatePathsSync } from "../../core/private-path.js";
 import type {
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
@@ -77,7 +78,7 @@ export class MuseNativeAuthController {
 			return [{
 				id: AUTH_PROVIDER_ID,
 				displayName: "Meta",
-				state: "failed",
+				state: "disconnected",
 				configured: false,
 				methods: [{ id: "api_key", completion: "immediate" }],
 				message: "Stored Muse credential has no Meta API key.",
@@ -106,6 +107,7 @@ export class MuseNativeAuthController {
 		}
 		const authFile = this.authFile();
 		await mkdir(dirname(authFile), { recursive: true, mode: 0o700 });
+		protectPrivatePathsSync([{ path: dirname(authFile), kind: "directory" }]);
 		let document: Record<string, unknown> = {};
 		try {
 			const parsed: unknown = JSON.parse(await readFile(authFile, "utf8"));
@@ -130,7 +132,35 @@ export class MuseNativeAuthController {
 	}
 
 	async logout(input: LogoutAgentRuntimeAuthInput): Promise<AgentRuntimeAuthOperationResult> {
-		await rm(this.authFile(), { force: true }).catch(() => {});
+		const authFile = this.authFile();
+		let stored: string;
+		try {
+			stored = await readFile(authFile, "utf8");
+		} catch {
+			return {
+				providerId: input.providerId,
+				state: "disconnected",
+				configured: false,
+			};
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(stored) as unknown;
+		} catch {
+			throw new AgentRuntimeAuthError(
+				"muse_auth_logout_unparseable",
+				"Stored Muse credential is not valid JSON and was left untouched; delete it manually to complete logout.",
+			);
+		}
+		if (isRecord(parsed) && isRecord(parsed.providers) && isRecord((parsed.providers as Record<string, unknown>).meta)) {
+			const providers = { ...(parsed.providers as Record<string, unknown>) };
+			const meta = { ...((providers.meta as Record<string, unknown>)) };
+			if ("api_key" in meta) {
+				delete meta.api_key;
+				providers.meta = meta;
+				await writeFile(authFile, `${JSON.stringify({ ...parsed, providers })}\n`, { mode: 0o600 });
+			}
+		}
 		return {
 			providerId: input.providerId,
 			state: "disconnected",
