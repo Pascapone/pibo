@@ -17,6 +17,9 @@ test("Sessions new-agent preference is restored and persisted by room", () => {
 	assert.match(appSource, /writeStoredNewSessionProfile\(profile, roomId\)/);
 	assert.doesNotMatch(appSource, /useState\(readStoredNewSessionProfile\)/);
 	assert.match(appSource, /removeStoredNewSessionProfile\(tempId\)/);
-	assert.match(sidebarSource, /disabled=\{!newSessionProfileReady \|\| !newSessionProfileOptions\.length \|\| creatingRoom \|\| selectedRoomArchived \|\| roomSessionsLoading\}/);
-	assert.match(sidebarSource, /disabled=\{!newSessionProfileReady \|\| creatingSession \|\| creatingRoom \|\| selectedRoomArchived \|\| roomSessionsLoading\}/);
+	assert.match(sidebarSource, /disabled: !newSessionProfileReady \|\| !newSessionProfileOptions\.length \|\| creatingSession \|\| creatingRoom \|\| isArchivedRoom\(room\) \|\| roomSessionsLoading,/);
+	assert.match(sidebarSource, /label=\{`New session in \$\{room\.name\}`\}/);
+	assert.match(sidebarSource, /agent\.name === sessionActions\.defaultProfile \? <Check/);
+	assert.match(sidebarSource, /sessionActions\.onNewSessionProfileChange\(agent\.name, room\.id\);/);
+	assert.match(sidebarSource, /void sessionActions\.onCreateSession\(room\.id, agent\.name\);/);
 });

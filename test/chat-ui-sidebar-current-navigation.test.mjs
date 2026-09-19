@@ -70,7 +70,7 @@ async function renderSidebarSelections() {
 			none: render(null, null),
 		}));
 	`;
-	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 	return JSON.parse(stdout);
 }
 

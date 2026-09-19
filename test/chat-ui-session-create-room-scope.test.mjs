@@ -196,7 +196,7 @@ test("cross-room failure rolls back only cached origin-room data", async () => {
 test("App scopes pending insertion, replacement, and rollback to the origin room", async () => {
 	const source = await readFile("src/apps/chat-ui/src/App.tsx", "utf8");
 	assert.match(source, /onMutate: async \(input: CreateSessionMutationInput\)/);
-	assert.match(source, /const originRoomId = selectedRoomId \?\? bootstrap\?\.selectedRoomId \?\? ""/);
+	assert.match(source, /const originRoomId = roomId \?\? selectedRoomId \?\? bootstrap\?\.selectedRoomId \?\? ""/);
 	assert.match(source, /updateBootstrapCacheForRoom\(originRoomId/);
 	assert.match(source, /rollbackOptimisticSessionNode\(current, context\.tempId, context\.previousSelectedPiboSessionId \?\? null\)/);
 	assert.match(source, /replaceOptimisticSessionNode\(current, context\.tempId, createdNode\)/);

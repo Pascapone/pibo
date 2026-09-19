@@ -89,20 +89,21 @@ async function renderContextualActionLabels() {
 			(match) => match[1],
 		);
 
+		// Rooms render as folders: the selected room's sessions nest between the room rows.
 		const initialLabels = actionLabels(renderSidebar({ roomName: "Pibo", sessionTitle: "Action menu labels" }));
 		assert.deepEqual(initialLabels, [
 			"Actions for room Pibo",
-			"Actions for room Research",
 			"Actions for session Action menu labels",
 			"Actions for session Build verification",
+			"Actions for room Research",
 		]);
 
 		const renamedLabels = actionLabels(renderSidebar({ roomName: "Pibo renamed", sessionTitle: "Contextual labels renamed" }));
 		assert.deepEqual(renamedLabels, [
 			"Actions for room Pibo renamed",
-			"Actions for room Research",
 			"Actions for session Contextual labels renamed",
 			"Actions for session Build verification",
+			"Actions for room Research",
 		]);
 		for (const label of [...initialLabels, ...renamedLabels]) {
 			assert.doesNotMatch(label, /(?:11111111|aaaaaaaa|66666666|12345678|technical-pi-session-key|\\/srv\\/private)/);
@@ -110,7 +111,7 @@ async function renderContextualActionLabels() {
 		}
 	`;
 	try {
-		await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
+		await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
 	} catch (error) {
 		throw new Error(error.stderr || error.message);
 	}

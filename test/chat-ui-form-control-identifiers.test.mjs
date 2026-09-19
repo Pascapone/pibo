@@ -10,6 +10,7 @@ const sidebarSource = normalizeLineEndings(readFileSync(resolve(here, "../src/ap
 const composerSource = normalizeLineEndings(readFileSync(resolve(here, "../src/apps/chat-ui/src/composer/Composer.tsx"), "utf8"));
 
 test("visible Chat Web form controls have stable unique identifiers", () => {
-	assert.match(sidebarSource, /<select\n\s+id="new-session-agent-select"\n\s+value=\{newSessionProfile\}/);
+	assert.doesNotMatch(sidebarSource, /new-session-agent-select/);
+	assert.match(sidebarSource, /label=\{`New session in \$\{room\.name\}`\}/);
 	assert.match(composerSource, /<textarea\n\s+id="message-composer-input"\n\s+ref=\{inputRef\}/);
 });

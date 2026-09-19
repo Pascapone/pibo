@@ -108,7 +108,7 @@ async function runHelperAssertions() {
 		assert.equal(main.inert, false);
 		assert.equal(main.hasAttribute("aria-hidden"), false);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
 test("mobile sidebar helpers cover modal state, nested keyboard ownership, focus wrap, and background isolation", async () => {

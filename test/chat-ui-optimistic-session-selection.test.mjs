@@ -68,7 +68,7 @@ async function resolveRouteSelection(input) {
 
 test("post-create hydration is nonblocking and cannot navigate or report stale errors", () => {
 	const app = readFileSync("src/apps/chat-ui/src/App.tsx", "utf8");
-	const select = app.slice(app.indexOf("const selectSession = useCallback"), app.indexOf("const selectRoom = useCallback"));
+	const select = app.slice(app.indexOf("const selectSession = useCallback"), app.indexOf("const toggleArchivedRooms"));
 	assert.match(select, /if \(selectedPiboSessionIdRef.current !== piboSessionId\) bootstrapRequestId.current \+= 1;/);
 	assert.ok(select.indexOf("bootstrapRequestId.current += 1") < select.indexOf("flushSync"));
 	const create = app.slice(app.indexOf("const createSession = async"), app.indexOf("const toggleArchivedSessions = async"));

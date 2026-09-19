@@ -43,6 +43,7 @@ export function SessionNode({
 	onSessionDragEnd,
 	showWorkflowSessionKindMarkers = false,
 	mutationsDisabled = false,
+	selectionBleedLeft = 0,
 	optimisticTitleIntent,
 	onOptimisticTitleDraftChange,
 	onOptimisticTitleConfirm,
@@ -70,6 +71,7 @@ export function SessionNode({
 	onSessionDragEnd?: DragEventHandler<HTMLDivElement>;
 	showWorkflowSessionKindMarkers?: boolean;
 	mutationsDisabled?: boolean;
+	selectionBleedLeft?: number;
 	optimisticTitleIntent?: OptimisticSessionTitleIntent;
 	onOptimisticTitleDraftChange?: (operationId: string, draftTitle: string) => void;
 	onOptimisticTitleConfirm?: (operationId: string) => void;
@@ -154,6 +156,8 @@ export function SessionNode({
 	const workflowKind = showWorkflowSessionKindMarkers ? workflowSessionKindPresentation(node.workflowSessionKind) : null;
 	const WorkflowKindIcon = workflowKind?.Icon;
 	const pinActionAvailable = depth === 0 && !node.archived && Boolean(onPinnedChange);
+	const selected = node.piboSessionId === selectedPiboSessionId;
+	const bleedLeft = selected ? selectionBleedLeft : 0;
 
 	return (
 		<div>
@@ -172,13 +176,17 @@ export function SessionNode({
 				onDragOver={onSessionDragOver}
 				onDrop={onSessionDrop}
 				onDragEnd={onSessionDragEnd}
-				className={`group relative w-full grid grid-cols-[1fr_auto] gap-0.5 items-center mb-0.5 border rounded-sm ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${
-					node.piboSessionId === selectedPiboSessionId ? "border-[#11a4d4] bg-[#11a4d4]/10" : "border-transparent"
+				className={`group relative ${selected ? "w-auto" : "w-full"} grid grid-cols-[1fr_auto] gap-0.5 items-center mb-0.5 border pr-3 ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${
+					selected ? "rounded-none border-transparent bg-[#11a4d4]/20" : "rounded-sm border-transparent"
 				}`}
-				style={{ paddingLeft: 8 + depth * 14 }}
+				style={{
+					paddingLeft: 8 + depth * 14 + bleedLeft,
+					marginLeft: bleedLeft ? -bleedLeft : undefined,
+				}}
 				title={sessionTooltip}
 			>
 				{dropPosition === "before" ? <span className="pointer-events-none absolute inset-x-1 -top-px z-10 h-px bg-[#11a4d4]" /> : null}
+			{selected ? <span aria-hidden="true" className="absolute bottom-0 left-0 top-0 w-[3px] bg-[#11a4d4]" /> : null}
 				{isEditing && (!mutationsDisabled || optimisticTitleIntent) ? (
 					<form
 						className="min-w-0 grid grid-cols-[1fr_auto_auto] gap-1 py-1 pr-1"
@@ -336,6 +344,7 @@ export function SessionNode({
 							onDelete={onDelete}
 							onViewContext={onViewContext}
 							depth={depth + 1}
+							selectionBleedLeft={selectionBleedLeft}
 							loadingPiboSessionId={loadingPiboSessionId}
 							showWorkflowSessionKindMarkers={showWorkflowSessionKindMarkers}
 							mutationsDisabled={mutationsDisabled}
