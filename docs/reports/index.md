@@ -4,6 +4,7 @@
 
 ## Concepts
 
+* [Agent Designer revert escape validation](agent-designer-revert-escape-validation-2026-09-19.md) - Records the revert&#45;to&#45;saved escape hatch that unblocks navigation and tab close when Agent Designer autosave cannot persist an invalid draft&#46;
 * [Agent Runtime Adapter Authoring Skill Validation — 2026&#45;08&#45;15](runtime-adapter-authoring-skill-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Agent Runtime Foundation Validation](agent-runtime-foundation-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Archon&#45;Recherchebericht für Pibo Workflow System V1](2026-05-10-workflow-research-archon.md) - Preserves the original report body as stable research without promoting historical claims&#46;

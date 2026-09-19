@@ -192,6 +192,7 @@ export function AgentsView({
 	const [saveState, setSaveState] = useState<SaveState>(initialDraftState.restored ? "idle" : "saved");
 	const [editingName, setEditingName] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const [reverting, setReverting] = useState(false);
 	const [refreshingContextFiles, setRefreshingContextFiles] = useState(false);
 	const autoRefreshedBrokenContextFilesRef = useRef(new Set<string>());
 	const [showArchivedAgents, setShowArchivedAgents] = useState(() => localStorage.getItem("pibo.chat.showArchivedAgents") === "true");
@@ -517,6 +518,32 @@ export function AgentsView({
 		}
 	};
 
+	const revertToSaved = async () => {
+		const snapshot = currentDraftRef.current;
+		if (snapshot.source !== "custom" || snapshot.archivedAt || reverting) return;
+		clearAutosaveTimer();
+		setReverting(true);
+		try {
+			if (snapshot.id) {
+				const refreshed = await getCustomAgents();
+				const latest = refreshed.agents.find((agent) => agent.id === snapshot.id);
+				if (!latest) throw new Error(`Agent "${snapshot.profileName ?? snapshot.displayName}" no longer exists on the server; the unsaved draft was kept.`);
+				customAgentsRef.current = refreshed.agents;
+				setCustomAgents(refreshed.agents);
+				const nextDraft = agentToDraft(latest);
+				activateDraft(nextDraft, agentDraftSignature(nextDraft));
+			} else {
+				const nextDraft = selectExistingAgentDraft(agents, customAgentsRef.current, catalogRef.current ?? undefined);
+				activateDraft(nextDraft, agentDraftSignature(nextDraft), false);
+			}
+			setLocalError(null);
+		} catch (caught) {
+			setLocalError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			setReverting(false);
+		}
+	};
+
 	const createNewAgentDraft = (folderId?: string) => {
 		void runAfterAutosave(() => {
 			const usedNames = [
@@ -747,6 +774,11 @@ export function AgentsView({
 						{saveState === "error" && !readOnly ? (
 							<button type="button" onClick={() => void persistIfNeeded().catch(() => undefined)} disabled={saving || Boolean(agentNameError)} className="h-8 px-2 border border-red-500/60 rounded-sm text-xs text-red-200 hover:border-red-300 disabled:opacity-50">
 								Retry
+							</button>
+						) : null}
+						{(saveState === "idle" || saveState === "error") && !readOnly ? (
+							<button type="button" onClick={() => void revertToSaved()} disabled={reverting || saving} title="Revert to Last Saved" aria-label="Revert to Last Saved" className="h-8 px-2 border border-[#f59e0b]/60 rounded-sm text-xs text-amber-100 hover:border-[#f59e0b] disabled:opacity-50">
+								{reverting ? "Reverting…" : "Revert"}
 							</button>
 						) : null}
 						<button type="button" onClick={() => void runAfterAutosave(() => { if (draft.profileName) onCreateSession(draft.profileName); })} disabled={!draft.profileName || creatingSession || archivedDraft} title="New Session With Agent" aria-label="New Session With Agent" className="h-8 w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50">

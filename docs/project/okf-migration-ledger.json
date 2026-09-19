@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/agent-designer-revert-escape-validation-2026-09-19.md",
+      "state": "conformant",
+      "classification": "Agent Designer revert escape validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/muse-native-session-settlement-investigation-2026-09-19.md",
       "state": "conformant",
       "classification": "Muse-native session settlement incident investigation",
