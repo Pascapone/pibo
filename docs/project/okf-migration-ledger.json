@@ -2,7 +2,7 @@
   "schema_version": "pibo-okf-migration-ledger/1",
   "okf_version": "0.2",
   "base_commit": "2aef244301f5d181624662fdad53e18e83e80bd9",
-  "generated_at": "2026-09-16T17:31:20Z",
+  "generated_at": "2026-09-19T13:46:17Z",
   "bundle_root": "docs/",
   "taxonomy_roots": [
     "project",
@@ -17,6 +17,24 @@
     "operational": "directive"
   },
   "records": [
+    {
+      "path": "docs/reports/muse-native-session-settlement-investigation-2026-09-19.md",
+      "state": "conformant",
+      "classification": "Muse-native session settlement incident investigation",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/muse-native-session-settlement-docker-headpool-validation.md",
+      "state": "conformant",
+      "classification": "Muse-native Docker and deployment-pool validation plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
     {
       "path": "docs/plans/pibo-4-0-plugin-completion-todo.md",
       "state": "conformant",
