@@ -74,3 +74,12 @@ test('nested provider work retains slots when parent turns occupy their entire b
  assert.equal(capacity.snapshot().providers[0].waiting,1);
  child.release();parent.release();(await queued).release();capacity.close();
 });
+
+test('capacity resolves generous provider turn defaults with environment overrides', async()=>{
+ const { resolveRuntimeCapacityOptions } = await import('../dist/core/runtime-capacity.js');
+ const defaults = resolveRuntimeCapacityOptions({});
+ assert.equal(defaults.providerTurns,100);assert.equal(defaults.providerTurnsPerRoom,20);
+ assert.equal(defaults.coldStarts,2);assert.equal(defaults.maxRuntimes,32);
+ const env = resolveRuntimeCapacityOptions({ PIBO_GATEWAY_MAX_PROVIDER_TURNS:'7', PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM:'3' });
+ assert.equal(env.providerTurns,7);assert.equal(env.providerTurnsPerRoom,3);
+});

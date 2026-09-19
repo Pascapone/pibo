@@ -16,8 +16,8 @@ export function resolveRuntimeCapacityOptions(env: NodeJS.ProcessEnv = process.e
   const n=Number(env[name]);if(!Number.isSafeInteger(n)||n<1)throw new Error(`${name} must be a positive integer.`);return n;
  };
  return {
-  coldStarts:read("PIBO_GATEWAY_MAX_COLD_STARTS",2),providerTurns:read("PIBO_GATEWAY_MAX_PROVIDER_TURNS",10),
-  providerTurnsPerRoom:read("PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM",5),maxWaiting:read("PIBO_GATEWAY_MAX_RUNTIME_WAITERS",64),
+  coldStarts:read("PIBO_GATEWAY_MAX_COLD_STARTS",2),providerTurns:read("PIBO_GATEWAY_MAX_PROVIDER_TURNS",100),
+  providerTurnsPerRoom:read("PIBO_GATEWAY_MAX_PROVIDER_TURNS_PER_ROOM",20),maxWaiting:read("PIBO_GATEWAY_MAX_RUNTIME_WAITERS",64),
   maxWaitMs:read("PIBO_GATEWAY_MAX_RUNTIME_WAIT_MS",60_000),maxRuntimes:read("PIBO_GATEWAY_MAX_ACTIVE_RUNTIMES",32),
  };
 }
