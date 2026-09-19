@@ -144,6 +144,7 @@ import {
 	readProviderAuthCatalog,
 } from "./provider-auth-actions.js";
 import { ensurePrivateChatUploadDirectory, prepareChatFileAttachments, resolveDownloadPath, resolveImagePreviewPath, resolveImagePreviewPathWithinRoots, responseChatFileDownload, responseChatImagePreview, responseChatTraceImage, saveUploadedChatFiles } from "./chat-files.js";
+import { browseFilesystemDirectory } from "./chat-filesystem.js";
 import { generatedImageArtifactPath, generatedImageArtifactRoot } from "../../core/generated-image-artifacts.js";
 import { responseChatTranscription, responseChatTranscriptionProviders } from "./chat-transcription.js";
 import {
@@ -4875,6 +4876,11 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						)
 						: resolveImagePreviewPath(requestedPath!, basePath);
 					return responseChatImagePreview(resolvedPreview.path, resolvedPreview.allowedRoots);
+			}
+
+			if (url.pathname === `${CHAT_WEB_API_PREFIX}/filesystem/browse` && request.method === "GET") {
+				await requireSession(request, context);
+				return responseJson(browseFilesystemDirectory(url.searchParams.get("path")));
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/transcription/providers` && request.method === "GET") {

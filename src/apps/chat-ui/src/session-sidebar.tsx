@@ -7,6 +7,7 @@ import {
 	Copy,
 	Edit3,
 	FolderPlus,
+	FolderSearch,
 	Loader2,
 	Lock,
 	Pin,
@@ -19,6 +20,7 @@ import {
 import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
 import { ActionMenu, ActionMenuItem } from "./action-menu";
 import { copyTextToClipboard } from "./clipboard";
+import { FolderPickerDialog } from "./components/FolderPickerDialog";
 import { SessionNode } from "./session-node";
 import type { OptimisticSessionTitleIntent } from "./optimistic-session-title";
 import {
@@ -740,6 +742,7 @@ function RoomNode({
 	const [draftName, setDraftName] = useState(room.name);
 	const [draftTopic, setDraftTopic] = useState(room.topic ?? "");
 	const [draftWorkspace, setDraftWorkspace] = useState(room.workspace ?? "");
+	const [pickerOpen, setPickerOpen] = useState(false);
 	const personal = isSharedDefaultRoom(room);
 	const archived = isArchivedRoom(room);
 	const pinned = isPinnedRoom(room);
@@ -815,13 +818,24 @@ function RoomNode({
 							placeholder="Topic"
 							className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs outline-none focus:border-[#11a4d4]"
 						/>
-						<input
-							value={draftWorkspace}
-							aria-label={`Room workspace for ${room.name}`}
-							onChange={(event) => setDraftWorkspace(event.target.value)}
-							placeholder="Workspace (/absolute/path)"
-							className="min-w-0 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs font-mono outline-none focus:border-[#11a4d4]"
-						/>
+						<div className="flex min-w-0 gap-1">
+							<input
+								value={draftWorkspace}
+								aria-label={`Room workspace for ${room.name}`}
+								onChange={(event) => setDraftWorkspace(event.target.value)}
+								placeholder="Workspace (/absolute/path)"
+								className="min-w-0 flex-1 bg-[#0e1116] border border-slate-700 rounded-sm px-2 py-1 text-xs font-mono outline-none focus:border-[#11a4d4]"
+							/>
+							<button
+								type="button"
+								onClick={() => setPickerOpen(true)}
+								title="Projektordner auswählen"
+								aria-label={`Projektordner für ${room.name} auswählen`}
+								className="h-7 w-7 shrink-0 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+							>
+								<FolderSearch size={13} />
+							</button>
+						</div>
 						<div className="flex justify-end gap-1">
 							<button type="submit" className="h-7 w-7 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]">
 								<Check size={13} />
@@ -920,6 +934,12 @@ function RoomNode({
 						depth={depth + 1}
 					/>
 			))}
+			<FolderPickerDialog
+				open={pickerOpen}
+				initialPath={draftWorkspace}
+				onSelect={(path) => setDraftWorkspace(path)}
+				onClose={() => setPickerOpen(false)}
+			/>
 		</div>
 	);
 }
