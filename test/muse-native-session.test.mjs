@@ -352,8 +352,8 @@ test("Muse native diagnose, auth, timeouts, and import rejection behave", async 
 	const { adapter, instanceId } = createAdapter(root, "muse-native-diag");
 	const diagnostics = await adapter.diagnose();
 	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "muse_native_version_ok"));
-	const nonEmptySessionsDirs = [];
-	async function collectSessionsDirs(path) {
+	const leakedGenerationDirs = [];
+	async function collectGenerationDirs(path) {
 		let entries;
 		try {
 			entries = await readdir(path, { withFileTypes: true });
@@ -364,14 +364,19 @@ test("Muse native diagnose, auth, timeouts, and import rejection behave", async 
 			const full = join(path, entry.name);
 			if (!entry.isDirectory()) continue;
 			if (entry.name === "sessions") {
-				if ((await readdir(full)).length > 0) nonEmptySessionsDirs.push(full);
+				for (const session of await readdir(full)) {
+					const sessionPath = join(full, session);
+					for (const child of await readdir(sessionPath)) {
+						if (child !== "xdg-data") leakedGenerationDirs.push(join(sessionPath, child));
+					}
+				}
 				continue;
 			}
-			await collectSessionsDirs(full);
+			await collectGenerationDirs(full);
 		}
 	}
-	await collectSessionsDirs(join(root, "runtime-state"));
-	assert.deepEqual(nonEmptySessionsDirs, []);
+	await collectGenerationDirs(join(root, "runtime-state"));
+	assert.deepEqual(leakedGenerationDirs, []);
 
 	const broken = new AgentRuntimeAdapterRegistry();
 	broken.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);

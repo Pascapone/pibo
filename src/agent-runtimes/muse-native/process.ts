@@ -63,6 +63,7 @@ export type MuseNativeSessionPaths = MuseNativeInstancePaths & {
 	temp: string;
 	xdgCache: string;
 	xdgConfig: string;
+	/** Session-stable native session store. Unlike the other generation-scoped paths it survives host disposal, so resume keeps working across rebind and restart. */
 	xdgData: string;
 	xdgState: string;
 };
@@ -258,7 +259,10 @@ export async function prepareMuseNativeSessionPaths(input: PrepareMuseNativeSess
 		temp: join(generationRoot, "tmp"),
 		xdgCache: join(generationRoot, "xdg", "cache"),
 		xdgConfig: join(generationRoot, "xdg", "config"),
-		xdgData: join(generationRoot, "xdg", "data"),
+		// The host persists native sessions under XDG_DATA_HOME. Keep it stable per
+		// Pibo session (outside the wiped generation root) so resume survives rebind,
+		// restart, and disposal; per-session isolation is preserved.
+		xdgData: join(sessionRoot, "xdg-data"),
 		xdgState: join(generationRoot, "xdg", "state"),
 	};
 	if (!isInside(root, instanceRoot) || !isInside(instanceRoot, generationRoot)) {
@@ -360,6 +364,7 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: st
 	}
 }
 
+/** Wipes only the generation root; the session-stable xdg-data session store intentionally survives for resume. */
 export async function disposeMuseNativeSessionPaths(paths: MuseNativeSessionPaths): Promise<void> {
 	await rm(paths.generationRoot, {
 		recursive: true,

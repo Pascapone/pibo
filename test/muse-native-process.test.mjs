@@ -12,6 +12,7 @@ import {
 import { parseMuseNativeRuntimeConfig } from "../dist/agent-runtimes/muse-native/config.js";
 import {
 	buildHostEnvironment,
+	disposeMuseNativeSessionPaths,
 	prepareMuseNativeSessionPaths,
 	resolveMuseSandboxArgs,
 	withTimeout,
@@ -277,4 +278,41 @@ test("Muse native auto sandbox degrades with diagnostics when Linux sandboxing c
 		probeSandbox: workingProbe,
 	});
 	assert.deepEqual(healthy, { args: [] });
+});
+
+test("muse native session store is stable per session and survives generation disposal", async (t) => {
+	const { root } = await testRoot(t);
+	const config = runtimeConfig(root);
+	const first = await prepareMuseNativeSessionPaths({
+		config,
+		runtimeInstanceId: "muse-native",
+		piboSessionId: "ps_stable_store",
+		sessionGeneration: "generation-one",
+	});
+	const second = await prepareMuseNativeSessionPaths({
+		config,
+		runtimeInstanceId: "muse-native",
+		piboSessionId: "ps_stable_store",
+		sessionGeneration: "generation-two",
+	});
+	assert.equal(first.sessionRoot, second.sessionRoot);
+	assert.notEqual(first.generationRoot, second.generationRoot);
+	assert.equal(first.xdgData, second.xdgData);
+	assert.ok(!first.xdgData.startsWith(`${first.generationRoot}/`));
+	assert.ok(first.xdgData.startsWith(`${first.sessionRoot}/`));
+
+	const marker = join(first.xdgData, "sessions", "native-session.json");
+	await mkdir(join(first.xdgData, "sessions"), { recursive: true });
+	await writeFile(marker, JSON.stringify({ nativeSessionId: "native-1" }));
+	await disposeMuseNativeSessionPaths(first);
+	assert.equal(await readFile(marker, "utf8"), JSON.stringify({ nativeSessionId: "native-1" }));
+	await assert.rejects(readdir(first.generationRoot));
+
+	const other = await prepareMuseNativeSessionPaths({
+		config,
+		runtimeInstanceId: "muse-native",
+		piboSessionId: "ps_other_session",
+		sessionGeneration: "generation-one",
+	});
+	assert.notEqual(other.xdgData, first.xdgData);
 });
