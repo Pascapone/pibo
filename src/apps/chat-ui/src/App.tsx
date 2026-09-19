@@ -1018,9 +1018,9 @@ export function App({ route }: { route: ChatAppRoute }) {
 		if (legacyProfile) writeStoredNewSessionProfile("");
 	}, [bootstrap, loadingRoomId]);
 
-	const setPreferredNewSessionProfile = useCallback((profile: string) => {
+	const setPreferredNewSessionProfile = useCallback((profile: string, targetRoomId?: string) => {
 		setNewSessionProfile(profile);
-		const roomId = selectedRoomId ?? bootstrapRef.current?.selectedRoomId;
+		const roomId = targetRoomId ?? selectedRoomId ?? bootstrapRef.current?.selectedRoomId;
 		if (roomId) {
 			setNewSessionProfileRoomId(roomId);
 			writeStoredNewSessionProfile(profile, roomId);
@@ -1451,40 +1451,12 @@ export function App({ route }: { route: ChatAppRoute }) {
 	const slashCommands = useMemo(() => buildSlashCommands(bootstrap?.capabilities.actions ?? []), [bootstrap]);
 	const skills = useMemo(() => availableSkillsForSession(bootstrap, selectedPiboSessionId), [bootstrap, selectedPiboSessionId]);
 
-	const selectSession = useCallback(async (piboSessionId: string) => {
-		roomCreationOwnerRef.current = null;
-		const targetRoomId = selectedRoomId ?? bootstrap?.selectedRoomId;
-		// User selection owns the view immediately, not after the deferred navigation refresh.
-		if (selectedPiboSessionIdRef.current !== piboSessionId) bootstrapRequestId.current += 1;
-		flushSync(() => {
-			setSelectedPiboSessionId(piboSessionId);
-			setLoadingPiboSessionId(piboSessionId);
-			closeMobileSidebar();
-		});
-		updateBootstrapCache((current) => markSessionSubtreeReadInBootstrap(current, piboSessionId, targetRoomId ?? current.selectedRoomId));
-		navigateToSelectedSession(targetRoomId, piboSessionId, false, { closeMobileSidebar: false });
-		void markSessionRead(piboSessionId).catch(() => undefined);
-		window.setTimeout(() => {
-			setLoadingPiboSessionId((current) => current === piboSessionId ? null : current);
-		}, 50);
-		window.setTimeout(() => {
-			if (bootstrapRef.current?.selectedPiboSessionId !== piboSessionId) return;
-			void loadNavigation(piboSessionId, showArchivedRef.current, targetRoomId, { readSessionId: piboSessionId })
-				.then((data) => {
-					if (bootstrapRef.current?.selectedPiboSessionId !== piboSessionId) return;
-					navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, true, { closeMobileSidebar: false });
-				})
-				.catch((caught) => {
-					if (!isAbortError(caught) && bootstrapRef.current?.selectedPiboSessionId === piboSessionId) setError(errorMessage(caught));
-				});
-		}, 750);
-	}, [bootstrap?.selectedRoomId, closeMobileSidebar, loadNavigation, navigateToSelectedSession, selectedRoomId, updateBootstrapCache]);
-
-	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions = {}) => {
+	const selectRoom = useCallback(async (roomId: string, options: NavigationOptions & { piboSessionId?: string } = {}) => {
 		if (roomId.startsWith("optimistic-room-")) return;
 		roomCreationOwnerRef.current = null;
-		const navigationOptions = { ...options, closeMobileSidebar: false };
-		const storedPiboSessionId = readStoredSelection().sessionsByRoom?.[roomId];
+		const { piboSessionId: explicitPiboSessionId, ...baseNavigationOptions } = options;
+		const navigationOptions = { ...baseNavigationOptions, closeMobileSidebar: false };
+		const storedPiboSessionId = explicitPiboSessionId ?? readStoredSelection().sessionsByRoom?.[roomId];
 		const cachedNavigation = roomNavigationSnapshotsRef.current.get(roomId);
 		const generation = roomSwitchGenerationRef.current + 1;
 		roomSwitchGenerationRef.current = generation;
@@ -1513,7 +1485,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 		} catch (caught) {
 			if (isAbortError(caught)) return;
 			if (!storedPiboSessionId) throw caught;
-			removeStoredRoomSelection(roomId);
+			if (!explicitPiboSessionId) removeStoredRoomSelection(roomId);
 			setSelectedPiboSessionId(null);
 			const navigation = loadNavigation(undefined, showArchivedRef.current, roomId, { force: true, signal: controller.signal });
 			const requestId = bootstrapRequestId.current;
@@ -1528,6 +1500,40 @@ export function App({ route }: { route: ChatAppRoute }) {
 		}
 	}, [closeMobileSidebar, loadNavigation, navigateToSelectedSession, overlayCurrentSignals]);
 
+	const selectSession = useCallback(async (piboSessionId: string, roomId?: string) => {
+		const folderRoomId = roomId ?? activeRoomId;
+		if (folderRoomId && folderRoomId !== activeRoomId) {
+			await selectRoom(folderRoomId, { piboSessionId });
+			return;
+		}
+		roomCreationOwnerRef.current = null;
+		const targetRoomId = selectedRoomId ?? bootstrap?.selectedRoomId;
+		// User selection owns the view immediately, not after the deferred navigation refresh.
+		if (selectedPiboSessionIdRef.current !== piboSessionId) bootstrapRequestId.current += 1;
+		flushSync(() => {
+			setSelectedPiboSessionId(piboSessionId);
+			setLoadingPiboSessionId(piboSessionId);
+			closeMobileSidebar();
+		});
+		updateBootstrapCache((current) => markSessionSubtreeReadInBootstrap(current, piboSessionId, targetRoomId ?? current.selectedRoomId));
+		navigateToSelectedSession(targetRoomId, piboSessionId, false, { closeMobileSidebar: false });
+		void markSessionRead(piboSessionId).catch(() => undefined);
+		window.setTimeout(() => {
+			setLoadingPiboSessionId((current) => current === piboSessionId ? null : current);
+		}, 50);
+		window.setTimeout(() => {
+			if (bootstrapRef.current?.selectedPiboSessionId !== piboSessionId) return;
+			void loadNavigation(piboSessionId, showArchivedRef.current, targetRoomId, { readSessionId: piboSessionId })
+				.then((data) => {
+					if (bootstrapRef.current?.selectedPiboSessionId !== piboSessionId) return;
+					navigateToSelectedSession(data.selectedRoomId, data.selectedPiboSessionId, true, { closeMobileSidebar: false });
+				})
+				.catch((caught) => {
+					if (!isAbortError(caught) && bootstrapRef.current?.selectedPiboSessionId === piboSessionId) setError(errorMessage(caught));
+				});
+		}, 750);
+	}, [activeRoomId, bootstrap?.selectedRoomId, closeMobileSidebar, loadNavigation, navigateToSelectedSession, selectRoom, selectedRoomId, updateBootstrapCache]);
+
 	const toggleArchivedRooms = useCallback(() => {
 		const next = !showArchivedRooms;
 		setShowArchivedRooms(next);
@@ -1541,9 +1547,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 		});
 	}, [activeRoomId, bootstrap, selectRoom, showArchivedRooms]);
 
-	const createSession = async (profile = newSessionProfile) => {
-		if (creatingSessionRef.current || selectedRoomArchived) return;
-		const originRoomId = selectedRoomId ?? bootstrap?.selectedRoomId ?? "";
+	const createSession = async (profile = newSessionProfile, roomId?: string) => {
+		if (creatingSessionRef.current) return;
+		if (roomId && roomId !== activeRoomId) {
+			await selectRoom(roomId);
+		}
+		const originRoomId = roomId ?? selectedRoomId ?? bootstrap?.selectedRoomId ?? "";
+		const originRoom = originRoomId && bootstrapRef.current ? findRoomById(bootstrapRef.current.rooms, originRoomId) ?? undefined : undefined;
+		if (originRoom && isArchivedRoom(originRoom)) return;
 		const previousSelectedPiboSessionId = selectedPiboSessionIdRef.current;
 		const operationId = createClientTxnId();
 		const tempId = `optimistic-session-${operationId}`;
@@ -2180,7 +2191,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							onNewSessionProfileChange={setPreferredNewSessionProfile}
 							selectedRoomArchived={selectedRoomArchived}
 							creatingSession={creatingSession}
-							onCreateSession={() => createSession()}
+							onCreateSession={(roomId, profile) => createSession(profile, roomId)}
 							onCreateWorkflowSession={() => openWorkflowSessionDialog()}
 							showArchived={showArchived}
 							onToggleArchivedSessions={toggleArchivedSessions}
@@ -2197,6 +2208,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 							signalNow={signalNow}
 							selectedSessionPathIds={selectedSessionPathIds}
 							onSelectSession={selectSession}
+							globalSessionStatusSnapshot={sessionStatusSignalsRef.current}
 							onRenameSession={renameSession}
 							onArchiveSession={setSessionArchived}
 							onPinnedSessionChange={setSessionPinned}

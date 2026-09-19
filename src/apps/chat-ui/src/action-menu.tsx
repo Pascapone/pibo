@@ -32,6 +32,7 @@ type ActionMenuProps = {
 	children: ReactNode;
 	estimatedHeight?: number;
 	disabled?: boolean;
+	triggerIcon?: ReactNode;
 };
 
 type ActionMenuItemProps = {
@@ -87,7 +88,7 @@ export function consumeActionMenuEscape(event: ActionMenuEscapeEvent, closeMenu:
 	return true;
 }
 
-export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDTH, disabled = false }: ActionMenuProps) {
+export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDTH, disabled = false, triggerIcon }: ActionMenuProps) {
 	const reactId = useId();
 	const triggerId = `${reactId}-trigger`;
 	const menuId = `${reactId}-menu`;
@@ -237,7 +238,7 @@ export function ActionMenu({ label, children, estimatedHeight = ACTION_MENU_WIDT
 				aria-controls={menuId}
 				className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center rounded-sm text-slate-400 hover:text-[#11a4d4] disabled:cursor-not-allowed disabled:opacity-50"
 			>
-				<MoreVertical size={12} className="max-[980px]:h-4 max-[980px]:w-4" />
+				{triggerIcon ?? <MoreVertical size={12} className="max-[980px]:h-4 max-[980px]:w-4" />}
 			</button>
 			{!disabled && open && position && typeof document !== "undefined" ? createPortal(
 				<ActionMenuContext.Provider value={{ closeMenu, restoreFocus: () => triggerRef.current?.focus() }}>

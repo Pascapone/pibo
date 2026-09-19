@@ -28,7 +28,7 @@ async function runScenario(body) {
 		});
 		${body}
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
 test("pending creation opens a local empty title editor before any persisted ID exists", async () => {

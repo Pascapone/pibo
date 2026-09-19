@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEventHandler, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEventHandler, type ReactNode, type RefObject } from "react";
 import {
 	Archive,
 	ArchiveRestore,
@@ -6,6 +6,7 @@ import {
 	CheckCheck,
 	Copy,
 	Edit3,
+	FolderOpen,
 	FolderPlus,
 	FolderSearch,
 	Loader2,
@@ -17,13 +18,28 @@ import {
 	Workflow,
 	X,
 } from "lucide-react";
-import type { BootstrapData, PiboRoom, PiboWebSessionNode } from "./types";
+import type { AgentProfile, BootstrapData, PiboRoom, PiboSignalStatusSnapshot, PiboWebSessionNode } from "./types";
 import { ActionMenu, ActionMenuItem } from "./action-menu";
+import { getSessionPage } from "./api-chat-sessions";
+import { appendSessionRoots } from "./app-navigation-merge";
+import { readStoredNewSessionProfile } from "./app-storage";
 import { copyTextToClipboard } from "./clipboard";
 import { FolderPickerDialog } from "./components/FolderPickerDialog";
 import { SessionNode } from "./session-node";
 import type { OptimisticSessionTitleIntent } from "./optimistic-session-title";
 import {
+	SESSION_FOLDER_PAGE_SIZE,
+	SESSION_FOLDER_PREVIEW_LIMIT,
+	applyFolderStatusOverlay,
+	expandRoomInFolder,
+	filterFolderSessions,
+	isRoomExpandedInFolder,
+	readSessionFolderState,
+	toggleRoomExpandedInFolder,
+	writeSessionFolderState,
+} from "./session-folder-model";
+import {
+	findRoomById,
 	findSharedDefaultRoom,
 	isArchivedRoom,
 	isPinnedRoom,
@@ -36,8 +52,42 @@ const SESSION_INFINITE_SCROLL_ROOT_MARGIN = "240px 0px";
 
 // Chat route transitions can remount the sidebar while the page stays open.
 // Retain viewport state for the lifetime of this browser page.
-let retainedRoomListScrollTop = 0;
 const retainedSessionScrollTopByKey = new Map<string, number>();
+
+const EMPTY_FOREIGN_SESSION_PATH_IDS: ReadonlySet<string> = new Set();
+
+// Selected sessions bleed left to the folder guide line (folder ml-8 minus 20px).
+// Rows are full width, so no right bleed is needed and content never shifts.
+const FOLDER_SESSION_SELECTION_BLEED_LEFT = 20;
+
+// Stale-while-revalidate cache for foreign room sessions: re-expanding a room
+// (or switching back to it) renders instantly with no skeleton flash, while a
+// silent background refresh keeps the data fresh.
+type ForeignRoomSessionsCacheEntry = {
+	sessions: PiboWebSessionNode[];
+	nextCursor: string | undefined;
+	totalCount: number | undefined;
+	loadedCount: number;
+	visibleCount: number;
+};
+const foreignRoomSessionsCache = new Map<string, ForeignRoomSessionsCacheEntry>();
+
+type RoomSessionActions = {
+	agents: AgentProfile[];
+	defaultProfile: string;
+	disabled: boolean;
+	showArchived: boolean;
+	archivedLoading: boolean;
+	onCreateSession: (roomId: string, profile: string) => void | Promise<void>;
+	onNewSessionProfileChange: (profile: string, roomId: string) => void;
+	onCreateWorkflowSession: () => void;
+	onToggleArchivedSessions: () => void | Promise<void>;
+};
+
+type RoomFolderToggle = {
+	expanded: boolean;
+	onToggle: (roomId: string) => void;
+};
 
 function unreadBadgeLabel(count: number): string {
 	return count > 99 ? "99+" : String(count);
@@ -78,10 +128,10 @@ export type SessionSidebarProps = {
 	onDeleteRoom: (room: PiboRoom) => void;
 	newSessionProfile: string;
 	newSessionProfileReady: boolean;
-	onNewSessionProfileChange: (profile: string) => void;
+	onNewSessionProfileChange: (profile: string, roomId: string) => void;
 	selectedRoomArchived: boolean;
 	creatingSession: boolean;
-	onCreateSession: () => void | Promise<void>;
+	onCreateSession: (roomId: string, profile: string) => void | Promise<void>;
 	onCreateWorkflowSession: () => void;
 	showArchived: boolean;
 	onToggleArchivedSessions: () => void | Promise<void>;
@@ -97,7 +147,8 @@ export type SessionSidebarProps = {
 	onLoadMoreSessions: (archived: boolean) => void | Promise<void>;
 	signalNow: number;
 	selectedSessionPathIds: ReadonlySet<string>;
-	onSelectSession: (piboSessionId: string) => void | Promise<void>;
+	onSelectSession: (piboSessionId: string, roomId?: string) => void | Promise<void>;
+	globalSessionStatusSnapshot?: PiboSignalStatusSnapshot | null;
 	onRenameSession: (piboSessionId: string, title: string | null) => void | Promise<void>;
 	onArchiveSession: (piboSessionId: string, archived: boolean) => void | Promise<void>;
 	onPinnedSessionChange: (piboSessionId: string, pinned: boolean) => void | Promise<void>;
@@ -151,6 +202,7 @@ export function SessionSidebar({
 	signalNow,
 	selectedSessionPathIds,
 	onSelectSession,
+	globalSessionStatusSnapshot = null,
 	onRenameSession,
 	onArchiveSession,
 	onPinnedSessionChange,
@@ -167,9 +219,20 @@ export function SessionSidebar({
 	const newSessionProfileOptions = bootstrap.agents;
 	const sharedDefaultRoom = findSharedDefaultRoom(bootstrap.rooms);
 	const roomGroups = splitRoomNodes(bootstrap.rooms);
-	const archivedSessionsToggleRef = useRef<HTMLButtonElement>(null);
-	const roomListScrollRef = useRef<HTMLDivElement>(null);
-	const roomListScrollTopRef = useRef(retainedRoomListScrollTop);
+	const folderRooms = sharedDefaultRoom ? [{ ...sharedDefaultRoom, children: [] }, ...roomGroups.active] : roomGroups.active;
+	const activeRoomId = selectedRoomId ?? bootstrap.selectedRoomId ?? null;
+	const selectedSessionRoomId = selectedPiboSessionId ? activeRoomId : null;
+	const [folderState, setFolderState] = useState(() => expandRoomInFolder(readSessionFolderState(), activeRoomId));
+	const pinnedSessionsOnly = folderState.pinnedSessionsOnly;
+	const toggleFolderRoomExpanded = useCallback((roomId: string) => {
+		setFolderState((current) => toggleRoomExpandedInFolder(current, roomId));
+	}, []);
+	useEffect(() => {
+		writeSessionFolderState(folderState);
+	}, [folderState]);
+	useEffect(() => {
+		setFolderState((current) => expandRoomInFolder(current, activeRoomId));
+	}, [activeRoomId]);
 	const sessionScrollTopByKeyRef = useRef(retainedSessionScrollTopByKey);
 	const sessionScrollKey = (selectedRoomId ?? bootstrap.selectedRoomId ?? "none") + ":" + (showArchived ? "archived" : "active");
 	const activeSessionScrollKeyRef = useRef(sessionScrollKey);
@@ -177,12 +240,16 @@ export function SessionSidebar({
 	const [roomDropIndicator, setRoomDropIndicator] = useState<{ targetRoomId: string; position: "before" | "after" } | null>(null);
 	const [draggedSessionId, setDraggedSessionId] = useState<string | null>(null);
 	const [dropIndicator, setDropIndicator] = useState<{ targetPiboSessionId: string; position: "before" | "after" } | null>(null);
-	const firstUnpinnedRoomIndex = roomGroups.active.findIndex((room) => !isPinnedRoom(room));
-	const firstUnpinnedSessionIndex = visibleActiveSessions.findIndex((session) => !session.pinned);
-	useLayoutEffect(() => {
-		if (!visible) return;
-		if (roomListScrollRef.current) roomListScrollRef.current.scrollTop = roomListScrollTopRef.current;
-	}, [visible, selectedRoomId, loadingRoomId, bootstrap.rooms.length, showArchivedRooms]);
+	const sharedFolderOffset = sharedDefaultRoom ? 1 : 0;
+	const firstUnpinnedRoomIndex = folderRooms.findIndex((room, index) => index >= sharedFolderOffset && !isPinnedRoom(room));
+	const folderActiveSessions = useMemo(
+		() => filterFolderSessions(visibleActiveSessions, pinnedSessionsOnly),
+		[visibleActiveSessions, pinnedSessionsOnly],
+	);
+	const firstUnpinnedSessionIndex = folderActiveSessions.findIndex((session) => !session.pinned);
+	const selectedRoomVisibleInTree = !activeRoomId
+		|| Boolean(findRoomById(folderRooms, activeRoomId))
+		|| (showArchivedRooms && Boolean(findRoomById(roomGroups.archived, activeRoomId)));
 
 	useLayoutEffect(() => {
 		activeSessionScrollKeyRef.current = sessionScrollKey;
@@ -192,23 +259,201 @@ export function SessionSidebar({
 	}, [
 		visible,
 		sessionScrollKey,
-		selectedPiboSessionId,
 		roomSessionsLoading,
-		visibleActiveSessions.length,
-		visibleArchivedSessions.length,
 		sessionListScrollRef,
 	]);
 
-	const handleToggleArchivedSessions = async () => {
-		const restoreFocus = archivedSessionsToggleRef.current === document.activeElement;
-		try {
-			await onToggleArchivedSessions();
-		} finally {
-			requestAnimationFrame(() => {
-				if (restoreFocus && document.activeElement === document.body) archivedSessionsToggleRef.current?.focus();
-			});
-		}
+	const sessionActionsForRoom = (room: PiboRoom): RoomSessionActions => ({
+		agents: newSessionProfileOptions,
+		defaultProfile: room.id === activeRoomId ? newSessionProfile : readStoredNewSessionProfile(room.id),
+		disabled: !newSessionProfileReady || !newSessionProfileOptions.length || creatingSession || creatingRoom || isArchivedRoom(room) || roomSessionsLoading,
+		showArchived,
+		archivedLoading: loadingArchivedSessions,
+		onCreateSession,
+		onNewSessionProfileChange,
+		onCreateWorkflowSession,
+		onToggleArchivedSessions,
+	});
+
+	const handleTreeScroll = (event: React.UIEvent<HTMLDivElement>) => {
+		if (visible && !roomSessionsLoading) sessionScrollTopByKeyRef.current.set(activeSessionScrollKeyRef.current, event.currentTarget.scrollTop);
 	};
+
+	const renderSelectedRoomSessions = (selectionBleedLeft = FOLDER_SESSION_SELECTION_BLEED_LEFT) => (
+		<>
+			<div>
+			{roomSessionsLoading ? (
+				<RoomSessionsLoadingSkeleton />
+			) : (
+				<>
+			{folderActiveSessions.map((session, index) => {
+				const showPinnedDivider = firstUnpinnedSessionIndex > 0 && index === firstUnpinnedSessionIndex;
+				const indicator = dropIndicator?.targetPiboSessionId === session.piboSessionId ? dropIndicator.position : null;
+				const optimisticTitleIntent = optimisticTitleIntents[session.piboSessionId];
+				const pendingCreation = optimisticTitleIntent?.createStatus === "pending";
+				return (
+					<div key={optimisticTitleIntent?.operationId ?? session.piboSessionId}>
+						{showPinnedDivider ? <div data-pibo-debug="pinned-session-divider" className="mx-2 my-1 border-t border-slate-700/80" aria-hidden="true" /> : null}
+						<SessionNode
+							node={session}
+							signalNow={signalNow}
+							selectedPiboSessionId={selectedPiboSessionId}
+							selectedSessionPathIds={selectedSessionPathIds}
+							onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
+							onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
+							onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
+							onPinnedChange={(piboSessionId, pinned) => void onPinnedSessionChange(piboSessionId, pinned)}
+							onDelete={onDeleteSession}
+							onViewContext={onViewContext}
+							loadingPiboSessionId={loadingPiboSessionId}
+							selectionBleedLeft={selectionBleedLeft}
+							mutationsDisabled={pendingCreation}
+							optimisticTitleIntent={optimisticTitleIntent}
+							onOptimisticTitleDraftChange={onOptimisticTitleDraftChange}
+							onOptimisticTitleConfirm={onOptimisticTitleConfirm}
+							onOptimisticTitleCancel={onOptimisticTitleCancel}
+							draggable={!selectedRoomArchived && !pendingCreation}
+							dropPosition={indicator}
+							onSessionDragStart={(event) => {
+								setDraggedSessionId(session.piboSessionId);
+								setDropIndicator(null);
+								event.dataTransfer.effectAllowed = "move";
+								event.dataTransfer.setData("text/pibo-session-id", session.piboSessionId);
+							}}
+							onSessionDragOver={(event) => {
+								const dragged = visibleActiveSessions.find((candidate) => candidate.piboSessionId === draggedSessionId);
+								if (!dragged || dragged.piboSessionId === session.piboSessionId || Boolean(dragged.pinned) !== Boolean(session.pinned)) return;
+								event.preventDefault();
+								event.dataTransfer.dropEffect = "move";
+								const bounds = event.currentTarget.getBoundingClientRect();
+								setDropIndicator({
+									targetPiboSessionId: session.piboSessionId,
+									position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+								});
+							}}
+							onSessionDrop={(event) => {
+								event.preventDefault();
+								if (draggedSessionId && dropIndicator?.targetPiboSessionId === session.piboSessionId) {
+									void onReorderSession(draggedSessionId, session.piboSessionId, dropIndicator.position);
+								}
+								setDraggedSessionId(null);
+								setDropIndicator(null);
+							}}
+							onSessionDragEnd={() => {
+								setDraggedSessionId(null);
+								setDropIndicator(null);
+							}}
+						/>
+					</div>
+				);
+			})}
+			{folderActiveSessions.length === 0 && !hasMoreActiveSessions ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">{pinnedSessionsOnly && totalActiveSessionCount > 0 ? "No pinned sessions" : "No active sessions"}</div> : null}
+			{hasMoreActiveSessions ? (
+				<SessionSidebarLoadMoreButton
+					debugName="active-session-load-more"
+					loading={loadingActiveSessions}
+					rootRef={sessionListScrollRef}
+					onLoadMore={() => onLoadMoreSessions(false)}
+				>
+					{loadingActiveSessions ? "Loading active sessions…" : `Load more active sessions (${visibleActiveSessions.length} of ${totalActiveSessionCount})`}
+				</SessionSidebarLoadMoreButton>
+			) : null}
+		{showArchived ? (
+			<div className="mt-3">
+				<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+					<span>Archived Sessions</span>
+					{loadingArchivedSessions ? <Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading archived sessions" /> : null}
+				</div>
+				{loadingArchivedSessions ? (
+					<div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm mr-3 flex items-center gap-2">
+						<Loader2 size={13} className="text-[#11a4d4] animate-spin" /> Loading archived sessions
+					</div>
+				) : totalArchivedSessionCount ? (
+					<>
+						<ArchivedSessionsList
+							sessions={visibleArchivedSessions}
+							signalNow={signalNow}
+							selectedPiboSessionId={selectedPiboSessionId}
+							selectedSessionPathIds={selectedSessionPathIds}
+							onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
+							onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
+							onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
+							onDelete={onDeleteSession}
+							onViewContext={onViewContext}
+							loadingPiboSessionId={loadingPiboSessionId}
+							selectionBleedLeft={selectionBleedLeft}
+						/>
+						{hasMoreArchivedSessions ? (
+							<SessionSidebarLoadMoreButton
+								debugName="archived-session-load-more"
+								loading={loadingArchivedSessions}
+								rootRef={sessionListScrollRef}
+								onLoadMore={() => onLoadMoreSessions(true)}
+							>
+								{loadingArchivedSessions ? "Loading archived sessions…" : `Load more archived sessions (${visibleArchivedSessions.length} of ${totalArchivedSessionCount})`}
+							</SessionSidebarLoadMoreButton>
+						) : null}
+					</>
+				) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm mr-3">No archived sessions</div>}
+			</div>
+		) : null}
+				</>
+			)}
+			</div>
+		</>
+	);
+
+	const renderRoomFolderSessions = (room: PiboRoom) => {
+		// During room navigation keep the foreign (cached) list instead of flashing the
+		// skeleton: the clicked room stays visually stable and flips to the props-driven
+		// list once the new data has arrived. Uncached rooms keep the skeleton.
+		if (room.id === activeRoomId && (!roomSessionsLoading || !foreignRoomSessionsCache.has(room.id))) return renderSelectedRoomSessions();
+		return (
+			<ForeignRoomFolderSessions
+				key={room.id}
+				roomId={room.id}
+				rooms={bootstrap.rooms}
+				pinnedSessionsOnly={pinnedSessionsOnly}
+				selectedPiboSessionId={selectedPiboSessionId}
+				signalNow={signalNow}
+				loadingPiboSessionId={loadingPiboSessionId}
+				globalSessionStatusSnapshot={globalSessionStatusSnapshot}
+				onSelectSession={onSelectSession}
+				onRenameSession={onRenameSession}
+				onArchiveSession={onArchiveSession}
+				onPinnedSessionChange={onPinnedSessionChange}
+				onDeleteSession={onDeleteSession}
+				onViewContext={onViewContext}
+			/>
+		);
+	};
+
+	const renderNestedRoomFolder = (child: PiboRoom, depth: number) => (
+		<RoomFolderBranch
+			key={child.id}
+			room={child}
+			expanded={isRoomExpandedInFolder(folderState, child.id)}
+			header={
+				<RoomNode
+					room={child}
+					selectedRoomId={selectedRoomId}
+					selectedSessionRoomId={selectedSessionRoomId}
+					loadingRoomId={loadingRoomId}
+					onSelect={(roomId) => void onSelectRoom(roomId)}
+					onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
+					onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
+					onReadAll={(roomId) => void onReadAllRoom(roomId)}
+					onDelete={onDeleteRoom}
+					depth={depth}
+					renderNestedRoom={renderNestedRoomFolder}
+					folderToggle={{ expanded: isRoomExpandedInFolder(folderState, child.id), onToggle: toggleFolderRoomExpanded }}
+					sessionActions={sessionActionsForRoom(child)}
+				/>
+			}
+		>
+			{renderRoomFolderSessions(child)}
+		</RoomFolderBranch>
+	);
 
 	return (
 		<div
@@ -216,120 +461,124 @@ export function SessionSidebar({
 			data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
 			data-pibo-selected-session-id={selectedPiboSessionId ?? undefined}
 			data-pibo-state={showArchived ? "archived-visible" : "active-only"}
-			className="min-h-0 flex-1 overflow-hidden p-2 flex flex-col gap-3"
+			className="min-h-0 flex-1 overflow-hidden py-2 flex flex-col gap-3"
 		>
 			{roomsSupported ? (
 				<>
-					{sharedDefaultRoom ? (
-							<div className="shrink-0">
-								<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Shared Chat</div>
-								<RoomNode
-									room={sharedDefaultRoom}
-									selectedRoomId={selectedRoomId}
-									loadingRoomId={loadingRoomId}
-									onSelect={(roomId) => void onSelectRoom(roomId)}
-									onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
-									onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
-									onReadAll={(roomId) => void onReadAllRoom(roomId)}
-									onDelete={onDeleteRoom}
-								/>
-							</div>
-					) : null}
-					<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col">
-						<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
-							<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rooms</div>
-							<div className="flex items-center gap-1">
-								<button
-									type="button"
-									onClick={() => void onCreateRoom()}
-									disabled={creatingRoom}
-									title="New Room"
-									aria-label="New Room"
-									className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-								>
-									<Plus size={14} />
-								</button>
-								<button
-									type="button"
-									onClick={onToggleArchivedRooms}
-									title={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
-									aria-label="Archived Rooms"
-									aria-pressed={showArchivedRooms}
-									className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
-								>
-									{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-								</button>
-							</div>
+					<div className="shrink-0 flex items-center justify-between gap-2 px-3 pb-1">
+						<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rooms</div>
+						<div className="flex items-center gap-1">
+							<button
+								type="button"
+								onClick={() => void onCreateRoom()}
+								disabled={creatingRoom}
+								title="New Room"
+								aria-label="New Room"
+								className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
+							>
+								<Plus size={14} />
+							</button>
+							<button
+								type="button"
+								onClick={onToggleArchivedRooms}
+								title={showArchivedRooms ? "Hide Archived Rooms" : "Show Archived Rooms"}
+								aria-label="Archived Rooms"
+								aria-pressed={showArchivedRooms}
+								className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${showArchivedRooms ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
+							>
+								{showArchivedRooms ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+							</button>
+							<button
+								type="button"
+								onClick={() => setFolderState((current) => ({ ...current, pinnedSessionsOnly: !current.pinnedSessionsOnly }))}
+								title={pinnedSessionsOnly ? "Show all sessions" : "Show pinned sessions only"}
+								aria-label="Pinned sessions only"
+								aria-pressed={pinnedSessionsOnly}
+								className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] ${pinnedSessionsOnly ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"}`}
+							>
+								<Pin size={14} />
+							</button>
 						</div>
-						<div
-							ref={roomListScrollRef}
-							data-pibo-debug="room-scroll-region"
-							className="min-h-0 flex-1 overflow-y-auto pr-1"
-							onScroll={(event) => {
-								if (!visible) return;
-								roomListScrollTopRef.current = event.currentTarget.scrollTop;
-								retainedRoomListScrollTop = roomListScrollTopRef.current;
-							}}
-						>
-						{roomGroups.active.map((room, index) => {
-							const showPinnedDivider = firstUnpinnedRoomIndex > 0 && index === firstUnpinnedRoomIndex;
+					</div>
+					<div
+						ref={sessionListScrollRef}
+						data-pibo-debug="session-scroll-region"
+						data-pibo-scroll-key={sessionScrollKey}
+						className="min-h-0 flex-1 overflow-y-auto"
+						onScroll={handleTreeScroll}
+					>
+						{folderRooms.map((room, index) => {
+							const showPinnedDivider = firstUnpinnedRoomIndex > sharedFolderOffset && index === firstUnpinnedRoomIndex;
 							const indicator = roomDropIndicator?.targetRoomId === room.id ? roomDropIndicator.position : null;
 							return (
 								<div key={room.id}>
 									{showPinnedDivider ? <div data-pibo-debug="pinned-room-divider" className="mx-2 my-1 border-t border-slate-700/80" aria-hidden="true" /> : null}
-									<RoomNode
+									<RoomFolderBranch
 										room={room}
-										selectedRoomId={selectedRoomId}
-										loadingRoomId={loadingRoomId}
-										onSelect={(roomId) => void onSelectRoom(roomId)}
-										onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
-										onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
-										onPinnedChange={onPinnedRoomChange ? (roomId, pinned) => void onPinnedRoomChange(roomId, pinned) : undefined}
-										onReadAll={(roomId) => void onReadAllRoom(roomId)}
-										onDelete={onDeleteRoom}
-										draggable={Boolean(onReorderRoom)}
-										dropPosition={indicator}
-										onRoomDragStart={(event) => {
-											setDraggedRoomId(room.id);
-											setRoomDropIndicator(null);
-											event.dataTransfer.effectAllowed = "move";
-											event.dataTransfer.setData("text/pibo-room-id", room.id);
-										}}
-										onRoomDragOver={(event) => {
-											const dragged = roomGroups.active.find((candidate) => candidate.id === draggedRoomId);
-											if (!dragged || dragged.id === room.id || isPinnedRoom(dragged) !== isPinnedRoom(room)) return;
-											event.preventDefault();
-											event.dataTransfer.dropEffect = "move";
-											const bounds = event.currentTarget.getBoundingClientRect();
-											setRoomDropIndicator({
-												targetRoomId: room.id,
-												position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
-											});
-										}}
-										onRoomDrop={(event) => {
-											event.preventDefault();
-											if (draggedRoomId && roomDropIndicator?.targetRoomId === room.id) {
-												void onReorderRoom?.(draggedRoomId, room.id, roomDropIndicator.position);
-											}
-											setDraggedRoomId(null);
-											setRoomDropIndicator(null);
-										}}
-										onRoomDragEnd={() => {
-											setDraggedRoomId(null);
-											setRoomDropIndicator(null);
-										}}
-									/>
+										expanded={isRoomExpandedInFolder(folderState, room.id)}
+										header={
+											<RoomNode
+												room={room}
+												selectedRoomId={selectedRoomId}
+												selectedSessionRoomId={selectedSessionRoomId}
+												loadingRoomId={loadingRoomId}
+												onSelect={(roomId) => void onSelectRoom(roomId)}
+												onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
+												onArchive={(roomId, archived) => void onArchiveRoom(roomId, archived)}
+												onPinnedChange={onPinnedRoomChange ? (roomId, pinned) => void onPinnedRoomChange(roomId, pinned) : undefined}
+												onReadAll={(roomId) => void onReadAllRoom(roomId)}
+												onDelete={onDeleteRoom}
+												draggable={room.id !== sharedDefaultRoom?.id && Boolean(onReorderRoom)}
+												dropPosition={indicator}
+												onRoomDragStart={(event) => {
+													setDraggedRoomId(room.id);
+													setRoomDropIndicator(null);
+													event.dataTransfer.effectAllowed = "move";
+													event.dataTransfer.setData("text/pibo-room-id", room.id);
+												}}
+												onRoomDragOver={(event) => {
+													const dragged = folderRooms.find((candidate) => candidate.id === draggedRoomId);
+													if (!dragged || dragged.id === room.id || isPinnedRoom(dragged) !== isPinnedRoom(room)) return;
+													event.preventDefault();
+													event.dataTransfer.dropEffect = "move";
+													const bounds = event.currentTarget.getBoundingClientRect();
+													setRoomDropIndicator({
+														targetRoomId: room.id,
+														position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
+													});
+												}}
+												onRoomDrop={(event) => {
+													event.preventDefault();
+													if (draggedRoomId && roomDropIndicator?.targetRoomId === room.id) {
+														void onReorderRoom?.(draggedRoomId, room.id, roomDropIndicator.position);
+													}
+													setDraggedRoomId(null);
+													setRoomDropIndicator(null);
+												}}
+												onRoomDragEnd={() => {
+													setDraggedRoomId(null);
+													setRoomDropIndicator(null);
+												}}
+												renderNestedRoom={renderNestedRoomFolder}
+												folderToggle={{ expanded: isRoomExpandedInFolder(folderState, room.id), onToggle: toggleFolderRoomExpanded }}
+												sessionActions={sessionActionsForRoom(room)}
+											/>
+										}
+									>
+										{renderRoomFolderSessions(room)}
+									</RoomFolderBranch>
 								</div>
 							);
 						})}
-						{roomGroups.active.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No rooms</div> : null}
+						{folderRooms.length === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No rooms</div> : null}
 						{showArchivedRooms ? (
 							<div className="mt-3">
-								<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Rooms</div>
+								<div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Archived Rooms</div>
 								{roomGroups.archived.length ? (
 									<ArchivedRoomsList
 										rooms={roomGroups.archived}
 										selectedRoomId={selectedRoomId}
+										selectedSessionRoomId={selectedSessionRoomId}
 										loadingRoomId={loadingRoomId}
 										onSelect={(roomId) => void onSelectRoom(roomId)}
 										onUpdate={(roomId, input) => void onUpdateRoom(roomId, input)}
@@ -337,188 +586,27 @@ export function SessionSidebar({
 										onReadAll={(roomId) => void onReadAllRoom(roomId)}
 										onDelete={onDeleteRoom}
 									/>
-								) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived rooms</div>}
+								) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm mr-3">No archived rooms</div>}
 							</div>
 						) : null}
-						</div>
+						{roomsSupported && activeRoomId && !selectedRoomVisibleInTree ? (
+							<div className="mt-3 border-t border-slate-700/80 pt-3">
+								{renderSelectedRoomSessions(0)}
+							</div>
+						) : null}
 					</div>
 				</>
-			) : null}
-			<div className="min-h-0 flex-1 basis-0 overflow-hidden flex flex-col border-t border-slate-700/80 pt-3">
-				<div className="shrink-0 flex items-center justify-between gap-2 px-1 pb-1">
-					<div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Sessions</div>
-					<div className="flex items-center gap-1">
-						<select
-							id="new-session-agent-select"
-							value={newSessionProfile}
-							onChange={(event) => onNewSessionProfileChange(event.target.value)}
-							disabled={!newSessionProfileReady || !newSessionProfileOptions.length || creatingRoom || selectedRoomArchived || roomSessionsLoading}
-							title="Agent for new sessions"
-							aria-label="Agent for new sessions"
-							className="h-6 w-28 max-[980px]:h-8 max-[980px]:w-32 max-[980px]:text-sm rounded-sm border border-slate-700 bg-[#101d22] px-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-300 outline-none hover:border-[#11a4d4] focus:border-[#11a4d4] disabled:opacity-50"
-						>
-							{newSessionProfileOptions.map((profile) => (
-								<option key={profile.name} value={profile.name} title={profile.description ?? profile.name}>
-									{profile.name}
-								</option>
-							))}
-						</select>
-						<button type="button" onClick={onCreateWorkflowSession} disabled={creatingSession || creatingRoom || selectedRoomArchived || roomSessionsLoading} title="New Workflow Session" aria-label="New Workflow Session" className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"><Workflow size={14} /></button>
-						<button
-							data-pibo-debug="new-session-button"
-							data-pibo-room-id={selectedRoomId ?? bootstrap.selectedRoomId ?? undefined}
-							data-pibo-state={creatingSession ? "creating" : creatingRoom ? "room-creating" : roomSessionsLoading ? "room-loading" : !newSessionProfileReady ? "profile-loading" : selectedRoomArchived ? "archived-disabled" : "ready"}
-							type="button"
-							onClick={() => void onCreateSession()}
-							disabled={!newSessionProfileReady || creatingSession || creatingRoom || selectedRoomArchived || roomSessionsLoading}
-							title="New Session"
-							aria-label="New Session"
-							className="h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-50"
-						>
-							<Plus size={14} />
-						</button>
-						<button
-							type="button"
-							ref={archivedSessionsToggleRef}
-							onClick={() => void handleToggleArchivedSessions()}
-							disabled={loadingArchivedSessions}
-							title={showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
-							aria-label="Archived Sessions"
-							aria-pressed={showArchived}
-							className={`h-6 w-6 max-[980px]:h-8 max-[980px]:w-8 inline-flex items-center justify-center border rounded-sm hover:border-[#11a4d4] hover:text-[#11a4d4] disabled:opacity-70 ${
-								showArchived ? "border-[#11a4d4] text-[#11a4d4]" : "border-slate-700 text-slate-400"
-							}`}
-						>
-							{loadingArchivedSessions ? <Loader2 size={14} className="animate-spin" /> : showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-						</button>
-					</div>
-				</div>
+			) : (
 				<div
 					ref={sessionListScrollRef}
 					data-pibo-debug="session-scroll-region"
 					data-pibo-scroll-key={sessionScrollKey}
-					className="min-h-0 flex-1 overflow-y-auto pr-1"
-					onScroll={(event) => {
-						if (visible && !roomSessionsLoading) sessionScrollTopByKeyRef.current.set(activeSessionScrollKeyRef.current, event.currentTarget.scrollTop);
-					}}
+					className="min-h-0 flex-1 overflow-y-auto"
+					onScroll={handleTreeScroll}
 				>
-				{roomSessionsLoading ? (
-					<RoomSessionsLoadingSkeleton />
-				) : (
-					<>
-				{visibleActiveSessions.map((session, index) => {
-					const showPinnedDivider = firstUnpinnedSessionIndex > 0 && index === firstUnpinnedSessionIndex;
-					const indicator = dropIndicator?.targetPiboSessionId === session.piboSessionId ? dropIndicator.position : null;
-					const optimisticTitleIntent = optimisticTitleIntents[session.piboSessionId];
-					const pendingCreation = optimisticTitleIntent?.createStatus === "pending";
-					return (
-						<div key={optimisticTitleIntent?.operationId ?? session.piboSessionId}>
-							{showPinnedDivider ? <div data-pibo-debug="pinned-session-divider" className="mx-2 my-1 border-t border-slate-700/80" aria-hidden="true" /> : null}
-							<SessionNode
-								node={session}
-								signalNow={signalNow}
-								selectedPiboSessionId={selectedPiboSessionId}
-								selectedSessionPathIds={selectedSessionPathIds}
-								onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
-								onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
-								onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
-								onPinnedChange={(piboSessionId, pinned) => void onPinnedSessionChange(piboSessionId, pinned)}
-								onDelete={onDeleteSession}
-								onViewContext={onViewContext}
-								loadingPiboSessionId={loadingPiboSessionId}
-								mutationsDisabled={pendingCreation}
-								optimisticTitleIntent={optimisticTitleIntent}
-								onOptimisticTitleDraftChange={onOptimisticTitleDraftChange}
-								onOptimisticTitleConfirm={onOptimisticTitleConfirm}
-								onOptimisticTitleCancel={onOptimisticTitleCancel}
-								draggable={!selectedRoomArchived && !pendingCreation}
-								dropPosition={indicator}
-								onSessionDragStart={(event) => {
-									setDraggedSessionId(session.piboSessionId);
-									setDropIndicator(null);
-									event.dataTransfer.effectAllowed = "move";
-									event.dataTransfer.setData("text/pibo-session-id", session.piboSessionId);
-								}}
-								onSessionDragOver={(event) => {
-									const dragged = visibleActiveSessions.find((candidate) => candidate.piboSessionId === draggedSessionId);
-									if (!dragged || dragged.piboSessionId === session.piboSessionId || Boolean(dragged.pinned) !== Boolean(session.pinned)) return;
-									event.preventDefault();
-									event.dataTransfer.dropEffect = "move";
-									const bounds = event.currentTarget.getBoundingClientRect();
-									setDropIndicator({
-										targetPiboSessionId: session.piboSessionId,
-										position: event.clientY < bounds.top + bounds.height / 2 ? "before" : "after",
-									});
-								}}
-								onSessionDrop={(event) => {
-									event.preventDefault();
-									if (draggedSessionId && dropIndicator?.targetPiboSessionId === session.piboSessionId) {
-										void onReorderSession(draggedSessionId, session.piboSessionId, dropIndicator.position);
-									}
-									setDraggedSessionId(null);
-									setDropIndicator(null);
-								}}
-								onSessionDragEnd={() => {
-									setDraggedSessionId(null);
-									setDropIndicator(null);
-								}}
-							/>
-						</div>
-					);
-				})}
-				{totalActiveSessionCount === 0 ? <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No active sessions</div> : null}
-				{hasMoreActiveSessions ? (
-					<SessionSidebarLoadMoreButton
-						debugName="active-session-load-more"
-						loading={loadingActiveSessions}
-						rootRef={sessionListScrollRef}
-						onLoadMore={() => onLoadMoreSessions(false)}
-					>
-						{loadingActiveSessions ? "Loading active sessions…" : `Load more active sessions (${visibleActiveSessions.length} of ${totalActiveSessionCount})`}
-					</SessionSidebarLoadMoreButton>
-				) : null}
-			{showArchived ? (
-				<div className="mt-3">
-					<div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-						<span>Archived Sessions</span>
-						{loadingArchivedSessions ? <Loader2 size={12} className="text-[#11a4d4] animate-spin" aria-label="Loading archived sessions" /> : null}
-					</div>
-					{loadingArchivedSessions ? (
-						<div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm flex items-center gap-2">
-							<Loader2 size={13} className="text-[#11a4d4] animate-spin" /> Loading archived sessions
-						</div>
-					) : totalArchivedSessionCount ? (
-						<>
-							<ArchivedSessionsList
-								sessions={visibleArchivedSessions}
-								signalNow={signalNow}
-								selectedPiboSessionId={selectedPiboSessionId}
-								selectedSessionPathIds={selectedSessionPathIds}
-								onSelect={(piboSessionId) => void onSelectSession(piboSessionId)}
-								onRename={(piboSessionId, title) => void onRenameSession(piboSessionId, title)}
-								onArchive={(piboSessionId, archived) => void onArchiveSession(piboSessionId, archived)}
-								onDelete={onDeleteSession}
-								onViewContext={onViewContext}
-								loadingPiboSessionId={loadingPiboSessionId}
-							/>
-							{hasMoreArchivedSessions ? (
-								<SessionSidebarLoadMoreButton
-									debugName="archived-session-load-more"
-									loading={loadingArchivedSessions}
-									rootRef={sessionListScrollRef}
-									onLoadMore={() => onLoadMoreSessions(true)}
-								>
-									{loadingArchivedSessions ? "Loading archived sessions…" : `Load more archived sessions (${visibleArchivedSessions.length} of ${totalArchivedSessionCount})`}
-								</SessionSidebarLoadMoreButton>
-							) : null}
-						</>
-					) : <div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm">No archived sessions</div>}
+					{renderSelectedRoomSessions(0)}
 				</div>
-			) : null}
-					</>
-				)}
-				</div>
-			</div>
+			)}
 		</div>
 	);
 }
@@ -526,6 +614,7 @@ export function SessionSidebar({
 function ArchivedRoomsList({
 	rooms,
 	selectedRoomId,
+	selectedSessionRoomId,
 	loadingRoomId,
 	onSelect,
 	onUpdate,
@@ -535,6 +624,7 @@ function ArchivedRoomsList({
 }: {
 	rooms: PiboRoom[];
 	selectedRoomId: string | null;
+	selectedSessionRoomId?: string | null;
 	loadingRoomId?: string | null;
 	onSelect: (roomId: string) => void;
 	onUpdate: (roomId: string, input: { name?: string; topic?: string | null; workspace?: string | null }) => void;
@@ -549,6 +639,7 @@ function ArchivedRoomsList({
 					key={room.id}
 					room={room}
 					selectedRoomId={selectedRoomId}
+					selectedSessionRoomId={selectedSessionRoomId}
 					loadingRoomId={loadingRoomId}
 					onSelect={onSelect}
 					onUpdate={onUpdate}
@@ -664,9 +755,11 @@ function ArchivedSessionsList({
 	onDelete,
 	onViewContext,
 	loadingPiboSessionId,
+	selectionBleedLeft,
 	autoRenameSessionId,
 	onAutoRenameConsumed,
 }: {
+	selectionBleedLeft: number;
 	sessions: PiboWebSessionNode[];
 	signalNow: number;
 	selectedPiboSessionId: string | null;
@@ -695,6 +788,7 @@ function ArchivedSessionsList({
 					onDelete={onDelete}
 					onViewContext={onViewContext}
 					loadingPiboSessionId={loadingPiboSessionId}
+					selectionBleedLeft={selectionBleedLeft}
 					autoRename={autoRenameSessionId === session.piboSessionId}
 					onAutoRenameConsumed={onAutoRenameConsumed}
 				/>
@@ -720,6 +814,10 @@ function RoomNode({
 	onRoomDragOver,
 	onRoomDrop,
 	onRoomDragEnd,
+	renderNestedRoom,
+	folderToggle,
+	sessionActions,
+	selectedSessionRoomId,
 }: {
 	room: PiboRoom;
 	selectedRoomId: string | null;
@@ -737,6 +835,10 @@ function RoomNode({
 	onRoomDragOver?: DragEventHandler<HTMLDivElement>;
 	onRoomDrop?: DragEventHandler<HTMLDivElement>;
 	onRoomDragEnd?: DragEventHandler<HTMLDivElement>;
+	renderNestedRoom?: (room: PiboRoom, depth: number) => ReactNode;
+	folderToggle?: RoomFolderToggle;
+	sessionActions?: RoomSessionActions;
+	selectedSessionRoomId?: string | null;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [draftName, setDraftName] = useState(room.name);
@@ -749,6 +851,14 @@ function RoomNode({
 	const loading = room.id === loadingRoomId;
 	const roomTooltip = roomNodeTooltip(room);
 	const pinActionAvailable = depth === 0 && !personal && !archived && Boolean(onPinnedChange);
+	const selected = room.id === selectedRoomId;
+	const selectedSessionActions = selected ? sessionActions : undefined;
+	const hasSelectedSession = selectedSessionRoomId === room.id;
+	const roomIconTileClassName = `h-5 w-5 inline-flex items-center justify-center rounded-sm border ${personal
+		? `${hasSelectedSession ? "border-[#0bda57]" : "border-transparent"} bg-[#151f24] text-[#0bda57]`
+		: archived
+			? `${hasSelectedSession ? "border-[#f59e0b]" : "border-transparent"} bg-[#f59e0b]/15 text-[#f59e0b]`
+			: `${hasSelectedSession ? "border-[#11a4d4] text-[#11a4d4]" : "border-transparent text-slate-500"} bg-[#151f24]`}`;
 
 	const copyRoomId = () => {
 		void copyTextToClipboard(room.id).catch(() => undefined);
@@ -781,24 +891,32 @@ function RoomNode({
 				onDragOver={onRoomDragOver}
 				onDrop={onRoomDrop}
 				onDragEnd={onRoomDragEnd}
-				className={`group relative mb-0.5 border rounded-sm ${draggable ? "cursor-grab active:cursor-grabbing" : ""} ${
-					personal
-						? room.id === selectedRoomId
-							? "border-[#0bda57] bg-[#0bda57]/10"
-							: "border-[#0bda57]/50 bg-[#0bda57]/5"
-						: room.id === selectedRoomId
-							? "border-[#11a4d4] bg-[#11a4d4]/10"
-							: archived
-								? "border-[#f59e0b]/40 bg-[#f59e0b]/5"
-								: "border-transparent"
-				}`}
+				className={`group relative mb-0.5 border border-transparent rounded-sm flex items-center pl-2 pr-3 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
 				style={{ marginLeft: depth * 12 }}
 				title={roomTooltip}
 			>
 				{dropPosition === "before" ? <span className="pointer-events-none absolute inset-x-1 -top-px z-10 h-px bg-[#11a4d4]" /> : null}
+				{folderToggle ? (
+					<button
+						type="button"
+						data-pibo-debug="room-folder-toggle"
+						onClick={(event) => {
+							event.stopPropagation();
+							folderToggle.onToggle(room.id);
+						}}
+						aria-expanded={folderToggle.expanded}
+						aria-label={folderToggle.expanded ? `Collapse room ${room.name}` : `Expand room ${room.name}`}
+						title={folderToggle.expanded ? "Collapse room" : "Expand room"}
+						className="ml-0.5 h-7 w-5 shrink-0 inline-flex items-center justify-center rounded-sm text-slate-500 hover:text-[#11a4d4]"
+					>
+						<span className={roomIconTileClassName}>
+							{personal ? <Lock size={12} /> : archived ? <Archive size={12} /> : folderToggle.expanded ? <FolderOpen size={12} /> : <FolderPlus size={12} />}
+						</span>
+					</button>
+				) : null}
 				{editing && !personal ? (
 					<form
-						className="grid gap-1 p-1"
+						className="grid gap-1 p-1 flex-1 min-w-0"
 						onSubmit={(event) => {
 							event.preventDefault();
 							submit();
@@ -850,16 +968,18 @@ function RoomNode({
 						</div>
 					</form>
 				) : (
-					<div className="grid grid-cols-[1fr_auto] items-center gap-0.5 pr-0.5">
+					<div className={`grid flex-1 min-w-0 items-center gap-0.5 pr-0.5 ${sessionActions ? "grid-cols-[1fr_auto_auto]" : "grid-cols-[1fr_auto]"}`}>
 						<button
 							type="button"
-							onClick={() => onSelect(room.id)}
+							onClick={() => (folderToggle ? folderToggle.onToggle(room.id) : onSelect(room.id))}
 							aria-current={room.id === selectedRoomId ? "page" : undefined}
-							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1.5 flex gap-1.5 items-center"
+							className="h-7 max-[980px]:h-8 min-w-0 text-left px-1 flex gap-1.5 items-center"
 						>
-							<span className={`h-5 w-5 shrink-0 inline-flex items-center justify-center rounded-sm ${personal ? "bg-[#0bda57]/15 text-[#0bda57]" : archived ? "bg-[#f59e0b]/15 text-[#f59e0b]" : "bg-[#151f24] text-slate-500"}`}>
-								{personal ? <Lock size={12} /> : archived ? <Archive size={12} /> : <FolderPlus size={12} />}
-							</span>
+							{folderToggle ? null : (
+								<span className={`${roomIconTileClassName} shrink-0`}>
+									{personal ? <Lock size={12} /> : archived ? <Archive size={12} /> : <FolderPlus size={12} />}
+								</span>
+							)}
 							{pinned && !archived ? (
 								<span className="shrink-0 text-[#11a4d4]" title="Pinned room" aria-label="Pinned room">
 									<Pin size={11} fill="currentColor" aria-hidden="true" />
@@ -871,15 +991,52 @@ function RoomNode({
 								<UnreadBadge count={room.unreadCount} />
 							</span>
 						</button>
+						{sessionActions ? (
+							<ActionMenu
+								label={`New session in ${room.name}`}
+								triggerIcon={<Plus size={14} />}
+								estimatedHeight={sessionActions.agents.length * 40 + 8}
+								disabled={sessionActions.disabled}
+							>
+								{sessionActions.agents.map((agent) => (
+									<ActionMenuItem
+										key={agent.name}
+										onSelect={() => {
+											sessionActions.onNewSessionProfileChange(agent.name, room.id);
+											void sessionActions.onCreateSession(room.id, agent.name);
+										}}
+									>
+										<span className="w-4 shrink-0 inline-flex items-center justify-center text-[#11a4d4]">
+											{agent.name === sessionActions.defaultProfile ? <Check size={14} aria-label="Default agent" /> : null}
+										</span>
+										<span className="truncate" title={agent.description ?? agent.name}>{agent.name}</span>
+									</ActionMenuItem>
+								))}
+							</ActionMenu>
+						) : null}
 						<div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity max-[980px]:opacity-100">
 							{personal ? (
-								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={48}>
+								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={selectedSessionActions ? 144 : 48}>
+									{selectedSessionActions && (
+										<>
+											<ActionMenuItem onSelect={selectedSessionActions.onCreateWorkflowSession}>
+												<Workflow size={16} /> New Workflow Session
+											</ActionMenuItem>
+											<ActionMenuItem
+												onSelect={() => void selectedSessionActions.onToggleArchivedSessions()}
+												disabled={selectedSessionActions.archivedLoading}
+											>
+												{selectedSessionActions.showArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{" "}
+												{selectedSessionActions.showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
+											</ActionMenuItem>
+										</>
+									)}
 									<ActionMenuItem onSelect={() => onReadAll(room.id)}>
 										<CheckCheck size={16} /> Read All
 									</ActionMenuItem>
 								</ActionMenu>
 							) : (
-								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={archived ? 144 : pinActionAvailable ? 240 : 192}>
+								<ActionMenu label={`Actions for room ${room.name}`} estimatedHeight={(archived ? 144 : pinActionAvailable ? 240 : 192) + (selectedSessionActions && !archived ? 96 : 0)}>
 									{archived ? (
 										<>
 											<ActionMenuItem onSelect={copyRoomId}>
@@ -894,6 +1051,20 @@ function RoomNode({
 										</>
 									) : (
 										<>
+											{selectedSessionActions && (
+												<>
+													<ActionMenuItem onSelect={selectedSessionActions.onCreateWorkflowSession}>
+														<Workflow size={16} /> New Workflow Session
+													</ActionMenuItem>
+													<ActionMenuItem
+														onSelect={() => void selectedSessionActions.onToggleArchivedSessions()}
+														disabled={selectedSessionActions.archivedLoading}
+													>
+														{selectedSessionActions.showArchived ? <ArchiveRestore size={16} /> : <Archive size={16} />}{" "}
+														{selectedSessionActions.showArchived ? "Hide Archived Sessions" : "Show Archived Sessions"}
+													</ActionMenuItem>
+												</>
+											)}
 											{pinActionAvailable ? (
 												<ActionMenuItem onSelect={() => onPinnedChange?.(room.id, !pinned)}>
 													{pinned ? <PinOff size={16} /> : <Pin size={16} />} {pinned ? "Unpin Room" : "Pin Room"}
@@ -920,11 +1091,14 @@ function RoomNode({
 				)}
 				{dropPosition === "after" ? <span className="pointer-events-none absolute inset-x-1 -bottom-px z-10 h-px bg-[#11a4d4]" /> : null}
 			</div>
-			{(room.children ?? []).map((child) => (
-				<RoomNode
-					key={child.id}
-					room={child}
+			{(room.children ?? []).map((child) => renderNestedRoom
+				? renderNestedRoom(child, depth + 1)
+				: (
+					<RoomNode
+						key={child.id}
+						room={child}
 						selectedRoomId={selectedRoomId}
+						selectedSessionRoomId={selectedSessionRoomId}
 						loadingRoomId={loadingRoomId}
 						onSelect={onSelect}
 						onUpdate={onUpdate}
@@ -933,13 +1107,231 @@ function RoomNode({
 						onDelete={onDelete}
 						depth={depth + 1}
 					/>
-			))}
+				))}
 			<FolderPickerDialog
 				open={pickerOpen}
 				initialPath={draftWorkspace}
 				onSelect={(path) => setDraftWorkspace(path)}
 				onClose={() => setPickerOpen(false)}
 			/>
+		</div>
+	);
+}
+
+function RoomFolderBranch({
+	room,
+	expanded,
+	header,
+	children,
+}: {
+	room: PiboRoom;
+	expanded: boolean;
+	header: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<div data-pibo-debug="room-folder" data-pibo-room-id={room.id} data-pibo-state={expanded ? "expanded" : "collapsed"}>
+			{header}
+			{expanded ? (
+				<div data-pibo-debug="room-folder-sessions" className="relative ml-8">
+					<span aria-hidden="true" className="pointer-events-none absolute -top-0.5 bottom-1 w-px bg-slate-600/45" style={{ left: -20 }} />
+					{children}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function ForeignRoomFolderSessions({
+	roomId,
+	rooms,
+	pinnedSessionsOnly,
+	selectedPiboSessionId,
+	signalNow,
+	loadingPiboSessionId,
+	globalSessionStatusSnapshot,
+	onSelectSession,
+	onRenameSession,
+	onArchiveSession,
+	onPinnedSessionChange,
+	onDeleteSession,
+	onViewContext,
+}: {
+	roomId: string;
+	rooms: PiboRoom[];
+	pinnedSessionsOnly: boolean;
+	selectedPiboSessionId: string | null;
+	signalNow: number;
+	loadingPiboSessionId?: string | null;
+	globalSessionStatusSnapshot?: PiboSignalStatusSnapshot | null;
+	onSelectSession: (piboSessionId: string, roomId?: string) => void | Promise<void>;
+	onRenameSession: (piboSessionId: string, title: string | null) => void | Promise<void>;
+	onArchiveSession: (piboSessionId: string, archived: boolean) => void | Promise<void>;
+	onPinnedSessionChange: (piboSessionId: string, pinned: boolean) => void | Promise<void>;
+	onDeleteSession: (node: PiboWebSessionNode) => void;
+	onViewContext: (piboSessionId: string) => void;
+}) {
+	const cachedForeignSessions = foreignRoomSessionsCache.get(roomId);
+	const [sessions, setSessions] = useState<PiboWebSessionNode[]>(() => cachedForeignSessions?.sessions ?? []);
+	const [nextCursor, setNextCursor] = useState<string | undefined>(() => cachedForeignSessions?.nextCursor);
+	const [totalCount, setTotalCount] = useState<number | undefined>(() => cachedForeignSessions?.totalCount);
+	const [loading, setLoading] = useState(() => !cachedForeignSessions);
+	const [loadingMore, setLoadingMore] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [visibleCount, setVisibleCount] = useState(() => cachedForeignSessions?.visibleCount ?? SESSION_FOLDER_PREVIEW_LIMIT);
+	const loadedCountRef = useRef(cachedForeignSessions?.loadedCount ?? 0);
+	const pendingRef = useRef(false);
+
+	const refreshRoomSessions = useCallback(async () => {
+		if (pendingRef.current) return;
+		pendingRef.current = true;
+		setLoading(true);
+		setError(null);
+		try {
+			const page = await getSessionPage({ roomId, archived: false, limit: Math.max(loadedCountRef.current, SESSION_FOLDER_PAGE_SIZE) });
+			loadedCountRef.current = page.sessions.length;
+			setSessions(page.sessions);
+			setNextCursor(page.nextCursor);
+			setTotalCount(page.totalCount);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : String(caught));
+		} finally {
+			pendingRef.current = false;
+			setLoading(false);
+		}
+	}, [roomId]);
+
+	// Refresh on mount/room change and when this room's own unread count changes.
+	// Never on unrelated bootstrap updates (session switches, signals), which
+	// otherwise refetch every expanded foreign room and reshuffle the sidebar.
+	const foreignRoomUnreadCount = rooms.find((candidate) => candidate.id === roomId)?.unreadCount;
+	useEffect(() => {
+		void refreshRoomSessions();
+	}, [refreshRoomSessions, foreignRoomUnreadCount]);
+	useEffect(() => {
+		if (loading && sessions.length === 0) return;
+		foreignRoomSessionsCache.set(roomId, {
+			sessions,
+			nextCursor,
+			totalCount,
+			loadedCount: loadedCountRef.current,
+			visibleCount,
+		});
+	}, [roomId, loading, sessions, nextCursor, totalCount, visibleCount]);
+
+	const overlaidSessions = useMemo(
+		() => applyFolderStatusOverlay(sessions, globalSessionStatusSnapshot),
+		[sessions, globalSessionStatusSnapshot],
+	);
+	const filteredSessions = useMemo(
+		() => filterFolderSessions(overlaidSessions, pinnedSessionsOnly),
+		[overlaidSessions, pinnedSessionsOnly],
+	);
+	const visibleSessions = pinnedSessionsOnly ? filteredSessions : filteredSessions.slice(0, visibleCount);
+	const hasMorePages = nextCursor != null || (totalCount != null && sessions.length < totalCount);
+	const hasMore = pinnedSessionsOnly ? hasMorePages : visibleCount < filteredSessions.length || hasMorePages;
+	const showMoreLabel = pinnedSessionsOnly || totalCount == null
+		? "Show more"
+		: `Show more (${visibleSessions.length} of ${totalCount})`;
+
+	const showMoreSessions = () => {
+		if (loadingMore || loading) return;
+		if (!pinnedSessionsOnly && visibleCount < filteredSessions.length) {
+			setVisibleCount((current) => current + SESSION_FOLDER_PAGE_SIZE);
+			return;
+		}
+		if (!hasMorePages) return;
+		const cursor = sessions.at(-1)?.piboSessionId;
+		if (!cursor) return;
+		setLoadingMore(true);
+		setError(null);
+		getSessionPage({ roomId, archived: false, cursor, limit: SESSION_FOLDER_PAGE_SIZE })
+			.then((page) => {
+				setSessions((current) => {
+					const next = appendSessionRoots(current, page.sessions);
+					loadedCountRef.current = next.length;
+					return next;
+				});
+				setNextCursor(page.nextCursor);
+				setTotalCount(page.totalCount);
+				setVisibleCount((current) => current + SESSION_FOLDER_PAGE_SIZE);
+			})
+			.catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught)))
+			.finally(() => setLoadingMore(false));
+	};
+
+	const refreshAfterMutation = (mutation: void | Promise<void>) => {
+		void Promise.resolve(mutation).then(() => refreshRoomSessions()).catch(() => undefined);
+	};
+
+	if (loading && sessions.length === 0) {
+		return (
+			<div data-pibo-debug="room-sessions-loading" role="status" aria-label="Loading room sessions" className="flex h-7 items-center px-2">
+				<Loader2 size={13} className="text-slate-500 animate-spin" aria-hidden="true" />
+			</div>
+		);
+	}
+	if (error && sessions.length === 0) {
+		return (
+			<div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm mr-3 flex items-center justify-between gap-2">
+				<span className="truncate">Couldn't load sessions</span>
+				<button
+					type="button"
+					onClick={() => void refreshRoomSessions()}
+					className="shrink-0 px-2 py-1 border border-slate-700 rounded-sm text-slate-400 hover:border-[#11a4d4] hover:text-[#11a4d4]"
+				>
+					Retry
+				</button>
+			</div>
+		);
+	}
+	return (
+		<div>
+			{error ? (
+				<div className="mb-1 px-2 py-1.5 text-[11px] text-slate-500 border border-dashed border-slate-700 rounded-sm mr-3 flex items-center justify-between gap-2">
+					<span className="truncate">Couldn't refresh sessions</span>
+					<button
+						type="button"
+						onClick={() => void refreshRoomSessions()}
+						className="shrink-0 text-slate-400 hover:text-[#11a4d4]"
+					>
+						Retry
+					</button>
+				</div>
+			) : null}
+			{visibleSessions.map((session) => (
+				<SessionNode
+					key={session.piboSessionId}
+					node={session}
+					signalNow={signalNow}
+					selectedPiboSessionId={selectedPiboSessionId}
+					selectedSessionPathIds={EMPTY_FOREIGN_SESSION_PATH_IDS}
+					onSelect={(piboSessionId) => void onSelectSession(piboSessionId, roomId)}
+					onRename={(piboSessionId, title) => refreshAfterMutation(onRenameSession(piboSessionId, title))}
+					onArchive={(piboSessionId, archived) => refreshAfterMutation(onArchiveSession(piboSessionId, archived))}
+					onPinnedChange={(piboSessionId, pinned) => refreshAfterMutation(onPinnedSessionChange(piboSessionId, pinned))}
+					onDelete={onDeleteSession}
+					onViewContext={onViewContext}
+					loadingPiboSessionId={loadingPiboSessionId}
+					selectionBleedLeft={FOLDER_SESSION_SELECTION_BLEED_LEFT}
+				/>
+			))}
+			{visibleSessions.length === 0 && !hasMore ? (
+				<div className="px-2 py-3 text-xs text-slate-500 border border-dashed border-slate-700 rounded-sm mr-3">
+					{pinnedSessionsOnly ? "No pinned sessions" : "No sessions"}
+				</div>
+			) : null}
+			{hasMore ? (
+				<button
+					type="button"
+					data-pibo-debug="room-folder-show-more"
+					onClick={showMoreSessions}
+					disabled={loadingMore}
+					className="mt-1 w-full px-2 py-1.5 text-left text-[11px] text-slate-500 hover:text-[#11a4d4] disabled:opacity-60"
+				>
+					{loadingMore ? "Loading sessions…" : showMoreLabel}
+				</button>
+			) : null}
 		</div>
 	);
 }

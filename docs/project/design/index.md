@@ -6,3 +6,4 @@
 
 * [Design System: Pibo Compact Terminal](compact-terminal.md) - Preserves the supporting visual and interaction design rationale for Pibo's compact terminal session view&#46;
 * [Design System: Pibo Trace View](trace-view.md) - Preserves the supporting visual and interaction design rationale for Pibo's trace view&#46;
+* [Design System: Session Sidebar Room Folders](session-sidebar-folders.md) - Preserves the supporting visual and interaction design rationale for the Chat Web session sidebar room&#45;folder tree&#46;

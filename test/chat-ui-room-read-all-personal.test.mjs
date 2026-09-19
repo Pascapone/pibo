@@ -68,7 +68,7 @@ async function renderSharedRoomSidebar() {
 		}));
 		console.log(JSON.stringify(html));
 	`;
-	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 	return JSON.parse(stdout);
 }
 
@@ -79,8 +79,8 @@ test("The Shared Chat (personal) room exposes a 3-dot action button", async () =
 	assert.match(html, /ellipsis-vertical/);
 });
 
-test("The personal room action menu is limited to Read All", () => {
-	const markerStart = source.indexOf("{personal ? (");
+test("The personal room action menu is limited to session actions and Read All", () => {
+	const markerStart = source.indexOf("{personal ? (\n");
 	assert.notEqual(markerStart, -1, "missing personal branch");
 	const branchEnd = source.indexOf(") : (", markerStart);
 	assert.notEqual(branchEnd, -1, "unterminated personal branch");
@@ -88,7 +88,9 @@ test("The personal room action menu is limited to Read All", () => {
 
 	assert.match(personalBranch, /ActionMenu/);
 	assert.match(personalBranch, /Read All/);
+	assert.match(personalBranch, /New Workflow Session/);
+	assert.match(personalBranch, /Show Archived Sessions/);
 	assert.doesNotMatch(personalBranch, /Copy Room ID|Edit Room|Archive Room|Delete Room|Restore Room/);
-	const readAllCount = (personalBranch.match(/<ActionMenuItem\b/g) ?? []).length;
-	assert.equal(readAllCount, 1, "expected exactly one action in the personal room menu");
+	const itemCount = (personalBranch.match(/<ActionMenuItem\b/g) ?? []).length;
+	assert.equal(itemCount, 3, "expected exactly the session actions plus Read All in the personal room menu");
 });

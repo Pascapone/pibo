@@ -23,7 +23,7 @@ async function runKeyboardNavigationScenarios() {
 		assert.equal(nextActionMenuItemIndex("Tab", 1, 3), null);
 		assert.equal(nextActionMenuItemIndex("ArrowDown", 0, 0), null);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
 }
 
 test("shared action menu keyboard navigation wraps and supports Home and End", async () => {
@@ -90,7 +90,7 @@ async function runNestedEscapeOrderingScenario() {
 		assert.equal(focus, "Open sidebar");
 		assert.equal(secondEscape.defaultPrevented, true);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
 }
 
 test("nested action-menu Escape wins before an earlier document-capture drawer listener", async () => {
@@ -125,7 +125,7 @@ async function runClosedMenuScaleScenario() {
 			else globalThis.React = previousReact;
 		}
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: resolve(here, "..") });
 }
 
 test("many closed action-menu triggers render no menu portal subtrees", async () => {

@@ -41,7 +41,7 @@ async function renderTerminalFullscreenScenario() {
 		const topBarOpeningTag = topBar.slice(0, topBar.indexOf(">") + 1);
 		assert.equal(/(?:class="[^"]*\s|class=")(?:p|m)[trblxy]?-/.test(topBarOpeningTag), false);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
 test("Terminal fullscreen keeps the room context beside the session name", async () => {

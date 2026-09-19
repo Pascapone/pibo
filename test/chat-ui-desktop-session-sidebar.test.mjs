@@ -6,7 +6,7 @@ import test from "node:test";
 
 const execFileAsync = promisify(execFile);
 
-test("Desktop sidebar preserves the existing Rooms, profile, and Sessions data contract", async () => {
+test("Desktop sidebar preserves the Rooms folders, agent menu, and Sessions data contract", async () => {
 	const app = await readFile("src/apps/chat-ui/src/App.tsx", "utf8");
 	const desktopSidebar = app.match(/<DesktopSessionSidebar[\s\S]*?<\/DesktopSessionSidebar>/)?.[0] ?? "";
 	assert.match(desktopSidebar, /state=\{desktopSessionSidebar\.state\}/);
@@ -19,7 +19,7 @@ test("Desktop sidebar preserves the existing Rooms, profile, and Sessions data c
 		"onSelectRoom={selectRoom}",
 		"onCreateRoom={() => createRoom()}",
 		"onSelectSession={selectSession}",
-		"onCreateSession={() => createSession()}",
+		"onCreateSession={(roomId, profile) => createSession(profile, roomId)}",
 		"onArchiveRoom={setRoomArchived}",
 		"onArchiveSession={setSessionArchived}",
 		"sessionListScrollRef={sessionListScrollRef}",
@@ -54,15 +54,18 @@ test("Desktop sidebar preserves the existing Rooms, profile, and Sessions data c
 		}));
 		console.log(JSON.stringify(html));
 	`;
-	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 	const html = JSON.parse(stdout);
-	for (const visible of ["Shared Chat", "Personal Chat", "Rooms", "Pibo", "Sessions", "pibo-agent-v2", "Sidebar Follow-up", "Terminal Scroll"]) {
+	for (const visible of ["Personal Chat", "Rooms", "Pibo", "Sidebar Follow-up", "Terminal Scroll"]) {
 		assert.match(html, new RegExp(visible));
 	}
+	assert.ok(html.indexOf("Personal Chat") < html.indexOf(">Pibo<"), "expected the Shared Chat room first in the Rooms list");
+	assert.doesNotMatch(html, /new-session-agent-select/);
 	assert.match(html, /aria-label="2 unread messages"/);
 	assert.match(html, /data-pibo-session-id="ps-one"[^>]*data-pibo-unread-count="3"/);
 	assert.match(html, /aria-label="New Room"/);
-	assert.match(html, /aria-label="New Session"/);
+	assert.match(html, /aria-label="New session in Personal Chat"/);
+	assert.match(html, /aria-label="New session in Pibo"/);
 });
 
 test("Desktop sidebar owns the desktop brand and tooltip-only account controls", async () => {
@@ -79,7 +82,7 @@ test("Desktop sidebar owns the desktop brand and tooltip-only account controls",
 		}, React.createElement("div", null, "Sidebar content")));
 		console.log(JSON.stringify(html));
 	`;
-	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 	const html = JSON.parse(stdout);
 	assert.match(html, /data-pibo-debug="desktop-sidebar-app-header"/);
 	assert.match(html, /@max-\[190px\]:h-20/);
@@ -116,5 +119,5 @@ test("Desktop sidebar width and collapse state are bounded and persisted", async
 		model.writeDesktopSessionSidebarState(state, { setItem: (key, value) => storage.set(key, value) });
 		assert.deepEqual(model.readDesktopSessionSidebarState({ getItem: (key) => storage.get(key) ?? null }), state);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 });

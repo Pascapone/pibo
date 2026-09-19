@@ -9013,6 +9013,18 @@
       "source_action": "migrate-concept"
     },
     {
+      "path": "docs/project/design/session-sidebar-folders.md",
+      "state": "conformant",
+      "classification": "Chat Web session sidebar room folders design",
+      "type": "Decision Record",
+      "authority": "supporting",
+      "status": "draft",
+      "file_bytes": 5549,
+      "file_sha256": "197c112b279eab419718c20ed351a645c20799efd8a7dd3f0e34d5cda598c3fb",
+      "body_sha256": "25c8aa8b1e900be9180fc243273d9f29519800c48751a584b155ac8c9ecf390a",
+      "lineage": null
+    },
+    {
       "path": "docs/project/documentation-profile.md",
       "state": "conformant",
       "classification": "conformant current concept",

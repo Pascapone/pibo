@@ -111,7 +111,7 @@ async function runSourceAssertions() {
 		assert.match(html, /aria-label="Pinned room"/);
 		assert.match(html, /draggable="true"/);
 	`;
-	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	await execFileAsync(process.execPath, ["--import", "tsx", "--loader", "./test/helpers/css-stub-loader.mjs", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }
 
 test("Room sidebar mirrors session pinning and drag ordering without a drag handle", async () => {
