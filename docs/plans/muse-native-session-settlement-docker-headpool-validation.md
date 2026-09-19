@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "openai/codex"
-  at: "2026-09-19T13:46:17Z"
+  at: "2026-09-19T15:24:46Z"
 sources:
   - id: "incident-investigation"
     resource: "/reports/muse-native-session-settlement-investigation-2026-09-19.md"
@@ -43,6 +43,7 @@ The validation is complete only when all of the following are true:
 
 - every terminal native turn causes a bounded Pibo terminal outcome, even when one notification path is lost;
 - a raw trace identifies whether terminal notification was absent, buffered, rejected, or applied;
+- diagnostics distinguish persistent Muse process liveness, native turn completion, view-projection availability, and Pibo routed-turn settlement as four separate states;
 - no provider-capacity lease remains held beyond the documented grace period after native completion, abort, host death, or Pibo terminal settlement;
 - kill/abort settles a stuck prompt within a bounded duration and releases its capacity exactly once;
 - configured capacity, reserved capacity, active usage, waiting work, and rejection cause are observable and agree across CLI, telemetry, and UI;
@@ -116,7 +117,7 @@ Record:
 - GapFiller transition into/out of filling and current buffer depth;
 - connection close/reconnect/resume and host process liveness;
 - native log observation of final assistant item and terminal turn state; and
-- `.msp-view-v1` `HEAD.json` status changes.
+- `.msp-view-v1` `HEAD.json` status changes, `source_through.sequence`, view ordinal, and the delta to the authoritative native terminal sequence.
 
 If the SDK does not expose these fields, use a pinned local instrumentation patch or protocol proxy for the experiment. Do not make private internals part of the production contract merely to obtain one trace.
 
@@ -130,6 +131,7 @@ Record:
 - each idle-window expiry and liveness-probe result;
 - interrupt request, native response such as `already_processed`, and local completion result;
 - routed prompt start/end/throw;
+- persistent Muse server process identity and liveness without treating process liveness as proof that a native turn remains active;
 - provider lease request, queue, acquire, release, and active/waiting counts; and
 - emitted `message_queued`, `message_started`, `assistant_message`, `message_finished`, and `session_error` events.
 
@@ -155,7 +157,9 @@ commands.log
 environment-redacted.txt
 events.ndjson
 muse-transport.ndjson
+native-turn-terminal.ndjson
 view-gap-pages.ndjson
+view-head.json
 adapter-lifecycle.ndjson
 capacity.ndjson
 signals.ndjson
@@ -169,6 +173,19 @@ checksums.sha256
 ```
 
 `commands.log` must contain commands and exit codes, not secrets. Generate `checksums.sha256` after redaction. Promote only a bounded, sanitized summary or deliberately approved fixtures into `docs/reports/`; do not commit raw model content, browser storage, credentials, or oversized logs.
+
+# Incident-derived acceptance fixture
+
+Use the later failed turn in `ps_60529962-a178-4b83-a5c1-d9b699ce791b`, native session `01a0b98a-dea2-7141-b2b8-8f0b956bfbed`, as the concrete shape that deterministic fixtures must reproduce without importing its private transcript content:
+
+- Pibo accepted the turn at 14:57:11 UTC and stopped persisting output after a successful 232.6 ms shell call at 15:06:39 UTC.
+- Native Muse continued, committed a final assistant response at 15:14:16 UTC, reported `stream_succeeded` and `model_completed`, and emitted `terminal: completed` with `reason: null` at 15:14:53 UTC.
+- The native turn duration was 1,060,260 ms and its end-of-turn gate was 36,575 ms; neither value explains the missing Pibo tail.
+- The current view head became `status: unavailable` at `source_through.sequence: 15791` and `head_view_ordinal: 2500`, while the native transcript reached terminal sequence 17677.
+- Pibo retained `processing=true`, `streaming=true`, and a running durable queue row, with no new assistant message or terminal lifecycle event in product history.
+- The persistent Muse server process remained alive and idle after the native terminal. The process did not die, and the native turn did not remain active.
+
+The 1,886-record difference is an incident fact, not a required reproduction size. Likewise, `head_view_ordinal: 2500` is not a presumed universal threshold because other unavailable views were observed at different ordinals. A valid fixture reproduces the state divergence, not these incidental counts.
 
 # Phase gates
 
@@ -259,17 +276,17 @@ Repeat across rooms to verify the provider-global ordinary ceiling of eight unde
 
 **Stimulus:** Make the session log continue while its view projection becomes unavailable or stops notifying.
 
-**Expected:** Raw host evidence identifies the projection transition. Pibo reconnects/reconciles or terminates within the bound and releases capacity.
+**Expected:** Raw host evidence identifies the projection transition. Pibo reconnects/reconciles or terminates within the bound and releases capacity. The trace must show the last healthy view source sequence, the first unavailable observation, the authoritative native final and terminal sequences, and whether the persistent Muse process remained alive.
 
-**Failure meaning:** Distinguishes host-side notification absence from SDK-side buffering.
+**Failure meaning:** Distinguishes host-side notification absence from SDK-side buffering. The `ps_605…` incident is a real post-hoc example of this test's failure shape, but it is not a passing execution because raw transport and gap/page evidence were not enabled at the time.
 
 ## T7 — Missed terminal replay and authoritative reconciliation
 
-**Setup:** Native log contains final and terminal state; Pibo adapter has intentionally missed the terminal notification.
+**Setup:** Native log contains final and terminal state; Pibo adapter has intentionally missed the final and terminal notification. Include one fixture whose view head is unavailable while the persistent Muse server stays alive, matching the `ps_605…` divergence.
 
 **Stimulus:** Exercise reconnect, session resume, status query, and interrupt returning `already_processed` as separate cases.
 
-**Expected:** At least one documented authoritative path recovers terminal state idempotently. Repeated recovery must not duplicate assistant content, tool results, `message_finished`, or lease release.
+**Expected:** At least one documented authoritative path recovers terminal state idempotently. It must settle from authoritative native turn state even when process liveness is healthy and the view head is unavailable. Repeated recovery must not duplicate assistant content, tool results, `message_finished`, or lease release.
 
 **Failure meaning:** Pibo depends exclusively on one ephemeral terminal notification and needs an authoritative reconciliation contract.
 
@@ -343,7 +360,7 @@ Start with 12 total real turns. Expand only after reviewing cost, error rate, an
 
 **Stimulus:** Run session debug help/discovery, focused session inspection, telemetry active listing, gateway status, and trace consistency checking.
 
-**Expected:** `staleForMs` advances with time; stale classification changes at the threshold; active counts agree; queued and running are distinct; native-terminal/Pibo-running divergence is reported as an issue with actionable IDs.
+**Expected:** `staleForMs` advances with time; stale classification changes at the threshold; active counts agree; queued and running are distinct; native-terminal/Pibo-running divergence is reported as an issue with actionable Pibo session, native session, turn, native terminal sequence, view source sequence, and queue-row IDs. A live Muse server must not suppress the divergence warning.
 
 **Failure meaning:** Operational tooling can still pronounce the system healthy while user-visible state is wrong.
 
@@ -351,6 +368,9 @@ Start with 12 total real turns. Expand only after reviewing cost, error rate, an
 
 Use this order for every failure:
 
+0. **What are the independent lifecycle facts?**
+   - Record persistent Muse process liveness, authoritative native turn state, view-head state, and Pibo routed-turn state separately.
+   - A live process plus a native terminal plus Pibo running is a settlement divergence, not an active native turn.
 1. **Does the raw Pibo-process transport trace contain the native terminal notification?**
    - No: inspect host view log and `HEAD.json`. If native log is terminal but view emits nothing, classify host projection/subscription loss.
    - Yes: continue.
@@ -390,6 +410,7 @@ The executor may implement a fix only after instrumentation identifies the faili
 - UI final-content and lifecycle state are separate but clearly labeled;
 - raw diagnostics are bounded and redact content/secrets; and
 - reconnect/reconciliation does not duplicate messages or tool results.
+- process liveness is never used as a substitute for authoritative native turn state, and a live idle Muse server cannot keep a terminal native turn classified as active in Pibo.
 
 Likely layered defenses to evaluate are an explicit `view/page` deadline, gap-error handling, bounded reconnect/resume, authoritative terminal reconciliation, local abort settlement, lease-release safeguards, dynamic telemetry, and a signal/SSE convergence check. This list is not a predetermined implementation decision.
 
@@ -420,7 +441,7 @@ Stop the active workload and preserve evidence when:
 - a browser shows running while backend and signal are terminal beyond one reconciliation interval; or
 - isolation, authentication ownership, or secret redaction is uncertain.
 
-Do not restart first. Capture identity, processes, active leases, raw view/gap state, session debug output, durable events, signals, browser state, and checksums. Then use only the isolated Pibo CLI restart path if restart is part of the test.
+Do not restart first. Capture identity, process liveness, authoritative native final/terminal sequence, current view-head status and source sequence, active leases, raw view/gap state, session debug output, durable events, signals, browser state, and checksums. Then use only the isolated Pibo CLI restart path if restart is part of the test.
 
 # Result classification
 
@@ -442,7 +463,7 @@ The validating agent must publish a Markdown validation report containing:
 3. real-inference model, reasoning, turn count, wall time, and cost against cap;
 4. a T0–T13 result table with evidence links;
 5. the root-cause decision-tree path for every failure;
-6. before/after timelines for native final, native terminal, Pibo terminal, lease release, signal, SSE, and DOM;
+6. before/after timelines for Muse process state, native final, native terminal, view-head transition, Pibo terminal, lease release, signal, SSE, and DOM;
 7. exact code changes and why evidence selected them;
 8. tests/build/browser commands and outcomes;
 9. known gaps and residual risks;
