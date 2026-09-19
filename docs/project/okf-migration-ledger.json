@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/muse-native-session-settlement-detection-2026-09-19.md",
+      "state": "conformant",
+      "classification": "Muse-native session settlement detection and recovery evidence",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/muse-native-session-settlement-investigation-2026-09-19.md",
       "state": "conformant",
       "classification": "Muse-native session settlement incident investigation",
