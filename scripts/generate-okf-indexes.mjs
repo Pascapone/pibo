@@ -71,36 +71,49 @@ function isInside(parent, child) {
 	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`));
 }
 
-function assertDirectoryChain({ docsRoot, realDocsRoot, directory, label }) {
+function createFsCache() {
+	return { realDirs: new Map() };
+}
+
+function assertDirectoryChain({ docsRoot, realDocsRoot, directory, label, fsCache }) {
 	if (!isInside(docsRoot, directory)) throw new Error(`${label} escapes docs root.`);
 	const segments = relative(docsRoot, directory).split(sep).filter(Boolean);
 	let current = docsRoot;
+	let resolved = realDocsRoot;
 	for (const segment of segments) {
 		current = join(current, segment);
+		const cached = fsCache?.realDirs.get(current);
+		if (cached !== undefined) {
+			resolved = cached;
+			continue;
+		}
 		const stat = lstatIfPresent(current);
 		if (!stat) throw new Error(`${label} parent does not exist: ${normalizePath(relative(docsRoot, current))}`);
 		if (stat.isSymbolicLink()) throw new Error(`${label} parent must not be a symlink: ${normalizePath(relative(docsRoot, current))}`);
 		if (!stat.isDirectory()) throw new Error(`${label} parent must be a directory: ${normalizePath(relative(docsRoot, current))}`);
-		if (!isInside(realDocsRoot, realpathSync(current))) throw new Error(`${label} parent resolves outside docs root: ${normalizePath(relative(docsRoot, current))}`);
+		resolved = join(resolved, segment);
+		if (!isInside(realDocsRoot, resolved)) throw new Error(`${label} parent resolves outside docs root: ${normalizePath(relative(docsRoot, current))}`);
+		fsCache?.realDirs.set(current, resolved);
 	}
+	return resolved;
 }
 
-function assertManagedIndexTarget({ absolute, path, docsRoot, realDocsRoot }) {
+function assertManagedIndexTarget({ absolute, path, docsRoot, realDocsRoot, fsCache }) {
 	if (!isInside(docsRoot, absolute)) throw new Error(`Managed index escapes docs root: ${path}`);
-	assertDirectoryChain({ docsRoot, realDocsRoot, directory: dirname(absolute), label: `Managed index ${path}` });
+	const resolvedDirectory = assertDirectoryChain({ docsRoot, realDocsRoot, directory: dirname(absolute), label: `Managed index ${path}`, fsCache });
 	const stat = lstatIfPresent(absolute);
 	if (!stat) return;
 	if (stat.isSymbolicLink()) throw new Error(`Managed index must not be a symlink: ${path}`);
 	if (!stat.isFile()) throw new Error(`Managed index must be a regular file: ${path}`);
-	if (!isInside(realDocsRoot, realpathSync(absolute))) throw new Error(`Managed index resolves outside docs root: ${path}`);
+	if (!isInside(realDocsRoot, join(resolvedDirectory, basename(absolute)))) throw new Error(`Managed index resolves outside docs root: ${path}`);
 }
 
-function assertConceptFile({ absolute, path, docsRoot, realDocsRoot }) {
+function assertConceptFile({ absolute, path, docsRoot, realDocsRoot, fsCache }) {
 	if (!isInside(docsRoot, absolute)) throw new Error(`Index concept escapes docs root: ${path}`);
-	assertDirectoryChain({ docsRoot, realDocsRoot, directory: dirname(absolute), label: `Index concept ${path}` });
+	const resolvedDirectory = assertDirectoryChain({ docsRoot, realDocsRoot, directory: dirname(absolute), label: `Index concept ${path}`, fsCache });
 	const stat = lstatIfPresent(absolute);
 	if (!stat || stat.isSymbolicLink() || !stat.isFile()) throw new Error(`Index concept must be a regular file: ${path}`);
-	if (!isInside(realDocsRoot, realpathSync(absolute))) throw new Error(`Index concept resolves outside docs root: ${path}`);
+	if (!isInside(realDocsRoot, join(resolvedDirectory, basename(absolute)))) throw new Error(`Index concept resolves outside docs root: ${path}`);
 }
 
 function readLedgerRecords({ projectRoot, ledgerRepositoryPath, controlReadHooks }) {
@@ -117,36 +130,37 @@ function readLedgerRecords({ projectRoot, ledgerRepositoryPath, controlReadHooks
 	return recordsByPath;
 }
 
-function readConformantConcept({ absolute, path, record, docsRoot, realDocsRoot }) {
-	assertConceptFile({ absolute, path, docsRoot, realDocsRoot });
+function readConformantConcept({ absolute, path, record, docsRoot, realDocsRoot, fsCache }) {
+	assertConceptFile({ absolute, path, docsRoot, realDocsRoot, fsCache });
 	const parsed = parseFrontmatter(readFileSync(absolute, "utf8"));
 	if (parsed.error) throw new Error(`Index concept frontmatter is invalid at ${path}: ${parsed.error}`);
 	if (!parsed.data) throw new Error(`Index concept is missing frontmatter: ${path}`);
 	return safeConceptMetadata(parsed.data, path, record);
 }
 
-function walkBundleMarkdown({ directory, projectRoot, realDocsRoot, markdownPaths = [] }) {
+function walkBundleMarkdown({ directory, projectRoot, realDocsRoot, realDirectory, markdownPaths = [] }) {
 	for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => compareText(left.name, right.name))) {
 		const absolute = join(directory, entry.name);
 		const path = normalizePath(relative(projectRoot, absolute));
 		const stat = lstatIfPresent(absolute);
 		if (!stat) throw new Error(`Bundle path disappeared during index preflight: ${path}`);
 		if (stat.isSymbolicLink()) throw new Error(`Bundle path must not be a symlink: ${path}`);
-		if (!isInside(realDocsRoot, realpathSync(absolute))) throw new Error(`Bundle path resolves outside docs root: ${path}`);
+		const resolved = join(realDirectory, entry.name);
+		if (!isInside(realDocsRoot, resolved)) throw new Error(`Bundle path resolves outside docs root: ${path}`);
 		if (entry.name.toLowerCase().endsWith(".md")) {
 			if (!stat.isFile()) throw new Error(`Bundle Markdown path must be a regular file: ${path}`);
 			markdownPaths.push(path);
 			continue;
 		}
-		if (stat.isDirectory()) walkBundleMarkdown({ directory: absolute, projectRoot, realDocsRoot, markdownPaths });
+		if (stat.isDirectory()) walkBundleMarkdown({ directory: absolute, projectRoot, realDocsRoot, realDirectory: resolved, markdownPaths });
 	}
 	return markdownPaths;
 }
 
-function preflightBundle({ projectRoot, docsRoot, realDocsRoot, ledgerPath, controlReadHooks }) {
+function preflightBundle({ projectRoot, docsRoot, realDocsRoot, ledgerPath, controlReadHooks, fsCache }) {
 	const ledgerRepositoryPath = normalizePath(relative(projectRoot, ledgerPath));
 	const recordsByPath = readLedgerRecords({ projectRoot, ledgerRepositoryPath, controlReadHooks });
-	const markdownPaths = walkBundleMarkdown({ directory: docsRoot, projectRoot, realDocsRoot });
+	const markdownPaths = walkBundleMarkdown({ directory: docsRoot, projectRoot, realDocsRoot, realDirectory: realDocsRoot });
 	const markdownSet = new Set(markdownPaths);
 	for (const path of markdownPaths) if (!recordsByPath.has(path)) throw new Error(`Bundle Markdown path has no migration ledger ownership: ${path}`);
 	const docsRecords = [...recordsByPath.values()].filter((record) => record.path === "docs/index.md" || record.path.startsWith("docs/"));
@@ -161,7 +175,7 @@ function preflightBundle({ projectRoot, docsRoot, realDocsRoot, ledgerPath, cont
 	}
 	const conceptMetadata = new Map();
 	for (const record of docsRecords) if (record.state === "conformant") {
-		const metadata = readConformantConcept({ absolute: resolve(projectRoot, record.path), path: record.path, record, docsRoot, realDocsRoot });
+		const metadata = readConformantConcept({ absolute: resolve(projectRoot, record.path), path: record.path, record, docsRoot, realDocsRoot, fsCache });
 		conceptMetadata.set(record.path, metadata);
 	}
 	for (const record of docsRecords) if (record.state === "conformant") {
@@ -240,7 +254,8 @@ export function synchronizeIndexes(options = {}) {
 	const docsStat = lstatIfPresent(docsRoot);
 	if (!docsStat || docsStat.isSymbolicLink() || !docsStat.isDirectory()) throw new Error("Docs root must be a real directory, not a symlink.");
 	const realDocsRoot = realpathSync(docsRoot);
-	const { managedIndexes, navigationRecords, conceptMetadata } = preflightBundle({ projectRoot, docsRoot, realDocsRoot, ledgerPath, controlReadHooks: options.controlReadHooks?.ledger });
+	const fsCache = createFsCache();
+	const { managedIndexes, navigationRecords, conceptMetadata } = preflightBundle({ projectRoot, docsRoot, realDocsRoot, ledgerPath, controlReadHooks: options.controlReadHooks?.ledger, fsCache });
 	const rootNavigation = navigationRecords.map((record) => {
 		const metadata = conceptMetadata.get(record.path);
 		if (!metadata) throw new Error(`Root navigation target lacks preflighted concept metadata: ${record.path}`);
@@ -253,13 +268,13 @@ export function synchronizeIndexes(options = {}) {
 	});
 	const rendered = managedIndexes.map((path) => {
 		const absolute = resolve(projectRoot, path);
-		assertManagedIndexTarget({ absolute, path, docsRoot, realDocsRoot });
+		assertManagedIndexTarget({ absolute, path, docsRoot, realDocsRoot, fsCache });
 		const expected = renderIndex({ indexPath: absolute, projectRoot, docsRoot, managedIndexes, rootNavigation, conceptMetadata });
 		const current = lstatIfPresent(absolute) ? readFileSync(absolute, "utf8") : null;
 		return { path, absolute, expected, changed: current !== expected, missing: current == null };
 	});
 	if (!check) for (const entry of rendered) if (entry.changed) {
-		assertManagedIndexTarget({ absolute: entry.absolute, path: entry.path, docsRoot, realDocsRoot });
+		assertManagedIndexTarget({ absolute: entry.absolute, path: entry.path, docsRoot, realDocsRoot, fsCache });
 		writeFileSync(entry.absolute, entry.expected);
 	}
 	const results = rendered.map(({ path, changed, missing }) => ({ path, changed, missing }));

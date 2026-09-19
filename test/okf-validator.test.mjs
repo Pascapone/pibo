@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, fstatSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, fstatSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { checkLog } from "../scripts/check-okf-log.mjs";
 import { synchronizeIndexes } from "../scripts/generate-okf-indexes.mjs";
 import { isSafeSingleLineString, parseFrontmatter, validateCoreConceptContent, validateIndexContent, validateLogContent } from "../scripts/okf-core.mjs";
-import { validateRepository } from "../scripts/validate-okf-docs.mjs";
+import { gitCommitRegularFiles, gitFileAtCommit, validateRepository } from "../scripts/validate-okf-docs.mjs";
 
 const GENERATED = 'generated: { by: "process:test-fixture", at: "2026-08-29T00:00:00Z" }';
 
@@ -1066,6 +1066,44 @@ test("strict mode rejects directory and symlink evidence at the checked commit",
 		rmSync(outside, { force: true });
 	}
 }));
+
+test("batched commit file lookup matches per-path git evidence checks", () => {
+	const root = mkdtempSync(join(tmpdir(), "pibo-okf-git-batch-"));
+	const outside = `${root}-outside.ts`;
+	writeFileSync(outside, "export const outside = true;\n");
+	try {
+		write(root, "src/regular.ts", "export const regular = true;\n");
+		write(root, "src/tool.mjs", "#!/usr/bin/env node\n");
+		chmodSync(join(root, "src/tool.mjs"), 0o755);
+		write(root, "src/nested/file.ts", "export const nested = true;\n");
+		symlinkSync(outside, join(root, "src/external.ts"));
+		const commit = commitFixture(root);
+		write(root, "src/after-commit.ts", "export const tooLate = true;\n");
+		git(root, "add", ".");
+		git(root, "commit", "--quiet", "-m", "second commit");
+		const head = git(root, "rev-parse", "HEAD");
+		const treeCache = new Map();
+		for (const [evidencePath, expected] of [
+			["src/regular.ts", true],
+			["src/tool.mjs", true],
+			["src/nested/file.ts", true],
+			["src/external.ts", false],
+			["src/nested", false],
+			["src/missing.ts", false],
+			["src/after-commit.ts", false],
+		]) {
+			assert.equal(gitFileAtCommit(root, commit, evidencePath), expected, `legacy lookup: ${evidencePath}`);
+			assert.equal(gitFileAtCommit(root, commit, evidencePath, treeCache), expected, `batched lookup: ${evidencePath}`);
+		}
+		assert.equal(treeCache.size, 1, "one batched tree read serves every evidence path at the commit");
+		assert.equal(gitCommitRegularFiles(root, commit, treeCache), treeCache.get(commit), "repeat lookups reuse the cached tree");
+		assert.equal(gitFileAtCommit(root, head, "src/after-commit.ts", treeCache), true, "a later commit sees the added file");
+		assert.equal(treeCache.size, 2, "each distinct commit reads its tree once");
+	} finally {
+		rmSync(outside, { force: true });
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 
 test("strict mode rejects unnamed tests, empty trace strings, missing body IDs, and unbound body requirements", () => withFixture(({ root, records }) => {
 	write(root, "src/example.ts", "export const publicSurface = true;\n");

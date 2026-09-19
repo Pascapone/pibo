@@ -52,6 +52,7 @@
 * [Native Codex Resource Delivery Validation — 2026&#45;08&#45;16](codex-native-resource-delivery-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Native Codex Tool Preservation and Inspection Validation — 2026&#45;08&#45;16](codex-native-tool-inventory-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Native Codex Turn Lifecycle Validation — 2026&#45;08&#45;15](codex-native-turn-lifecycle-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [OKF validator performance optimization — September 19, 2026](okf-validator-performance-optimization-2026-09-19.md) - Records batched Git evidence checks and filesystem memoization that cut OKF validation time by an order of magnitude with byte&#45;identical diagnostics&#46;
 * [OMP RPC Server — JSON&#45;lines&#45;over&#45;stdio Protocol &#40;reference&#41;](omp-rpc-protocol.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Oh My Pi &#40;OMP&#41; as Pibo Runtime — Final Audit Report](omp-runtime-final-audit-2026-08-17.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [PR 996 cache observability review and Pibo2 acceptance](cache-observability-pr996-review-2026-09-09.md) - Records the corrected inference ordering defect and Docker and Pibo2 validation of provider cache diagnostics&#46;
