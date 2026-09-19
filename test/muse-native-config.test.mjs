@@ -11,6 +11,7 @@ test("muse native default config selects the muse executable and on-request appr
 	const config = defaultMuseNativeRuntimeConfig();
 	assert.equal(config.executable, "muse");
 	assert.equal(config.approvalMode, "onRequest");
+	assert.equal(config.sandbox, "auto");
 	assert.equal(config.experimentalSdkGate, true);
 	assert.equal(config.diagnosticTimeoutMs, 5_000);
 	assert.equal(config.startupTimeoutMs, 10_000);
@@ -26,17 +27,20 @@ test("muse native config parsing accepts overrides and rejects invalid values", 
 		executable: "/usr/local/bin/muse",
 		homeRoot,
 		approvalMode: "denyUnmatched",
+		sandbox: "disabled",
 		experimentalSdkGate: false,
 		requestTimeoutMs: 30_000,
 	});
 	assert.equal(config.executable, "/usr/local/bin/muse");
 	assert.equal(config.homeRoot, homeRoot);
 	assert.equal(config.approvalMode, "denyUnmatched");
+	assert.equal(config.sandbox, "disabled");
 	assert.equal(config.experimentalSdkGate, false);
 	assert.equal(config.requestTimeoutMs, 30_000);
 
 	assert.throws(() => parseMuseNativeRuntimeConfig({ unknownField: true }), /unsupported config field/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ approvalMode: "sometimes" }), /approvalMode/);
+	assert.throws(() => parseMuseNativeRuntimeConfig({ sandbox: "sometimes" }), /sandbox/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ executable: "  " }), /executable/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ homeRoot: "relative/path" }), /absolute path/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ requestTimeoutMs: 0 }), /requestTimeoutMs/);

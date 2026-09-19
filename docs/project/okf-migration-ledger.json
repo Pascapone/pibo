@@ -8601,9 +8601,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 73558,
-      "file_sha256": "c260dcb50a2fdc99fbeab3c8d10c0269c20d43e6105add86415782512e3ed6aa",
-      "body_sha256": "c260dcb50a2fdc99fbeab3c8d10c0269c20d43e6105add86415782512e3ed6aa"
+      "file_bytes": 74211,
+      "file_sha256": "b441307eb0bcd05b9c2365bd1e8649c216b89739692e6d5df3372f991fce323a",
+      "body_sha256": "b441307eb0bcd05b9c2365bd1e8649c216b89739692e6d5df3372f991fce323a"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -14067,9 +14067,9 @@
       "authority": "normative",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 11253,
-      "file_sha256": "acc2f36aa07770fe776cd5396b558f4f677e529027b7dce46f5c059b46abffac",
-      "body_sha256": "db727690ff0bffba2b8047761f6c270eb2f16655341fec474043a464a850ec87"
+      "file_bytes": 11659,
+      "file_sha256": "2c30c6ee5813a700a383d0dca1b807db56e3feaf17680c693140d4eeacc9ba34",
+      "body_sha256": "4376628acba91d4f9682f58b0b9840f524af2c665a5d174009b60e697e10931d"
     }
   ]
 }

@@ -1,12 +1,13 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { mkdir, readFile, rm, rmdir, writeFile } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import { spawnMspConnection, type SpawnedMspConnection } from "@muse-code/sdk";
 import type { AgentRuntimeDiagnostic } from "../../agent-runtime/types.js";
 import { protectPrivatePathsSync } from "../../core/private-path.js";
-import type { MuseNativeRuntimeConfig } from "./config.js";
+import type { MuseNativeRuntimeConfig, MuseNativeSandboxMode } from "./config.js";
 import { MUSE_NATIVE_ADAPTER_VERSION, MUSE_PROTOCOL_SUPPORTED_RANGE, MUSE_PROTOCOL_VERSION } from "./protocol-version.js";
 import { redactMuseNativeSensitiveText } from "./redaction.js";
 
@@ -18,6 +19,7 @@ const PRIVATE_FILE_MODE = 0o600;
 const SDK_GATE_ENV = "MUSE_EXPERIMENTAL_SDK_ENABLED";
 const MAX_STDERR_DIAGNOSTIC_CHARS = 4_000;
 const MAX_DIAGNOSTICS = 32;
+const BWRAP_PROBE_TIMEOUT_MS = 5_000;
 
 const PROTECTED_RESOURCE_ENVIRONMENT_KEYS = new Set([
 	"MUSE_HOME",
@@ -117,6 +119,101 @@ function safeSegment(value: string): string {
 function isInside(root: string, candidate: string): boolean {
 	const child = relative(root, candidate);
 	return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+}
+
+function findExecutableOnPath(name: string, pathEnv: string | undefined): string | undefined {
+	if (!pathEnv) return undefined;
+	for (const dir of pathEnv.split(delimiter)) {
+		if (!dir) continue;
+		const candidate = join(dir, name);
+		try {
+			accessSync(candidate, constants.X_OK);
+			return candidate;
+		} catch {
+			// Not executable here; keep scanning.
+		}
+	}
+	return undefined;
+}
+
+const bubblewrapProbeCache = new Map<string, Promise<boolean>>();
+
+/** Functional bubblewrap probe: presence alone does not prove user namespaces work. */
+export function probeBubblewrapSandbox(bwrapPath: string): Promise<boolean> {
+	const cached = bubblewrapProbeCache.get(bwrapPath);
+	if (cached) return cached;
+	const probe = (async () => {
+		try {
+			await promisify(execFile)(bwrapPath, ["--ro-bind", "/", "/", "true"], { timeout: BWRAP_PROBE_TIMEOUT_MS });
+			return true;
+		} catch {
+			return false;
+		}
+	})();
+	bubblewrapProbeCache.set(bwrapPath, probe);
+	return probe;
+}
+
+export type ResolveMuseSandboxArgsInput = {
+	mode: MuseNativeSandboxMode;
+	workspace: string;
+	executable: string;
+	platform?: NodeJS.Platform;
+	pathEnv?: string;
+	findExecutable?: (name: string) => string | undefined;
+	probeSandbox?: (bwrapPath: string) => Promise<boolean>;
+};
+
+export type ResolveMuseSandboxArgsResult = {
+	args: string[];
+	diagnostic?: MuseNativeHostDiagnostic;
+};
+
+/**
+ * Resolve `muse serve` sandbox flags. muse refuses every shell command when
+ * its Linux sandbox cannot engage: bubblewrap missing or non-functional, or
+ * the muse helper itself living inside the writable workspace root. Auto mode
+ * degrades to --disable-sandbox with a warning diagnostic instead of leaving
+ * the session without a working shell.
+ */
+export async function resolveMuseSandboxArgs(input: ResolveMuseSandboxArgsInput): Promise<ResolveMuseSandboxArgsResult> {
+	if (input.mode === "disabled") return { args: ["--disable-sandbox"] };
+	if (input.mode === "enabled") return { args: [] };
+	const platform = input.platform ?? process.platform;
+	if (platform !== "linux") return { args: [] };
+	const pathEnv = input.pathEnv ?? process.env.PATH;
+	const findExecutable = input.findExecutable ?? ((name: string) => findExecutableOnPath(name, pathEnv));
+	const executablePath = isAbsolute(input.executable) ? input.executable : findExecutable(input.executable);
+	if (executablePath && isInside(resolve(input.workspace), resolve(executablePath))) {
+		return {
+			args: ["--disable-sandbox"],
+			diagnostic: {
+				level: "warning",
+				message: `Muse shell sandbox is disabled: the muse executable is inside the session workspace "${input.workspace}", which the sandbox refuses. Move the workspace or set sandbox "enabled" to fail instead.`,
+			},
+		};
+	}
+	const bwrapPath = findExecutable("bwrap");
+	if (!bwrapPath) {
+		return {
+			args: ["--disable-sandbox"],
+			diagnostic: {
+				level: "warning",
+				message: "Muse shell sandbox is disabled: no bwrap was found on PATH. Install your distribution's bubblewrap package to re-enable sandboxing.",
+			},
+		};
+	}
+	const probeSandbox = input.probeSandbox ?? probeBubblewrapSandbox;
+	if (!(await probeSandbox(bwrapPath))) {
+		return {
+			args: ["--disable-sandbox"],
+			diagnostic: {
+				level: "warning",
+				message: `Muse shell sandbox is disabled: bwrap at "${bwrapPath}" cannot sandbox (user namespaces unavailable?). Fix the bubblewrap setup to re-enable sandboxing.`,
+			},
+		};
+	}
+	return { args: [] };
 }
 
 function museExecutableInvocation(executable: string, args: readonly string[]): { command: string; args: string[] } {
@@ -284,7 +381,13 @@ export async function startMuseNativeHost(input: StartMuseNativeHostInput): Prom
 		input.onDiagnostic?.(diagnostic);
 	};
 	const env = buildHostEnvironment(input, paths);
-	const invocation = museExecutableInvocation(input.config.executable, ["serve"]);
+	const sandbox = await resolveMuseSandboxArgs({
+		mode: input.config.sandbox,
+		workspace: input.workspace,
+		executable: input.config.executable,
+	});
+	if (sandbox.diagnostic) report(sandbox.diagnostic);
+	const invocation = museExecutableInvocation(input.config.executable, ["serve", ...sandbox.args]);
 	let spawned: SpawnedMspConnection;
 	try {
 		const handshake = spawnMspConnection({

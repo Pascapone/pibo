@@ -49,11 +49,15 @@ export const DEFAULT_MUSE_NATIVE_ENVIRONMENT_ALLOWLIST = [
 export const MUSE_NATIVE_APPROVAL_MODES = ["allowAll", "promptUnmatched", "onRequest", "denyUnmatched"] as const;
 export type MuseNativeApprovalMode = (typeof MUSE_NATIVE_APPROVAL_MODES)[number];
 
+export const MUSE_NATIVE_SANDBOX_MODES = ["auto", "enabled", "disabled"] as const;
+export type MuseNativeSandboxMode = (typeof MUSE_NATIVE_SANDBOX_MODES)[number];
+
 export type MuseNativeRuntimeConfig = PiboJsonObject & {
 	executable: string;
 	homeRoot: string;
 	environmentAllowlist: string[];
 	approvalMode: MuseNativeApprovalMode;
+	sandbox: MuseNativeSandboxMode;
 	experimentalSdkGate: boolean;
 	diagnosticTimeoutMs: number;
 	startupTimeoutMs: number;
@@ -73,6 +77,7 @@ export const MUSE_NATIVE_RUNTIME_CONFIG_SCHEMA: PiboJsonObject = {
 			uniqueItems: true,
 		},
 		approvalMode: { type: "string", enum: [...MUSE_NATIVE_APPROVAL_MODES], default: "onRequest" },
+		sandbox: { type: "string", enum: [...MUSE_NATIVE_SANDBOX_MODES], default: "auto" },
 		experimentalSdkGate: { type: "boolean", default: true },
 		diagnosticTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 5_000 },
 		startupTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 10_000 },
@@ -87,6 +92,7 @@ export function defaultMuseNativeRuntimeConfig(): MuseNativeRuntimeConfig {
 		homeRoot: piboHomePath("agent-runtimes", "muse-native"),
 		environmentAllowlist: [...DEFAULT_MUSE_NATIVE_ENVIRONMENT_ALLOWLIST],
 		approvalMode: "onRequest",
+		sandbox: "auto",
 		experimentalSdkGate: true,
 		diagnosticTimeoutMs: 5_000,
 		startupTimeoutMs: 10_000,
@@ -130,6 +136,7 @@ export function parseMuseNativeRuntimeConfig(value: PiboJsonObject): MuseNativeR
 		"homeRoot",
 		"environmentAllowlist",
 		"approvalMode",
+		"sandbox",
 		"experimentalSdkGate",
 		"diagnosticTimeoutMs",
 		"startupTimeoutMs",
@@ -149,6 +156,10 @@ export function parseMuseNativeRuntimeConfig(value: PiboJsonObject): MuseNativeR
 	if (typeof approvalMode !== "string" || !MUSE_NATIVE_APPROVAL_MODES.includes(approvalMode as MuseNativeApprovalMode)) {
 		throw new Error(`approvalMode must be one of ${MUSE_NATIVE_APPROVAL_MODES.join(", ")}`);
 	}
+	const sandbox = value.sandbox ?? defaults.sandbox;
+	if (typeof sandbox !== "string" || !MUSE_NATIVE_SANDBOX_MODES.includes(sandbox as MuseNativeSandboxMode)) {
+		throw new Error(`sandbox must be one of ${MUSE_NATIVE_SANDBOX_MODES.join(", ")}`);
+	}
 	const experimentalSdkGate = value.experimentalSdkGate ?? defaults.experimentalSdkGate;
 	if (typeof experimentalSdkGate !== "boolean") throw new Error("experimentalSdkGate must be boolean");
 
@@ -157,6 +168,7 @@ export function parseMuseNativeRuntimeConfig(value: PiboJsonObject): MuseNativeR
 		homeRoot: resolve(homeRoot),
 		environmentAllowlist: environmentAllowlist(value.environmentAllowlist, defaults.environmentAllowlist),
 		approvalMode: approvalMode as MuseNativeApprovalMode,
+		sandbox: sandbox as MuseNativeSandboxMode,
 		experimentalSdkGate,
 		diagnosticTimeoutMs: timeout(value.diagnosticTimeoutMs, defaults.diagnosticTimeoutMs, "diagnosticTimeoutMs"),
 		startupTimeoutMs: timeout(value.startupTimeoutMs, defaults.startupTimeoutMs, "startupTimeoutMs"),

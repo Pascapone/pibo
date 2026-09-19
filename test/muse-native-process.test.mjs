@@ -13,6 +13,7 @@ import { parseMuseNativeRuntimeConfig } from "../dist/agent-runtimes/muse-native
 import {
 	buildHostEnvironment,
 	prepareMuseNativeSessionPaths,
+	resolveMuseSandboxArgs,
 	withTimeout,
 } from "../dist/agent-runtimes/muse-native/process.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
@@ -213,4 +214,67 @@ test("Muse native version probe ignores non-muse triples", async (t) => {
 	} finally {
 		delete process.env.MUSE_FAKE_VERSION_OUTPUT;
 	}
+});
+
+test("Muse native sandbox flags honor explicit modes and skip non-Linux auto checks", async () => {
+	assert.deepEqual(
+		await resolveMuseSandboxArgs({ mode: "disabled", workspace: "/work", executable: "muse" }),
+		{ args: ["--disable-sandbox"] },
+	);
+	assert.deepEqual(
+		await resolveMuseSandboxArgs({ mode: "enabled", workspace: "/work", executable: "muse" }),
+		{ args: [] },
+	);
+	assert.deepEqual(
+		await resolveMuseSandboxArgs({ mode: "auto", workspace: "/work", executable: "muse", platform: "darwin" }),
+		{ args: [] },
+	);
+});
+
+test("Muse native auto sandbox degrades with diagnostics when Linux sandboxing cannot engage", async () => {
+	const findBwrap = (name) => (name === "bwrap" ? "/usr/bin/bwrap" : undefined);
+	const workingProbe = async () => true;
+
+	const underWorkspace = await resolveMuseSandboxArgs({
+		mode: "auto",
+		workspace: "/root",
+		executable: "/root/.local/bin/muse",
+		platform: "linux",
+		findExecutable: findBwrap,
+		probeSandbox: workingProbe,
+	});
+	assert.deepEqual(underWorkspace.args, ["--disable-sandbox"]);
+	assert.match(underWorkspace.diagnostic.message, /inside the session workspace/);
+
+	const missingBwrap = await resolveMuseSandboxArgs({
+		mode: "auto",
+		workspace: "/work",
+		executable: "/usr/local/bin/muse",
+		platform: "linux",
+		findExecutable: () => undefined,
+		probeSandbox: workingProbe,
+	});
+	assert.deepEqual(missingBwrap.args, ["--disable-sandbox"]);
+	assert.match(missingBwrap.diagnostic.message, /no bwrap was found on PATH/);
+
+	const brokenBwrap = await resolveMuseSandboxArgs({
+		mode: "auto",
+		workspace: "/work",
+		executable: "/usr/local/bin/muse",
+		platform: "linux",
+		findExecutable: findBwrap,
+		probeSandbox: async () => false,
+	});
+	assert.deepEqual(brokenBwrap.args, ["--disable-sandbox"]);
+	assert.match(brokenBwrap.diagnostic.message, /cannot sandbox/);
+
+	const healthy = await resolveMuseSandboxArgs({
+		mode: "auto",
+		workspace: "/work",
+		executable: "/usr/local/bin/muse",
+		platform: "linux",
+		findExecutable: findBwrap,
+		probeSandbox: workingProbe,
+	});
+	assert.deepEqual(healthy, { args: [] });
 });
