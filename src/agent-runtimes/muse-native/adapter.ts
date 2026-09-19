@@ -83,6 +83,15 @@ export { MUSE_NATIVE_ADAPTER_ID } from "./sessions.js";
 const MAX_INSPECTED_SELECTED_TOOL_NAMES = 512;
 const MAX_INSPECTED_TOOL_NAMES = 256;
 const MODEL_CATALOG_CACHE_TTL_MS = 5_000;
+// Rejection signature of a wedged host turn intake: the next turn/start after a
+// failed manual compaction is refused because re-appending an already-logged
+// event id conflicts. The durable log stays intact, so a same-host re-sync
+// clears the stale intake state and the prompt can be retried.
+const WEDGED_TURN_INTAKE_SIGNATURE = "conflicts with an existing event";
+
+function isWedgedTurnIntakeError(error: unknown): boolean {
+	return error instanceof Error && error.message.toLowerCase().includes(WEDGED_TURN_INTAKE_SIGNATURE);
+}
 
 function museNativeCapabilities(): AgentRuntimeCapabilities {
 	return {
@@ -344,12 +353,16 @@ export class MuseNativeSession implements AgentRuntimeSession {
 					});
 				}
 				this.emit({ type: "compaction_start", reason: "manual" });
+				let status = "accepted";
+				let reason: string | undefined;
 				try {
-					await withTimeout(
+					const ack = await withTimeout(
 						this.host.spawned.connection.command("session/compact", { sessionId: this.controller.sessionId }),
 						this.requestTimeoutMs,
 						`Muse compaction timed out after ${this.requestTimeoutMs}ms.`,
 					);
+					if (typeof ack.status === "string" && ack.status.trim()) status = ack.status;
+					if (typeof ack.reason === "string" && ack.reason.trim()) reason = ack.reason;
 				} catch (error) {
 					this.emit({
 						type: "compaction_end",
@@ -360,7 +373,13 @@ export class MuseNativeSession implements AgentRuntimeSession {
 					throw error;
 				}
 				this.emit({ type: "compaction_end", reason: "manual", aborted: false });
-				return { native: true, method: "session/compact", customInstructionsApplied: !customInstructionsRequested };
+				return {
+					native: true,
+					method: "session/compact",
+					status,
+					...(reason ? { reason } : {}),
+					customInstructionsApplied: !customInstructionsRequested,
+				};
 			}),
 			respondToApproval: (requestId, decision) => this.requests.respondToApproval(requestId, decision),
 			respondToUserInput: () => this.requests.respondToUserInput(),
@@ -408,7 +427,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		this.assertIdle();
 		this.operationInFlight = true;
 		try {
-			await this.turns.start(input.text, { ...this.settings.turnOptions, displayText: input.text });
+			await this.startTurnWithIntakeRecovery(input);
 			this.promoteBindingFromCurrentSession();
 		} finally {
 			this.operationInFlight = false;
@@ -498,6 +517,67 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		this.requests = new MuseNativeRequestController(result.controller.session, this.runtimeInstanceId, (event) => this.emit(event));
 		this.promoteBindingFromCurrentSession();
 		return { previous: result.previous, current: result.current, cancelled: false };
+	}
+
+	private async startTurnWithIntakeRecovery(input: AgentRuntimePromptInput): Promise<void> {
+		const options = { ...this.settings.turnOptions, displayText: input.text };
+		try {
+			await this.turns.start(input.text, options);
+			return;
+		} catch (error) {
+			if (!isWedgedTurnIntakeError(error)) throw error;
+			this.emit({
+				type: "warning",
+				message: "Muse turn intake rejected the prompt as conflicting with an existing event; re-synced the native session and retrying once.",
+			});
+			try {
+				await this.resyncNativeSession();
+			} catch (resyncError) {
+				const resyncMessage = resyncError instanceof Error ? resyncError.message : "unknown error";
+				const originalMessage = error instanceof Error ? error.message : "unknown error";
+				throw new Error(`${originalMessage} (automatic native session re-sync also failed: ${resyncMessage})`, { cause: error });
+			}
+			await this.turns.start(input.text, options);
+		}
+	}
+
+	private async resyncNativeSession(): Promise<void> {
+		const previous = this.controller;
+		// Detach first: resume() registers the rebuilt SDK session under the
+		// same native id, so the stale fold must be unregistered beforehand.
+		previous.detach();
+		let next: MuseNativeSessionController;
+		try {
+			next = await withTimeout(
+				MuseNativeSessionController.resume(
+					this.host.spawned.connection,
+					this.pump,
+					readMuseDurability(this.host.spawned),
+					previous.sessionId,
+					this.cwd,
+				),
+				this.requestTimeoutMs,
+				`Muse session re-sync timed out after ${this.requestTimeoutMs}ms.`,
+			);
+		} catch (error) {
+			// Roll back to the previous fold so notifications keep routing.
+			this.pump.register(previous.sessionId, previous.session);
+			throw error;
+		}
+		this.turns.dispose();
+		this.requests.dispose();
+		this.controller = next;
+		this.settings.bind(this.host.spawned.connection, next.sessionId);
+		this.settings.adoptNativeModel(next.summary);
+		this.turns = new MuseNativeTurnController(
+			this.host.spawned.connection,
+			next.session,
+			next.sessionId,
+			this.requestTimeoutMs,
+			(event) => this.emit(event),
+		);
+		this.requests = new MuseNativeRequestController(next.session, this.runtimeInstanceId, (event) => this.emit(event));
+		this.promoteBindingFromCurrentSession();
 	}
 
 	private async runIdleOperation<T>(operation: () => Promise<T>): Promise<T> {

@@ -21,6 +21,11 @@
 //   MUSE_FAKE_DENY_CAPABILITIES comma-separated capability names withheld from grantedCapabilities
 // A JSON array at <stateDir>/hang-methods.json hangs the same way and can be
 // written or removed at any time, including mid-test for recovery assertions.
+// A JSON object at <stateDir>/fail-turn-start.json rejects the next N
+// turn/start intakes: { "times": N, "kind": "<msp kind>", "message": "<text>" }.
+// "times" is decremented per rejection so tests can script fail-once recovery.
+// A JSON object at <stateDir>/compact-noop.json answers session/compact with
+// { "status": "noop", "reason": "<text>" } instead of "accepted".
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import readline from "node:readline";
@@ -52,7 +57,22 @@ const hangMethods = () => {
 
 const load = () => existsSync(statePath)
 	? JSON.parse(readFileSync(statePath, "utf8"))
-	: { nextSession: 1, clock: 1_800_000_000, sessions: {}, startRequests: [], decideRequests: [], interruptRequests: [], steerRequests: [] };
+	: { nextSession: 1, clock: 1_800_000_000, sessions: {}, startRequests: [], decideRequests: [], interruptRequests: [], steerRequests: [], turnStartRequests: [] };
+const consumeTurnStartFailure = () => {
+	const path = join(stateDir, "fail-turn-start.json");
+	let spec;
+	try {
+		spec = JSON.parse(readFileSync(path, "utf8"));
+	} catch {
+		return undefined;
+	}
+	const times = Number(spec?.times ?? 0);
+	if (!Number.isFinite(times) || times <= 0) return undefined;
+	try {
+		writeFileSync(path, `${JSON.stringify({ ...spec, times: times - 1 })}\n`, { mode: 0o600 });
+	} catch {}
+	return spec;
+};
 const save = (state) => {
 	const temporaryPath = `${statePath}.${process.pid}.tmp`;
 	writeFileSync(temporaryPath, `${JSON.stringify(state)}\n`, { mode: 0o600 });
@@ -360,12 +380,19 @@ const handlers = {
 			viewCursor: "1",
 		};
 	}),
-	"turn/start": (params) => {
+	"turn/start": (params, id) => {
+		const injected = consumeTurnStartFailure();
 		const turnId = params.commandId;
 		updateState((state) => {
+			state.turnStartRequests = Array.isArray(state.turnStartRequests) ? state.turnStartRequests : [];
+			state.turnStartRequests.push({ sessionId: params.sessionId, rejected: Boolean(injected) });
 			const session = state.sessions[params.sessionId];
-			if (session) session.activeTurnId = turnId;
+			if (session && !injected) session.activeTurnId = turnId;
 		});
+		if (injected) {
+			respondError(id, typeof injected.kind === "string" ? injected.kind : "commandRejected", typeof injected.message === "string" ? injected.message : "injected turn/start failure");
+			return undefined;
+		}
 		const text = (params.input ?? []).map((part) => (part.text ?? "")).join("\n");
 		const disposition = params.ifBusy === "steer" ? "steered" : "started";
 		setImmediate(() => {
@@ -435,7 +462,15 @@ const handlers = {
 		return { commandId: params.commandId, status: "accepted" };
 	},
 	"session/setReasoningEffort": (params) => ({ commandId: params.commandId, status: "accepted" }),
-	"session/compact": (params) => ({ commandId: params.commandId, status: "accepted" }),
+	"session/compact": (params) => {
+		try {
+			const spec = JSON.parse(readFileSync(join(stateDir, "compact-noop.json"), "utf8"));
+			if (spec && typeof spec.reason === "string" && spec.reason.trim()) {
+				return { commandId: params.commandId, reason: spec.reason, status: "noop" };
+			}
+		} catch {}
+		return { commandId: params.commandId, status: "accepted" };
+	},
 };
 
 const rl = readline.createInterface({ input: process.stdin, terminal: false });

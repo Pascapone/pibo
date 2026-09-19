@@ -151,6 +151,7 @@ Related ownership boundaries:
 # Failure and security behavior
 
 - Startup, request, and shutdown budgets are bounded; one redacted terminal failure is emitted per failed turn.
+- A turn submit rejected as conflicting with an existing event triggers one same-host session re-sync and a single prompt retry; all other rejections surface immediately.
 - The child uses a private generation home and environment allowlist; credentials and sensitive diagnostics are redacted; tool credentials are scoped and revoked on disposal.
 
 # Known limits
@@ -161,7 +162,7 @@ Related ownership boundaries:
 - Skills and context-file delivery are declared unsupported: session configuration carries only MCP servers, and the host skill listing (`skill/list`) is not consumed.
 - Tool credentials expire with the bridge lifetime (30 minutes maximum); renewal extends while idle but rotation without reopening the runtime session is unsupported.
 - Auth status reflects a stored credential file and is not a live validity proof; device and browser login flows must complete outside Pibo. Only `providers.meta.api_key` reports connected; `start()` preserves other providers in `auth.json`.
-- Compaction admission is reported synchronously; the asynchronous native terminal is not awaited.
+- Compaction admission is reported synchronously with its ack status (`accepted`, or `noop` with a reason); the asynchronous native terminal is not awaited.
 - Fork candidates are tracked per process; after a resume the candidate list is empty until new turns complete.
 - Pending approvals predating a resume are carried on the session opening but are not re-surfaced as Pibo approval requests unless the host re-emits them.
 - Streaming redaction applies per protocol chunk; secrets split across chunk boundaries survive, and item text truncated past 64 KiB carries no truncation marker.
