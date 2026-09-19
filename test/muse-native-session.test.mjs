@@ -515,7 +515,9 @@ test("Muse native turn survives backoff-like silence on a responsive host", asyn
 test("Muse native turn fails fast when the host stops answering", async (t) => {
 	const { root, fakeStateDir, disposers } = await testRoot(t);
 	const { session } = await openFreshSession(t, root, "hostdead", disposers, { requestTimeoutMs: 100 });
-	await setHangMethods(fakeStateDir, ["approval/listPending"]);
+	// session/read is the primary silence signal now; the legacy liveness probe
+	// only runs when the authoritative read itself is unanswered.
+	await setHangMethods(fakeStateDir, ["approval/listPending", "session/read"]);
 	const startedAt = Date.now();
 	await assert.rejects(
 		() => session.prompt({ text: "slow work [hang]", source: "interactive" }),
@@ -833,6 +835,21 @@ test("Muse native connection pump drops per-session ledgers on unregister", () =
 	assert.equal(pump.completedTurns.has("session-1"), false);
 });
 
+test("Muse native connection pump tracks the last live view cursor", () => {
+	let handler;
+	const pump = new MuseNativeConnectionPump({ onNotification: (fn) => { handler = fn; } });
+	pump.register("session-1", { apply: () => {} });
+	assert.equal(pump.lastViewCursor("session-1"), undefined);
+	handler({ method: "item/started", params: { sessionId: "session-1", viewCursor: "7" } });
+	assert.equal(pump.lastViewCursor("session-1"), "7");
+	handler({ method: "item/delta", params: { sessionId: "session-1" } });
+	assert.equal(pump.lastViewCursor("session-1"), "7");
+	handler({ method: "item/completed", params: { sessionId: "session-1", viewCursor: "9" } });
+	assert.equal(pump.lastViewCursor("session-1"), "9");
+	pump.unregister("session-1");
+	assert.equal(pump.lastViewCursor("session-1"), undefined);
+});
+
 test("Muse native unknown terminals fail instead of completing", async () => {
 	const events = [];
 	const stubTurn = {
@@ -998,6 +1015,84 @@ test("Muse native session open resolves profile sandbox options above instance c
 	invalid.runtimeOptions = { sandbox: "sometimes" };
 	const diagnostics = await adapter.validateProfile({ profile: invalid, workspace: root });
 	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "muse_native_runtime_options_invalid"));
+});
+
+test("Muse native view-death turn recovers via page walk and settles", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "viewdeath", disposers, { requestTimeoutMs: 200 });
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	// Without recovery this prompt rejects after 600ms of silence; the dead
+	// view must be reconciled instead, repeatedly across poll windows.
+	await session.prompt({ text: "hello [tool] [viewdeath]", source: "interactive" });
+	assert.equal(events.filter((event) => event.type === "turn_completed").length, 1);
+	// Opening content arrived live; the tool round-trip was backfilled from view/page.
+	assert.ok(events.some((event) => event.type === "assistant_message"));
+	const toolCall = events.find((event) => event.type === "tool_call");
+	assert.equal(toolCall.toolName, "bash");
+	assert.ok(events.some((event) => event.type === "tool_execution_finished"));
+	// Honest one-liners: reconciling first, recovered once the terminal replays.
+	assert.ok(events.some((event) => event.type === "reasoning_finished" && /reconciling missed events/.test(event.text ?? "")));
+	assert.ok(events.some((event) => event.type === "reasoning_finished" && /recovered.*replayed \d+ missed events/.test(event.text ?? "")));
+	assert.ok(events.some((event) => event.type === "native_event" && event.event?.kind === "muse-view-recovery"));
+	assert.equal(session.getStatus().streaming, false);
+});
+
+test("Muse native abort settles a stuck turn within the abort bound", async () => {
+	const events = [];
+	const stubTurn = {
+		turnId: "turn-stub-stuck",
+		observedStart: true,
+		completed: new Promise(() => {}),
+		async *items() {},
+		async *deltas() {},
+	};
+	const stubSession = { sendUserTurn: async () => stubTurn };
+	const stubConnection = { command: async () => ({}), request: async () => ({}) };
+	const controller = new MuseNativeTurnController(stubConnection, stubSession, "session-1", 60_000, (event) => events.push(event), { abortTimeoutMs: 50 });
+	const startedAt = Date.now();
+	const run = controller.start("hello");
+	run.catch(() => {});
+	await delay(20);
+	await controller.interrupt();
+	await run;
+	assert.ok(Date.now() - startedAt < 5_000);
+	const completed = events.filter((event) => event.type === "turn_completed").at(-1);
+	assert.equal(completed.status, "cancelled");
+	assert.ok(events.some((event) => event.type === "warning" && /settled locally as cancelled/.test(event.message)));
+	assert.equal(controller.streaming, false);
+	controller.dispose();
+});
+
+test("Muse native turn fails fast when the native turn is over but unrecoverable", async () => {
+	const events = [];
+	const stubTurn = {
+		turnId: "turn-stub-gone",
+		observedStart: true,
+		completed: new Promise(() => {}),
+		async *items() {},
+		async *deltas() {},
+	};
+	const stubSession = {
+		sendUserTurn: async () => stubTurn,
+		apply: () => ({ fold: { kind: "item" }, io: Promise.resolve([]), retirements: [] }),
+	};
+	const stubConnection = {
+		command: async () => ({}),
+		request: async (method) => {
+			if (method === "session/read") return { session: { activeTurnId: null } };
+			if (method === "view/page") return { events: [], nextCursor: null };
+			throw new Error(`unexpected ${method}`);
+		},
+	};
+	const controller = new MuseNativeTurnController(stubConnection, stubSession, "session-1", 60_000, (event) => events.push(event), { pollMs: 30 });
+	const startedAt = Date.now();
+	await assert.rejects(() => controller.start("hello"), /could not be reconciled/);
+	assert.ok(Date.now() - startedAt < 5_000);
+	assert.ok(events.some((event) => event.type === "turn_failed"));
+	assert.ok(events.some((event) => event.type === "reasoning_finished" && /reconciling missed events/.test(event.text ?? "")));
+	assert.equal(events.some((event) => event.type === "reasoning_finished" && /recovered/.test(event.text ?? "")), false);
+	controller.dispose();
 });
 
 test("Muse native sandbox toggle override wins on reopen", async (t) => {
