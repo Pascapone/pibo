@@ -374,12 +374,17 @@ export async function disposeMuseNativeSessionPaths(paths: MuseNativeSessionPath
 
 export async function startMuseNativeHost(input: StartMuseNativeHostInput): Promise<MuseNativeHostProcess> {
 	const paths = await prepareMuseNativeSessionPaths(input);
-	await seedGenerationAuth(paths);
 	const diagnostics: MuseNativeHostDiagnostic[] = [];
 	const report = (diagnostic: MuseNativeHostDiagnostic): void => {
 		if (diagnostics.length < MAX_DIAGNOSTICS) diagnostics.push(diagnostic);
 		input.onDiagnostic?.(diagnostic);
 	};
+	if (!(await seedGenerationAuth(paths))) {
+		report({
+			level: "warning",
+			message: "No stored Muse credential was found; store an API key or complete `muse login` on this host before prompting.",
+		});
+	}
 	const env = buildHostEnvironment(input, paths);
 	const sandbox = await resolveMuseSandboxArgs({
 		mode: input.config.sandbox,

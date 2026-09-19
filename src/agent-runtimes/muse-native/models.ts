@@ -48,6 +48,7 @@ export type MuseNativeModelEntry = {
 export type MuseNativeModelCatalog = {
 	models: readonly MuseNativeModelEntry[];
 	providerId?: string;
+	skippedInvalidEntries?: number;
 };
 
 export type MuseNativeProfileOptions = {
@@ -73,22 +74,27 @@ export async function readMuseModelCatalog(connection: Connection, sessionId: st
 		throw new MuseNativeSessionProtocolError("Muse model/list returned an invalid result.");
 	}
 	const models: MuseNativeModelEntry[] = [];
+	let skippedInvalidEntries = 0;
 	for (const entry of result.models.slice(0, MAX_MODELS)) {
-		if (!isRecord(entry)) throw new MuseNativeSessionProtocolError("Muse model catalog entry is invalid.");
-		const id = boundedIdentifier(entry.modelId, "model id");
-		const providerId = typeof entry.providerId === "string" && entry.providerId.trim() ? entry.providerId : undefined;
-		const displayName = typeof entry.displayLabel === "string" && entry.displayLabel.trim()
-			? entry.displayLabel.slice(0, MAX_LABEL_LENGTH)
-			: undefined;
-		models.push({
-			id,
-			...(providerId ? { providerId } : {}),
-			...(displayName ? { displayName } : {}),
-			...(entry.isDefault === true ? { isDefault: true } : {}),
-		});
+		try {
+			if (!isRecord(entry)) throw new MuseNativeSessionProtocolError("Muse model catalog entry is invalid.");
+			const id = boundedIdentifier(entry.modelId, "model id");
+			const providerId = typeof entry.providerId === "string" && entry.providerId.trim() ? entry.providerId : undefined;
+			const displayName = typeof entry.displayLabel === "string" && entry.displayLabel.trim()
+				? entry.displayLabel.slice(0, MAX_LABEL_LENGTH)
+				: undefined;
+			models.push({
+				id,
+				...(providerId ? { providerId } : {}),
+				...(displayName ? { displayName } : {}),
+				...(entry.isDefault === true ? { isDefault: true } : {}),
+			});
+		} catch {
+			skippedInvalidEntries += 1;
+		}
 	}
 	const providerId = typeof result.providerId === "string" && result.providerId.trim() ? result.providerId : undefined;
-	return { models, ...(providerId ? { providerId } : {}) };
+	return { models, ...(providerId ? { providerId } : {}), ...(skippedInvalidEntries > 0 ? { skippedInvalidEntries } : {}) };
 }
 
 export function selectDefaultCatalogModel(catalog: MuseNativeModelCatalog): ModelProfile | undefined {
@@ -101,6 +107,17 @@ export function toAgentRuntimeModelCatalog(
 	catalog: MuseNativeModelCatalog,
 	diagnostics?: AgentRuntimeModelCatalog["diagnostics"],
 ): AgentRuntimeModelCatalog {
+	const skipped = catalog.skippedInvalidEntries ?? 0;
+	const merged = [
+		...(diagnostics ?? []),
+		...(skipped > 0
+			? [{
+				severity: "warning" as const,
+				code: "muse_native_model_catalog_skipped_entries",
+				message: `Muse model catalog skipped ${skipped} invalid ${skipped === 1 ? "entry" : "entries"}.`,
+			}]
+			: []),
+	];
 	return {
 		runtimeInstanceId,
 		models: catalog.models.map((model) => ({
@@ -109,7 +126,7 @@ export function toAgentRuntimeModelCatalog(
 			...(model.displayName ? { displayName: model.displayName } : {}),
 			reasoningOptions: [...MUSE_NATIVE_REASONING_VALUES],
 		})),
-		...(diagnostics ? { diagnostics } : {}),
+		...(merged.length > 0 ? { diagnostics: merged } : {}),
 	};
 }
 
@@ -180,7 +197,8 @@ export class MuseSessionSettingsController {
 	private model: ModelProfile | undefined;
 	private reasoning: string | undefined;
 	private contextUsage: AgentRuntimeContextUsage = null;
-	private syncWarning: string | undefined;
+	private modelWarning: string | undefined;
+	private reasoningWarning: string | undefined;
 	private disposed = false;
 
 	constructor(input: MuseSessionSettingsInput) {
@@ -201,9 +219,9 @@ export class MuseSessionSettingsController {
 	adoptNativeModel(summary: { modelId?: string }): void {
 		if (!summary.modelId) return;
 		this.model = { id: summary.modelId, provider: MUSE_NATIVE_MODEL_PROVIDER_ID };
-		if (!this.catalog.models.some((entry) => entry.id === summary.modelId)) {
-			this.syncWarning = `Muse session runs model "${summary.modelId}", which is not in the current model catalog.`;
-		}
+		this.modelWarning = this.catalog.models.some((entry) => entry.id === summary.modelId)
+			? undefined
+			: `Muse session runs model "${summary.modelId}", which is not in the current model catalog.`;
 	}
 
 	get activeModel(): ModelProfile | undefined {
@@ -253,8 +271,8 @@ export class MuseSessionSettingsController {
 		return this.reasoningState;
 	}
 
-	get pendingSyncWarning(): string | undefined {
-		return this.syncWarning;
+	get pendingSyncWarnings(): readonly string[] {
+		return [this.modelWarning, this.reasoningWarning].filter((warning): warning is string => typeof warning === "string");
 	}
 
 	setReasoning(value: string): AgentRuntimeReasoningResult {
@@ -265,13 +283,13 @@ export class MuseSessionSettingsController {
 			throw new Error(`Muse reasoning effort must be one of ${MUSE_NATIVE_REASONING_VALUES.join(", ")}.`);
 		}
 		this.reasoning = normalized;
-		this.syncWarning = undefined;
+		this.reasoningWarning = undefined;
 		// The per-turn option carries the value even if the session-default sync below fails.
 		if (this.connection && this.sessionId) {
 			const connection = this.connection;
 			const sessionId = this.sessionId;
 			void connection.command("session/setReasoningEffort", { sessionId, reasoningEffort: normalized }).catch((error: unknown) => {
-				this.syncWarning = error instanceof Error
+				this.reasoningWarning = error instanceof Error
 					? `Muse session reasoning default could not be synced: ${error.message}`
 					: "Muse session reasoning default could not be synced.";
 			});
@@ -281,6 +299,8 @@ export class MuseSessionSettingsController {
 
 	cycleReasoning(): AgentRuntimeReasoningResult {
 		const values = [...MUSE_NATIVE_REASONING_VALUES];
+		// Cycling from unset starts at values[0] ("none"), mirroring Codex; the
+		// host default stays in effect until the first explicit cycle pins one.
 		const next = this.reasoning ? values[(values.indexOf(this.reasoning as MuseNativeReasoningValue) + 1) % values.length]! : values[0]!;
 		return this.setReasoning(next);
 	}
@@ -299,6 +319,7 @@ export class MuseSessionSettingsController {
 			});
 		}
 		this.model = { ...model };
+		this.modelWarning = undefined;
 		return { ...this.model };
 	}
 

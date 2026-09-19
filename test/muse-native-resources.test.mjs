@@ -236,6 +236,153 @@ test("Muse native delivers portable tools and external MCP servers through sessi
 	await expectCredentialRevoked(access);
 });
 
+test("Muse native re-delivers fresh portable-tool credentials on resume", async (t) => {
+	const { root, fakeStateDir, workspace, disposers } = await fixtureRoot(t);
+	await mkdir(workspace, { recursive: true });
+	const beta = definePiboTool({
+		name: "beta",
+		title: "Beta",
+		description: "Portable Muse resume fixture",
+		inputSchema: Type.Object({ value: Type.String() }),
+		async execute(_toolCallId, input, _signal, _onUpdate, context) {
+			return { content: [{ type: "text", text: `${context.piboSessionId}:${input.value}` }] };
+		},
+	});
+	const instanceId = "muse-native-resume-delivery";
+	const profile = new InitialSessionContextBuilder("muse-native-resume-delivery-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addTool({ name: "beta", definition: beta })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);
+	registry.registerInstance({
+		id: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		displayName: "Muse Native Resume Delivery",
+		config: runtimeConfig(root),
+	});
+	const portableService = new PiboPortableToolService();
+	disposers.push(async () => portableService.dispose());
+	const piboSessionId = "ps_muse_resume_delivery";
+	const portableBase = portableService.createSession({
+		piboSessionId,
+		runtimeInstanceId: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		sessionGeneration: "resource-generation-resume",
+		profile,
+		cwd: workspace,
+	});
+	const accesses = [];
+	const portableTools = trackedPortableSession(portableBase, accesses, { count: 0 });
+	const piboSession = createPiboSession({
+		id: piboSessionId,
+		channel: "test",
+		kind: "chat",
+		profile: profile.profileName,
+		workspace,
+	});
+	const first = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding: { piboSessionId, runtimeInstanceId: instanceId, adapterId: MUSE_NATIVE_ADAPTER_ID, state: "unbound", revision: 1 },
+		workspace,
+		productContext: { piboSessionId },
+		services: { portableTools },
+	});
+	const binding = first.getBinding();
+	assert.equal(binding.state, "bound");
+	await first.dispose();
+
+	const second = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding,
+		workspace,
+		productContext: { piboSessionId },
+		services: { portableTools },
+	});
+	disposers.push(() => second.dispose());
+	assert.equal(second.getBinding().nativeSessionId, binding.nativeSessionId);
+	assert.equal(accesses.length, 2);
+	assert.notEqual(accesses[1].token, accesses[0].token);
+	const state = JSON.parse(await readFile(join(fakeStateDir, "muse-fake-state.json"), "utf8"));
+	const resumed = state.resumeRequests.at(-1).config.mcpServers;
+	assert.equal(resumed["pibo-session-tools"].headers.authorization, `Bearer ${accesses[1].token}`);
+	assert.ok(second.getStatus().enabledTools.includes("beta"));
+});
+
+test("Muse native repeats resource warnings only on change", async (t) => {
+	const { root, workspace, disposers } = await fixtureRoot(t);
+	await mkdir(workspace, { recursive: true });
+	const gamma = definePiboTool({
+		name: "gamma",
+		title: "Gamma",
+		description: "Portable Muse warning fixture",
+		inputSchema: Type.Object({ value: Type.String() }),
+		async execute(_toolCallId, input, _signal, _onUpdate, context) {
+			return { content: [{ type: "text", text: `${context.piboSessionId}:${input.value}` }] };
+		},
+	});
+	const instanceId = "muse-native-warn-dedup";
+	const profile = new InitialSessionContextBuilder("muse-native-warn-dedup-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addTool({ name: "gamma", definition: gamma })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);
+	registry.registerInstance({
+		id: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		displayName: "Muse Native Warn Dedup",
+		config: runtimeConfig(root),
+	});
+	const portableService = new PiboPortableToolService();
+	disposers.push(async () => portableService.dispose());
+	const piboSessionId = "ps_muse_warn_dedup";
+	const portableBase = portableService.createSession({
+		piboSessionId,
+		runtimeInstanceId: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		sessionGeneration: "resource-generation-warn",
+		profile,
+		cwd: workspace,
+	});
+	const accesses = [];
+	const portableTools = trackedPortableSession(portableBase, accesses, { count: 0 });
+	const piboSession = createPiboSession({
+		id: piboSessionId,
+		channel: "test",
+		kind: "chat",
+		profile: profile.profileName,
+		workspace,
+	});
+	const session = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding: { piboSessionId, runtimeInstanceId: instanceId, adapterId: MUSE_NATIVE_ADAPTER_ID, state: "unbound", revision: 1 },
+		workspace,
+		productContext: { piboSessionId },
+		services: { portableTools },
+	});
+	disposers.push(() => session.dispose());
+	portableBase.revokeMcpAccess(accesses[0].token);
+	const realNow = Date.now();
+	t.mock.timers.enable({ apis: ["Date"], now: realNow });
+	t.mock.timers.tick(6 * 60 * 1000);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "one", source: "interactive" });
+	await session.prompt({ text: "two", source: "interactive" });
+	const expired = events.filter((event) => event.type === "warning" && event.details?.code === "muse_native_tool_credential_expired");
+	assert.equal(expired.length, 1);
+});
+
 test("Muse native opens without MCP config when no tools or servers are selected", async (t) => {
 	const { root, fakeStateDir, workspace, disposers } = await fixtureRoot(t);
 	await mkdir(workspace, { recursive: true });

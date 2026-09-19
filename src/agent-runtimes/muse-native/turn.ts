@@ -21,6 +21,8 @@ const MAX_SILENT_WINDOWS = 3;
 const LIVENESS_PROBE_TIMEOUT_MS = 10_000;
 const LIVENESS_PROBE_MIN_TIMEOUT_MS = 1_000;
 
+export const MUSE_FALLBACK_TOOL_NAME = "muse-tool";
+
 export type MuseTurnStartOptions = {
 	reasoningEffort?: string;
 	displayText?: string;
@@ -47,14 +49,39 @@ function boundedText(value: unknown): string {
 	return redactMuseNativeSensitiveText(value).slice(0, MAX_TEXT_CHARS);
 }
 
+const MAX_ARG_STRING_CHARS = 1024;
+const MAX_ARG_ENTRIES = 256;
+const MAX_ARG_DEPTH = 32;
+
+function boundParsedArgs(value: unknown, depth = 0, seen: Set<object> = new Set()): unknown {
+	if (typeof value === "string") {
+		return value.length > MAX_ARG_STRING_CHARS ? `${value.slice(0, MAX_ARG_STRING_CHARS)}…[truncated]` : value;
+	}
+	if (!value || typeof value !== "object" || depth > MAX_ARG_DEPTH || seen.has(value)) return value;
+	seen.add(value);
+	if (Array.isArray(value)) return value.slice(0, MAX_ARG_ENTRIES).map((entry) => boundParsedArgs(entry, depth + 1, seen));
+	return Object.fromEntries(Object.entries(value).slice(0, MAX_ARG_ENTRIES).map(([key, entry]) => [key, boundParsedArgs(entry, depth + 1, seen)]));
+}
+
 function parseToolArgs(args: unknown): { value: unknown; complete: boolean } {
 	if (typeof args !== "string" || !args.trim()) return { value: {}, complete: true };
-	const bounded = args.slice(0, MAX_ARGS_CHARS);
 	try {
-		return { value: JSON.parse(bounded) as unknown, complete: true };
+		const parsed = JSON.parse(args) as unknown;
+		return { value: args.length > MAX_ARGS_CHARS ? boundParsedArgs(parsed) : parsed, complete: true };
 	} catch {
-		return { value: bounded, complete: false };
+		return { value: args.slice(0, MAX_ARGS_CHARS), complete: false };
 	}
+}
+
+const MAX_INTENT_CHARS = 512;
+
+export function splitMuseToolIntent(args: unknown): { args: unknown; intent: string | undefined } {
+	if (!args || typeof args !== "object" || Array.isArray(args)) return { args, intent: undefined };
+	const { description, ...rest } = args as Record<string, unknown>;
+	if (typeof description !== "string") return { args, intent: undefined };
+	const intent = redactMuseNativeSensitiveText(description.trim()).slice(0, MAX_INTENT_CHARS).trim();
+	if (!intent) return { args, intent: undefined };
+	return { args: rest, intent };
 }
 
 function toRuntimeUsage(usage: {
@@ -184,7 +211,7 @@ export class MuseNativeTurnController {
 		this.emit({ type: "turn_started", turnId });
 		const seenItems = new Map<string, string>();
 		const completedTools = new Set<string>();
-		let timedOut = false;
+		const emittedDiffs = new Map<string, string>();
 		let settled = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let rejectTimeout: ((error: Error) => void) | undefined;
@@ -195,7 +222,6 @@ export class MuseNativeTurnController {
 		});
 		const livenessProbeTimeoutMs = Math.min(LIVENESS_PROBE_TIMEOUT_MS, Math.max(LIVENESS_PROBE_MIN_TIMEOUT_MS, this.requestTimeoutMs));
 		const failSilent = (hostAlive: boolean): void => {
-			timedOut = true;
 			settled = true;
 			void this.connection.command("turn/interrupt", { sessionId: this.sessionId, turnId }).catch(() => {});
 			const totalSilenceMs = silentWindows * this.requestTimeoutMs;
@@ -248,7 +274,14 @@ export class MuseNativeTurnController {
 			const itemPump = (async () => {
 				for await (const item of turn.items()) {
 					noteActivity();
-					this.routeItem(item as unknown as Record<string, unknown>, seenItems, completedTools);
+					try {
+						this.routeItem(item as unknown as Record<string, unknown>, seenItems, completedTools, emittedDiffs);
+					} catch (error) {
+						this.emit({
+							type: "warning",
+							message: redactMuseNativeSensitiveText(error instanceof Error ? `Muse item routing failed: ${error.message}` : "Muse item routing failed.").slice(0, 512),
+						});
+					}
 				}
 			})();
 			const deltaPump = (async () => {
@@ -261,8 +294,13 @@ export class MuseNativeTurnController {
 			settled = true;
 			await Promise.allSettled([itemPump, deltaPump]);
 			if (this.active?.turnId === turnId) this.active = undefined;
-			if (outcome.kind !== "completed") {
-				this.emit({ type: "turn_completed", turnId, status: "unqueued" });
+			if (outcome.kind === "unqueued") {
+				this.emit({ type: "turn_failed", turnId, message: `Muse turn "${turnId}" was reclaimed before launch; the input never ran.` });
+				finished.resolve();
+				return;
+			}
+			if (outcome.kind === "terminalUnknown") {
+				this.emit({ type: "turn_failed", turnId, message: `Muse host died during turn "${turnId}" before a terminal was recorded.` });
 				finished.resolve();
 				return;
 			}
@@ -312,6 +350,7 @@ export class MuseNativeTurnController {
 		item: Record<string, unknown>,
 		seenItems: Map<string, string>,
 		completedTools: Set<string>,
+		emittedDiffs: Map<string, string>,
 	): void {
 		const itemId = typeof item.itemId === "string" ? item.itemId : undefined;
 		const kind = typeof item.kind === "string" ? item.kind : undefined;
@@ -336,11 +375,13 @@ export class MuseNativeTurnController {
 			return;
 		}
 		if (kind === "toolCall") {
-			const toolName = typeof item.tool === "string" && item.tool.trim() ? item.tool : "muse-tool";
+			const toolName = typeof item.tool === "string" && item.tool.trim() ? item.tool : MUSE_FALLBACK_TOOL_NAME;
 			if (!previous) {
 				const args = parseToolArgs(item.args);
-				this.emit({ type: "tool_call", toolCallId: itemId, toolName, args: args.value, argsComplete: args.complete });
-				this.emit({ type: "tool_execution_started", toolCallId: itemId, toolName, args: args.value });
+				// The description moves to intent (Pi-style) so views never show it twice.
+				const split = splitMuseToolIntent(args.value);
+				this.emit({ type: "tool_call", toolCallId: itemId, toolName, args: split.args, argsComplete: args.complete, ...(split.intent ? { intent: split.intent } : {}) });
+				this.emit({ type: "tool_execution_started", toolCallId: itemId, toolName, args: split.args, ...(split.intent ? { intent: split.intent } : {}) });
 			}
 			if (terminal && !completedTools.has(itemId)) {
 				completedTools.add(itemId);
@@ -356,7 +397,16 @@ export class MuseNativeTurnController {
 			}
 			const patchSummary = item.patchSummary;
 			if (patchSummary && typeof patchSummary === "object") {
-				this.emit({ type: "diff_updated", diff: JSON.parse(JSON.stringify(patchSummary)) as PiboJsonObject });
+				let fingerprint: string;
+				try {
+					fingerprint = JSON.stringify(patchSummary) ?? "";
+				} catch {
+					throw new MuseNativeTurnProtocolError(`Muse patch summary for tool "${toolName}" is not serializable.`);
+				}
+				if (fingerprint && emittedDiffs.get(itemId) !== fingerprint) {
+					emittedDiffs.set(itemId, fingerprint);
+					this.emit({ type: "diff_updated", diff: JSON.parse(fingerprint) as PiboJsonObject });
+				}
 			}
 			return;
 		}
@@ -378,8 +428,12 @@ export class MuseNativeTurnController {
 			this.emit({ type: "assistant_delta", text });
 			return;
 		}
+		if (kind === "reasoning") {
+			this.emit({ type: "reasoning_delta", text });
+			return;
+		}
 		if (kind === "toolCall" && field === "output") {
-			let toolName = "muse-tool";
+			let toolName = MUSE_FALLBACK_TOOL_NAME;
 			try {
 				const item = this.session.fold.items.get(delta.itemId) as unknown as Record<string, unknown> | undefined;
 				if (item && typeof item.tool === "string" && item.tool.trim()) toolName = item.tool;
