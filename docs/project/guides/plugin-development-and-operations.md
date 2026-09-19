@@ -138,6 +138,8 @@ pibo plugins activate org.example.hello-pibo --expected-revision <newStateRevisi
 
 An update stages new bytes without changing the running generation. Activation closes admission, drains affected work, and swaps generations at a controlled boundary. Source changes after staging cannot alter staged execution.
 
+Boot-time default-plugin updates follow the same drain protocol without taking the boot down: when live work or a still-reserved generation admission blocks the drain, the update is deferred with a loud log line and the prior revision stays active until the next start. A default plugin left `retiring` by an interrupted update is resumed at the next boot once its blockers are gone; anything else stays parked for explicit `pibo plugins recover`. Sessions release superseded own-session admissions when they rebind, so crash orphans cannot block later updates forever.
+
 # Diagnose and recover
 
 Use progressively deeper commands:
