@@ -247,6 +247,10 @@ export class PluginStore {
 	listAdmissions(pluginId: string): PluginGenerationAdmission[] {
 		return this.db.prepare("SELECT record_json FROM plugin_generation_admissions WHERE state='reserved'").all().map((row) => decode<PluginGenerationAdmission>(row)!).filter((record) => record.plugins.some((plugin) => plugin.pluginId === pluginId));
 	}
+	listSessionAdmissions(piboSessionId: string): PluginGenerationAdmission[] {
+		sessionId(piboSessionId);
+		return this.db.prepare("SELECT record_json FROM plugin_generation_admissions WHERE pibo_session_id=? AND state='reserved'").all(piboSessionId).map((row) => decode<PluginGenerationAdmission>(row)!);
+	}
 	putAdmission(input: PluginGenerationAdmission, expectedRevision: number): PluginGenerationAdmission {
 		sessionId(input.piboSessionId); nonempty(input.generationId, "generationId"); revision(expectedRevision);
 		return this.transaction(() => {

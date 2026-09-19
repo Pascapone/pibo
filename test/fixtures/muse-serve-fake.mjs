@@ -10,6 +10,7 @@
 //   [approval]   request approval mid-turn and wait for approval/decide
 //   [fail]       end the turn with terminal "failed"
 //   [slow]       delay completion so abort/steer tests can intervene
+//   [hang]       never produce turn output (past any idle budget) for timeout tests
 //   [drip]       emit steady items over ~200ms so activity-timeout tests can intervene
 //   [context]    emit a session/contextUsage notification
 //   [secretargs] include a secret-bearing key in the toolCall args
@@ -112,12 +113,14 @@ async function runTurn(sessionId, turnId, text) {
 		approval: text.includes("[approval]"),
 		fail: text.includes("[fail]"),
 		slow: text.includes("[slow]"),
+		hang: text.includes("[hang]"),
 		drip: text.includes("[drip]"),
 		context: text.includes("[context]"),
 		secretArgs: text.includes("[secretargs]"),
 	};
 	notify("turn/started", { commandId: turnId, sessionId, sourceRange: range(), turnId, viewCursor: nextCursor(sessionId) });
-	if (scripted.slow) await delay(300);
+	if (scripted.hang) await delay(60_000);
+	else if (scripted.slow) await delay(300);
 	else await delay(5);
 	if (interruptedTurns.has(turnId)) return finishTurn(sessionId, turnId, "cancelled");
 

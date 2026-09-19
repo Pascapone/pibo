@@ -418,8 +418,8 @@ test("Muse native diagnose, auth, timeouts, and import rejection behave", async 
 	const impatientSession = await impatient.openSession("muse-native-impatient", openInput("muse-native-impatient", root, unboundBinding("muse-native-impatient", "ps_muse_timeout")));
 	disposers.push(() => impatientSession.dispose());
 	await assert.rejects(
-		() => impatientSession.prompt({ text: "slow work [slow]", source: "interactive" }),
-		/timed out after 100ms/,
+		() => impatientSession.prompt({ text: "slow work [hang]", source: "interactive" }),
+		/timed out after 300ms/,
 	);
 });
 
@@ -459,12 +459,12 @@ test("Muse native timeout errors redact prompt text", async (t) => {
 	disposers.push(() => session.dispose());
 	let failure;
 	try {
-		await session.prompt({ text: "slow work [slow] password=hunter2-secret", source: "interactive" });
+		await session.prompt({ text: "slow work [hang] password=hunter2-secret", source: "interactive" });
 	} catch (error) {
 		failure = error;
 	}
 	assert.ok(failure);
-	assert.match(failure.message, /timed out after 100ms/);
+	assert.match(failure.message, /timed out after 300ms/);
 	assert.equal(failure.message.includes("hunter2"), false);
 });
 
@@ -482,9 +482,32 @@ test("Muse native turn timeout is idle-based and survives steady activity", asyn
 	// ~200ms of steady items with a 100ms budget: only an idle timeout survives this.
 	await session.prompt({ text: "steady work [drip]", source: "interactive" });
 	await assert.rejects(
-		() => session.prompt({ text: "slow work [slow]", source: "interactive" }),
-		/timed out after 100ms without activity/,
+		() => session.prompt({ text: "slow work [hang]", source: "interactive" }),
+		/timed out after 300ms without activity/,
 	);
+});
+
+test("Muse native turn survives backoff-like silence on a responsive host", async (t) => {
+	const { root, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "backoff", disposers, { requestTimeoutMs: 150 });
+	// 300ms of silence exceeds one 150ms window: only liveness-probed extension lets this turn complete.
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "slow work [slow]", source: "interactive" });
+	assert.ok(events.some((event) => event.type === "assistant_message" && event.text.includes("fake reply to: slow work")));
+});
+
+test("Muse native turn fails fast when the host stops answering", async (t) => {
+	const { root, fakeStateDir, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "hostdead", disposers, { requestTimeoutMs: 100 });
+	await setHangMethods(fakeStateDir, ["approval/listPending"]);
+	const startedAt = Date.now();
+	await assert.rejects(
+		() => session.prompt({ text: "slow work [hang]", source: "interactive" }),
+		/timed out after 100ms without activity .*\(host unresponsive\)/,
+	);
+	assert.ok(Date.now() - startedAt < 5_000, "unresponsive host must fail at the first window");
+	await setHangMethods(fakeStateDir, []);
 });
 
 test("Muse native compaction times out on a hanging host", async (t) => {

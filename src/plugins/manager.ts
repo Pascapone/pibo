@@ -143,6 +143,21 @@ export class PluginManager {
 			return this.store.putAdmission({ ...admission, state: "released" }, expectedRevision);
 		});
 	}
+	/** Non-destructive drain check for boot/update orchestration; same blockers that would stall activation. */
+	async listDrainBlockers(pluginId: string): Promise<PluginConsumer[]> {
+		return pluginDrainBlockers(await this.impact(pluginId));
+	}
+	/** Releases superseded reservations for a session that rebinds without a live generation (crash/disposal orphans). Returns the released count. */
+	releaseSupersededSessionAdmissions(piboSessionId: string): number {
+		return this.store.transaction(() => {
+			let released = 0;
+			for (const admission of this.store.listSessionAdmissions(piboSessionId)) {
+				this.store.putAdmission({ ...admission, state: "released" }, admission.revision);
+				released++;
+			}
+			return released;
+		});
+	}
 	/** Cold-start batch replacement for a verified, caller-transactional cutover. Ordinary live activation keeps the drain protocol below. */
 	async activateColdReplacements(inputs: readonly { pluginId: string; expectedRevision: number }[]): Promise<PluginOperation[]> {
 		const lifecycle = this.requireLifecycle();

@@ -1,5 +1,6 @@
 import {
 	isLaunchFailure,
+	MspError,
 	type Connection,
 	type Session,
 	type Turn,
@@ -12,6 +13,13 @@ import { redactMuseNativeSensitiveText } from "./redaction.js";
 
 const MAX_TEXT_CHARS = 64 * 1024;
 const MAX_ARGS_CHARS = 16 * 1024;
+// A silent-but-alive host is typically waiting out provider retry backoff (the
+// SDK does not surface turn/retryScheduled to turn consumers), so the idle
+// budget spans a few windows while liveness probes keep answering. A host
+// that answers nothing fails at the first window, as before.
+const MAX_SILENT_WINDOWS = 3;
+const LIVENESS_PROBE_TIMEOUT_MS = 10_000;
+const LIVENESS_PROBE_MIN_TIMEOUT_MS = 1_000;
 
 export type MuseTurnStartOptions = {
 	reasoningEffort?: string;
@@ -180,21 +188,50 @@ export class MuseNativeTurnController {
 		let settled = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let rejectTimeout: ((error: Error) => void) | undefined;
+		let silentWindows = 0;
+		let activityGeneration = 0;
 		const timeout = new Promise<never>((_resolve, reject) => {
 			rejectTimeout = reject;
 		});
+		const livenessProbeTimeoutMs = Math.min(LIVENESS_PROBE_TIMEOUT_MS, Math.max(LIVENESS_PROBE_MIN_TIMEOUT_MS, this.requestTimeoutMs));
+		const failSilent = (hostAlive: boolean): void => {
+			timedOut = true;
+			settled = true;
+			void this.connection.command("turn/interrupt", { sessionId: this.sessionId, turnId }).catch(() => {});
+			const totalSilenceMs = silentWindows * this.requestTimeoutMs;
+			rejectTimeout?.(new Error(`Muse turn timed out after ${totalSilenceMs}ms without activity for prompt "${boundedText(promptText).slice(0, 120)}" (host ${hostAlive ? "responsive" : "unresponsive"}).`));
+		};
+		const armWindow = (): void => {
+			if (timer) clearTimeout(timer);
+			activityGeneration += 1;
+			timer = setTimeout(() => {
+				void (async () => {
+					const probeGeneration = activityGeneration;
+					let hostAlive = false;
+					try {
+						await withTimeout(this.connection.command("approval/listPending", { sessionId: this.sessionId }), livenessProbeTimeoutMs, "Muse host liveness probe timed out.");
+						hostAlive = true;
+					} catch (error) {
+						// Any host-authored error response proves the host is alive; only transport/timeout failure means dead.
+						hostAlive = error instanceof MspError;
+					}
+					if (settled || probeGeneration !== activityGeneration) return;
+					silentWindows += 1;
+					if (hostAlive && silentWindows < MAX_SILENT_WINDOWS) {
+						armWindow();
+						return;
+					}
+					failSilent(hostAlive);
+				})();
+			}, this.requestTimeoutMs);
+			timer.unref?.();
+		};
 		const noteActivity = (): void => {
 			// Idle budget, not a total budget: a turn doing productive work
 			// across many tool calls must survive; only silence is fatal.
 			if (settled) return;
-			if (timer) clearTimeout(timer);
-			timer = setTimeout(() => {
-				timedOut = true;
-				settled = true;
-				void this.connection.command("turn/interrupt", { sessionId: this.sessionId, turnId }).catch(() => {});
-				rejectTimeout?.(new Error(`Muse turn timed out after ${this.requestTimeoutMs}ms without activity for prompt "${boundedText(promptText).slice(0, 120)}".`));
-			}, this.requestTimeoutMs);
-			timer.unref?.();
+			silentWindows = 0;
+			armWindow();
 		};
 		noteActivity();
 		void finished.promise.finally(() => {

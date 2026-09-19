@@ -125,7 +125,7 @@ export type PluginRuntimeGeneration = { plan: EffectivePluginPlan; profile: Init
 
 /** One admission/persistence coordinator around the existing resolver and host, not another engine. */
 export class PluginRuntimeCoordinator {
-	constructor(readonly options: { store: PluginStore; manager: Pick<PluginManager, "reserveGeneration" | "releaseGenerationAdmission">; host: PluginHost }) {}
+	constructor(readonly options: { store: PluginStore; manager: Pick<PluginManager, "reserveGeneration" | "releaseGenerationAdmission" | "releaseSupersededSessionAdmissions">; host: PluginHost }) {}
 	preview(profile: InitialSessionContext, runtime: PluginRuntimeTarget, piboSessionId?: string): EffectivePluginPlan {
 		return this.resolve(profile, runtime, piboSessionId);
 	}
@@ -141,6 +141,8 @@ export class PluginRuntimeCoordinator {
 	}
 	/** Entire method synchronous: retirement cannot interleave between reservation and pinning. */
 	reserve(profile: InitialSessionContext, runtime: PluginRuntimeTarget, piboSessionId: string, generation: string): PluginRuntimeGeneration {
+		// The router binds at most one live generation per session, so any reserved admission left here is a crash/disposal orphan.
+		this.options.manager.releaseSupersededSessionAdmissions(piboSessionId);
 		const plan = this.resolve(profile, runtime, piboSessionId, generation);
 		assertEffectivePluginPlan(plan);
 		const admission = this.options.manager.reserveGeneration({ piboSessionId, generationId: generation, pluginIds: plan.plugins.map((plugin) => plugin.pluginId) });

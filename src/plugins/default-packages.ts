@@ -9,6 +9,8 @@ import { OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID } from "../transcription/opena
 import { OPENAI_TRANSCRIPTION_PROVIDER_ID } from "../transcription/openai.js";
 import type { PluginContribution, PluginInstallation, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
+import type { PluginConsumer, PluginOperation } from "./operations.js";
+import type { StoredPluginInstallation } from "./store.js";
 import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_LOOP_SERVICE, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
 import { PIBO_STANDARD_SKILL_NAMES } from "./standard-skills.js";
 
@@ -511,17 +513,57 @@ async function materializeDefaultPackage(artifactRoot: string, descriptor: Defau
 	return { manifest, source };
 }
 
+function describeDrainBlockers(blockers: readonly PluginConsumer[]): string {
+	return blockers.map((consumer) => `${consumer.kind}:${consumer.id}`).join(", ");
+}
+
+/** Resume a drain-interrupted default update (nothing was ever stopped) once blockers are gone. Returns the refreshed installation, or undefined when the plugin must be skipped this boot. */
+async function resumeInterruptedDefaultUpdate(manager: PluginManager, installation: StoredPluginInstallation): Promise<StoredPluginInstallation | undefined> {
+	const candidates = manager.store.listOperations<PluginOperation>().filter((operation) => operation.pluginId === installation.pluginId && operation.kind === "activate" && (operation.state === "draining" || operation.state === "stopped"));
+	if (candidates.length !== 1) {
+		console.error(`[pibo] Default plugin ${installation.pluginId} is retiring with ${candidates.length} resumable operations; leaving it for explicit recovery (pibo plugins recover)`);
+		return undefined;
+	}
+	const blockers = await manager.listDrainBlockers(installation.pluginId);
+	if (blockers.length) {
+		console.error(`[pibo] Default plugin ${installation.pluginId} update still waiting for ${describeDrainBlockers(blockers)} to drain; plugin stays unavailable, will retry on next start`);
+		return undefined;
+	}
+	try {
+		const resumed = await manager.resumeOperation(candidates[0]!.id);
+		if (resumed.state !== "complete") {
+			console.error(`[pibo] Default plugin ${installation.pluginId} interrupted update is ${resumed.state}${resumed.diagnostic ? ` (${resumed.diagnostic})` : ""}; leaving it for explicit recovery (pibo plugins recover)`);
+			return undefined;
+		}
+	} catch (error) {
+		console.error(`[pibo] Default plugin ${installation.pluginId} interrupted update could not resume: ${error instanceof Error ? error.message : String(error)}; leaving it for explicit recovery (pibo plugins recover)`);
+		return undefined;
+	}
+	return manager.store.getInstallation(installation.pluginId);
+}
+
 /** Seed missing defaults and upgrade only active Pibo-managed defaults. Explicit disable/uninstall remains authoritative. */
 export async function ensureDefaultPluginInstallations(manager: PluginManager, artifactRoot: string, options: { includeWebProduct?: boolean; activateExisting?: (installation: PluginInstallation) => Promise<void> } = {}): Promise<void> {
 	for (const descriptor of DEFAULT_PACKAGES) {
 		if (descriptor.webOnly && !options.includeWebProduct) continue;
 		const expected = descriptor.manifest();
-		const existing = manager.store.getInstallation(expected.id);
+		let existing = manager.store.getInstallation(expected.id);
 		const defaultSourceRoot = resolve(artifactRoot, "default-sources", expected.id);
+		if (existing?.state === "retiring") {
+			existing = await resumeInterruptedDefaultUpdate(manager, existing);
+			if (!existing) continue;
+		}
 		if (existing) {
 			const existingSource = existing.source.kind === "local" ? resolve(existing.source.path) : undefined;
 			const managedSource = Boolean(existingSource?.startsWith(`${defaultSourceRoot}${sep}`));
 			if (!managedSource || !existing.enabled || existing.state !== "active") continue;
+		}
+		if (!existing) {
+			const blockers = await manager.listDrainBlockers(expected.id);
+			if (blockers.length) {
+				console.error(`[pibo] Default plugin ${expected.id} installation deferred: waiting for ${describeDrainBlockers(blockers)} to drain; will retry on next start`);
+				continue;
+			}
 		}
 		const { manifest, source } = await materializeDefaultPackage(artifactRoot, descriptor);
 		if (!existing) {
@@ -535,6 +577,11 @@ export async function ensureDefaultPluginInstallations(manager: PluginManager, a
 		const inspected = await manager.inspect({ kind: "local", path: source });
 		if (inspected.contentHash === existing.contentHash) {
 			await options.activateExisting?.(existing);
+			continue;
+		}
+		const updateBlockers = await manager.listDrainBlockers(expected.id);
+		if (updateBlockers.length) {
+			console.error(`[pibo] Default plugin ${expected.id} update deferred: waiting for ${describeDrainBlockers(updateBlockers)} to drain; prior revision stays active, will retry on next start`);
 			continue;
 		}
 		await manager.install({ kind: "local", path: source }, { expectedRevision: existing.stateRevision });
