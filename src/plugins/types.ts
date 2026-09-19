@@ -36,6 +36,7 @@ import type {
 	AgentRuntimeAuthStatus,
 	AgentRuntimeInstanceInfo,
 	AgentRuntimeModelCatalog,
+	AgentRuntimeSandboxResult,
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
 	LogoutAgentRuntimeAuthInput,
@@ -202,6 +203,8 @@ export type PiboGatewayActionContext = {
 	cycleThinkingLevel(): PiboThinkingResult;
 	getFastMode(): { mode: "fast" | "normal"; supported: boolean };
 	setFastMode(enabled: boolean): { mode: "fast" | "normal"; supported: boolean; changed: boolean };
+	getSandbox(): AgentRuntimeSandboxResult;
+	setSandbox(enabled: boolean): Promise<AgentRuntimeSandboxResult>;
 	setModel(model: ModelProfile): Promise<ModelProfile>;
 	compact(customInstructions?: string): Promise<CompactionResult>;
 	respondToApproval(requestId: string, decision: string): Promise<void>;

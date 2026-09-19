@@ -18,6 +18,7 @@ import type {
 	AgentRuntimeDriver,
 	AgentRuntimeModelCatalog,
 	AgentRuntimePromptInput,
+	AgentRuntimeSandboxResult,
 	AgentRuntimeSession,
 	AgentRuntimeStatus,
 	LogoutAgentRuntimeAuthInput,
@@ -36,9 +37,11 @@ import type { ModelProfile } from "../../core/profiles.js";
 import {
 	MUSE_NATIVE_APPROVAL_MODES,
 	MUSE_NATIVE_RUNTIME_CONFIG_SCHEMA,
+	MUSE_NATIVE_SANDBOX_MODES,
 	defaultMuseNativeRuntimeConfig,
 	parseMuseNativeRuntimeConfig,
 	type MuseNativeRuntimeConfig,
+	type MuseNativeSandboxMode,
 } from "./config.js";
 import {
 	diagnoseMuseNativeRuntime,
@@ -64,6 +67,7 @@ import { MUSE_FALLBACK_TOOL_NAME, MuseNativeTurnController } from "./turn.js";
 import { MuseNativeRequestController } from "./requests.js";
 import { MuseNativeResourceDelivery } from "./resource-delivery.js";
 import {
+	BINDING_SANDBOX_KEY,
 	MUSE_NATIVE_MODEL_PROVIDER_ID,
 	MUSE_NATIVE_REASONING_VALUES,
 	MuseSessionSettingsController,
@@ -182,6 +186,13 @@ function museNativeCapabilities(): AgentRuntimeCapabilities {
 						default: "onRequest",
 						description: "Muse permissions: allowAll runs without prompts, promptUnmatched asks for unmatched work, onRequest asks when the model requests approval, denyUnmatched blocks unmatched work.",
 					},
+					sandbox: {
+						type: "string",
+						title: "Sandbox",
+						enum: [...MUSE_NATIVE_SANDBOX_MODES],
+						default: "auto",
+						description: "Muse shell sandbox: auto engages sandboxing when bubblewrap works and degrades with a warning otherwise, enabled forces sandboxing, disabled turns it off.",
+					},
 				},
 			},
 		},
@@ -274,6 +285,11 @@ function validateOpenBinding(
 	return binding;
 }
 
+export type MuseNativeSessionSandboxInput = {
+	config: MuseNativeRuntimeConfig;
+	override?: MuseNativeSandboxMode;
+};
+
 export class MuseNativeSession implements AgentRuntimeSession {
 	readonly adapterId = MUSE_NATIVE_ADAPTER_ID;
 	readonly cwd: string;
@@ -283,6 +299,8 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	private turns: MuseNativeTurnController;
 	private requests: MuseNativeRequestController;
 	private controller: MuseNativeSessionController;
+	private host: MuseNativeHostProcess;
+	private pump: MuseNativeConnectionPump;
 	private binding: RuntimeSessionBinding;
 	private disposed = false;
 	private operationInFlight = false;
@@ -290,20 +308,25 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	private readonly observedToolNames = new Set<string>();
 	private toolInventoryWarning?: string;
 	private lastResourceWarningKey: string | undefined;
+	private sandboxOverride: MuseNativeSandboxMode | undefined;
 
 	constructor(
 		readonly runtimeInstanceId: string,
-		private readonly host: MuseNativeHostProcess,
-		private readonly pump: MuseNativeConnectionPump,
+		host: MuseNativeHostProcess,
+		pump: MuseNativeConnectionPump,
 		controller: MuseNativeSessionController,
 		private readonly settings: MuseSessionSettingsController,
 		private readonly resourceDelivery: MuseNativeResourceDelivery,
 		binding: RuntimeSessionBinding,
 		private readonly requestTimeoutMs: number,
+		private readonly sandboxInput: MuseNativeSessionSandboxInput,
 	) {
+		this.host = host;
+		this.pump = pump;
 		this.controller = controller;
 		this.cwd = controller.cwd;
 		this.binding = structuredClone(binding);
+		this.sandboxOverride = sandboxInput.override;
 		this.capabilities = museNativeCapabilities();
 		this.updateSelectedToolNames(resourceDelivery);
 		this.turns = new MuseNativeTurnController(
@@ -336,6 +359,8 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				return this.settings.cycleReasoning();
 			},
 			getFastMode: () => this.settings.fastMode,
+			getSandbox: () => this.getSandbox(),
+			setSandbox: async (enabled) => await this.setSandbox(enabled),
 			setModel: async (model) => {
 				this.assertIdle();
 				const selected = await withTimeout(
@@ -482,6 +507,11 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				supported: true,
 			},
 			fastMode: this.settings.fastMode,
+			sandbox: {
+				supported: true,
+				enabled: this.host.sandbox.enabled,
+				mode: this.host.sandbox.mode,
+			},
 			contextUsage: this.settings.currentContextUsage,
 			warnings: [
 				...diagnostics.filter((entry) => entry.level === "warning").map((entry) => entry.message),
@@ -593,6 +623,90 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		}
 	}
 
+	getSandbox(): AgentRuntimeSandboxResult {
+		this.assertActive();
+		return {
+			supported: true,
+			enabled: this.host.sandbox.enabled,
+			mode: this.host.sandbox.mode,
+		};
+	}
+
+	async setSandbox(enabled: boolean): Promise<AgentRuntimeSandboxResult> {
+		this.assertActive();
+		if (typeof enabled !== "boolean") throw new Error("Muse sandbox can only be switched on or off.");
+		return await this.runIdleOperation(async () => await this.restartSandboxHost(enabled));
+	}
+
+	private async restartSandboxHost(enabled: boolean): Promise<AgentRuntimeSandboxResult> {
+		const target: MuseNativeSandboxMode = enabled ? "enabled" : "disabled";
+		const current = this.getSandbox();
+		if (current.enabled === enabled) {
+			return { supported: true, enabled: current.enabled, mode: current.mode, changed: false, restarted: false };
+		}
+		// Sandbox posture is fixed for the host's lifetime and is not negotiable over the
+		// wire, so a toggle restarts the host and resumes the same native session. The new
+		// host starts first: when it (or the resume) fails, the live session is untouched.
+		// Portable-tool credentials stay valid because resource delivery outlives the restart.
+		const nextHost = await startMuseNativeHost({
+			config: { ...this.sandboxInput.config, sandbox: target },
+			runtimeInstanceId: this.runtimeInstanceId,
+			piboSessionId: this.binding.piboSessionId,
+			sessionGeneration: `sandbox-toggle-${randomUUID()}`,
+			workspace: this.cwd,
+			resourceEnvironment: this.resourceDelivery.environment,
+		});
+		try {
+			const durability = readMuseDurability(nextHost.spawned);
+			const nextPump = new MuseNativeConnectionPump(nextHost.spawned.connection);
+			const nextController = await withTimeout(
+				MuseNativeSessionController.resume(
+					nextHost.spawned.connection,
+					nextPump,
+					durability,
+					this.controller.sessionId,
+					this.cwd,
+				),
+				this.requestTimeoutMs,
+				`Muse sandbox toggle timed out after ${this.requestTimeoutMs}ms.`,
+			);
+			const previousHost = this.host;
+			this.pump.setObserver(undefined);
+			this.turns.dispose();
+			this.requests.dispose();
+			this.controller.detach();
+			this.host = nextHost;
+			this.pump = nextPump;
+			this.controller = nextController;
+			this.settings.bind(nextHost.spawned.connection, nextController.summary.sessionId);
+			this.settings.adoptNativeModel(nextController.summary);
+			this.turns = new MuseNativeTurnController(
+				nextHost.spawned.connection,
+				nextController.session,
+				nextController.sessionId,
+				this.requestTimeoutMs,
+				(event) => this.emit(event),
+			);
+			this.requests = new MuseNativeRequestController(nextController.session, this.runtimeInstanceId, (event) => this.emit(event));
+			nextPump.setObserver((method, params) => this.observeNotification(method, params));
+			this.sandboxOverride = target;
+			this.promoteBindingFromCurrentSession();
+			await previousHost.close().catch(() => {});
+			const warning = nextHost.getDiagnostics().find((entry) => entry.level === "warning" || entry.level === "error");
+			return {
+				supported: true,
+				enabled: nextHost.sandbox.enabled,
+				mode: nextHost.sandbox.mode,
+				changed: true,
+				restarted: true,
+				...(warning ? { warning: warning.message } : {}),
+			};
+		} catch (error) {
+			await nextHost.close().catch(() => {});
+			throw error;
+		}
+	}
+
 	private observeNotification(method: string, params: unknown): void {
 		if (method !== "session/contextUsage" || !params || typeof params !== "object") return;
 		const record = params as Record<string, unknown>;
@@ -653,7 +767,10 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			runtimeInstanceId: this.runtimeInstanceId,
 			previous: this.binding,
 			summary: this.controller.summary,
-			settings: this.settings.bindingMetadata,
+			settings: {
+				...this.settings.bindingMetadata,
+				...(this.sandboxOverride ? { [BINDING_SANDBOX_KEY]: this.sandboxOverride } : {}),
+			},
 		});
 	}
 
@@ -832,7 +949,13 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			?? randomUUID();
 		const profileOptions: MuseNativeProfileOptions = parseMuseProfileOptions(input.profile.runtimeOptions);
 		const compatibility = input.services?.compatibility as MuseNativeCompatibilityServices | undefined;
-		const persisted = binding.state === "bound" ? readMusePersistedSettings(binding.metadata) : { profileOptions: {} };
+		const persisted: {
+			activeModel?: ModelProfile;
+			reasoningLevel?: string;
+			profileOptions: MuseNativeProfileOptions;
+			sandboxOverride?: MuseNativeSandboxMode;
+		} = binding.state === "bound" ? readMusePersistedSettings(binding.metadata) : { profileOptions: {} };
+		const effectiveSandbox = persisted.sandboxOverride ?? profileOptions.sandbox ?? this.config.sandbox;
 		let resourceDelivery: MuseNativeResourceDelivery | undefined;
 		let host: MuseNativeHostProcess | undefined;
 		let settings: MuseSessionSettingsController | undefined;
@@ -843,7 +966,7 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				resources: input.services?.resources,
 			});
 			host = await startMuseNativeHost({
-				config: this.config,
+				config: { ...this.config, sandbox: effectiveSandbox },
 				runtimeInstanceId: this.instanceId,
 				piboSessionId: input.piboSession.id,
 				sessionGeneration,
@@ -919,6 +1042,10 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				resourceDelivery,
 				openedBinding,
 				this.config.requestTimeoutMs,
+				{
+					config: this.config,
+					...(persisted.sandboxOverride ? { override: persisted.sandboxOverride } : {}),
+				},
 			);
 		} catch (error) {
 			settings?.dispose();

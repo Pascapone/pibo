@@ -286,6 +286,11 @@ export type AgentRuntimeStatus = {
 		mode: "fast" | "normal";
 		supported: boolean;
 	};
+	sandbox?: {
+		supported: boolean;
+		enabled: boolean;
+		mode?: string;
+	};
 	retry?: PiboJsonObject;
 	contextUsage?: AgentRuntimeContextUsage;
 	providerUsage?: AgentRuntimeProviderUsage;
@@ -351,6 +356,15 @@ export type AgentRuntimeFastModeResult = {
 	changed?: boolean;
 };
 
+export type AgentRuntimeSandboxResult = {
+	supported: boolean;
+	enabled: boolean;
+	mode?: string;
+	changed?: boolean;
+	restarted?: boolean;
+	warning?: string;
+};
+
 export type AgentRuntimeControls = {
 	getCurrentSession?(): AgentRuntimeNativeSessionSnapshot;
 	listSessions?(): Promise<AgentRuntimeNativeSessionInfo[]>;
@@ -367,6 +381,8 @@ export type AgentRuntimeControls = {
 	cycleReasoning?(): AgentRuntimeReasoningResult;
 	getFastMode?(): AgentRuntimeFastModeResult;
 	setFastMode?(enabled: boolean): AgentRuntimeFastModeResult;
+	getSandbox?(): AgentRuntimeSandboxResult;
+	setSandbox?(enabled: boolean): Promise<AgentRuntimeSandboxResult>;
 	setModel?(model: ModelProfile): Promise<ModelProfile>;
 	compact?(customInstructions?: string): Promise<unknown>;
 	respondToApproval?(requestId: string, decision: string): Promise<void>;

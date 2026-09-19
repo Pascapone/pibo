@@ -36,6 +36,7 @@ import type {
 	AgentRuntimeAuthStatus,
 	AgentRuntimeNativeSessionInfo,
 	AgentRuntimeNativeSessionSnapshot,
+	AgentRuntimeSandboxResult,
 	AgentRuntimeSession,
 	AgentRuntimeSessionOperationResult,
 	CancelAgentRuntimeAuthInput,
@@ -503,6 +504,7 @@ export class RuntimeRoutedSession {
 			disposed: this.disposed,
 			thinkingLevel,
 			fastMode: status.fastMode?.mode === "fast",
+			...(status.sandbox?.supported ? { sandboxEnabled: status.sandbox.enabled } : {}),
 			retry: status.retry as PiboSessionStatus["retry"],
 			warnings: this.runReminderDeferredWarning
 				? [...new Set([...(status.warnings ?? []), this.runReminderDeferredWarning])]
@@ -788,6 +790,18 @@ export class RuntimeRoutedSession {
 		const setFastMode = this.runtimeSession.controls?.setFastMode;
 		if (!setFastMode) return { mode: "normal", supported: false, changed: false };
 		const result = setFastMode(enabled);
+		return { ...result, changed: result.changed ?? false };
+	}
+
+	getSandbox(): AgentRuntimeSandboxResult {
+		const getSandbox = this.runtimeSession.controls?.getSandbox;
+		return getSandbox ? getSandbox() : { supported: false, enabled: false };
+	}
+
+	async setSandbox(enabled: boolean): Promise<AgentRuntimeSandboxResult> {
+		const setSandbox = this.runtimeSession.controls?.setSandbox;
+		if (!setSandbox) return { supported: false, enabled: false, changed: false };
+		const result = await setSandbox(enabled);
 		return { ...result, changed: result.changed ?? false };
 	}
 
@@ -1414,6 +1428,8 @@ export class RuntimeRoutedSession {
 				cycleThinkingLevel: () => this.cycleThinkingLevel(),
 				getFastMode: () => this.getFastMode(),
 				setFastMode: (enabled) => this.setFastMode(enabled),
+				getSandbox: () => this.getSandbox(),
+				setSandbox: (enabled) => this.setSandbox(enabled),
 				setModel: (model) => this.setModel(model),
 				compact: (customInstructions) => this.compact(customInstructions),
 				respondToApproval: (requestId, decision) => this.respondToApproval(requestId, decision),

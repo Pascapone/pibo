@@ -65,6 +65,7 @@ export const WEB_PARITY_SLASH_COMMANDS: readonly SlashCommandDescriptor[] = [
 	{ id: "kill", slash: "/kill", actionName: "kill", description: "Dispose the active session runtime.", group: "runtime", support: "terminal-adapted" },
 	{ id: "kill-all", slash: "/kill-all", actionName: "kill-all", description: "Dispose all routed runtimes for the selected app context when supported.", group: "runtime", support: "terminal-adapted" },
 	{ id: "fast", slash: "/fast", actionName: "fast_mode", description: "Toggle fast mode for the active session.", argumentHint: "[on|off]", group: "runtime", support: "terminal-adapted" },
+	{ id: "sandbox", slash: "/sandbox", actionName: "sandbox", description: "Toggle the active runtime shell sandbox on or off.", group: "runtime", support: "terminal-adapted" },
 	{ id: "thinking", slash: "/thinking", actionName: "thinking", description: "Show or set model thinking level.", argumentHint: "[off|minimal|low|medium|high|xhigh|max]", group: "runtime", support: "terminal-adapted", terminalAdaptation: "Without an argument, open a keyboard picker." },
 	{ id: "model", slash: "/model", actionName: "model", description: "Choose an authenticated provider model.", group: "runtime", support: "terminal-adapted", terminalAdaptation: "Open provider and model pickers." },
 	{ id: "login", slash: "/login", actionName: "login", description: "Authenticate a model provider.", group: "runtime", support: "terminal-adapted", terminalAdaptation: "Show provider/auth-method instructions in terminal." },
@@ -177,7 +178,7 @@ function slashResultPlacement(command: SlashCommandDescriptor): SlashCommandBeha
 function slashContextRequirement(command: SlashCommandDescriptor): string {
 	if (["/room", "/session", "/new", "/profile", "/repair-user-unknown"].includes(command.slash)) return "app room/session navigation";
 	if (["/status", "/sessions", "/session-current", "/clone", "/fork-candidates"].includes(command.slash)) return "active session when available; named room context preferred";
-	if (["/compact", "/clear", "/abort", "/kill", "/kill-all", "/fast", "/thinking", "/model", "/login"].includes(command.slash)) return "active routed session/runtime";
+	if (["/compact", "/clear", "/abort", "/kill", "/kill-all", "/fast", "/sandbox", "/thinking", "/model", "/login"].includes(command.slash)) return "active routed session/runtime";
 	if (["/download", "/upload"].includes(command.slash)) return "terminal path argument";
 	return "none";
 }

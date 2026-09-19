@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
+	buildCompactTerminalRows,
 	buildRoomPickerDescriptor,
 	buildSessionPickerDescriptor,
 	buildSlashCommandBehaviorMatrix,
@@ -19,7 +20,7 @@ import {
 	progressBarText,
 	WEB_PARITY_SLASH_COMMANDS,
 } from "../dist/session-ui/index.js";
-import { buildCanonicalTerminalRows } from "./fixtures/terminal-parity-fixtures.mjs";
+import { TERMINAL_PARITY_SESSION_ID, buildCanonicalTerminalRows, terminalParityTraceNode } from "./fixtures/terminal-parity-fixtures.mjs";
 
 const retiredCommandId = String.fromCharCode(111, 119, 110, 101, 114);
 
@@ -119,6 +120,7 @@ test("shared slash-command behavior matrix covers static and dynamic commands", 
 		assert.ok(matrix.some((entry) => entry.id === command.id && entry.slash === command.slash), `matrix covers static ${command.slash}`);
 	}
 	assert.equal(matrix.find((entry) => entry.slash === "/room")?.resultPlacement, "overlay");
+	assert.equal(matrix.find((entry) => entry.slash === "/sandbox")?.contextRequirement, "active routed session/runtime");
 	assert.equal(matrix.find((entry) => entry.slash === "/session-current")?.contextRequirement, "active session when available; named room context preferred");
 	assert.equal(matrix.find((entry) => entry.slash === "/browser-only")?.errorBehavior, "render compact unsupported result");
 });
@@ -130,6 +132,7 @@ test("shared command catalog merges gateway capabilities and filters prefixes", 
 		{ name: "session_id", slashCommands: ["session"], description: "Gateway session id should not replace CLI room-first session navigation" },
 	]);
 	assert.ok(catalog.some((command) => command.slash === "/help"));
+	assert.ok(catalog.some((command) => command.slash === "/sandbox" && command.actionName === "sandbox"));
 	assert.ok(!catalog.some((command) => command.id === retiredCommandId));
 	assert.ok(catalog.some((command) => command.slash === "/thinking" && command.terminalAdaptation));
 	const custom = catalog.find((command) => command.slash === "/custom-action");
@@ -221,6 +224,36 @@ test("Web Compact Terminal source preserves shared flow ordering hooks and strea
 	assert.match(compactSource, /sessionActivity\.isTurnActive/, "Web terminal should show Working only for the canonical active turn");
 	assert.doesNotMatch(compactSource, /runningCount > 0|selectedTrace\?\.status/, "Web terminal must not infer turn lifecycle from trace rows or trace status");
 	assert.match(compactSource, /TerminalStreamingFooter/, "Web terminal should render a streaming footer while a turn is active");
+});
+
+test("shared terminal rows label sandbox toggles", () => {
+	const labelFor = (output) => {
+		const traceView = {
+			piboSessionId: TERMINAL_PARITY_SESSION_ID,
+			nodes: [terminalParityTraceNode("execution.command", "node-sandbox", 1, { title: "sandbox", input: { command: "/sandbox" }, output })],
+		};
+		const sandboxRow = buildCompactTerminalRows(traceView, { showThinking: true }).find((candidate) => candidate.id === "node-sandbox");
+		assert.ok(sandboxRow);
+		return sandboxRow.lines[0].tokens[0].text;
+	};
+	assert.equal(labelFor({ supported: true, enabled: true, changed: true }), "Sandbox enabled.");
+	assert.equal(labelFor({ supported: true, enabled: true, changed: false }), "Sandbox is already on.");
+	assert.equal(labelFor({ supported: true, enabled: false, changed: true }), "Sandbox disabled.");
+	assert.equal(labelFor({ supported: true, enabled: false, changed: false }), "Sandbox is already off.");
+	assert.equal(labelFor({ supported: false, enabled: false, changed: false }), "Sandbox is not supported by this runtime.");
+});
+
+test("shared status view model renders the runtime sandbox state", () => {
+	const on = buildTerminalStatusViewModel({ fastMode: true, sandbox: true });
+	assert.equal(on.fields.find((item) => item.id === "sandbox").value, "on");
+	const off = buildTerminalStatusViewModel({ sandbox: false });
+	assert.equal(off.fields.find((item) => item.id === "sandbox").value, "off");
+	const missing = buildTerminalStatusViewModel({});
+	assert.equal(missing.fields.some((item) => item.id === "sandbox"), false);
+	const card = buildTerminalCardDescriptor(row("tool.status", { output: { sandboxEnabled: true } }));
+	assert.equal(card.statusView.fields.find((item) => item.id === "sandbox").value, "on");
+	const unsupportedCard = buildTerminalCardDescriptor(row("tool.status", { output: {} }));
+	assert.equal(unsupportedCard.statusView.fields.some((item) => item.id === "sandbox"), false);
 });
 
 test("all shared session-ui view-model modules stay renderer-neutral", () => {

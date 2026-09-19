@@ -25,6 +25,7 @@ import type {
 } from "../../core/events.js";
 import { mapThinkingLevelForPi, type PiboThinkingLevel } from "../../core/thinking.js";
 import type {
+	AgentRuntimeSandboxResult,
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
 	LogoutAgentRuntimeAuthInput,
@@ -1652,6 +1653,14 @@ export class RoutedSession {
 		return { ...current, changed: before !== current.mode };
 	}
 
+	getSandbox(): AgentRuntimeSandboxResult {
+		return { supported: false, enabled: false };
+	}
+
+	async setSandbox(_enabled: boolean): Promise<AgentRuntimeSandboxResult> {
+		return { supported: false, enabled: false, changed: false };
+	}
+
 	async compact(customInstructions?: string): Promise<CompactionResult> {
 		this.assertActive();
 		return await this.runtime.session.compact(customInstructions);
@@ -2034,6 +2043,8 @@ export class RoutedSession {
 				cycleThinkingLevel: () => this.cycleThinkingLevel(),
 				getFastMode: () => this.getFastMode(),
 				setFastMode: (enabled) => this.setFastMode(enabled),
+				getSandbox: () => this.getSandbox(),
+				setSandbox: (enabled) => this.setSandbox(enabled),
 				setModel: (model) => this.setModel(model),
 				compact: (customInstructions) => this.compact(customInstructions),
 				respondToApproval: async () => { throw new Error("Pi does not expose runtime approval responses."); },

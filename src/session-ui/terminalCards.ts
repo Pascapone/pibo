@@ -92,6 +92,7 @@ function buildStatusCard(row: CompactTerminalRow): TerminalCardDescriptor {
 		tools: { enabled: arrayStringField(data, "enabledTools"), active: arrayStringField(data, "activeTools") },
 		thinking: stringField(data, "thinkingLevel") ? { level: stringField(data, "thinkingLevel") } : undefined,
 		fastMode: boolField(data, "fastMode"),
+		sandbox: boolField(data, "sandboxEnabled"),
 		warnings: arrayStringField(data, "warnings"),
 		errors: arrayStringField(data, "errors"),
 		message: stringField(data, "message"),

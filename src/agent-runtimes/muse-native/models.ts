@@ -7,7 +7,7 @@ import type {
 } from "../../agent-runtime/types.js";
 import type { PiboJsonObject } from "../../core/events.js";
 import type { ModelProfile } from "../../core/profiles.js";
-import { MUSE_NATIVE_APPROVAL_MODES, type MuseNativeApprovalMode } from "./config.js";
+import { MUSE_NATIVE_APPROVAL_MODES, MUSE_NATIVE_SANDBOX_MODES, type MuseNativeApprovalMode, type MuseNativeSandboxMode } from "./config.js";
 import { MuseNativeSessionProtocolError } from "./sessions.js";
 
 export const MUSE_NATIVE_MODEL_PROVIDER_ID = "meta-muse";
@@ -37,6 +37,7 @@ const MAX_LABEL_LENGTH = 512;
 const BINDING_MODEL_KEY = "museNativeModelId";
 const BINDING_REASONING_KEY = "museNativeReasoningEffort";
 const BINDING_PROVIDER_KEY = "museNativeProviderId";
+export const BINDING_SANDBOX_KEY = "museNativeSandboxMode";
 
 export type MuseNativeModelEntry = {
 	id: string;
@@ -53,6 +54,7 @@ export type MuseNativeModelCatalog = {
 
 export type MuseNativeProfileOptions = {
 	approvalMode?: MuseNativeApprovalMode;
+	sandbox?: MuseNativeSandboxMode;
 	reasoningEffort?: MuseNativeReasoningValue;
 	providerId?: string;
 };
@@ -133,7 +135,7 @@ export function toAgentRuntimeModelCatalog(
 export function parseMuseProfileOptions(value: unknown): MuseNativeProfileOptions {
 	if (value === undefined || value === null) return {};
 	if (!isRecord(value)) throw new Error("Muse runtime options must be an object.");
-	const supported = new Set(["approvalMode", "reasoningEffort", "providerId"]);
+	const supported = new Set(["approvalMode", "sandbox", "reasoningEffort", "providerId"]);
 	const unknown = Object.keys(value).find((key) => !supported.has(key));
 	if (unknown) throw new Error(`unsupported Muse runtime option "${unknown}"`);
 	const options: MuseNativeProfileOptions = {};
@@ -145,6 +147,15 @@ export function parseMuseProfileOptions(value: unknown): MuseNativeProfileOption
 			throw new Error("Muse runtime option approvalMode is invalid.");
 		}
 		options.approvalMode = value.approvalMode as MuseNativeApprovalMode;
+	}
+	if (value.sandbox !== undefined) {
+		if (
+			typeof value.sandbox !== "string"
+			|| !MUSE_NATIVE_SANDBOX_MODES.includes(value.sandbox as MuseNativeSandboxMode)
+		) {
+			throw new Error(`Muse runtime option sandbox must be one of ${MUSE_NATIVE_SANDBOX_MODES.join(", ")}.`);
+		}
+		options.sandbox = value.sandbox as MuseNativeSandboxMode;
 	}
 	if (value.reasoningEffort !== undefined) {
 		if (typeof value.reasoningEffort !== "string" || !MUSE_NATIVE_REASONING_VALUES.includes(value.reasoningEffort as MuseNativeReasoningValue)) {
@@ -165,10 +176,12 @@ export function readMusePersistedSettings(metadata: PiboJsonObject | undefined):
 	activeModel?: ModelProfile;
 	reasoningLevel?: string;
 	profileOptions: MuseNativeProfileOptions;
+	sandboxOverride?: MuseNativeSandboxMode;
 } {
 	const profileOptions: MuseNativeProfileOptions = {};
 	let activeModel: ModelProfile | undefined;
 	let reasoningLevel: string | undefined;
+	let sandboxOverride: MuseNativeSandboxMode | undefined;
 	if (!metadata) return { profileOptions };
 	const modelId = metadata[BINDING_MODEL_KEY];
 	if (typeof modelId === "string" && modelId.trim()) {
@@ -180,7 +193,16 @@ export function readMusePersistedSettings(metadata: PiboJsonObject | undefined):
 	}
 	const providerId = metadata[BINDING_PROVIDER_KEY];
 	if (typeof providerId === "string" && providerId.trim()) profileOptions.providerId = providerId;
-	return { ...(activeModel ? { activeModel } : {}), ...(reasoningLevel ? { reasoningLevel } : {}), profileOptions };
+	const sandbox = metadata[BINDING_SANDBOX_KEY];
+	if (typeof sandbox === "string" && MUSE_NATIVE_SANDBOX_MODES.includes(sandbox as MuseNativeSandboxMode)) {
+		sandboxOverride = sandbox as MuseNativeSandboxMode;
+	}
+	return {
+		...(activeModel ? { activeModel } : {}),
+		...(reasoningLevel ? { reasoningLevel } : {}),
+		profileOptions,
+		...(sandboxOverride ? { sandboxOverride } : {}),
+	};
 }
 
 export type MuseSessionSettingsInput = {

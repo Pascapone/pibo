@@ -223,6 +223,16 @@ export function definePiboCoreContributions(sink: PiboCoreContributionSink): voi
 			},
 		});
 		sink.addGatewayAction({
+			name: "sandbox",
+			description: "Toggle the active runtime shell sandbox on or off.",
+			slashCommands: ["sandbox"],
+			async execute(context) {
+				const current = context.getSandbox();
+				if (!current.supported) return { ...current, changed: false };
+				return await context.setSandbox(!current.enabled);
+			},
+		});
+		sink.addGatewayAction({
 			name: "session.current",
 			description: "Return the active Pi session metadata for this routed session.",
 			slashCommands: ["session-current"],

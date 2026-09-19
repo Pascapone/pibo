@@ -917,3 +917,87 @@ test("Muse native compaction surfaces a noop admission instead of blanket succes
 	assert.equal(noop.reason, "no_compactable_history");
 	assert.equal(noop.customInstructionsApplied, false);
 });
+
+async function readFakeHostArgs(fakeStateDir) {
+	const files = (await readdir(fakeStateDir)).filter((name) => name.endsWith(".args.json")).sort();
+	const result = [];
+	for (const file of files) result.push(JSON.parse(await readFile(join(fakeStateDir, file), "utf8")));
+	return result;
+}
+
+test("Muse native sandbox toggle restarts the host and preserves the session", async (t) => {
+	const { root, fakeStateDir, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "sandbox-toggle", disposers, { sandbox: "enabled" });
+	assert.deepEqual(session.controls.getSandbox(), { supported: true, enabled: true, mode: "enabled" });
+	assert.deepEqual(session.getStatus().sandbox, { supported: true, enabled: true, mode: "enabled" });
+	const nativeSessionId = session.getBinding().nativeSessionId;
+	await session.prompt({ text: "before toggle", source: "interactive" });
+
+	const off = await session.controls.setSandbox(false);
+	assert.equal(off.supported, true);
+	assert.equal(off.enabled, false);
+	assert.equal(off.mode, "disabled");
+	assert.equal(off.changed, true);
+	assert.equal(off.restarted, true);
+	assert.deepEqual(session.controls.getSandbox(), { supported: true, enabled: false, mode: "disabled" });
+	assert.equal(session.getBinding().nativeSessionId, nativeSessionId);
+	assert.equal(session.getBinding().metadata.museNativeSandboxMode, "disabled");
+	const toggledArgs = await readFakeHostArgs(fakeStateDir);
+	assert.equal(toggledArgs.length, 2);
+	assert.ok(toggledArgs.some((entry) => entry.join(" ") === "serve"));
+	assert.ok(toggledArgs.some((entry) => entry.join(" ") === "serve --disable-sandbox"));
+
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.prompt({ text: "after toggle", source: "interactive" });
+	assert.ok(events.some((event) => event.type === "turn_completed"));
+
+	const unchanged = await session.controls.setSandbox(false);
+	assert.equal(unchanged.changed, false);
+	assert.equal(unchanged.restarted, false);
+	assert.equal((await readFakeHostArgs(fakeStateDir)).length, 2);
+
+	const on = await session.controls.setSandbox(true);
+	assert.equal(on.enabled, true);
+	assert.equal(on.mode, "enabled");
+	assert.equal(on.restarted, true);
+	assert.equal(session.getBinding().nativeSessionId, nativeSessionId);
+	assert.equal(session.getBinding().metadata.museNativeSandboxMode, "enabled");
+	assert.equal((await readFakeHostArgs(fakeStateDir)).length, 3);
+});
+
+test("Muse native session open resolves profile sandbox options above instance config", async (t) => {
+	const { root, fakeStateDir } = await testRoot(t);
+	const { registry, adapter, instanceId } = createAdapter(root, "muse-native-sandbox-profile", { sandbox: "enabled" });
+	const input = openInput(instanceId, root, unboundBinding(instanceId, "ps_muse_sandbox_profile"));
+	input.profile.runtimeOptions = { sandbox: "disabled" };
+	const session = await registry.openSession(instanceId, input);
+	t.after(() => session.dispose());
+	assert.deepEqual(session.controls.getSandbox(), { supported: true, enabled: false, mode: "disabled" });
+	const args = await readFakeHostArgs(fakeStateDir);
+	assert.equal(args.length, 1);
+	assert.ok(args[0].includes("--disable-sandbox"));
+
+	const invalid = profile(instanceId);
+	invalid.runtimeOptions = { sandbox: "sometimes" };
+	const diagnostics = await adapter.validateProfile({ profile: invalid, workspace: root });
+	assert.ok(diagnostics.some((diagnostic) => diagnostic.code === "muse_native_runtime_options_invalid"));
+});
+
+test("Muse native sandbox toggle override wins on reopen", async (t) => {
+	const { root } = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "muse-native-sandbox-reopen", { sandbox: "enabled" });
+	const session = await registry.openSession(instanceId, openInput(instanceId, root, unboundBinding(instanceId, "ps_muse_sandbox_reopen")));
+	await session.controls.setSandbox(false);
+	await session.controls.setSandbox(true);
+	await session.controls.setSandbox(false);
+	const persisted = session.getBinding();
+	assert.equal(persisted.metadata.museNativeSandboxMode, "disabled");
+	await session.dispose();
+
+	const reopened = await registry.openSession(instanceId, openInput(instanceId, root, persisted));
+	t.after(() => reopened.dispose());
+	assert.equal(reopened.getBinding().nativeSessionId, persisted.nativeSessionId);
+	assert.deepEqual(reopened.controls.getSandbox(), { supported: true, enabled: false, mode: "disabled" });
+	await reopened.prompt({ text: "reopened turn", source: "interactive" });
+});

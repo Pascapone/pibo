@@ -894,6 +894,9 @@ function createExecutionCommandRow(node: PiboTraceNode): CompactTerminalRow {
 	if (node.title === "fast_mode") {
 		return createFastModeToolRow(node);
 	}
+	if (node.title === "sandbox") {
+		return createSandboxToolRow(node);
+	}
 	if (node.title === "login" && isLoginMenuOutput(node.output)) {
 		return createLoginToolRow(node);
 	}
@@ -991,6 +994,37 @@ function createFastModeToolRow(node: PiboTraceNode): CompactTerminalRow {
 			: mode === "normal"
 				? changed ? "Switched to Normal mode." : "Normal mode is already on."
 				: "Fast mode updated.";
+
+	return {
+		id: node.id,
+		kind: "execution.command",
+		status: mapStatus(node.status),
+		lines: [
+			{
+				prefix: "bullet",
+				tokens: [token(label, supported ? "green" : "dim", "semibold")],
+			},
+		],
+		sourceNodeIds: [node.id],
+		input: node.input,
+		output: node.output,
+		error: node.error,
+		expandable: false,
+	};
+}
+
+function createSandboxToolRow(node: PiboTraceNode): CompactTerminalRow {
+	const result = isRecord(node.output) ? node.output : undefined;
+	const enabled = result?.enabled === true ? true : result?.enabled === false ? false : undefined;
+	const changed = result?.changed !== false;
+	const supported = result?.supported !== false;
+	const label = !supported
+		? "Sandbox is not supported by this runtime."
+		: enabled === true
+			? changed ? "Sandbox enabled." : "Sandbox is already on."
+			: enabled === false
+				? changed ? "Sandbox disabled." : "Sandbox is already off."
+				: "Sandbox updated.";
 
 	return {
 		id: node.id,

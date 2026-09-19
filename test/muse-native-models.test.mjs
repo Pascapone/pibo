@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MUSE_NATIVE_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/muse-native/adapter.js";
-import { mapThinkingLevelToReasoning, MuseSessionSettingsController, readMuseModelCatalog, selectDefaultCatalogModel, toAgentRuntimeModelCatalog } from "../dist/agent-runtimes/muse-native/models.js";
+import {
+	mapThinkingLevelToReasoning,
+	MuseSessionSettingsController,
+	parseMuseProfileOptions,
+	readMuseModelCatalog,
+	readMusePersistedSettings,
+	selectDefaultCatalogModel,
+	toAgentRuntimeModelCatalog,
+} from "../dist/agent-runtimes/muse-native/models.js";
 
 test("Muse native default model prefers the catalog default", () => {
 	assert.deepEqual(
@@ -32,6 +40,28 @@ test("Muse native models capability exposes the approval mode schema", () => {
 	assert.equal(schema.type, "object");
 	assert.deepEqual(schema.properties.approvalMode.enum, ["allowAll", "promptUnmatched", "onRequest", "denyUnmatched"]);
 	assert.equal(schema.properties.approvalMode.default, "onRequest");
+});
+
+test("Muse native models capability exposes the sandbox schema", () => {
+	const schema = MUSE_NATIVE_AGENT_RUNTIME_DRIVER.descriptor.capabilities.models.optionsSchema;
+	assert.deepEqual(schema.properties.sandbox.enum, ["auto", "enabled", "disabled"]);
+	assert.equal(schema.properties.sandbox.default, "auto");
+});
+
+test("Muse native profile options accept and reject sandbox modes", () => {
+	assert.deepEqual(parseMuseProfileOptions({ sandbox: "disabled" }), { sandbox: "disabled" });
+	assert.deepEqual(parseMuseProfileOptions({ approvalMode: "allowAll", sandbox: "enabled" }), {
+		approvalMode: "allowAll",
+		sandbox: "enabled",
+	});
+	assert.throws(() => parseMuseProfileOptions({ sandbox: "sometimes" }), /sandbox must be one of/);
+});
+
+test("Muse native persisted settings carry the sandbox toggle override", () => {
+	assert.deepEqual(readMusePersistedSettings({ museNativeSandboxMode: "disabled" }).sandboxOverride, "disabled");
+	assert.equal(readMusePersistedSettings({ museNativeSandboxMode: "sometimes" }).sandboxOverride, undefined);
+	assert.equal(readMusePersistedSettings({}).sandboxOverride, undefined);
+	assert.equal(readMusePersistedSettings(undefined).sandboxOverride, undefined);
 });
 
 test("Muse native reasoning accepts off as an alias for none", () => {

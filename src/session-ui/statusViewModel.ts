@@ -44,6 +44,7 @@ export type BuildTerminalStatusInput = {
 	tools?: { enabled?: readonly string[]; active?: readonly string[] };
 	thinking?: { level?: string; supported?: boolean } | string;
 	fastMode?: boolean | string;
+	sandbox?: boolean | string;
 	warnings?: readonly string[];
 	errors?: readonly string[];
 	message?: string;
@@ -74,6 +75,7 @@ export function buildTerminalStatusViewModel(input: BuildTerminalStatusInput = {
 		fields.push({ id: "thinking", label: "Thinking", value: redactTerminalSecret(thinking.level ?? (thinking.supported === false ? "unsupported" : "available")), tone: thinking.supported === false ? "red" : "yellow" });
 	}
 	if (input.fastMode !== undefined) fields.push({ id: "fast-mode", label: "Fast mode", value: typeof input.fastMode === "string" ? redactTerminalSecret(input.fastMode) : input.fastMode ? "on" : "off", tone: input.fastMode ? "green" : "neutral" });
+	if (input.sandbox !== undefined) fields.push({ id: "sandbox", label: "Sandbox", value: typeof input.sandbox === "string" ? redactTerminalSecret(input.sandbox) : input.sandbox ? "on" : "off", tone: input.sandbox ? "green" : "neutral" });
 	const enabledTools = sanitizeTextList(input.tools?.enabled);
 	const activeTools = sanitizeTextList(input.tools?.active);
 	if (enabledTools.length) fields.push({ id: "enabled-tools", label: "Enabled tools", value: `${enabledTools.length}${enabledTools.length <= 4 ? ` (${enabledTools.join(", ")})` : ""}` });

@@ -46,7 +46,7 @@ test("capability host projects Core resources and installed package capabilities
 	const registry = await startProductRegistry(t, createDefaultPiboCapabilityHost);
 	const catalog = registry.getCapabilityCatalog();
 
-	assert.deepEqual(registry.getProfileNames(), ["base", "pibo-gateway-producer", "codex-native", "orp"]);
+	assert.deepEqual(registry.getProfileNames(), ["base", "pibo-gateway-producer", "codex-native", "muse-native", "orp"]);
 	assert.deepEqual(registry.createProfile("base").builtinToolNames, ["read", "bash", "edit", "write"]);
 	assert.ok(catalog.nativeTools.some((tool) => (
 		tool.name === "web_search" && tool.pluginId === "pibo.web-search" && tool.hasDefinition === false
@@ -109,6 +109,11 @@ test("capability host projects Core resources and installed package capabilities
 			name: "fast_mode",
 			description: "Toggle OpenAI priority service tier for fast-capable reasoning models.",
 			slashCommands: ["fast"],
+		},
+		{
+			name: "sandbox",
+			description: "Toggle the active runtime shell sandbox on or off.",
+			slashCommands: ["sandbox"],
 		},
 		{
 			name: "session.current",

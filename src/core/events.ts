@@ -260,6 +260,7 @@ export type PiboSessionStatus = {
 	disposed: boolean;
 	thinkingLevel?: PiboThinkingLevel;
 	fastMode?: boolean;
+	sandboxEnabled?: boolean;
 	retry?: {
 		enabled: boolean;
 		maxRetries: number;

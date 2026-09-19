@@ -50,6 +50,7 @@ if (!stateDir) {
 mkdirSync(stateDir, { recursive: true });
 try {
 	writeFileSync(join(stateDir, `fake-host-${process.pid}.pid`), `${process.pid}\n`);
+	writeFileSync(join(stateDir, `fake-host-${process.pid}.args.json`), `${JSON.stringify(args)}\n`);
 } catch {}
 const statePath = join(stateDir, "muse-fake-state.json");
 const hangMethods = () => {

@@ -104,9 +104,16 @@ export type MuseNativeHostDiagnostic = {
 	message: string;
 };
 
+export type MuseNativeHostSandboxState = {
+	mode: MuseNativeSandboxMode;
+	/** False when the host started with --disable-sandbox; true means the default host posture (sandbox engaged where the platform supports it). */
+	enabled: boolean;
+};
+
 export type MuseNativeHostProcess = {
 	paths: MuseNativeSessionPaths;
 	spawned: SpawnedMspConnection;
+	sandbox: MuseNativeHostSandboxState;
 	getDiagnostics(): readonly MuseNativeHostDiagnostic[];
 	close(): Promise<void>;
 };
@@ -448,6 +455,7 @@ export async function startMuseNativeHost(input: StartMuseNativeHostInput): Prom
 	return {
 		paths,
 		spawned,
+		sandbox: { mode: input.config.sandbox, enabled: !sandbox.args.includes("--disable-sandbox") },
 		getDiagnostics: () => [...diagnostics],
 		close: async () => {
 			if (closed) return;
