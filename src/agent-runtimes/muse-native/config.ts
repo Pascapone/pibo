@@ -2,7 +2,9 @@ import { isAbsolute, resolve } from "node:path";
 import type { PiboJsonObject } from "../../core/events.js";
 import { piboHomePath } from "../../core/pibo-home.js";
 
-const MAX_TIMEOUT_MS = 10 * 60 * 1_000;
+// Agentic workloads (test suites, builds) legitimately go quiet for tens of
+// minutes; the idle budget ceiling must admit a hard 30-minute turn timeout.
+const MAX_TIMEOUT_MS = 30 * 60 * 1_000;
 const ENVIRONMENT_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED_ENVIRONMENT_KEYS = new Set([
 	"MUSE_EXPERIMENTAL_SDK_ENABLED",
@@ -81,7 +83,7 @@ export const MUSE_NATIVE_RUNTIME_CONFIG_SCHEMA: PiboJsonObject = {
 		experimentalSdkGate: { type: "boolean", default: true },
 		diagnosticTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 5_000 },
 		startupTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 10_000 },
-		requestTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 120_000 },
+		requestTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 1_800_000 },
 		shutdownTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 2_000 },
 	},
 };
@@ -96,7 +98,7 @@ export function defaultMuseNativeRuntimeConfig(): MuseNativeRuntimeConfig {
 		experimentalSdkGate: true,
 		diagnosticTimeoutMs: 5_000,
 		startupTimeoutMs: 10_000,
-		requestTimeoutMs: 120_000,
+		requestTimeoutMs: 1_800_000,
 		shutdownTimeoutMs: 2_000,
 	};
 }

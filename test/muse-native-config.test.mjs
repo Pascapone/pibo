@@ -15,7 +15,7 @@ test("muse native default config selects the muse executable and on-request appr
 	assert.equal(config.experimentalSdkGate, true);
 	assert.equal(config.diagnosticTimeoutMs, 5_000);
 	assert.equal(config.startupTimeoutMs, 10_000);
-	assert.equal(config.requestTimeoutMs, 120_000);
+	assert.equal(config.requestTimeoutMs, 1_800_000);
 	assert.equal(config.shutdownTimeoutMs, 2_000);
 	assert.ok(config.homeRoot.length > 0);
 	assert.ok(config.environmentAllowlist.includes("PATH"));
@@ -44,7 +44,7 @@ test("muse native config parsing accepts overrides and rejects invalid values", 
 	assert.throws(() => parseMuseNativeRuntimeConfig({ executable: "  " }), /executable/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ homeRoot: "relative/path" }), /absolute path/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ requestTimeoutMs: 0 }), /requestTimeoutMs/);
-	assert.throws(() => parseMuseNativeRuntimeConfig({ requestTimeoutMs: 11 * 60 * 1_000 }), /requestTimeoutMs/);
+	assert.throws(() => parseMuseNativeRuntimeConfig({ requestTimeoutMs: 31 * 60 * 1_000 }), /requestTimeoutMs/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ environmentAllowlist: ["HOME"] }), /reserved key/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ environmentAllowlist: ["MUSE_EXPERIMENTAL_SDK_ENABLED"] }), /reserved key/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ environmentAllowlist: ["PATH", "path"] }), /duplicate key/);
