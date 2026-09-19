@@ -11,6 +11,7 @@ import {
 } from "./profiles.js";
 import { createPiboProfileFromCapabilitiesOrDefault, resolvePiboProfileNameFromCapabilitiesOrDefault, selectDefaultPiboProfileName } from "../plugins/builtin.js";
 import { PiboCapabilityHost } from "./capability-host.js";
+import { pluginRuntimeDeliveryModes } from "../agent-runtime/capabilities.js";
 import { mcpAdapterFromPluginPlan, PluginRuntimeCoordinator, type PluginRuntimeGeneration } from "../agent-runtime/plugin-plan.js";
 import {
 	PIBO_SESSION_AGENT_TARGETS_SERVICE,
@@ -1309,6 +1310,7 @@ export class PiboSessionRouter {
 			adapterId: binding.adapterId,
 			instanceId: binding.runtimeInstanceId,
 			capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject,
+			deliveryModes: pluginRuntimeDeliveryModes(adapter.descriptor.capabilities),
 		}, piboSessionId);
 		return { plan, ...(profile.pluginAgentId ? { agentId: profile.pluginAgentId } : {}), ...(roomId ? { roomId } : {}) };
 	};
@@ -1604,7 +1606,7 @@ export class PiboSessionRouter {
 		const binding = this.resolveSessionRuntimeBinding(this.resolvePiboSession(piboSessionId));
 		const adapter = this.resolveAgentRuntimeRegistry(binding.runtimeInstanceId).requireAgentRuntimeAdapter(binding.runtimeInstanceId);
 		if (profile.pluginSelection && !this.options.pluginRuntime) throw new Error("Plugin runtime admission coordinator is required for this profile");
-		const generation = profile.pluginSelection ? this.options.pluginRuntime!.reserve(profile, { adapterId: binding.adapterId, instanceId: binding.runtimeInstanceId, capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject }, piboSessionId, randomUUID()) : undefined;
+		const generation = profile.pluginSelection ? this.options.pluginRuntime!.reserve(profile, { adapterId: binding.adapterId, instanceId: binding.runtimeInstanceId, capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject, deliveryModes: pluginRuntimeDeliveryModes(adapter.descriptor.capabilities) }, piboSessionId, randomUUID()) : undefined;
 		if (generation) this.pluginGenerations.set(piboSessionId, generation);
 		const setup = { nativeCleanupUncertain: false };
 		try {

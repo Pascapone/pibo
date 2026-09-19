@@ -88,3 +88,59 @@ test("plugin cards start collapsed, categorize only agent contributions, and pre
 		assert.equal(JSON.stringify(renderer.toJSON()).includes("Preferences"), false);
 	} finally { if (renderer) await act(async () => renderer.unmount()); globalThis.fetch = oldFetch; globalThis.window = oldWindow; }
 });
+
+test("runtime diagnostics render at the affected plugin and capability, not repeated at the top", async () => {
+	const oldFetch = globalThis.fetch; const oldWindow = globalThis.window;
+	globalThis.window = { setTimeout, clearTimeout, requestAnimationFrame: (callback) => callback(), confirm: () => true };
+	const blockedTools = ["alpha", "beta"].map((id) => ({ id, name: id, title: `Tool ${id}`, kind: "tool", scope: "agent", required: false, defaultEnabled: true, schemaVersion: 1, runtime: { adapterIds: ["pi"] }, context: { kind: "none", reason: "Tool" } }));
+	const fineTools = [{ id: "gamma", name: "gamma", title: "Tool gamma", kind: "tool", scope: "agent", required: false, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "Tool" } }];
+	const blockedPlugin = { pluginId: "blocked.feature", name: "Blocked", revision: "pinned", version: "1.0.0", state: "active", enabled: true, contributions: blockedTools };
+	const finePlugin = { pluginId: "fine.other", name: "Fine", revision: "pinned", version: "1.0.0", state: "active", enabled: true, contributions: fineTools };
+	const draft = {
+		...createBlankAgentDraft(),
+		id: "agent_blocked",
+		revision: 5,
+		pluginSelection: {
+			schemaVersion: 1,
+			plugins: [
+				{ pluginId: "blocked.feature", revision: "pinned", enabled: true, contributions: { alpha: true, beta: true }, config: {} },
+				{ pluginId: "fine.other", revision: "pinned", enabled: true, contributions: { gamma: true }, config: {} },
+			],
+		},
+	};
+	const message = "Adapter muse-native is not supported";
+	const plan = {
+		valid: false,
+		diagnostics: [
+			{ code: "runtime-unsupported", severity: "error", message, pluginId: "blocked.feature", contributionId: "blocked.feature/alpha", path: ["blocked.feature/alpha"] },
+			{ code: "runtime-unsupported", severity: "error", message, pluginId: "blocked.feature", contributionId: "blocked.feature/beta", path: ["blocked.feature/beta"] },
+			{ code: "catalog-note", severity: "warning", message: "Unattributed catalog note", path: ["catalog"] },
+		],
+		nodes: [
+			{ contributionId: "blocked.feature/alpha", required: false, status: "unsupported", selectionReason: message },
+			{ contributionId: "blocked.feature/beta", required: false, status: "unsupported", selectionReason: message },
+			{ contributionId: "fine.other/gamma", required: false, status: "selected", selectionReason: "explicit" },
+		],
+	};
+	let renderer;
+	globalThis.fetch = async (url) => {
+		if (url === "/api/chat/agent-plugin-catalog") return json({ catalog: { schemaVersion: 1, revision: 1, plugins: [blockedPlugin, finePlugin] } });
+		if (url === "/api/chat/agent-plugin-preview") return json({ schemaVersion: 1, plan });
+		throw new Error(`unexpected request ${url}`);
+	};
+	try {
+		await act(async () => { renderer = create(React.createElement(AgentPluginsDesigner, { draft, setDraft: () => undefined, readOnly: false })); });
+		await act(async () => { await pause(200); });
+		const collapsed = JSON.stringify(renderer.toJSON()).replaceAll('","', '');
+		assert.match(collapsed, /1 plugin is blocked — details at the plugin below/);
+		assert.match(collapsed, /Unattributed catalog note/);
+		assert.match(collapsed, /Adapter muse-native is not supported \(2 capabilities\)/);
+		assert.equal(collapsed.includes("Requires adapters: pi"), false);
+		const blockedCard = renderer.root.findByProps({ "aria-label": "Plugin Blocked" });
+		const expander = blockedCard.findAllByType("button").find((button) => button.props["aria-expanded"] === false);
+		assert.ok(expander);
+		await act(async () => expander.props.onClick());
+		const expanded = JSON.stringify(renderer.toJSON()).replaceAll('","', '');
+		assert.match(expanded, /Requires adapters: pi/);
+	} finally { if (renderer) await act(async () => renderer.unmount()); globalThis.fetch = oldFetch; globalThis.window = oldWindow; }
+});

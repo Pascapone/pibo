@@ -18,6 +18,7 @@ import {
 	type OutputPersistenceRetryJob,
 } from "../../core/output-persistence-retry.js";
 import { AgentRuntimeBindingMissingError } from "../../agent-runtime/errors.js";
+import { pluginRuntimeDeliveryModes, type AgentRuntimeCapabilities } from "../../agent-runtime/capabilities.js";
 import {
 	buildPortableRuntimeContextSnapshot,
 	profileWithRuntimeInstance,
@@ -4668,7 +4669,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		const installations = manager.store.listInstallations();
 		validateAgentPluginPlanMutation({ agent, existing,
 			catalog: { schemaVersion: 1, revision: installations.reduce((sum, i) => sum + i.stateRevision, 0), installations },
-			runtime: { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject },
+			runtime: { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject, deliveryModes: pluginRuntimeDeliveryModes(runtime.capabilities as unknown as AgentRuntimeCapabilities) },
 			...catalogPluginServices(host, installations),
 			configurations: installations.flatMap(({ pluginId }) => [manager.store.getConfig({ scope: "app", pluginId }), manager.store.getConfig({ scope: "agent", pluginId, agentId: agent.id })].filter((c) => c !== undefined)),
 		});
@@ -4743,7 +4744,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 						const runtimes = await context.channelContext.inspectAgentRuntimeInstances?.() ?? [];
 						const runtime = runtimes.find((candidate) => candidate.id === instanceId);
 						if (runtime?.enabled && runtime.available) {
-							return { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject };
+							return { adapterId: runtime.adapterId, instanceId: runtime.id, capabilities: runtime.capabilities as unknown as import("../../plugins/manifest.js").PluginJsonObject, deliveryModes: pluginRuntimeDeliveryModes(runtime.capabilities as unknown as AgentRuntimeCapabilities) };
 						}
 						if (runtimes.length === 0 && instanceId === PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID) return runtimeUnassignedTarget();
 						throw new PiboWebHttpError("Runtime instance is unavailable", 400);

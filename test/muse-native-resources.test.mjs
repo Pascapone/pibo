@@ -8,8 +8,10 @@ import { Type } from "typebox";
 import { AgentRuntimeAdapterRegistry } from "../dist/agent-runtime/registry.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import {
+	MUSE_DELIVERED_RESOURCE_HASH_KEY,
 	MUSE_NATIVE_ADAPTER_ID,
 	MUSE_NATIVE_AGENT_RUNTIME_DRIVER,
+	matchMuseNativeSkillSelector,
 } from "../dist/agent-runtimes/muse-native/adapter.js";
 import { parseMuseNativeRuntimeConfig } from "../dist/agent-runtimes/muse-native/config.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
@@ -130,8 +132,16 @@ test("Muse native delivers portable tools and external MCP servers through sessi
 	});
 	assert.deepEqual(adapter.descriptor.capabilities.tools.piboManaged, { support: "mcp", transports: ["streamable-http"] });
 	assert.deepEqual(adapter.descriptor.capabilities.mcp.externalServers, { support: "mcp", transports: ["streamable-http", "stdio"] });
-	assert.equal(adapter.descriptor.capabilities.skills.support, "unsupported");
-	assert.equal(adapter.descriptor.capabilities.context.support, "unsupported");
+	assert.deepEqual(adapter.descriptor.capabilities.skills, {
+		support: "degraded",
+		mode: "muse-turn-prefix",
+		reason: "Muse 1.3.0 exposes skills only as a read-only host catalog with no delivery seam; selected Pibo skills are injected as text into the first turn, and host-catalog matches stay invocable by selector.",
+	});
+	assert.deepEqual(adapter.descriptor.capabilities.context, {
+		support: "degraded",
+		mode: "muse-turn-prefix",
+		reason: "Muse 1.3.0 session config carries only MCP servers; selected Pibo context is injected as text into the first turn.",
+	});
 	assert.equal(adapter.descriptor.capabilities.nativeSubagents.supported, false);
 
 	const portableService = new PiboPortableToolService();
@@ -381,6 +391,266 @@ test("Muse native repeats resource warnings only on change", async (t) => {
 	await session.prompt({ text: "two", source: "interactive" });
 	const expired = events.filter((event) => event.type === "warning" && event.details?.code === "muse_native_tool_credential_expired");
 	assert.equal(expired.length, 1);
+});
+
+test("Muse native matches host skill selectors by bare or qualified name", () => {
+	assert.equal(matchMuseNativeSkillSelector(["fix-bug", "acme:deploy"], "fix-bug"), "fix-bug");
+	assert.equal(matchMuseNativeSkillSelector(["fix-bug", "acme:deploy"], "deploy"), "acme:deploy");
+	assert.equal(matchMuseNativeSkillSelector(["Acme:Deploy"], "deploy"), "Acme:Deploy");
+	assert.equal(matchMuseNativeSkillSelector(["fix-bug"], "bug"), undefined);
+	assert.equal(matchMuseNativeSkillSelector([], "fix-bug"), undefined);
+	assert.equal(matchMuseNativeSkillSelector(["fix-bug"], "  "), undefined);
+});
+
+test("Muse native injects selected skills and context into the first turn only", async (t) => {
+	const { root, fakeStateDir, workspace, disposers } = await fixtureRoot(t);
+	await mkdir(workspace, { recursive: true });
+	const nativeSkillDir = join(workspace, "skills", "native-echo");
+	const localSkillDir = join(workspace, "skills", "local-notes");
+	await mkdir(nativeSkillDir, { recursive: true });
+	await mkdir(localSkillDir, { recursive: true });
+	await writeFile(join(nativeSkillDir, "SKILL.md"), "# native-echo\n\nNative echo skill body.\n");
+	await writeFile(join(localSkillDir, "SKILL.md"), "# local-notes\n\nLocal notes skill body.\n");
+	await writeFile(join(localSkillDir, "helper.txt"), "undelivered helper\n");
+	await writeFile(join(workspace, "selected.md"), "# Selected context\n\nSelected muse context body.\n");
+	await mkdir(fakeStateDir, { recursive: true });
+	await writeFile(join(fakeStateDir, "skill-catalog.json"), JSON.stringify({
+		skills: [{ selector: "native-echo", displayName: "Native Echo", description: "host copy", source: "project" }],
+	}));
+	const instanceId = "muse-native-turn-prefix";
+	const profile = new InitialSessionContextBuilder("muse-native-turn-prefix-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSkill({ name: "native-echo", path: join(nativeSkillDir, "SKILL.md"), kind: "user" })
+		.addSkill({ name: "local-notes", path: join(localSkillDir, "SKILL.md"), kind: "user" })
+		.addContextFile({ key: "selected-muse-context", label: "Selected Muse Context", path: "selected.md", source: "managed" })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);
+	const adapter = registry.registerInstance({
+		id: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		displayName: "Muse Native Turn Prefix",
+		config: runtimeConfig(root),
+	});
+	const resourceService = new PiboRuntimeResourceService({ rootDir: join(root, "resource-generations") });
+	const piboSessionId = "ps_muse_turn_prefix";
+	const resources = await resourceService.createSession({
+		piboSessionId,
+		piboRoomId: "room_muse_turn_prefix",
+		runtimeInstanceId: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		sessionGeneration: "resource-generation-prefix",
+		profile,
+		cwd: workspace,
+		timezone: "UTC",
+		capabilities: adapter.descriptor.capabilities,
+		strict: true,
+	});
+	const piboSession = createPiboSession({ id: piboSessionId, channel: "test", kind: "chat", profile: profile.profileName, workspace });
+	const session = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding: { piboSessionId, runtimeInstanceId: instanceId, adapterId: MUSE_NATIVE_ADAPTER_ID, state: "unbound", revision: 1 },
+		workspace,
+		productContext: { piboSessionId },
+		services: { resources },
+	});
+	disposers.push(() => session.dispose());
+
+	const inspection = resources.getInspection();
+	const reportById = new Map(inspection.delivery.map((report) => [report.contributionId, report]));
+	assert.deepEqual(reportById.get("skill:native-echo"), {
+		contributionId: "skill:native-echo",
+		status: "degraded",
+		mode: "muse-turn-prefix",
+		fidelity: "equivalent",
+		target: join(nativeSkillDir, "SKILL.md"),
+	});
+	const localReport = reportById.get("skill:local-notes");
+	assert.equal(localReport.status, "degraded");
+	assert.equal(localReport.mode, "muse-turn-prefix");
+	assert.equal(localReport.fidelity, "lossy");
+	assert.match(localReport.diagnostic, /helper\.txt/);
+	const contextReport = reportById.get("context:selected-muse-context");
+	assert.equal(contextReport.status, "degraded");
+	assert.equal(contextReport.mode, "muse-turn-prefix");
+	assert.ok(inspection.diagnostics.some((diagnostic) =>
+		diagnostic.code === "muse_native_skill_catalog_match" && diagnostic.contributionId === "skill:native-echo"));
+	assert.ok(inspection.diagnostics.some((diagnostic) =>
+		diagnostic.code === "muse_native_skill_siblings_undelivered" && diagnostic.contributionId === "skill:local-notes"));
+
+	await session.prompt({ text: "first", source: "interactive" });
+	await session.prompt({ text: "second", source: "interactive" });
+	const state = JSON.parse(await readFile(join(fakeStateDir, "muse-fake-state.json"), "utf8"));
+	assert.equal(state.turnStartRequests.length, 2);
+	const [firstTurn, secondTurn] = state.turnStartRequests;
+	assert.match(firstTurn.text, /# Pibo-Selected Skills/);
+	assert.match(firstTurn.text, /Native echo skill body\./);
+	assert.match(firstTurn.text, /Local notes skill body\./);
+	assert.match(firstTurn.text, /# Pibo-Selected Context/);
+	assert.match(firstTurn.text, /Selected muse context body\./);
+	assert.equal(firstTurn.text.endsWith("first"), true);
+	assert.equal(firstTurn.displayText, "first");
+	assert.equal(secondTurn.text, "second");
+	assert.match(session.getBinding().metadata[MUSE_DELIVERED_RESOURCE_HASH_KEY], /^[0-9a-f]{64}$/);
+});
+
+test("Muse native skips injection on unchanged resume and re-injects on changed selection", async (t) => {
+	const { root, fakeStateDir, workspace, disposers } = await fixtureRoot(t);
+	await mkdir(workspace, { recursive: true });
+	const skillDir = join(workspace, "skills", "resume-skill");
+	await mkdir(skillDir, { recursive: true });
+	await writeFile(join(skillDir, "SKILL.md"), "# resume-skill\n\nResume skill body.\n");
+	const contextPath = join(workspace, "resume.md");
+	await writeFile(contextPath, "resume context v1\n");
+	const instanceId = "muse-native-prefix-resume";
+	const profile = new InitialSessionContextBuilder("muse-native-prefix-resume-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSkill({ name: "resume-skill", path: join(skillDir, "SKILL.md"), kind: "user" })
+		.addContextFile({ key: "resume-context", label: "Resume Context", path: "resume.md", source: "managed" })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);
+	const adapter = registry.registerInstance({
+		id: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		displayName: "Muse Native Prefix Resume",
+		config: runtimeConfig(root),
+	});
+	const resourceService = new PiboRuntimeResourceService({ rootDir: join(root, "resource-generations") });
+	disposers.push(() => resourceService.dispose());
+	const piboSessionId = "ps_muse_prefix_resume";
+	const piboSession = createPiboSession({ id: piboSessionId, channel: "test", kind: "chat", profile: profile.profileName, workspace });
+	const openResources = (generation) => resourceService.createSession({
+		piboSessionId,
+		piboRoomId: "room_muse_prefix_resume",
+		runtimeInstanceId: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		sessionGeneration: generation,
+		profile,
+		cwd: workspace,
+		timezone: "UTC",
+		capabilities: adapter.descriptor.capabilities,
+		strict: true,
+	});
+
+	const first = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding: { piboSessionId, runtimeInstanceId: instanceId, adapterId: MUSE_NATIVE_ADAPTER_ID, state: "unbound", revision: 1 },
+		workspace,
+		productContext: { piboSessionId },
+		services: { resources: await openResources("resource-generation-resume-one") },
+	});
+	await first.prompt({ text: "one", source: "interactive" });
+	const bound = first.getBinding();
+	assert.match(bound.metadata[MUSE_DELIVERED_RESOURCE_HASH_KEY], /^[0-9a-f]{64}$/);
+	await first.dispose();
+
+	const second = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding: bound,
+		workspace,
+		productContext: { piboSessionId },
+		services: { resources: await openResources("resource-generation-resume-two") },
+	});
+	await second.prompt({ text: "two", source: "interactive" });
+	const rebound = second.getBinding();
+	assert.equal(rebound.metadata[MUSE_DELIVERED_RESOURCE_HASH_KEY], bound.metadata[MUSE_DELIVERED_RESOURCE_HASH_KEY]);
+	await second.dispose();
+
+	await writeFile(contextPath, "resume context v2\n");
+	const third = await registry.openSession(instanceId, {
+		piboSession,
+		profile,
+		binding: rebound,
+		workspace,
+		productContext: { piboSessionId },
+		services: { resources: await openResources("resource-generation-resume-three") },
+	});
+	disposers.push(() => third.dispose());
+	await third.prompt({ text: "three", source: "interactive" });
+
+	const state = JSON.parse(await readFile(join(fakeStateDir, "muse-fake-state.json"), "utf8"));
+	assert.equal(state.turnStartRequests.length, 3);
+	const [firstTurn, secondTurn, thirdTurn] = state.turnStartRequests;
+	assert.match(firstTurn.text, /Resume skill body\./);
+	assert.match(firstTurn.text, /resume context v1/);
+	assert.equal(secondTurn.text, "two");
+	assert.match(thirdTurn.text, /replaces the earlier injected/);
+	assert.match(thirdTurn.text, /resume context v2/);
+	assert.equal(thirdTurn.text.endsWith("three"), true);
+	assert.notEqual(
+		third.getBinding().metadata[MUSE_DELIVERED_RESOURCE_HASH_KEY],
+		bound.metadata[MUSE_DELIVERED_RESOURCE_HASH_KEY],
+	);
+});
+
+test("Muse native opens when skill/list verification fails", async (t) => {
+	const { root, fakeStateDir, workspace, disposers } = await fixtureRoot(t);
+	await mkdir(workspace, { recursive: true });
+	const skillDir = join(workspace, "skills", "unverified-skill");
+	await mkdir(skillDir, { recursive: true });
+	await writeFile(join(skillDir, "SKILL.md"), "# unverified-skill\n\nUnverified skill body.\n");
+	const instanceId = "muse-native-prefix-unverified";
+	const profile = new InitialSessionContextBuilder("muse-native-prefix-unverified-profile")
+		.withAgentRuntime(instanceId)
+		.withBuiltinTools("disabled")
+		.withAutoContextFiles(false)
+		.withToolPackages({ goalControl: false })
+		.addSkill({ name: "unverified-skill", path: join(skillDir, "SKILL.md"), kind: "user" })
+		.createSession();
+	const registry = new AgentRuntimeAdapterRegistry();
+	registry.registerDriver(MUSE_NATIVE_AGENT_RUNTIME_DRIVER);
+	const adapter = registry.registerInstance({
+		id: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		displayName: "Muse Native Prefix Unverified",
+		config: { ...runtimeConfig(root), requestTimeoutMs: 2_000 },
+	});
+	const resourceService = new PiboRuntimeResourceService({ rootDir: join(root, "resource-generations") });
+	const piboSessionId = "ps_muse_prefix_unverified";
+	const resources = await resourceService.createSession({
+		piboSessionId,
+		piboRoomId: "room_muse_prefix_unverified",
+		runtimeInstanceId: instanceId,
+		adapterId: MUSE_NATIVE_ADAPTER_ID,
+		sessionGeneration: "resource-generation-unverified",
+		profile,
+		cwd: workspace,
+		timezone: "UTC",
+		capabilities: adapter.descriptor.capabilities,
+		strict: true,
+	});
+	const piboSession = createPiboSession({ id: piboSessionId, channel: "test", kind: "chat", profile: profile.profileName, workspace });
+	await mkdir(fakeStateDir, { recursive: true });
+	await writeFile(join(fakeStateDir, "hang-methods.json"), JSON.stringify(["skill/list"]));
+	let session;
+	try {
+		session = await registry.openSession(instanceId, {
+			piboSession,
+			profile,
+			binding: { piboSessionId, runtimeInstanceId: instanceId, adapterId: MUSE_NATIVE_ADAPTER_ID, state: "unbound", revision: 1 },
+			workspace,
+			productContext: { piboSessionId },
+			services: { resources },
+		});
+	} finally {
+		await rm(join(fakeStateDir, "hang-methods.json"), { force: true });
+	}
+	disposers.push(() => session.dispose());
+	assert.ok(resources.getInspection().diagnostics.some((diagnostic) =>
+		diagnostic.code === "muse_native_skill_catalog_unverified"));
+	await session.prompt({ text: "hello", source: "interactive" });
+	const state = JSON.parse(await readFile(join(fakeStateDir, "muse-fake-state.json"), "utf8"));
+	assert.match(state.turnStartRequests.at(-1).text, /Unverified skill body\./);
 });
 
 test("Muse native opens without MCP config when no tools or servers are selected", async (t) => {

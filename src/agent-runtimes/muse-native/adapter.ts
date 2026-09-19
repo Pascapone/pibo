@@ -11,6 +11,11 @@ import {
 } from "../../agent-runtime/errors.js";
 import type { AgentRuntimeSemanticEvent } from "../../agent-runtime/events.js";
 import type {
+	AgentRuntimeDeliveryReport,
+	AgentRuntimeResourceDiagnostic,
+	PiboRuntimeResourceSession,
+} from "../../agent-runtime/resources.js";
+import type {
 	AgentRuntimeAdapter,
 	AgentRuntimeAuthOperationResult,
 	AgentRuntimeAuthStatus,
@@ -65,7 +70,11 @@ import {
 } from "./protocol-version.js";
 import { MUSE_FALLBACK_TOOL_NAME, MuseNativeTurnController } from "./turn.js";
 import { MuseNativeRequestController } from "./requests.js";
-import { MuseNativeResourceDelivery } from "./resource-delivery.js";
+import {
+	MUSE_TURN_PREFIX_DELIVERY_MODE,
+	MuseNativeResourceDelivery,
+	type MuseNativeSelectedSkill,
+} from "./resource-delivery.js";
 import {
 	BINDING_SANDBOX_KEY,
 	MUSE_NATIVE_MODEL_PROVIDER_ID,
@@ -95,6 +104,79 @@ const WEDGED_TURN_INTAKE_SIGNATURE = "conflicts with an existing event";
 
 function isWedgedTurnIntakeError(error: unknown): boolean {
 	return error instanceof Error && error.message.toLowerCase().includes(WEDGED_TURN_INTAKE_SIGNATURE);
+}
+
+/** Binding metadata key for the canonical hash of the injected skills/context selection. */
+export const MUSE_DELIVERED_RESOURCE_HASH_KEY = "museDeliveredResourceHash";
+const SKILL_LIST_TIMEOUT_MS = 30_000;
+const MAX_SIBLING_NAMES_IN_DIAGNOSTIC = 8;
+
+/**
+ * A selected skill is natively invocable when the host catalog carries its
+ * bare name or a plugin-qualified `<pluginId>:<name>` selector.
+ */
+export function matchMuseNativeSkillSelector(selectors: readonly string[], skillName: string): string | undefined {
+	const name = skillName.trim().toLowerCase();
+	if (!name) return undefined;
+	for (const selector of selectors) {
+		const candidate = selector.trim().toLowerCase();
+		if (candidate === name || candidate.endsWith(`:${name}`)) return selector;
+	}
+	return undefined;
+}
+
+function describeUndeliveredSiblings(skill: MuseNativeSelectedSkill): string | undefined {
+	if (skill.siblingFiles.length === 0) return undefined;
+	const names = skill.siblingFiles.slice(0, MAX_SIBLING_NAMES_IN_DIAGNOSTIC).join(", ");
+	const remainder = skill.siblingFiles.length > MAX_SIBLING_NAMES_IN_DIAGNOSTIC
+		? ` and ${skill.siblingFiles.length - MAX_SIBLING_NAMES_IN_DIAGNOSTIC} more`
+		: "";
+	return `Skill "${skill.name}" ships additional files (${names}${remainder}) that turn-prefix delivery does not include; only SKILL.md is injected.`;
+}
+
+function skillDeliveryReports(
+	skills: readonly MuseNativeSelectedSkill[],
+	selectors: readonly string[] | undefined,
+	verified: boolean,
+): { reports: AgentRuntimeDeliveryReport[]; diagnostics: AgentRuntimeResourceDiagnostic[] } {
+	const reports: AgentRuntimeDeliveryReport[] = [];
+	const diagnostics: AgentRuntimeResourceDiagnostic[] = [];
+	for (const skill of skills) {
+		// Failed skills keep their resource-service failure report; never overwrite it here.
+		if (skill.content === undefined) continue;
+		// A catalog match never replaces injection: the host copy may differ
+		// from the selected Pibo content, so the authoritative text always rides
+		// the turn prefix and the match is supplementary invocability only.
+		const selector = selectors ? matchMuseNativeSkillSelector(selectors, skill.name) : undefined;
+		if (selector) {
+			diagnostics.push({
+				severity: "info",
+				code: "muse_native_skill_catalog_match",
+				message: `Skill "${skill.name}" is also invocable through the host catalog as /${selector}.`,
+				contributionId: skill.contributionId,
+			});
+		}
+		const siblings = describeUndeliveredSiblings(skill);
+		reports.push({
+			contributionId: skill.contributionId,
+			status: "degraded",
+			mode: MUSE_TURN_PREFIX_DELIVERY_MODE,
+			fidelity: siblings ? "lossy" : "equivalent",
+			target: skill.sourcePath,
+			...(siblings ? { diagnostic: siblings } : {}),
+		});
+		if (siblings) {
+			diagnostics.push({ severity: "warning", code: "muse_native_skill_siblings_undelivered", message: siblings, contributionId: skill.contributionId });
+		}
+	}
+	if (!verified) {
+		diagnostics.push({
+			severity: "warning",
+			code: "muse_native_skill_catalog_unverified",
+			message: "Muse skill/list verification failed; every selected skill is injected as turn text without native-catalog matching.",
+		});
+	}
+	return { reports, diagnostics };
 }
 
 function museNativeCapabilities(): AgentRuntimeCapabilities {
@@ -146,12 +228,16 @@ function museNativeCapabilities(): AgentRuntimeCapabilities {
 			externalServers: { support: "mcp", transports: ["streamable-http", "stdio"] },
 			statusInspection: false,
 		},
-		skills: unsupportedAgentRuntimeCapability(
-			"Muse skill discovery has no verified materialization path in this adapter; selected skills are not delivered.",
-		),
-		context: unsupportedAgentRuntimeCapability(
-			"Muse context discovery has no verified materialization path in this adapter; selected context files are not delivered.",
-		),
+		skills: {
+			support: "degraded",
+			mode: "muse-turn-prefix",
+			reason: "Muse 1.3.0 exposes skills only as a read-only host catalog with no delivery seam; selected Pibo skills are injected as text into the first turn, and host-catalog matches stay invocable by selector.",
+		},
+		context: {
+			support: "degraded",
+			mode: "muse-turn-prefix",
+			reason: "Muse 1.3.0 session config carries only MCP servers; selected Pibo context is injected as text into the first turn.",
+		},
 		contextDiscovery: {
 			supported: false,
 			configurable: false,
@@ -309,6 +395,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	private toolInventoryWarning?: string;
 	private lastResourceWarningKey: string | undefined;
 	private sandboxOverride: MuseNativeSandboxMode | undefined;
+	private pendingResourcePrefix: { text: string; hash: string } | undefined;
 
 	constructor(
 		readonly runtimeInstanceId: string,
@@ -320,7 +407,9 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		binding: RuntimeSessionBinding,
 		private readonly requestTimeoutMs: number,
 		private readonly sandboxInput: MuseNativeSessionSandboxInput,
+		pendingResourcePrefix?: { text: string; hash: string },
 	) {
+		this.pendingResourcePrefix = pendingResourcePrefix ? { ...pendingResourcePrefix } : undefined;
 		this.host = host;
 		this.pump = pump;
 		this.controller = controller;
@@ -559,9 +648,25 @@ export class MuseNativeSession implements AgentRuntimeSession {
 	}
 
 	private async startTurnWithIntakeRecovery(input: AgentRuntimePromptInput): Promise<void> {
+		// The armed skills/context prefix rides the model text once; displayText
+		// keeps the original user message so transcripts stay clean. Delivery is
+		// only recorded after the turn submits: a thrown submit keeps the prefix
+		// armed so the retry carries it again.
+		const prefix = this.pendingResourcePrefix;
+		const text = prefix ? `${prefix.text}\n\n---\n\n${input.text}` : input.text;
 		const options = { ...this.settings.turnOptions, displayText: input.text };
+		const markDelivered = (): void => {
+			this.pendingResourcePrefix = undefined;
+			if (prefix) {
+				this.binding = {
+					...this.binding,
+					metadata: { ...(this.binding.metadata ?? {}), [MUSE_DELIVERED_RESOURCE_HASH_KEY]: prefix.hash },
+				};
+			}
+		};
 		try {
-			await this.turns.start(input.text, options);
+			await this.turns.start(text, options);
+			markDelivered();
 			return;
 		} catch (error) {
 			if (!isWedgedTurnIntakeError(error)) throw error;
@@ -576,7 +681,8 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				const originalMessage = error instanceof Error ? error.message : "unknown error";
 				throw new Error(`${originalMessage} (automatic native session re-sync also failed: ${resyncMessage})`, { cause: error });
 			}
-			await this.turns.start(input.text, options);
+			await this.turns.start(text, options);
+			markDelivered();
 		}
 	}
 
@@ -1036,6 +1142,12 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			});
 			settings.bind(host.spawned.connection, controller.summary.sessionId);
 			settings.adoptNativeModel(controller.summary);
+			const pendingResourcePrefix = await this.armResourcePrefix({
+				binding,
+				controller,
+				resources: input.services?.resources,
+				resourceDelivery,
+			});
 			const openedBinding = bindingForSession({
 				piboSessionId: input.piboSession.id,
 				runtimeInstanceId: this.instanceId,
@@ -1056,6 +1168,7 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 					config: this.config,
 					...(persisted.sandboxOverride ? { override: persisted.sandboxOverride } : {}),
 				},
+				pendingResourcePrefix,
 			);
 		} catch (error) {
 			settings?.dispose();
@@ -1066,6 +1179,47 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			}
 			throw error;
 		}
+	}
+
+	private async armResourcePrefix(input: {
+		binding: RuntimeSessionBinding;
+		controller: MuseNativeSessionController;
+		resources: PiboRuntimeResourceSession | undefined;
+		resourceDelivery: MuseNativeResourceDelivery;
+	}): Promise<{ text: string; hash: string } | undefined> {
+		const prefix = input.resourceDelivery.turnPrefix;
+		const skills = input.resourceDelivery.selectedSkills;
+		if (!prefix && skills.length === 0) return undefined;
+		const injectable = skills.filter((skill) => skill.content !== undefined);
+		if (injectable.length > 0) {
+			// skill/list is verification only: a failure degrades matching, never the open.
+			let selectors: readonly string[] | undefined;
+			let verified = false;
+			try {
+				const catalog = await withTimeout(
+					input.controller.listSkills(),
+					Math.min(this.config.requestTimeoutMs, SKILL_LIST_TIMEOUT_MS),
+					`Muse skill/list timed out.`,
+				);
+				selectors = catalog.map((entry) => entry.selector);
+				verified = true;
+			} catch {
+				selectors = undefined;
+				verified = false;
+			}
+			if (input.resources?.recordAdapterDelivery) {
+				const { reports, diagnostics } = skillDeliveryReports(skills, selectors, verified);
+				input.resources.recordAdapterDelivery(reports, diagnostics);
+			}
+		}
+		if (!prefix) return undefined;
+		const storedHash = input.binding.metadata?.[MUSE_DELIVERED_RESOURCE_HASH_KEY];
+		if (input.binding.state === "bound" && storedHash === prefix.hash) return undefined;
+		const rendered = input.binding.state === "bound"
+			? input.resourceDelivery.renderTurnPrefix("updated")
+			: prefix;
+		if (!rendered) return undefined;
+		return { text: rendered.text, hash: rendered.hash };
 	}
 
 	private loadModelCatalogForSession(host: MuseNativeHostProcess, sessionId: string): Promise<MuseNativeModelCatalog> {

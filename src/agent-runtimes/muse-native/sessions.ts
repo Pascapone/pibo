@@ -391,6 +391,40 @@ export class MuseNativeSessionController {
 	detach(): void {
 		this.pump.unregister(this.sessionId);
 	}
+
+	/** Host skill catalog for one session; read-only, per MSP SS3.22.1. */
+	async listSkills(): Promise<MuseNativeSkillCatalogEntry[]> {
+		return await listMuseNativeSkills(this.connection, this.sessionId);
+	}
+}
+
+export type MuseNativeSkillCatalogEntry = {
+	selector: string;
+	displayName?: string;
+	description?: string;
+	source?: string;
+	pluginId?: string;
+};
+
+const MAX_SKILL_CATALOG_ENTRIES = 1_024;
+
+export async function listMuseNativeSkills(connection: Connection, sessionId: string): Promise<MuseNativeSkillCatalogEntry[]> {
+	const result = await connection.request("skill/list", { sessionId });
+	if (!isRecord(result) || !Array.isArray(result.skills) || result.skills.length > MAX_SKILL_CATALOG_ENTRIES) {
+		throw new MuseNativeSessionProtocolError("Muse skill/list returned an invalid result.");
+	}
+	return result.skills.map((entry) => {
+		if (!isRecord(entry) || typeof entry.selector !== "string" || !entry.selector.trim()) {
+			throw new MuseNativeSessionProtocolError("Muse skill/list returned an invalid skill entry.");
+		}
+		return {
+			selector: entry.selector,
+			...(typeof entry.displayName === "string" ? { displayName: entry.displayName } : {}),
+			...(typeof entry.description === "string" ? { description: entry.description } : {}),
+			...(typeof entry.source === "string" ? { source: entry.source } : {}),
+			...(typeof entry.pluginId === "string" ? { pluginId: entry.pluginId } : {}),
+		};
+	});
 }
 
 export function readMuseDurability(spawned: SpawnedMspConnection): SessionDurabilityProfile {

@@ -29,10 +29,11 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 	const entries = new Map(input.selection.plugins.map((entry) => [entry.pluginId, entry]));
 	const installations = new Map<string, PluginInstallation>();
 	const pluginConfigurations: Record<string, PluginJsonObject> = Object.create(null);
-	const fail = (code: string, message: string, path: string[], required = true) => {
+	const fail = (code: string, message: string, path: string[], required = true, attribution?: string) => {
 		const diagnostic = pluginDiagnostic(code, message, path, required ? "error" : "warning");
-		if (path[0]) diagnostic.pluginId = path[0].split("/")[0];
-		if (path[0]?.includes("/")) diagnostic.contributionId = path[0];
+		const attributed = attribution ?? path[0];
+		if (attributed) diagnostic.pluginId = attributed.split("/")[0];
+		if (attributed?.includes("/")) diagnostic.contributionId = attributed;
 		diagnostics.push(diagnostic);
 	};
 	if (input.catalog.schemaVersion !== 1) fail("catalog-schema-version", "Only catalog version 1 is supported", ["catalog"]);
@@ -252,7 +253,8 @@ export function resolvePluginContributions(input: PluginResolutionInput): Effect
 			}
 		}
 		const runtimeReasons = contribution.contribution.scope === "agent" ? pluginRuntimeIncompatibilities(contribution.contribution.runtime, input.runtime) : [];
-		for (const reason of runtimeReasons) { reasons.push(reason); fail("runtime-unsupported", reason, contribution.dependencyPath, contribution.required); }
+		// The path keeps the dependency chain contract; attribution names the failing contribution itself.
+		for (const reason of runtimeReasons) { reasons.push(reason); fail("runtime-unsupported", reason, contribution.dependencyPath, contribution.required, id); }
 		for (const service of contribution.contribution.services ?? []) {
 			const version = input.services?.[service.id];
 			if (!version || !satisfiesPluginVersion(version, service.version)) {

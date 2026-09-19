@@ -410,3 +410,37 @@ export function createMinimalAgentRuntimeCapabilities(): AgentRuntimeCapabilitie
 		},
 	};
 }
+
+/**
+ * Delivery-mode vocabulary for plugin `runtime.deliveryModes` requirements.
+ * Derived from every delivery-typed capability so resolution and Designer
+ * previews test requirements against what the runtime actually declares:
+ * materialized modes verbatim, MCP as `mcp` plus its transports, degraded
+ * modes verbatim, and `native`/`direct` markers. Unsupported delivers nothing.
+ */
+export function pluginRuntimeDeliveryModes(capabilities: AgentRuntimeCapabilities): string[] {
+	const deliveries: readonly AgentRuntimeCapabilityDelivery[] = [
+		capabilities.skills,
+		capabilities.context,
+		capabilities.tools.piboManaged,
+		capabilities.tools.nativeToolInspection,
+		capabilities.tools.nativeToolYielding,
+		capabilities.mcp.externalServers,
+	];
+	const modes = new Set<string>();
+	for (const delivery of deliveries) {
+		if (delivery.support === "materialized") {
+			for (const mode of delivery.modes) modes.add(mode);
+		} else if (delivery.support === "mcp") {
+			modes.add("mcp");
+			for (const transport of delivery.transports) modes.add(transport);
+		} else if (delivery.support === "degraded") {
+			modes.add(delivery.mode);
+		} else if (delivery.support === "native") {
+			modes.add("native");
+		} else if (delivery.support === "direct") {
+			modes.add("direct");
+		}
+	}
+	return [...modes].sort();
+}

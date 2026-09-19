@@ -14,6 +14,7 @@ import type { PiboOutputEvent } from "../core/events.js";
 import { createPiboProfileFromCapabilitiesOrDefault, resolvePiboProfileNameFromCapabilitiesOrDefault } from "../plugins/builtin.js";
 import { authorizeAgentRuntimeHistoryProof } from "../agent-runtime/history-authority.js";
 import { PiboCapabilityHost } from "../core/capability-host.js";
+import { pluginRuntimeDeliveryModes } from "../agent-runtime/capabilities.js";
 import { PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID, PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID } from "../core/runtime-unassigned.js";
 import { PiboSessionRouter } from "../core/session-router.js";
 import { loadPiboModelDefaults, selectRequestedModelProfile } from "../core/model-defaults.js";
@@ -381,7 +382,7 @@ export class PiboGatewayServer {
 			resolveRuntime: (instanceId) => {
 				const adapter = this.capabilityHost.getAgentRuntimeAdapter(instanceId);
 				if (!adapter?.enabled) throw new Error(`Stored agent runtime instance "${instanceId}" is unavailable during Pibo 4.0 migration`);
-				return { adapterId: adapter.descriptor.id, instanceId: adapter.instanceId, capabilities: adapter.descriptor.capabilities as unknown as import("../plugins/manifest.js").PluginJsonObject };
+				return { adapterId: adapter.descriptor.id, instanceId: adapter.instanceId, capabilities: adapter.descriptor.capabilities as unknown as import("../plugins/manifest.js").PluginJsonObject, deliveryModes: pluginRuntimeDeliveryModes(adapter.descriptor.capabilities) };
 			},
 		});
 		const userResources = host.services.require<PiboUserResourcesService>(PIBO_USER_RESOURCES_SERVICE);

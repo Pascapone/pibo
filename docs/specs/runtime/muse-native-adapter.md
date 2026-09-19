@@ -75,14 +75,24 @@ traceability:
       sources:
         - path: "src/agent-runtimes/muse-native/resource-delivery.ts"
           symbol: "MuseNativeResourceDelivery"
+        - path: "src/agent-runtimes/muse-native/adapter.ts"
+          symbol: "MuseNativeAgentRuntimeAdapter.openSession"
       tests:
         - path: "test/muse-native-resources.test.mjs"
           name: "Muse native delivers portable tools and external MCP servers through session config"
         - path: "test/muse-native-resources.test.mjs"
           name: "Muse native re-delivers fresh portable-tool credentials on resume"
+        - path: "test/muse-native-resources.test.mjs"
+          name: "Muse native injects selected skills and context into the first turn only"
+        - path: "test/muse-native-resources.test.mjs"
+          name: "Muse native skips injection on unchanged resume and re-injects on changed selection"
+        - path: "test/muse-native-resources.test.mjs"
+          name: "Muse native opens when skill/list verification fails"
       failures:
         - "The scoped tool credential is revoked on disposal; unresolved secrets never enter the delivered config."
         - "Reopen re-sends the fresh session MCP config on session/resume; host honor of resume config is not yet live-verified."
+        - "Selected skills and context ride the first turn text once; unchanged resume skips re-injection via the persisted selection hash."
+        - "skill/list verification refines delivery reports only; a failed listing never fails the session open."
       confidence: "medium"
     - id: "RUN-MUS-005"
       status: "implemented"
@@ -150,7 +160,7 @@ Planned changes and behavior owned by related concepts are outside its normative
 - Approvals: Native approval requests park in the adapter until Pibo responds with a server-offered choice; disposal aborts parked approvals explicitly.
 - Models: The catalog reads `model/list`; in-session switches use `session/setModel`; reasoning defaults sync with `session/setReasoningEffort` while per-turn options always carry the selected value.
 - Profiles: `runtimeOptions.approvalMode` and `runtimeOptions.sandbox` (`auto`, `enabled`, or `disabled`) are exposed through the models `optionsSchema` and applied at session start. The profile thinking level seeds the initial reasoning effort (`off` maps to `none`); persisted session settings take precedence on resume. Mid-session reasoning changes accept `off` as `none`, matching the seed mapping.
-- Resources: Selected Pibo tools ride the session-scoped tool MCP bridge as a `streamableHttp` session server; selected external MCP servers map to `streamableHttp`/`stdio` session servers. The host sends headers verbatim without `${VAR}` interpolation, so secret values are resolved against the scoped environment before delivery; the portable-tool credential keeps its 5-minute TTL, same-token renewal, and revocation on disposal. Reopen, same-host intake recovery, and sandbox host replacement all re-send the current session MCP config on `session/resume` so selected servers and rotated credentials reach the host (host honor of resume config is not yet live-verified).
+- Resources: Selected Pibo tools ride the session-scoped tool MCP bridge as a `streamableHttp` session server; selected external MCP servers map to `streamableHttp`/`stdio` session servers. The host sends headers verbatim without `${VAR}` interpolation, so secret values are resolved against the scoped environment before delivery; the portable-tool credential keeps its 5-minute TTL, same-token renewal, and revocation on disposal. Reopen, same-host intake recovery, and sandbox host replacement all re-send the current session MCP config on `session/resume` so selected servers and rotated credentials reach the host (host honor of resume config is not yet live-verified). Selected skills and context ride a degraded `muse-turn-prefix`: the SKILL.md bodies and context contents render once into the first turn text while `displayText` keeps the original user message; a canonical selection hash persists in binding metadata so unchanged resume skips re-injection and changed selections re-inject as an update. `skill/list` is consumed as verification only — host-catalog matches are reported as supplementary invocability, never as a replacement for injection, and a failed listing degrades matching without failing the open.
 - Intent: Tool calls move a trimmed, redacted, 512-char-bounded model-authored `description` arg (when present) into the shared `intent` slot on `tool_call` and `tool_execution_started` and strip it from the emitted args (Pi-style), so views never show it twice; the full wire args stay available in the native session log. Intent is opportunistic: only tools whose schema carries `description` (observed: shell) emit it; tools without one omit intent and are hidden in intent display modes, matching OMP. `tools.intentTracing` reports supported, non-configurable, enabled-by-default.
 - Failure: Only the normalized `sessionNotFound` outcome is authoritative absence. Auth, startup, protocol, permission, and transient inspection failures remain unavailable errors and never authorize reconstruction.
 - Security: The child uses a private generation home and environment allowlist; credentials and sensitive diagnostics are redacted; tool credentials are scoped and revoked on disposal.
@@ -173,7 +183,7 @@ Muse Native SHALL submit turns with Pibo-owned timeouts, normalize assistant, re
 
 ## Requirement: RUN-MUS-004
 
-Muse Native resource delivery SHALL assemble selected Pibo tools and external MCP servers into session-start configuration, resolve secret references against the scoped environment before delivery, renew credentials while idle, and revoke access on disposal.
+Muse Native resource delivery SHALL assemble selected Pibo tools and external MCP servers into session-start configuration, resolve secret references against the scoped environment before delivery, renew credentials while idle, and revoke access on disposal. It SHALL deliver selected skills and context as degraded first-turn text (`muse-turn-prefix`), persist the canonical selection hash in binding metadata, skip re-injection on unchanged resume, and treat `skill/list` as verification only.
 
 ## Requirement: RUN-MUS-005
 
@@ -197,6 +207,9 @@ Implemented public contracts:
 - `MuseNativeTurnController`
 - `MuseNativeRequestController`
 - `MuseNativeResourceDelivery`
+- `buildMuseNativeTurnPrefix`
+- `listMuseNativeSkills`
+- `matchMuseNativeSkillSelector`
 - `MuseSessionSettingsController`
 - `MuseNativeAuthController`
 - `startMuseNativeHost`
@@ -221,7 +234,7 @@ Related ownership boundaries:
 - Session-stable native session store (fixed 2026-09-19; previously generation-scoped, proven against released `muse` 1.3.0): the host persists native sessions under `XDG_DATA_HOME`, which now points at `<sessionRoot>/xdg-data` outside the wiped generation root, so resume survives rebind, restart, and disposal with per-Pibo-session isolation preserved; `MUSE_HOME` is ignored by the host. The sticky probe session now survives its inspection host as well (retiring on host-authored rejection remains as a self-heal).
 - No durable first-use claim: unlike Codex Native, the first native turn has no cross-process exactly-once binding claim; concurrent routers opening the same unbound binding can start duplicate native sessions.
 - Portable history import is unsupported; cross-runtime continuation reseeds from Pibo product history only.
-- Skills and context-file delivery are declared unsupported: session configuration carries only MCP servers, and the host skill listing (`skill/list`) is not consumed.
+- Skills and context-file delivery are degraded (`muse-turn-prefix`), not native: only SKILL.md bodies are injected (sibling skill files are reported, never delivered), there is no verified native project-context discovery to deduplicate against so everything selected is injected, and native compaction may summarize the injected text like any other history. Workspace/user-scope skill materialization behind `serve --trust-workspace` is deliberately not used: it would write foreign files into the user workspace or mutate global user scope and would load arbitrary workspace skills and rules beyond the Pibo selection.
 - Tool credentials expire with the bridge lifetime (30 minutes maximum); renewal extends while idle but rotation without reopening the runtime session is unsupported.
 - Auth status reflects a stored credential file and is not a live validity proof; device and browser login flows must complete outside Pibo. Only `providers.meta.api_key` reports connected; `start()` preserves other providers in `auth.json`.
 - Compaction admission is reported synchronously with its ack status (`accepted`, or `noop` with a reason); the asynchronous native terminal is not awaited.

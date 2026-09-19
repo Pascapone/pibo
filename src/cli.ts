@@ -12,6 +12,7 @@ import {
 } from "./config/config.js";
 import type { PiboRuntimeOptions } from "./core/runtime.js";
 import type { PluginJsonObject } from "./plugins/manifest.js";
+import { pluginRuntimeDeliveryModes } from "./agent-runtime/capabilities.js";
 import { parsePiboThinkingLevel } from "./core/thinking.js";
 import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
@@ -35,6 +36,7 @@ async function resolveCliProfile(profileName?: string) {
 				adapterId: adapter.descriptor.id,
 				instanceId: selected.runtimeInstanceId,
 				capabilities: adapter.descriptor.capabilities as unknown as PluginJsonObject,
+				deliveryModes: pluginRuntimeDeliveryModes(adapter.descriptor.capabilities),
 			});
 			return profileFromPluginPlan(selected, plan, registry.getPluginHost());
 		};

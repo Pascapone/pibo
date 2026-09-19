@@ -96,7 +96,9 @@ test("Agent Designer keeps Pibo subagents and plugin-delivered control tools cap
 	assert.match(agentsViewSource, /<SubagentDesigner[\s\S]*capabilityUnavailableReason=\{pluginToolsUnavailableReason\}/);
 	assert.match(agentsViewSource, /unsupportedDeliveryReason\(selectedRuntime\?\.capabilities\.tools\.piboManaged, "Plugin-managed tools"\)/);
 	assert.match(pluginDesignerSource, /plan \? plan\.valid \? "Selection is supported" : "Selection is blocked — review the reasons below"/);
-	assert.match(pluginDesignerSource, /plan\?\.diagnostics\.map/);
+	assert.match(pluginDesignerSource, /diagnosticsByPlugin/);
+	assert.match(pluginDesignerSource, /globalDiagnostics\.map/);
+	assert.match(pluginDesignerSource, /bannerMessages\.map/);
 });
 
 test("Agent Designer keeps Goal system functionality separate from selectable Goal tools", () => {

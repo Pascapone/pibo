@@ -2,8 +2,8 @@
 // Minimal fake `muse serve` MSP host for Pibo muse-native adapter tests.
 // Speaks just enough of the Muse Session Protocol for the real @muse-code/sdk
 // client: initialize, session/start|resume|read|list|fork, turn/start,
-// turn/interrupt|turn/cancel, approval/decide, model/list, session/setModel,
-// session/setReasoningEffort and session/compact.
+// turn/interrupt|turn/cancel, approval/decide, model/list, skill/list,
+// session/setModel, session/setReasoningEffort and session/compact.
 //
 // Prompt scripting markers (matched against the submitted text):
 //   [tool]       emit a toolCall item round-trip
@@ -435,9 +435,15 @@ const handlers = {
 	"turn/start": (params, id) => {
 		const injected = consumeTurnStartFailure();
 		const turnId = params.commandId;
+		const submittedText = (params.input ?? []).map((part) => (part.text ?? "")).join("\n");
 		updateState((state) => {
 			state.turnStartRequests = Array.isArray(state.turnStartRequests) ? state.turnStartRequests : [];
-			state.turnStartRequests.push({ sessionId: params.sessionId, rejected: Boolean(injected) });
+			state.turnStartRequests.push({
+				sessionId: params.sessionId,
+				rejected: Boolean(injected),
+				text: submittedText,
+				...(typeof params.displayText === "string" ? { displayText: params.displayText } : {}),
+			});
 			const session = state.sessions[params.sessionId];
 			if (session && !injected) session.activeTurnId = turnId;
 		});
@@ -503,6 +509,13 @@ const handlers = {
 		providerId: "fake",
 		source: "fakeCatalog",
 	}),
+	"skill/list": () => {
+		try {
+			const catalog = JSON.parse(readFileSync(join(stateDir, "skill-catalog.json"), "utf8"));
+			if (catalog && Array.isArray(catalog.skills)) return { skills: catalog.skills };
+		} catch {}
+		return { skills: [] };
+	},
 	"session/setModel": (params) => {
 		updateState((state) => {
 			const session = state.sessions[params.sessionId];
