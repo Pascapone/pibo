@@ -8601,9 +8601,9 @@
       "status": null,
       "lineage": null,
       "reason": "Created as a reserved OKF navigation or update-history file.",
-      "file_bytes": 69040,
-      "file_sha256": "8308db4291bf9e28da9fb0595d578919a41952618607c4dc1547d91620ec9623",
-      "body_sha256": "8308db4291bf9e28da9fb0595d578919a41952618607c4dc1547d91620ec9623"
+      "file_bytes": 73558,
+      "file_sha256": "c260dcb50a2fdc99fbeab3c8d10c0269c20d43e6105add86415782512e3ed6aa",
+      "body_sha256": "c260dcb50a2fdc99fbeab3c8d10c0269c20d43e6105add86415782512e3ed6aa"
     },
     {
       "path": "docs/plans/chat-web-trace-v2-follow-up.md",
@@ -12962,9 +12962,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 22404,
-      "file_sha256": "c7f64fbb54d6e982442d141b5a9d4849c705fcf355034ba7232054788ca2e1f7",
-      "body_sha256": "eb08f081d985fdecdff7568e4464e8d024deba221ba560d04abd00df01647d80",
+      "file_bytes": 22849,
+      "file_sha256": "6fffcd2b8abd0028aed7ac3bb964850844c2a141c1117f8ef1cfdfcdfb5c08b1",
+      "body_sha256": "5939a42297dd6aba6cd02413caada6221fe3bf985447f730d688e560e321da53",
       "lineage": null
     },
     {
@@ -13222,9 +13222,9 @@
       "type": "Specification",
       "authority": "normative",
       "status": "stable",
-      "file_bytes": 23712,
-      "file_sha256": "6a9fbd77eb0ce2a5f7454070952931f770ec26f7eadfa416262eba450d270b50",
-      "body_sha256": "58a3f163918adefc225d580bb52dcadb5ee56daf5014476bd2baf46628b6fad0",
+      "file_bytes": 28337,
+      "file_sha256": "f3ea03213c9bf7921498fdc3552198893bfaa4b4857350377768ecc75e3ba7f2",
+      "body_sha256": "5ac2122d5f78c1f3f33d65282582f25c7be7003baf8311f136260e8d390d3c8b",
       "lineage": null
     },
     {
@@ -14067,9 +14067,9 @@
       "authority": "normative",
       "status": "draft",
       "lineage": null,
-      "file_bytes": 10914,
-      "file_sha256": "40094c7c8ec39e7dd26cbd901c5b155e52ce93eb2baf1dcaebb255b4aa763584",
-      "body_sha256": "142ecc8dbbec9ebd6b544178a207e69c99a62cad84b4558de45309fdf5398a70"
+      "file_bytes": 11253,
+      "file_sha256": "acc2f36aa07770fe776cd5396b558f4f677e529027b7dce46f5c059b46abffac",
+      "body_sha256": "db727690ff0bffba2b8047761f6c270eb2f16655341fec474043a464a850ec87"
     }
   ]
 }

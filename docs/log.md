@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-19
+
+- **Beta transcription, Muse reasoning, and Designer copy fixes documented**: Code candidate `ec7a4ff5c2c3d15542372395eed848c0df52b55d` keys packaged transcription contributions by provider ID so `POST /api/chat/transcription` resolves listed providers, derives Pi OAuth request auth from still-valid stored tokens when bundled backends cannot load pi's lazy auth modules, accepts `off` as `none` for mid-session Muse reasoning changes, and seeds Agent Designer profile copies with the default plugin selection so autosave persists them. Live dev-gateway verification covered a real ChatGPT round-trip, thinking show/set on a Muse session, and an agent copy save with cleanup. Updates the [Muse adapter](/specs/runtime/muse-native-adapter.md), [transcription and speech providers](/specs/resources/transcription-and-speech-providers.md), and [context, settings, and Agent Designer](/specs/web/context-settings-and-agent-designer.md) specifications. No controller mutation, push, publication, merge, or release occurred.
+
 ## 2026-09-16
 
 - **Pibo 4 Beta optimistic send and Run Control accepted on Pibo2**: Candidate `699ff36b46f78444a59553c4b89d289f02722606` clears the composer in the optimistic send interaction, restores a failed message only while its transaction still owns the unchanged draft, and treats gateway RSS alone as a warning while retaining host-memory, heap, reservation, and concurrency admission blocks. Exact Assembly `7147c768…` runs on canonical Pibo2 after a checksum-bound stopped-boundary Cutover. Headful acceptance proved immediate clear, injected-failure restoration, Luna Medium Run Control delegation through `pibo_run_start`/wait/read, and preserved tool token/cache diagnostics. The [validation report](/reports/pibo-4-beta-optimistic-send-run-control-pibo2-acceptance-2026-09-16.md) records local tests, activation recovery, verified backups, and the remaining old pool-wrapper limitation.

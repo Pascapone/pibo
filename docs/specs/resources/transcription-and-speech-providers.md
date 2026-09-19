@@ -190,6 +190,8 @@ Implemented behavior:
 - "GET /api/chat/speech/providers"
 - "POST and lifecycle routes under /api/chat/speech/sessions"
 - "PiboCapabilityHost registers unique transcription/speech providers, reports configured state without allowing provider probe failure to crash discovery, and routes explicit provider IDs."
+- "Packaged transcription contributions are keyed by provider ID, so discovery, settings validation, and transcribe() resolve the same registry entry."
+- "Pi OAuth request auth derives directly from a still-valid stored token when bundled backends cannot load pi's lazily imported OAuth modules; expired tokens still require the normal refresh flow."
 - "Transcription accepts a required nonempty file up to 25 MiB, sanitizes metadata, maps provider errors, and independently selects API-key or ChatGPT-subscription providers."
 - "Speech bounds text to 32,000 UTF-16 code units and SDP offers to 256,000, reserves pending capacity, rejects duplicate IDs, and applies startup/idle/disposal/abort cleanup exactly once."
 - "Codex realtime speech requires subscription auth, uses an unpredictable loopback proxy route, bounds proxy bodies, and keeps provider session ownership ephemeral."
@@ -311,9 +313,11 @@ Keep provider credentials and raw media ephemeral to backend request/session han
 Capability-map status: no dedicated capability-map node; this specification remains the canonical normative owner for the provider service contract.
 
 Exact source files inspected for this owner:
+- "src/agent-runtimes/pi/credentials.ts"
 - "src/apps/chat/chat-speech.ts"
 - "src/apps/chat/chat-transcription.ts"
 - "src/core/capability-host.ts"
+- "src/plugins/default-packages.ts"
 - "src/speech/openai-codex-realtime-call-proxy.ts"
 - "src/speech/openai-codex.ts"
 - "src/transcription/openai-chatgpt.ts"

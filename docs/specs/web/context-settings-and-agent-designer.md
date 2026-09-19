@@ -223,7 +223,7 @@ Catalog/settings invalidation refreshes affected bootstrap capability data. Medi
 
 ### Lifecycle and failure
 
-Revision conflicts surface diff/reload choices. Runtime switch removes only unsupported model values; explicit null clears persisted overrides. Catalog failure is not an authoritative empty catalog.
+Revision conflicts surface diff/reload choices. Runtime switch removes only unsupported model values; explicit null clears persisted overrides. Catalog failure is not an authoritative empty catalog. Profile copies and restored unsaved drafts seed the default plugin selection so new agents can save.
 
 ### Security
 
