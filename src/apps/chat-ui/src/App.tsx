@@ -766,7 +766,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			await autosave();
 			return false;
 		} catch (caught) {
-			setError(`Agent Designer changes were not saved: ${caught instanceof Error ? caught.message : String(caught)}`);
+			setError(`Agent Designer changes were not saved: ${caught instanceof Error ? caught.message : String(caught)} Fix the draft, or use Revert in the Agent Designer to discard the unsaved changes.`);
 			return true;
 		}
 	}, []);
@@ -2037,7 +2037,7 @@ export function App({ route }: { route: ChatAppRoute }) {
 			},
 		});
 		if (!result.allowed) {
-			setError(`Agent Designer changes were not saved: ${result.error instanceof Error ? result.error.message : String(result.error)}`);
+			setError(`Agent Designer changes were not saved: ${result.error instanceof Error ? result.error.message : String(result.error)} Fix the draft, or use Revert in the Agent Designer to discard the unsaved changes.`);
 			return false;
 		}
 		return true;
