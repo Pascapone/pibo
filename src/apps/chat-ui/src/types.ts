@@ -549,7 +549,7 @@ export type ModelProfile = {
 	id: string;
 };
 
-export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export const THINKING_LEVELS = ["off", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 export type ModelDefaults = {

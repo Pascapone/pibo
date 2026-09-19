@@ -5,6 +5,8 @@ import { PIBO_GOAL_TOOL_NAMES } from "../loops/tools.js";
 import { FACT_COUNT_STOP_CONDITION, GOAL_STATUS_STOP_CONDITION, MAX_ITERATIONS_STOP_CONDITION, PROMISE_COMPLETE_STOP_CONDITION } from "../loops/stopping.js";
 import { PIBO_RUN_TOOL_NAMES } from "../runs/tools.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../subagents/tool.js";
+import { OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID } from "../transcription/openai-chatgpt.js";
+import { OPENAI_TRANSCRIPTION_PROVIDER_ID } from "../transcription/openai.js";
 import type { PluginContribution, PluginInstallation, PluginManifest, PluginRuntimeRequirement } from "./manifest.js";
 import type { PluginManager } from "./manager.js";
 import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_LOOP_SERVICE, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
@@ -49,7 +51,7 @@ const BROWSER_TOOL_NAMES = [
 	"node_repl_js_reset",
 ] as const;
 
-function transcriptionPackageManifest(id: string, name: string): PluginManifest {
+function transcriptionPackageManifest(id: string, name: string, providerId: string): PluginManifest {
 	return {
 		schemaVersion: 1,
 		id,
@@ -57,12 +59,12 @@ function transcriptionPackageManifest(id: string, name: string): PluginManifest 
 		version: DEFAULT_PACKAGE_VERSION,
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs" },
-		contributions: [{ id: "provider", kind: "transcription-provider", name: id, title: name, scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "System transcription provider; no model context." } }],
+		contributions: [{ id: "provider", kind: "transcription-provider", name: providerId, title: name, scope: "app", required: true, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: "System transcription provider; no model context." } }],
 	};
 }
 
-export const openAiChatGptTranscriptionPackageManifest = () => transcriptionPackageManifest(CHATGPT_TRANSCRIPTION_PLUGIN_ID, "ChatGPT Subscription Transcription");
-export const openAiTranscriptionPackageManifest = () => transcriptionPackageManifest(OPENAI_TRANSCRIPTION_PLUGIN_ID, "OpenAI Transcription");
+export const openAiChatGptTranscriptionPackageManifest = () => transcriptionPackageManifest(CHATGPT_TRANSCRIPTION_PLUGIN_ID, "ChatGPT Subscription Transcription", OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID);
+export const openAiTranscriptionPackageManifest = () => transcriptionPackageManifest(OPENAI_TRANSCRIPTION_PLUGIN_ID, "OpenAI Transcription", OPENAI_TRANSCRIPTION_PROVIDER_ID);
 
 export function vscodeWebPackageManifest(): PluginManifest {
 	return {

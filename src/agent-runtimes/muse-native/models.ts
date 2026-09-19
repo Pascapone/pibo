@@ -13,6 +13,15 @@ import { MuseNativeSessionProtocolError } from "./sessions.js";
 export const MUSE_NATIVE_MODEL_PROVIDER_ID = "meta-muse";
 export const MUSE_NATIVE_REASONING_VALUES = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
 export type MuseNativeReasoningValue = (typeof MUSE_NATIVE_REASONING_VALUES)[number];
+
+/** Map a Pibo thinking level to a Muse reasoning effort ("off" disables reasoning as "none"). */
+export function mapThinkingLevelToReasoning(level: string | undefined): MuseNativeReasoningValue | undefined {
+	if (!level) return undefined;
+	const mapped = level === "off" ? "none" : level;
+	return (MUSE_NATIVE_REASONING_VALUES as readonly string[]).includes(mapped)
+		? (mapped as MuseNativeReasoningValue)
+		: undefined;
+}
 export type MuseSdkReasoningEffort = NonNullable<SendUserTurnOptions<unknown>["reasoningEffort"]>;
 // The Pibo reasoning vocabulary must match the pinned SDK wire vocabulary exactly.
 type AssertReasoningParity = [MuseNativeReasoningValue] extends [MuseSdkReasoningEffort]
@@ -250,16 +259,18 @@ export class MuseSessionSettingsController {
 
 	setReasoning(value: string): AgentRuntimeReasoningResult {
 		this.assertUsable();
-		if (!MUSE_NATIVE_REASONING_VALUES.includes(value as MuseNativeReasoningValue)) {
+		// The generic /thinking bridge passes Pibo levels straight through; "off" disables reasoning as "none".
+		const normalized = value === "off" ? "none" : value;
+		if (!MUSE_NATIVE_REASONING_VALUES.includes(normalized as MuseNativeReasoningValue)) {
 			throw new Error(`Muse reasoning effort must be one of ${MUSE_NATIVE_REASONING_VALUES.join(", ")}.`);
 		}
-		this.reasoning = value;
+		this.reasoning = normalized;
 		this.syncWarning = undefined;
 		// The per-turn option carries the value even if the session-default sync below fails.
 		if (this.connection && this.sessionId) {
 			const connection = this.connection;
 			const sessionId = this.sessionId;
-			void connection.command("session/setReasoningEffort", { sessionId, reasoningEffort: value }).catch((error: unknown) => {
+			void connection.command("session/setReasoningEffort", { sessionId, reasoningEffort: normalized }).catch((error: unknown) => {
 				this.syncWarning = error instanceof Error
 					? `Muse session reasoning default could not be synced: ${error.message}`
 					: "Muse session reasoning default could not be synced.";

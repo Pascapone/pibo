@@ -29,10 +29,12 @@ import type {
 import type { PiboJsonObject } from "../../core/events.js";
 import {
 	selectRequestedModelProfile,
+	selectRequestedThinkingLevel,
 	type PiboModelDefaults,
 } from "../../core/model-defaults.js";
 import type { ModelProfile } from "../../core/profiles.js";
 import {
+	MUSE_NATIVE_APPROVAL_MODES,
 	MUSE_NATIVE_RUNTIME_CONFIG_SCHEMA,
 	defaultMuseNativeRuntimeConfig,
 	parseMuseNativeRuntimeConfig,
@@ -65,6 +67,7 @@ import {
 	MUSE_NATIVE_MODEL_PROVIDER_ID,
 	MUSE_NATIVE_REASONING_VALUES,
 	MuseSessionSettingsController,
+	mapThinkingLevelToReasoning,
 	parseMuseProfileOptions,
 	readMuseModelCatalog,
 	readMusePersistedSettings,
@@ -159,6 +162,19 @@ function museNativeCapabilities(): AgentRuntimeCapabilities {
 		models: {
 			catalog: true,
 			switchInSession: true,
+			optionsSchema: {
+				type: "object",
+				additionalProperties: false,
+				properties: {
+					approvalMode: {
+						type: "string",
+						title: "Approval mode",
+						enum: [...MUSE_NATIVE_APPROVAL_MODES],
+						default: "onRequest",
+						description: "Muse permissions: allowAll runs without prompts, promptUnmatched asks for unmatched work, onRequest asks when the model requests approval, denyUnmatched blocks unmatched work.",
+					},
+				},
+			},
 		},
 		reasoning: {
 			supported: true,
@@ -566,6 +582,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 }
 
 type MuseNativeCompatibilityServices = {
+	thinkingLevel?: string;
 	modelDefaults?: PiboModelDefaults;
 };
 
@@ -789,7 +806,9 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			}
 			settings = new MuseSessionSettingsController({
 				activeModel: requestedModel ?? selectDefaultCatalogModel(catalog),
-				reasoningLevel: persisted.reasoningLevel,
+				reasoningLevel: persisted.reasoningLevel
+					?? mapThinkingLevelToReasoning(compatibility?.thinkingLevel)
+					?? mapThinkingLevelToReasoning(selectRequestedThinkingLevel(input.profile, compatibility?.modelDefaults)),
 				profileOptions,
 				catalog,
 			});

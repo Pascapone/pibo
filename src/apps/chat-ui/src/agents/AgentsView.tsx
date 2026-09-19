@@ -30,6 +30,7 @@ import {
 	copyCustomAgentToDraft,
 	copyProfileToDraft,
 	createBlankAgentDraft,
+	defaultAgentPluginSelection,
 	isNotFoundError,
 	modelCatalogForRuntime,
 	normalizeBuiltinToolNames,
@@ -72,7 +73,14 @@ function agentDraftSignature(draft: AgentDraft): string {
 	return JSON.stringify(content);
 }
 
-function readPendingAgentDraft(): PendingAgentDraft | null {
+function backfillRestoredPluginSelection(draft: Partial<AgentDraft>, catalog?: AgentCatalog | null): Partial<AgentDraft> {
+	// Unsaved profile copies restored from an older UI predate the default
+	// plugin selection and would otherwise never save.
+	if (draft.id || draft.pluginSelection) return {};
+	return { pluginSelection: defaultAgentPluginSelection(catalog ?? undefined) };
+}
+
+function readPendingAgentDraft(catalog?: AgentCatalog | null): PendingAgentDraft | null {
 	try {
 		const raw = sessionStorage.getItem(PENDING_AGENT_DRAFT_STORAGE_KEY);
 		if (!raw) return null;
@@ -80,6 +88,7 @@ function readPendingAgentDraft(): PendingAgentDraft | null {
 		if (!parsed.draft || parsed.draft.source !== "custom") return null;
 		const draft: AgentDraft = {
 			...parsed.draft,
+			...backfillRestoredPluginSelection(parsed.draft, catalog),
 			runtimeInstanceId: typeof parsed.draft.runtimeInstanceId === "string" && parsed.draft.runtimeInstanceId.trim()
 				? parsed.draft.runtimeInstanceId
 				: "pi",
@@ -167,7 +176,7 @@ export function AgentsView({
 		onMobileClose: onCloseMobileSidebar,
 	});
 	const [initialDraftState] = useState(() => {
-		const pending = readPendingAgentDraft();
+		const pending = readPendingAgentDraft(initialCatalog);
 		const initialDraft = pending?.draft ?? selectExistingAgentDraft(agents, initialCustomAgents, initialCatalog);
 		return {
 			draft: initialDraft,

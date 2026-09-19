@@ -563,6 +563,33 @@ test("Muse native turn controller rejects unknown reasoning effort", async () =>
 	controller.dispose();
 });
 
+test("Muse native session open applies the profile thinking level", async (t) => {
+	const { root } = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "muse-native-thinking");
+	const openWithThinking = async (suffix, thinkingLevel) => {
+		const profiled = new InitialSessionContextBuilder(`profile-thinking-${suffix}`)
+			.withAgentRuntime(instanceId)
+			.withBuiltinTools("disabled")
+			.withAutoContextFiles(false)
+			.withToolPackages({ goalControl: false })
+			.withMainThinkingLevel(thinkingLevel)
+			.createSession();
+		const input = {
+			...openInput(instanceId, root, unboundBinding(instanceId, `ps_muse_thinking_${suffix}`)),
+			profile: profiled,
+		};
+		const session = await registry.openSession(instanceId, input);
+		t.after(() => session.dispose());
+		return session;
+	};
+	const high = await openWithThinking("high", "high");
+	assert.equal(high.getStatus().reasoning.value, "high");
+	const off = await openWithThinking("off", "off");
+	assert.equal(off.getStatus().reasoning.value, "none");
+	const ultra = await openWithThinking("ultra", "ultra");
+	assert.equal(ultra.getStatus().reasoning.value, "ultra");
+});
+
 test("Muse native session open fails clearly when the host withholds sessionMcp", async (t) => {
 	const { root } = await testRoot(t);
 	const { registry, instanceId } = createAdapter(root, "muse-native-capdeny");

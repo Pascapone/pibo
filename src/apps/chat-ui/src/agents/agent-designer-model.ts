@@ -89,10 +89,14 @@ export function agentDraftToSaveInput(draft: AgentDraft): SaveCustomAgentInput {
 	};
 }
 
+export function defaultAgentPluginSelection(catalog?: AgentCatalog): AgentPluginSelection {
+	return structuredClone((catalog as (AgentCatalog & { defaultPluginSelection?: AgentPluginSelection }) | undefined)?.defaultPluginSelection ?? { schemaVersion: 1, plugins: [] });
+}
+
 export function createBlankAgentDraft(catalog?: AgentCatalog, displayName = "new-agent", folderId?: string): AgentDraft {
 	return {
 		schemaVersion: 2,
-		pluginSelection: structuredClone((catalog as (AgentCatalog & { defaultPluginSelection?: AgentPluginSelection }) | undefined)?.defaultPluginSelection ?? { schemaVersion: 1, plugins: [] }),
+		pluginSelection: defaultAgentPluginSelection(catalog),
 		displayName,
 		description: "",
 		folderId,
@@ -185,10 +189,10 @@ export function agentToDraft(agent: CustomAgent & DesignerPluginFields): AgentDr
 	};
 }
 
-export function profileToDraft(profile: BootstrapData["agents"][number] & DesignerPluginFields, _catalog?: AgentCatalog): AgentDraft {
+export function profileToDraft(profile: BootstrapData["agents"][number] & DesignerPluginFields, catalog?: AgentCatalog): AgentDraft {
 	return {
 		schemaVersion: 2,
-		pluginSelection: profile.pluginSelection ? structuredClone(profile.pluginSelection) : undefined,
+		pluginSelection: profile.pluginSelection ? structuredClone(profile.pluginSelection) : defaultAgentPluginSelection(catalog),
 		pluginMigration: profile.pluginMigration,
 		displayName: profile.name,
 		description: profile.description ?? "",

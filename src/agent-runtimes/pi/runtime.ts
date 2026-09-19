@@ -32,7 +32,7 @@ import { createDefaultPiboProfile } from "../../core/default-profile.js";
 import { getDelegatedAgentContextFile } from "../../subagents/context.js";
 import { PIBO_AGENT_TOOL_NAMES } from "../../subagents/tool.js";
 import { resolvePiboSubagentRuntimeSelections } from "../../subagents/runtime-selection.js";
-import type { PiboThinkingLevel } from "../../core/thinking.js";
+import { mapThinkingLevelForPi, type PiboThinkingLevel } from "../../core/thinking.js";
 import { getInstalledCliToolContextFile } from "../../tools/registry.js";
 import { createWebSearchProviderExtension, isWebSearchProviderTool } from "../../tools/web-search.js";
 import { getMcpAgentContextFile } from "../../mcp/agent-context.js";
@@ -439,7 +439,7 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 			sessionManager: runtimeSessionManager,
 			sessionStartEvent,
 			model: resolveProfileModel(profile, modelRegistry, runtimeCwd, modelDefaults, options.activeModel),
-			thinkingLevel: options.thinkingLevel ?? selectRequestedThinkingLevel(profile, modelDefaults),
+			thinkingLevel: mapThinkingLevelForPi(options.thinkingLevel ?? selectRequestedThinkingLevel(profile, modelDefaults)),
 			customTools,
 			noTools: profile.builtinTools === "disabled" ? "builtin" : undefined,
 			tools: getBuiltinToolAllowlist(profile, piboToolDefinitions),

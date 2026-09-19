@@ -23,7 +23,7 @@ import type {
 	PiboSessionTreeResult,
 	PiboThinkingResult,
 } from "../../core/events.js";
-import type { PiboThinkingLevel } from "../../core/thinking.js";
+import { mapThinkingLevelForPi, type PiboThinkingLevel } from "../../core/thinking.js";
 import type {
 	CancelAgentRuntimeAuthInput,
 	CompleteAgentRuntimeAuthInput,
@@ -1629,7 +1629,7 @@ export class RoutedSession {
 
 	setThinkingLevel(level: PiboThinkingLevel): PiboThinkingResult {
 		this.assertActive();
-		this.runtime.session.setThinkingLevel(level);
+		this.runtime.session.setThinkingLevel(mapThinkingLevelForPi(level) ?? "off");
 		return this.getThinkingResult();
 	}
 
