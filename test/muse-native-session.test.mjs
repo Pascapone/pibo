@@ -844,3 +844,71 @@ test("Muse native unknown terminals fail instead of completing", async () => {
 	assert.ok(events.some((event) => event.type === "turn_failed" && /host died/.test(event.message)));
 	assert.equal(events.some((event) => event.type === "turn_completed"), false);
 });
+
+const WEDGED_INTAKE_MESSAGE = "turn/start runtime submit failed: event log failed: event id 834d77f4-b59d-5c71-811b-d3ed7133dbc3 conflicts with an existing event";
+
+async function scriptTurnStartFailures(fakeStateDir, spec) {
+	await mkdir(fakeStateDir, { recursive: true });
+	await writeFile(join(fakeStateDir, "fail-turn-start.json"), JSON.stringify(spec));
+}
+
+test("Muse native prompt resyncs and retries a wedged turn intake once", async (t) => {
+	const { root, fakeStateDir, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "intakeretry", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	const nativeSessionId = session.getBinding().nativeSessionId;
+	await session.prompt({ text: "prime the session", source: "interactive" });
+	await scriptTurnStartFailures(fakeStateDir, { times: 1, kind: "commandRejected", message: WEDGED_INTAKE_MESSAGE });
+
+	await session.prompt({ text: "continue after compaction", source: "interactive" });
+
+	const state = await readFakeState(fakeStateDir);
+	assert.equal(state.turnStartRequests.length, 3);
+	assert.equal(state.turnStartRequests[1].rejected, true);
+	assert.equal(state.turnStartRequests[2].rejected, false);
+	assert.ok(events.some((event) => event.type === "warning" && /re-sync/.test(event.message)));
+	assert.equal(events.filter((event) => event.type === "turn_completed").length, 2);
+	assert.ok(events.some((event) => event.type === "assistant_message" && /fake reply to/.test(event.text)));
+	assert.equal(session.getBinding().nativeSessionId, nativeSessionId);
+	assert.ok(session.controls.getForkCandidates().length >= 1);
+
+	await session.prompt({ text: "steady state", source: "interactive" });
+	assert.equal(events.filter((event) => event.type === "turn_completed").length, 3);
+});
+
+test("Muse native prompt does not retry turn rejections without the wedge signature", async (t) => {
+	const { root, fakeStateDir, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "intakeno", disposers);
+	await scriptTurnStartFailures(fakeStateDir, { times: 5, kind: "commandRejected", message: "turn/start rejected: intake busy" });
+	await assert.rejects(() => session.prompt({ text: "hello", source: "interactive" }), /intake busy/);
+	const state = await readFakeState(fakeStateDir);
+	assert.equal(state.turnStartRequests.length, 1);
+});
+
+test("Muse native prompt surfaces a persistent wedged intake after one retry", async (t) => {
+	const { root, fakeStateDir, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "intakestuck", disposers);
+	await scriptTurnStartFailures(fakeStateDir, { times: 5, kind: "commandRejected", message: WEDGED_INTAKE_MESSAGE });
+	await assert.rejects(() => session.prompt({ text: "hello", source: "interactive" }), /conflicts with an existing event/);
+	const state = await readFakeState(fakeStateDir);
+	assert.equal(state.turnStartRequests.length, 2);
+});
+
+test("Muse native compaction surfaces a noop admission instead of blanket success", async (t) => {
+	const { root, fakeStateDir, disposers } = await testRoot(t);
+	const { session } = await openFreshSession(t, root, "compactnoop", disposers);
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	const accepted = await session.controls.compact();
+	assert.equal(accepted.status, "accepted");
+	assert.ok(events.some((event) => event.type === "compaction_end" && event.aborted === false));
+
+	await mkdir(fakeStateDir, { recursive: true });
+	await writeFile(join(fakeStateDir, "compact-noop.json"), JSON.stringify({ reason: "no_compactable_history" }));
+	const noop = await session.controls.compact("keep it short");
+	assert.equal(noop.native, true);
+	assert.equal(noop.status, "noop");
+	assert.equal(noop.reason, "no_compactable_history");
+	assert.equal(noop.customInstructionsApplied, false);
+});
