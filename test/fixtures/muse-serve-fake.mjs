@@ -11,6 +11,7 @@
 //   [fail]       end the turn with terminal "failed"
 //   [slow]       delay completion so abort/steer tests can intervene
 //   [hang]       never produce turn output (past any idle budget) for timeout tests
+//   [viewdeath]  emit the opening frames live, then withhold the rest (view/page still serves them)
 //   [drip]       emit steady items over ~200ms so activity-timeout tests can intervene
 //   [context]    emit a session/contextUsage notification
 //   [secretargs] include a secret-bearing key in the toolCall args
@@ -104,6 +105,11 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const interruptedTurns = new Set();
 const approvalWaiters = new Map();
+// Durable-sourced view log: every notification frame in cursor order, including
+// frames withheld from the live stream by [viewdeath]. Served by view/page.
+const viewLog = new Map();
+const silencedTurns = new Set();
+const silencedItems = new Set();
 
 function sessionObject(state, session) {
 	return {
@@ -122,7 +128,30 @@ function sessionObject(state, session) {
 	};
 }
 
+function isSilenced(params) {
+	// Turn id rides top-level on turn/* frames but inside item on item/* frames;
+	// item/delta carries only the item id, tracked from its silenced start.
+	if (params?.turnId && silencedTurns.has(params.turnId)) return true;
+	const item = params?.item;
+	if (item && typeof item === "object") {
+		if (item.turnId && silencedTurns.has(item.turnId)) {
+			if (typeof item.itemId === "string") silencedItems.add(item.itemId);
+			return true;
+		}
+		if (typeof item.itemId === "string" && silencedItems.has(item.itemId)) return true;
+	}
+	return typeof params?.itemId === "string" && silencedItems.has(params.itemId);
+}
+
 function notify(method, params) {
+	if (params?.sessionId) {
+		const log = viewLog.get(params.sessionId) ?? [];
+		log.push({ method, params });
+		viewLog.set(params.sessionId, log);
+	}
+	// A [viewdeath] turn keeps recording (the durable log grows) but stops
+	// pushing: the client must reconcile via session/read + view/page.
+	if (isSilenced(params)) return;
 	process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
 }
 
@@ -141,6 +170,7 @@ async function runTurn(sessionId, turnId, text) {
 		fail: text.includes("[fail]"),
 		slow: text.includes("[slow]"),
 		hang: text.includes("[hang]"),
+		viewDeath: text.includes("[viewdeath]"),
 		drip: text.includes("[drip]"),
 		context: text.includes("[context]"),
 		secretArgs: text.includes("[secretargs]"),
@@ -180,6 +210,11 @@ async function runTurn(sessionId, turnId, text) {
 		sourceRange: range(),
 		viewCursor: nextCursor(sessionId),
 	});
+	if (scripted.viewDeath) {
+		// Incident shape: the opening frames went out live, then the view died
+		// mid-turn. Everything from here is recorded but withheld.
+		silencedTurns.add(turnId);
+	}
 
 	if (scripted.reasoning) {
 		const reasoningId = `item-${turnId}-reasoning`;
@@ -287,6 +322,11 @@ async function runTurn(sessionId, turnId, text) {
 			windowTokens: 100_000,
 		});
 	}
+	if (scripted.viewDeath) {
+		// Hold the silence across several client poll windows so tests observe
+		// repeated backfill, then finish natively (silently).
+		await delay(350);
+	}
 	if (scripted.fail) return finishTurn(sessionId, turnId, "failed");
 	return finishTurn(sessionId, turnId, "completed");
 }
@@ -391,6 +431,23 @@ const handlers = {
 			session: sessionObject(state, session),
 			viewCursor: "1",
 		};
+	},
+	"view/page": (params, id) => {
+		const state = load();
+		if (!state.sessions[params.sessionId]) {
+			respondError(id, "sessionNotFound", `session ${params.sessionId} not found`);
+			return undefined;
+		}
+		const log = viewLog.get(params.sessionId) ?? [];
+		const from = params.cursor === undefined ? 0 : Number(params.cursor);
+		const start = Number.isFinite(from) ? from : 0;
+		const limit = Math.min(Math.max(Number(params.limit) || 200, 1), 1000);
+		const events = log
+			.filter((entry) => Number(entry.params.viewCursor) > start)
+			.slice(0, limit)
+			.map((entry) => ({ method: entry.method, params: entry.params }));
+		const last = events.at(-1);
+		return { events, nextCursor: last ? last.params.viewCursor : null };
 	},
 	"session/list": (params, id) => {
 		if (!grantedCapabilities.includes("sessionListStream")) {

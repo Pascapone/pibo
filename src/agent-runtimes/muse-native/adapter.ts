@@ -68,7 +68,7 @@ import {
 	MUSE_PROTOCOL_VERSION,
 	MUSE_NATIVE_ADAPTER_VERSION,
 } from "./protocol-version.js";
-import { MUSE_FALLBACK_TOOL_NAME, MuseNativeTurnController } from "./turn.js";
+import { MUSE_FALLBACK_TOOL_NAME, MuseNativeTurnController, type MuseTurnRecoveryOptions } from "./turn.js";
 import { MuseNativeRequestController } from "./requests.js";
 import {
 	MUSE_TURN_PREFIX_DELIVERY_MODE,
@@ -407,6 +407,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		binding: RuntimeSessionBinding,
 		private readonly requestTimeoutMs: number,
 		private readonly sandboxInput: MuseNativeSessionSandboxInput,
+		private readonly turnRecovery: { pollMs: number; maxPages: number; abortTimeoutMs: number },
 		pendingResourcePrefix?: { text: string; hash: string },
 	) {
 		this.pendingResourcePrefix = pendingResourcePrefix ? { ...pendingResourcePrefix } : undefined;
@@ -424,6 +425,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			controller.sessionId,
 			requestTimeoutMs,
 			(event) => this.emit(event),
+			this.turnRecoveryOptions(pump, controller.sessionId),
 		);
 		this.requests = new MuseNativeRequestController(controller.session, runtimeInstanceId, (event) => this.emit(event));
 		pump.setObserver((method, params) => this.observeNotification(method, params));
@@ -641,6 +643,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			result.controller.sessionId,
 			this.requestTimeoutMs,
 			(event) => this.emit(event),
+			this.turnRecoveryOptions(this.pump, result.controller.sessionId),
 		);
 		this.requests = new MuseNativeRequestController(result.controller.session, this.runtimeInstanceId, (event) => this.emit(event));
 		this.promoteBindingFromCurrentSession();
@@ -715,6 +718,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			next.sessionId,
 			this.requestTimeoutMs,
 			(event) => this.emit(event),
+			this.turnRecoveryOptions(this.pump, next.sessionId),
 		);
 		this.requests = new MuseNativeRequestController(next.session, this.runtimeInstanceId, (event) => this.emit(event));
 		this.promoteBindingFromCurrentSession();
@@ -802,6 +806,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				nextController.sessionId,
 				this.requestTimeoutMs,
 				(event) => this.emit(event),
+				this.turnRecoveryOptions(nextPump, nextController.sessionId),
 			);
 			this.requests = new MuseNativeRequestController(nextController.session, this.runtimeInstanceId, (event) => this.emit(event));
 			nextPump.setObserver((method, params) => this.observeNotification(method, params));
@@ -821,6 +826,15 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			await nextHost.close().catch(() => {});
 			throw error;
 		}
+	}
+
+	private turnRecoveryOptions(pump: MuseNativeConnectionPump, sessionId: string): MuseTurnRecoveryOptions {
+		return {
+			pollMs: this.turnRecovery.pollMs,
+			maxPages: this.turnRecovery.maxPages,
+			abortTimeoutMs: this.turnRecovery.abortTimeoutMs,
+			lastViewCursor: () => pump.lastViewCursor(sessionId),
+		};
 	}
 
 	private observeNotification(method: string, params: unknown): void {
@@ -1167,6 +1181,11 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				{
 					config: this.config,
 					...(persisted.sandboxOverride ? { override: persisted.sandboxOverride } : {}),
+				},
+				{
+					pollMs: this.config.viewRecoveryPollMs,
+					maxPages: this.config.viewRecoveryMaxPages,
+					abortTimeoutMs: this.config.abortTimeoutMs,
 				},
 				pendingResourcePrefix,
 			);

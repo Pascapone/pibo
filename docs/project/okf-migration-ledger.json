@@ -18,6 +18,42 @@
   },
   "records": [
     {
+      "path": "docs/reports/agent-designer-revert-escape-validation-2026-09-19.md",
+      "state": "conformant",
+      "classification": "Agent Designer revert escape validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/muse-native-view-recovery-validation-2026-09-19.md",
+      "state": "conformant",
+      "classification": "Muse-native view recovery implementation and validation",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/muse-native-session-settlement-detection-2026-09-19.md",
+      "state": "conformant",
+      "classification": "Muse-native session settlement detection and recovery evidence",
+      "type": "Investigation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/okf-validator-performance-optimization-2026-09-19.md",
+      "state": "conformant",
+      "classification": "OKF validator performance optimization validation",
+      "type": "Validation Report",
+      "authority": "evidentiary",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/muse-native-session-settlement-investigation-2026-09-19.md",
       "state": "conformant",
       "classification": "Muse-native session settlement incident investigation",

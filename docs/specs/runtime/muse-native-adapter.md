@@ -144,6 +144,27 @@ traceability:
         - "The same native session id and selected session MCP configuration survive the replacement host resume."
         - "The explicit toggle override persists in binding metadata and wins when the Pibo Session reopens."
       confidence: "high"
+    - id: "RUN-MUS-008"
+      status: "implemented"
+      sources:
+        - path: "src/agent-runtimes/muse-native/turn.ts"
+          symbol: "MuseNativeTurnController"
+        - path: "src/agent-runtimes/muse-native/sessions.ts"
+          symbol: "MuseNativeConnectionPump"
+      tests:
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native view-death turn recovers via page walk and settles"
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native abort settles a stuck turn within the abort bound"
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native turn fails fast when the native turn is over but unrecoverable"
+        - path: "test/muse-native-session.test.mjs"
+          name: "Muse native connection pump tracks the last live view cursor"
+      failures:
+        - "Silence windows reconcile via session/read before failing; running turns backfill and re-arm."
+        - "Recovered terminals settle through the normal terminal path with one reconciling and one recovered notice."
+        - "Unrecoverable finished turns fail fast; abort settles locally once the abort bound expires."
+      confidence: "high"
 ---
 
 # Scope
@@ -156,7 +177,7 @@ Planned changes and behavior owned by related concepts are outside its normative
 
 - Lifecycle: The adapter spawns one `muse serve` host per runtime generation through `@muse-code/sdk` 1.3.0, completes the MSP handshake before other traffic, opens exactly one native session per host (start or resume), pumps view notifications into the SDK fold, and closes the host idempotently on dispose. The handshake requests the `sessionMcp` and `sessionListStream` capabilities; session start fails explicitly when MCP config is selected but the `sessionMcp` grant is withheld.
 - State: Profile and instance are muse-native; the validated SDK/CLI pin is 1.3.0 with protocol muse-session-protocol; native session identity is persisted for resume.
-- Turns: Prompts submit `turn/start` with text input and per-turn reasoning effort; deltas, items, usage, and terminals map to normalized semantic events. Steering submits on the steer lane while a turn runs; abort issues `turn/interrupt`. The turn timeout is idle-based: streamed items and deltas extend the `requestTimeoutMs` budget, and only silence trips it. A silent window triggers an `approval/listPending` host liveness probe; a responsive host earns up to three windows total (provider retry backoff stays silent on the turn streams), while an unresponsive host fails at the first window. The timeout message reports total silence and host responsiveness. The default `requestTimeoutMs` is 30 minutes with a 30-minute ceiling; long silent-but-healthy work such as builds and test suites is expected to fit one window.
+- Turns: Prompts submit `turn/start` with text input and per-turn reasoning effort; deltas, items, usage, and terminals map to normalized semantic events. Steering submits on the steer lane while a turn runs; abort issues `turn/interrupt`. The turn timeout is idle-based: streamed items and deltas extend the `requestTimeoutMs` budget, and only silence trips it. Each silence window (default 60s poll, never coarser than `requestTimeoutMs`) first reconciles authoritatively via `session/read`: a still-running native turn is backfilled from `view/page` starting at the last live cursor and re-arms; a natively finished turn is recovered the same way and settles through the normal terminal path; only an unreadable host falls back to the `approval/listPending` liveness probe. A responsive host earns up to three `requestTimeoutMs` of total silence (provider retry backoff stays silent on the turn streams), while an unresponsive host fails at the first window; a natively finished turn whose terminal cannot be reconciled fails fast after one retry window. Recovery announces itself with one `reconciling` line and, on success, one `recovered` line (warning plus reasoning text), and reports per-check telemetry as a redacted `native_event`. Abort waits for native settlement only up to `abortTimeoutMs` (default 15s), then settles locally as cancelled with an honest line. The timeout message reports total silence and host responsiveness. The default `requestTimeoutMs` is 30 minutes with a 30-minute ceiling; long silent-but-healthy work such as builds and test suites is expected to fit one window.
 - Approvals: Native approval requests park in the adapter until Pibo responds with a server-offered choice; disposal aborts parked approvals explicitly.
 - Models: The catalog reads `model/list`; in-session switches use `session/setModel`; reasoning defaults sync with `session/setReasoningEffort` while per-turn options always carry the selected value.
 - Profiles: `runtimeOptions.approvalMode` and `runtimeOptions.sandbox` (`auto`, `enabled`, or `disabled`) are exposed through the models `optionsSchema` and applied at session start. The profile thinking level seeds the initial reasoning effort (`off` maps to `none`); persisted session settings take precedence on resume. Mid-session reasoning changes accept `off` as `none`, matching the seed mapping.
@@ -196,6 +217,10 @@ Muse Native SHALL expose a model-authored tool `description` as normalized inten
 ## Requirement: RUN-MUS-007
 
 Muse Native SHALL expose validated profile sandbox options and an idle-only runtime sandbox toggle that replaces the host without replacing the native session, retains selected session MCP delivery, persists the explicit Session override, and leaves the current host and binding untouched when replacement startup or resume fails.
+
+## Requirement: RUN-MUS-008
+
+Muse Native SHALL reconcile a silent turn authoritatively before failing it: check the native turn state via `session/read`, backfill missed view frames via bounded `view/page` walks from the last live cursor, fold each cursor at most once, settle a recovered terminal through the normal terminal path with one `reconciling` and one `recovered` notice, fail fast when a natively finished turn stays unrecoverable, and bound abort settlement before forcing local cancellation.
 
 # Interfaces and ownership
 

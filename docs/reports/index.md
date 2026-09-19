@@ -4,6 +4,7 @@
 
 ## Concepts
 
+* [Agent Designer revert escape validation](agent-designer-revert-escape-validation-2026-09-19.md) - Records the revert&#45;to&#45;saved escape hatch that unblocks navigation and tab close when Agent Designer autosave cannot persist an invalid draft&#46;
 * [Agent Runtime Adapter Authoring Skill Validation — 2026&#45;08&#45;15](runtime-adapter-authoring-skill-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Agent Runtime Foundation Validation](agent-runtime-foundation-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Archon&#45;Recherchebericht für Pibo Workflow System V1](2026-05-10-workflow-research-archon.md) - Preserves the original report body as stable research without promoting historical claims&#46;
@@ -43,7 +44,9 @@
 * [Multi&#45;Agent Runtime Adapter Architecture Investigation](multi-agent-runtime-adapter-architecture-investigation-2026-08-14.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Multi&#45;Agent Runtime Adapter Final Audit](multi-agent-runtime-adapter-final-audit-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Multi&#45;Agent Runtime Adapter Integrated Validation](multi-agent-runtime-adapter-integrated-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [Muse&#45;native session settlement detection report](muse-native-session-settlement-detection-2026-09-19.md) - Proves the host&#45;side view&#45;death trigger, SDK buffering mechanics, and viable Pibo recovery paths for Muse&#45;native turns stuck on running&#46;
 * [Muse&#45;native session settlement investigation](muse-native-session-settlement-investigation-2026-09-19.md) - Consolidates the evidence, causal assessment, and unresolved hypotheses for Muse&#45;native turns that remained running after native completion&#46;
+* [Muse&#45;native view recovery validation](muse-native-view-recovery-validation-2026-09-19.md) - Live and deterministic validation of automatic view&#45;death recovery for Muse&#45;native turns&#46;
 * [Native Codex Approval and User&#45;Input Validation — 2026&#45;08&#45;15](codex-native-request-lifecycle-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Native Codex Deterministic Contract Matrix Validation — 2026&#45;08&#45;16](codex-native-deterministic-contract-matrix-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Native Codex Model, Options, and Context&#45;Usage Validation — 2026&#45;08&#45;15](codex-native-model-options-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
@@ -52,6 +55,7 @@
 * [Native Codex Resource Delivery Validation — 2026&#45;08&#45;16](codex-native-resource-delivery-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Native Codex Tool Preservation and Inspection Validation — 2026&#45;08&#45;16](codex-native-tool-inventory-validation-2026-08-16.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Native Codex Turn Lifecycle Validation — 2026&#45;08&#45;15](codex-native-turn-lifecycle-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
+* [OKF validator performance optimization — September 19, 2026](okf-validator-performance-optimization-2026-09-19.md) - Records batched Git evidence checks and filesystem memoization that cut OKF validation time by an order of magnitude with byte&#45;identical diagnostics&#46;
 * [OMP RPC Server — JSON&#45;lines&#45;over&#45;stdio Protocol &#40;reference&#41;](omp-rpc-protocol.md) - Preserves the original report body as stable research without promoting historical claims&#46;
 * [Oh My Pi &#40;OMP&#41; as Pibo Runtime — Final Audit Report](omp-runtime-final-audit-2026-08-17.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [PR 996 cache observability review and Pibo2 acceptance](cache-observability-pr996-review-2026-09-09.md) - Records the corrected inference ordering defect and Docker and Pibo2 validation of provider cache diagnostics&#46;
