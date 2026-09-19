@@ -17,6 +17,9 @@ test("muse native default config selects the muse executable and on-request appr
 	assert.equal(config.startupTimeoutMs, 10_000);
 	assert.equal(config.requestTimeoutMs, 1_800_000);
 	assert.equal(config.shutdownTimeoutMs, 2_000);
+	assert.equal(config.viewRecoveryPollMs, 60_000);
+	assert.equal(config.viewRecoveryMaxPages, 25);
+	assert.equal(config.abortTimeoutMs, 15_000);
 	assert.ok(config.homeRoot.length > 0);
 	assert.ok(config.environmentAllowlist.includes("PATH"));
 });
@@ -30,6 +33,9 @@ test("muse native config parsing accepts overrides and rejects invalid values", 
 		sandbox: "disabled",
 		experimentalSdkGate: false,
 		requestTimeoutMs: 30_000,
+		viewRecoveryPollMs: 10_000,
+		viewRecoveryMaxPages: 10,
+		abortTimeoutMs: 5_000,
 	});
 	assert.equal(config.executable, "/usr/local/bin/muse");
 	assert.equal(config.homeRoot, homeRoot);
@@ -37,6 +43,9 @@ test("muse native config parsing accepts overrides and rejects invalid values", 
 	assert.equal(config.sandbox, "disabled");
 	assert.equal(config.experimentalSdkGate, false);
 	assert.equal(config.requestTimeoutMs, 30_000);
+	assert.equal(config.viewRecoveryPollMs, 10_000);
+	assert.equal(config.viewRecoveryMaxPages, 10);
+	assert.equal(config.abortTimeoutMs, 5_000);
 
 	assert.throws(() => parseMuseNativeRuntimeConfig({ unknownField: true }), /unsupported config field/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ approvalMode: "sometimes" }), /approvalMode/);
@@ -45,6 +54,10 @@ test("muse native config parsing accepts overrides and rejects invalid values", 
 	assert.throws(() => parseMuseNativeRuntimeConfig({ homeRoot: "relative/path" }), /absolute path/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ requestTimeoutMs: 0 }), /requestTimeoutMs/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ requestTimeoutMs: 31 * 60 * 1_000 }), /requestTimeoutMs/);
+	assert.throws(() => parseMuseNativeRuntimeConfig({ viewRecoveryPollMs: 1_000 }), /viewRecoveryPollMs/);
+	assert.throws(() => parseMuseNativeRuntimeConfig({ viewRecoveryMaxPages: 0 }), /viewRecoveryMaxPages/);
+	assert.throws(() => parseMuseNativeRuntimeConfig({ viewRecoveryMaxPages: 201 }), /viewRecoveryMaxPages/);
+	assert.throws(() => parseMuseNativeRuntimeConfig({ abortTimeoutMs: 500 }), /abortTimeoutMs/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ environmentAllowlist: ["HOME"] }), /reserved key/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ environmentAllowlist: ["MUSE_EXPERIMENTAL_SDK_ENABLED"] }), /reserved key/);
 	assert.throws(() => parseMuseNativeRuntimeConfig({ environmentAllowlist: ["PATH", "path"] }), /duplicate key/);

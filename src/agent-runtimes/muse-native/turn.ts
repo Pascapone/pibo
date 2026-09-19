@@ -20,6 +20,10 @@ const MAX_ARGS_CHARS = 16 * 1024;
 const MAX_SILENT_WINDOWS = 3;
 const LIVENESS_PROBE_TIMEOUT_MS = 10_000;
 const LIVENESS_PROBE_MIN_TIMEOUT_MS = 1_000;
+// Authoritative recovery checks (session/read, view/page) must answer quickly:
+// they run inside a silence window and must never extend it materially.
+const RECOVERY_REQUEST_TIMEOUT_MS = 15_000;
+const RECOVERY_PAGE_LIMIT = 200;
 
 export const MUSE_FALLBACK_TOOL_NAME = "muse-tool";
 
@@ -125,8 +129,27 @@ export class MuseNativeTurnProtocolError extends Error {
 	}
 }
 
+function isAbortOutcome(outcome: unknown): outcome is { kind: "__aborted" } {
+	return !!outcome && typeof outcome === "object" && (outcome as { kind?: unknown }).kind === "__aborted";
+}
+
+export type MuseTurnRecoveryOptions = {
+	/** Silence interval between authoritative view checks. Defaults to 60_000. */
+	pollMs?: number;
+	/** Maximum view/page requests per check. Defaults to 25. */
+	maxPages?: number;
+	/** Bound for abort settlement before forcing local cancellation. Defaults to 15_000. */
+	abortTimeoutMs?: number;
+	/** Last live view cursor observed for this session, when known. */
+	lastViewCursor?: () => string | undefined;
+};
+
+const DEFAULT_RECOVERY_POLL_MS = 60_000;
+const DEFAULT_RECOVERY_MAX_PAGES = 25;
+const DEFAULT_ABORT_TIMEOUT_MS = 15_000;
+
 export class MuseNativeTurnController {
-	private active: { turn: Turn; turnId: string; finished: Deferred<void> } | undefined;
+	private active: { turn: Turn; turnId: string; finished: Deferred<void>; forceSettle: () => Promise<void> } | undefined;
 	private disposed = false;
 
 	constructor(
@@ -135,6 +158,7 @@ export class MuseNativeTurnController {
 		private readonly sessionId: string,
 		private readonly requestTimeoutMs: number,
 		private readonly emit: (event: AgentRuntimeSemanticEvent) => void,
+		private readonly recovery: MuseTurnRecoveryOptions = {},
 	) {}
 
 	get streaming(): boolean {
@@ -187,6 +211,13 @@ export class MuseNativeTurnController {
 		} catch {
 			// Best effort: an already-settled turn reports through its terminal below.
 		}
+		const abortMs = this.recovery.abortTimeoutMs ?? DEFAULT_ABORT_TIMEOUT_MS;
+		const settled = await withTimeout(
+			active.finished.promise.then(() => true as const),
+			abortMs,
+			"Muse abort settlement timed out.",
+		).catch(() => false as const);
+		if (!settled) await active.forceSettle();
 		await active.finished.promise.catch(() => {});
 	}
 
@@ -207,7 +238,13 @@ export class MuseNativeTurnController {
 	private async followTurn(turn: Turn, promptText: string): Promise<void> {
 		const turnId = turn.turnId;
 		const finished = deferred<void>();
-		this.active = { turn, turnId, finished };
+		// Short polls detect a dead view within about a minute; the outer budget
+		// preserves the previous worst case (three request windows of no activity
+		// at all, live or recovered).
+		const windowMs = Math.min(this.recovery.pollMs ?? DEFAULT_RECOVERY_POLL_MS, this.requestTimeoutMs);
+		const outerBudgetMs = MAX_SILENT_WINDOWS * this.requestTimeoutMs;
+		const readTimeoutMs = Math.min(RECOVERY_REQUEST_TIMEOUT_MS, Math.max(LIVENESS_PROBE_MIN_TIMEOUT_MS, this.requestTimeoutMs));
+		const maxPages = this.recovery.maxPages ?? DEFAULT_RECOVERY_MAX_PAGES;
 		this.emit({ type: "turn_started", turnId });
 		const seenItems = new Map<string, string>();
 		const completedTools = new Set<string>();
@@ -215,8 +252,21 @@ export class MuseNativeTurnController {
 		let settled = false;
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let rejectTimeout: ((error: Error) => void) | undefined;
-		let silentWindows = 0;
+		let abortResolve: ((value: { kind: "__aborted" }) => void) | undefined;
+		const aborted = new Promise<{ kind: "__aborted" }>((resolve) => {
+			abortResolve = resolve;
+		});
+		let silentMs = 0;
 		let activityGeneration = 0;
+		let recoveryAnnounced = false;
+		let gapStallWarned = false;
+		let recoveredTotal = 0;
+		let nativeOverWithoutTerminal = false;
+		let recoveryCursor: string | undefined;
+		const recoveredCursors = new Set<string>();
+		let suppressActivity = false;
+		let itemIter: AsyncIterableIterator<unknown> | undefined;
+		let deltaIter: AsyncIterableIterator<unknown> | undefined;
 		const timeout = new Promise<never>((_resolve, reject) => {
 			rejectTimeout = reject;
 		});
@@ -224,41 +274,284 @@ export class MuseNativeTurnController {
 		const failSilent = (hostAlive: boolean): void => {
 			settled = true;
 			void this.connection.command("turn/interrupt", { sessionId: this.sessionId, turnId }).catch(() => {});
-			const totalSilenceMs = silentWindows * this.requestTimeoutMs;
-			rejectTimeout?.(new Error(`Muse turn timed out after ${totalSilenceMs}ms without activity for prompt "${boundedText(promptText).slice(0, 120)}" (host ${hostAlive ? "responsive" : "unresponsive"}).`));
+			rejectTimeout?.(new Error(`Muse turn timed out after ${silentMs}ms without activity for prompt "${boundedText(promptText).slice(0, 120)}" (host ${hostAlive ? "responsive" : "unresponsive"}).`));
+		};
+		const announce = (line: string): void => {
+			this.emit({ type: "warning", message: line });
+			this.emit({ type: "reasoning_started" });
+			this.emit({ type: "reasoning_finished", text: line });
+		};
+		const readNativeTurnState = async (): Promise<{ activeTurnId: string | null } | undefined> => {
+			let result: Record<string, unknown>;
+			try {
+				result = await withTimeout(
+					this.connection.request("session/read", { sessionId: this.sessionId }),
+					readTimeoutMs,
+					"Muse session read timed out.",
+				);
+			} catch (error) {
+				// A gone native session can never settle this turn; anything else is
+				// indeterminate and falls back to the liveness probe below.
+				if (error instanceof MspError && (error as { kind?: unknown }).kind === "sessionNotFound") {
+					throw new MuseNativeTurnProtocolError(`Muse native session "${this.sessionId}" is gone; turn "${turnId}" cannot settle.`);
+				}
+				return undefined;
+			}
+			const session = result.session;
+			if (!session || typeof session !== "object") return undefined;
+			const activeTurnId = (session as Record<string, unknown>).activeTurnId;
+			if (activeTurnId !== null && typeof activeTurnId !== "string") return undefined;
+			return { activeTurnId };
+		};
+		const foldRecoveredPage = (events: unknown): { frames: number; terminal: boolean; stalled: boolean } => {
+			if (!Array.isArray(events)) return { frames: 0, terminal: false, stalled: false };
+			let frames = 0;
+			let terminal = false;
+			for (const event of events) {
+				if (!event || typeof event !== "object") continue;
+				const record = event as { method?: unknown; params?: unknown };
+				if (typeof record.method !== "string") continue;
+				// Never re-drive submission state: this turn already has a handle.
+				if (record.method === "turn/started") continue;
+				const params = record.params as { turnId?: unknown; viewCursor?: unknown } | undefined;
+				const viewCursor = params?.viewCursor;
+				if (typeof viewCursor === "string" && viewCursor) {
+					// Repeated walks overlap; fold each cursor once so progress
+					// updates are never replayed and counts stay honest.
+					if (recoveredCursors.has(viewCursor)) continue;
+					recoveredCursors.add(viewCursor);
+					if (recoveredCursors.size > 5_000) {
+						const oldest = recoveredCursors.values().next();
+						if (!oldest.done) recoveredCursors.delete(oldest.value);
+					}
+				}
+				let outcome: { fold?: { kind?: string } };
+				try {
+					outcome = this.session.apply({ method: record.method, params: record.params }) as { fold?: { kind?: string } };
+				} catch {
+					continue;
+				}
+				if (outcome?.fold?.kind === "bufferedDuringGap") {
+					// Not folded; a later walk must see this cursor again.
+					if (typeof viewCursor === "string" && viewCursor) recoveredCursors.delete(viewCursor);
+					return { frames, terminal, stalled: true };
+				}
+				frames += 1;
+				if (record.method === "turn/completed" && params?.turnId === turnId) {
+					terminal = true;
+					break;
+				}
+			}
+			return { frames, terminal, stalled: false };
+		};
+		const walkView = async (startCursor: string | undefined): Promise<{ frames: number; terminal: boolean; stalled: boolean; pages: number; lastCursor: string | undefined }> => {
+			let cursor = startCursor;
+			let lastCursor = startCursor;
+			let triedScratch = startCursor === undefined;
+			let frames = 0;
+			let terminal = false;
+			let stalled = false;
+			let pages = 0;
+			for (;;) {
+				if (settled || pages >= maxPages) break;
+				pages += 1;
+				let result: Record<string, unknown>;
+				try {
+					result = await withTimeout(
+						this.connection.request("view/page", {
+							sessionId: this.sessionId,
+							...(cursor ? { cursor } : {}),
+							limit: RECOVERY_PAGE_LIMIT,
+						}),
+						readTimeoutMs,
+						"Muse view page timed out.",
+					);
+				} catch {
+					// A cursor the host cannot resolve (e.g. past a dead projection
+					// head) falls back to one walk from the beginning.
+					if (!triedScratch) {
+						triedScratch = true;
+						cursor = undefined;
+						continue;
+					}
+					break;
+				}
+				if (!Array.isArray(result.events) || (result.nextCursor !== null && typeof result.nextCursor !== "string")) {
+					if (!triedScratch) {
+						triedScratch = true;
+						cursor = undefined;
+						continue;
+					}
+					break;
+				}
+				const folded = foldRecoveredPage(result.events);
+				frames += folded.frames;
+				if (folded.stalled) {
+					stalled = true;
+					break;
+				}
+				if (folded.terminal) {
+					terminal = true;
+					break;
+				}
+				const next = result.nextCursor;
+				if (next === null || !next || next === cursor) break;
+				cursor = next;
+				lastCursor = next;
+			}
+			return { frames, terminal, stalled, pages, lastCursor };
+		};
+		const reconcile = async (probeGeneration: number): Promise<void> => {
+			let read: { activeTurnId: string | null } | undefined;
+			try {
+				read = await readNativeTurnState();
+			} catch (error) {
+				if (!settled && probeGeneration === activityGeneration) {
+					settled = true;
+					rejectTimeout?.(error instanceof Error ? error : new Error("Muse turn failed."));
+				}
+				return;
+			}
+			if (settled || probeGeneration !== activityGeneration) return;
+			if (read) {
+				const nativeRunning = read.activeTurnId === turnId;
+				// Recovered frames route through the pumps, which would re-arm the
+				// window and invalidate this generation before the walk is judged.
+				// Suppress accounting during the walk; live frames that arrive
+				// meanwhile are still applied, only their bookkeeping is deferred.
+				suppressActivity = true;
+				const liveBefore = this.recovery.lastViewCursor?.();
+				const walked = await walkView(recoveryCursor ?? liveBefore);
+				// Recovered frames bypass the pump, so only a live arrival moves
+				// this cursor; a revived stream wins over any recovery verdict.
+				const liveRevived = this.recovery.lastViewCursor?.() !== liveBefore;
+				suppressActivity = false;
+				if (settled) return;
+				if (walked.lastCursor) recoveryCursor = walked.lastCursor;
+				if (liveRevived) {
+					noteActivity();
+					return;
+				}
+				if (probeGeneration !== activityGeneration) return;
+				recoveredTotal += walked.frames;
+				if (walked.frames > 0 || !nativeRunning || walked.stalled) {
+					this.emit({
+						type: "native_event",
+						event: {
+							kind: "muse-view-recovery",
+							turnId,
+							nativeRunning,
+							pages: walked.pages,
+							frames: walked.frames,
+							terminalFound: walked.terminal,
+							stalledBehindGap: walked.stalled,
+						},
+						redacted: true,
+					});
+				}
+				if (walked.stalled) {
+					if (!gapStallWarned) {
+						gapStallWarned = true;
+						this.emit({ type: "warning", message: "Muse view recovery stalled behind gap fill; waiting for the live stream to resume." });
+					}
+					silentMs += windowMs;
+					if (silentMs >= outerBudgetMs) {
+						failSilent(true);
+						return;
+					}
+					armWindow();
+					return;
+				}
+				if ((walked.frames > 0 || !nativeRunning) && !recoveryAnnounced) {
+					recoveryAnnounced = true;
+					announce("Muse view stream stalled — reconciling missed events…");
+				}
+				if (walked.terminal) {
+					announce(recoveredTotal === 1
+						? "Muse view stream recovered — replayed 1 missed event."
+						: `Muse view stream recovered — replayed ${recoveredTotal} missed events.`);
+					noteActivity();
+					return;
+				}
+				if (nativeRunning) {
+					if (walked.frames > 0) {
+						noteActivity();
+						return;
+					}
+					silentMs += windowMs;
+					if (silentMs >= outerBudgetMs) {
+						failSilent(true);
+						return;
+					}
+					armWindow();
+					return;
+				}
+				// The native turn is over but its terminal was not recovered yet;
+				// one more window covers a read/walk race before failing fast.
+				if (!nativeOverWithoutTerminal) {
+					nativeOverWithoutTerminal = true;
+					silentMs += windowMs;
+					armWindow();
+					return;
+				}
+				settled = true;
+				rejectTimeout?.(new Error(`Muse turn "${turnId}" ended natively but its terminal could not be reconciled (view unavailable); replayed ${recoveredTotal} missed events.`));
+				return;
+			}
+			let hostAlive = false;
+			try {
+				await withTimeout(this.connection.command("approval/listPending", { sessionId: this.sessionId }), livenessProbeTimeoutMs, "Muse host liveness probe timed out.");
+				hostAlive = true;
+			} catch (error) {
+				// Any host-authored error response proves the host is alive; only transport/timeout failure means dead.
+				hostAlive = error instanceof MspError;
+			}
+			if (settled || probeGeneration !== activityGeneration) return;
+			silentMs += windowMs;
+			if (hostAlive && silentMs < outerBudgetMs) {
+				armWindow();
+				return;
+			}
+			failSilent(hostAlive);
 		};
 		const armWindow = (): void => {
 			if (timer) clearTimeout(timer);
 			activityGeneration += 1;
+			const probeGeneration = activityGeneration;
 			timer = setTimeout(() => {
-				void (async () => {
-					const probeGeneration = activityGeneration;
-					let hostAlive = false;
-					try {
-						await withTimeout(this.connection.command("approval/listPending", { sessionId: this.sessionId }), livenessProbeTimeoutMs, "Muse host liveness probe timed out.");
-						hostAlive = true;
-					} catch (error) {
-						// Any host-authored error response proves the host is alive; only transport/timeout failure means dead.
-						hostAlive = error instanceof MspError;
-					}
-					if (settled || probeGeneration !== activityGeneration) return;
-					silentWindows += 1;
-					if (hostAlive && silentWindows < MAX_SILENT_WINDOWS) {
-						armWindow();
-						return;
-					}
-					failSilent(hostAlive);
-				})();
-			}, this.requestTimeoutMs);
+				void reconcile(probeGeneration);
+			}, windowMs);
 			timer.unref?.();
 		};
 		const noteActivity = (): void => {
 			// Idle budget, not a total budget: a turn doing productive work
 			// across many tool calls must survive; only silence is fatal.
 			if (settled) return;
-			silentWindows = 0;
+			if (suppressActivity) return;
+			silentMs = 0;
+			nativeOverWithoutTerminal = false;
 			armWindow();
 		};
+		const forceSettle = async (): Promise<void> => {
+			if (this.active?.turnId !== turnId) return;
+			settled = true;
+			if (timer) clearTimeout(timer);
+			for (const iter of [itemIter, deltaIter]) {
+				try {
+					await iter?.return?.();
+				} catch {
+					// Already ended.
+				}
+			}
+			if (this.active?.turnId === turnId) this.active = undefined;
+			this.emit({ type: "warning", message: "Muse abort timed out — settled locally as cancelled." });
+			this.emit({ type: "reasoning_started" });
+			this.emit({ type: "reasoning_finished", text: "Muse abort timed out — settled locally as cancelled." });
+			this.emit({ type: "turn_completed", turnId, status: "cancelled" });
+			finished.resolve();
+			abortResolve?.({ kind: "__aborted" });
+		};
+		this.active = { turn, turnId, finished, forceSettle };
 		noteActivity();
 		void finished.promise.finally(() => {
 			settled = true;
@@ -272,7 +565,8 @@ export class MuseNativeTurnController {
 		};
 		try {
 			const itemPump = (async () => {
-				for await (const item of turn.items()) {
+				itemIter = turn.items() as unknown as AsyncIterableIterator<unknown>;
+				for await (const item of itemIter) {
 					noteActivity();
 					try {
 						this.routeItem(item as unknown as Record<string, unknown>, seenItems, completedTools, emittedDiffs);
@@ -285,13 +579,18 @@ export class MuseNativeTurnController {
 				}
 			})();
 			const deltaPump = (async () => {
-				for await (const delta of turn.deltas()) {
+				deltaIter = turn.deltas() as unknown as AsyncIterableIterator<unknown>;
+				for await (const delta of deltaIter) {
 					noteActivity();
 					this.routeDelta(delta as unknown as { itemId?: unknown; field?: unknown; delta?: unknown });
 				}
 			})();
-			const outcome = await Promise.race([turn.completed, timeout]);
+			const outcome = await Promise.race([turn.completed, timeout, aborted]);
 			settled = true;
+			if (isAbortOutcome(outcome)) {
+				// forceSettle already emitted the terminal and resolved finished.
+				return;
+			}
 			await Promise.allSettled([itemPump, deltaPump]);
 			if (this.active?.turnId === turnId) this.active = undefined;
 			if (outcome.kind === "unqueued") {

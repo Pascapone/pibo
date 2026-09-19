@@ -65,6 +65,9 @@ export type MuseNativeRuntimeConfig = PiboJsonObject & {
 	startupTimeoutMs: number;
 	requestTimeoutMs: number;
 	shutdownTimeoutMs: number;
+	viewRecoveryPollMs: number;
+	viewRecoveryMaxPages: number;
+	abortTimeoutMs: number;
 };
 
 export const MUSE_NATIVE_RUNTIME_CONFIG_SCHEMA: PiboJsonObject = {
@@ -85,6 +88,9 @@ export const MUSE_NATIVE_RUNTIME_CONFIG_SCHEMA: PiboJsonObject = {
 		startupTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 10_000 },
 		requestTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 1_800_000 },
 		shutdownTimeoutMs: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_MS, default: 2_000 },
+		viewRecoveryPollMs: { type: "integer", minimum: 5_000, maximum: MAX_TIMEOUT_MS, default: 60_000 },
+		viewRecoveryMaxPages: { type: "integer", minimum: 1, maximum: 200, default: 25 },
+		abortTimeoutMs: { type: "integer", minimum: 1_000, maximum: MAX_TIMEOUT_MS, default: 15_000 },
 	},
 };
 
@@ -100,13 +106,24 @@ export function defaultMuseNativeRuntimeConfig(): MuseNativeRuntimeConfig {
 		startupTimeoutMs: 10_000,
 		requestTimeoutMs: 1_800_000,
 		shutdownTimeoutMs: 2_000,
+		viewRecoveryPollMs: 60_000,
+		viewRecoveryMaxPages: 25,
+		abortTimeoutMs: 15_000,
 	};
 }
 
-function timeout(value: unknown, fallback: number, label: string, maximum = MAX_TIMEOUT_MS): number {
+function timeout(value: unknown, fallback: number, label: string, maximum = MAX_TIMEOUT_MS, minimum = 1): number {
 	const selected = value ?? fallback;
-	if (!Number.isSafeInteger(selected) || Number(selected) <= 0 || Number(selected) > maximum) {
-		throw new Error(`${label} must be a positive integer no greater than ${maximum}`);
+	if (!Number.isSafeInteger(selected) || Number(selected) < minimum || Number(selected) > maximum) {
+		throw new Error(`${label} must be an integer between ${minimum} and ${maximum}`);
+	}
+	return Number(selected);
+}
+
+function count(value: unknown, fallback: number, label: string, minimum: number, maximum: number): number {
+	const selected = value ?? fallback;
+	if (!Number.isSafeInteger(selected) || Number(selected) < minimum || Number(selected) > maximum) {
+		throw new Error(`${label} must be an integer between ${minimum} and ${maximum}`);
 	}
 	return Number(selected);
 }
@@ -144,6 +161,9 @@ export function parseMuseNativeRuntimeConfig(value: PiboJsonObject): MuseNativeR
 		"startupTimeoutMs",
 		"requestTimeoutMs",
 		"shutdownTimeoutMs",
+		"viewRecoveryPollMs",
+		"viewRecoveryMaxPages",
+		"abortTimeoutMs",
 	]);
 	const unknown = Object.keys(value).find((key) => !supported.has(key));
 	if (unknown) throw new Error(`unsupported config field "${unknown}"`);
@@ -176,5 +196,8 @@ export function parseMuseNativeRuntimeConfig(value: PiboJsonObject): MuseNativeR
 		startupTimeoutMs: timeout(value.startupTimeoutMs, defaults.startupTimeoutMs, "startupTimeoutMs"),
 		requestTimeoutMs: timeout(value.requestTimeoutMs, defaults.requestTimeoutMs, "requestTimeoutMs"),
 		shutdownTimeoutMs: timeout(value.shutdownTimeoutMs, defaults.shutdownTimeoutMs, "shutdownTimeoutMs"),
+		viewRecoveryPollMs: timeout(value.viewRecoveryPollMs, defaults.viewRecoveryPollMs, "viewRecoveryPollMs", MAX_TIMEOUT_MS, 5_000),
+		viewRecoveryMaxPages: count(value.viewRecoveryMaxPages, defaults.viewRecoveryMaxPages, "viewRecoveryMaxPages", 1, 200),
+		abortTimeoutMs: timeout(value.abortTimeoutMs, defaults.abortTimeoutMs, "abortTimeoutMs", MAX_TIMEOUT_MS, 1_000),
 	};
 }

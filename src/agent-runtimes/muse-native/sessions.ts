@@ -108,6 +108,7 @@ type SdkSessionOpening = NonNullable<ConstructorParameters<typeof Session>[0]["o
 export class MuseNativeConnectionPump {
 	private readonly sessions = new Map<string, Session>();
 	private readonly turnCompletions = new Map<string, { turnId: string; terminal: string; completedAt: string }[]>();
+	private readonly lastViewCursors = new Map<string, string>();
 	private observer: ((method: string, params: unknown) => void) | undefined;
 	readonly completedTurns = new Map<string, string[]>();
 
@@ -128,6 +129,11 @@ export class MuseNativeConnectionPump {
 		this.sessions.delete(sessionId);
 		this.completedTurns.delete(sessionId);
 		this.turnCompletions.delete(sessionId);
+		this.lastViewCursors.delete(sessionId);
+	}
+
+	lastViewCursor(sessionId: string): string | undefined {
+		return this.lastViewCursors.get(sessionId);
 	}
 
 	private route(method: string, params: unknown): void {
@@ -139,6 +145,11 @@ export class MuseNativeConnectionPump {
 		if (!isRecord(params)) return;
 		const sessionId = typeof params.sessionId === "string" ? params.sessionId : undefined;
 		if (!sessionId) return;
+		// Raw arrival order, before fold/buffering: view recovery pages forward
+		// from this cursor when the live stream goes silent.
+		if (typeof params.viewCursor === "string" && params.viewCursor) {
+			this.lastViewCursors.set(sessionId, params.viewCursor);
+		}
 		const session = this.sessions.get(sessionId);
 		if (!session) return;
 		try {
