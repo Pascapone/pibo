@@ -926,8 +926,22 @@ async function readFakeHostArgs(fakeStateDir) {
 }
 
 test("Muse native sandbox toggle restarts the host and preserves the session", async (t) => {
-	const { root, fakeStateDir, disposers } = await testRoot(t);
-	const { session } = await openFreshSession(t, root, "sandbox-toggle", disposers, { sandbox: "enabled" });
+	const { root, fakeStateDir } = await testRoot(t);
+	const { registry, instanceId } = createAdapter(root, "muse-native-sandbox-toggle", { sandbox: "enabled" });
+	const mcpConfigPath = join(root, "mcp-servers.json");
+	await writeFile(mcpConfigPath, `${JSON.stringify({ mcpServers: { external: { url: "http://127.0.0.1:49191/mcp" } } })}\n`);
+	const input = {
+		...openInput(instanceId, root, unboundBinding(instanceId, "ps_muse_sandbox_toggle")),
+		services: {
+			resources: {
+				sessionGeneration: "gen-sandbox-toggle-1",
+				getAdapterEnvironment: () => ({}),
+				getMcpConfigPath: () => mcpConfigPath,
+			},
+		},
+	};
+	const session = await registry.openSession(instanceId, input);
+	t.after(() => session.dispose());
 	assert.deepEqual(session.controls.getSandbox(), { supported: true, enabled: true, mode: "enabled" });
 	assert.deepEqual(session.getStatus().sandbox, { supported: true, enabled: true, mode: "enabled" });
 	const nativeSessionId = session.getBinding().nativeSessionId;
@@ -946,6 +960,8 @@ test("Muse native sandbox toggle restarts the host and preserves the session", a
 	assert.equal(toggledArgs.length, 2);
 	assert.ok(toggledArgs.some((entry) => entry.join(" ") === "serve"));
 	assert.ok(toggledArgs.some((entry) => entry.join(" ") === "serve --disable-sandbox"));
+	const resumedState = await readFakeState(fakeStateDir);
+	assert.equal(resumedState.resumeRequests.at(-1).config.mcpServers.external.transport, "streamableHttp");
 
 	const events = [];
 	session.subscribe((event) => events.push(event));

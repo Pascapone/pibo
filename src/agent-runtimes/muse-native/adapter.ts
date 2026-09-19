@@ -593,6 +593,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				readMuseDurability(this.host.spawned),
 				previous.sessionId,
 				this.cwd,
+				this.resourceDelivery.sessionMcpConfig,
 			),
 			this.requestTimeoutMs,
 			`Muse session re-sync timed out after ${this.requestTimeoutMs}ms.`,
@@ -657,6 +658,14 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			resourceEnvironment: this.resourceDelivery.environment,
 		});
 		try {
+			if (
+				this.resourceDelivery.sessionMcpConfig
+				&& !nextHost.spawned.initializeResult.grantedCapabilities.includes("sessionMcp")
+			) {
+				throw new Error(
+					`Native Muse session MCP configuration requires the sessionMcp capability, which the restarted host for runtime instance "${this.runtimeInstanceId}" did not grant.`,
+				);
+			}
 			const durability = readMuseDurability(nextHost.spawned);
 			const nextPump = new MuseNativeConnectionPump(nextHost.spawned.connection);
 			const nextController = await withTimeout(
@@ -666,6 +675,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 					durability,
 					this.controller.sessionId,
 					this.cwd,
+					this.resourceDelivery.sessionMcpConfig,
 				),
 				this.requestTimeoutMs,
 				`Muse sandbox toggle timed out after ${this.requestTimeoutMs}ms.`,
