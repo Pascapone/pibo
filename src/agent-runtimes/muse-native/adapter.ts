@@ -543,27 +543,21 @@ export class MuseNativeSession implements AgentRuntimeSession {
 
 	private async resyncNativeSession(): Promise<void> {
 		const previous = this.controller;
-		// Detach first: resume() registers the rebuilt SDK session under the
-		// same native id, so the stale fold must be unregistered beforehand.
-		previous.detach();
-		let next: MuseNativeSessionController;
-		try {
-			next = await withTimeout(
-				MuseNativeSessionController.resume(
-					this.host.spawned.connection,
-					this.pump,
-					readMuseDurability(this.host.spawned),
-					previous.sessionId,
-					this.cwd,
-				),
-				this.requestTimeoutMs,
-				`Muse session re-sync timed out after ${this.requestTimeoutMs}ms.`,
-			);
-		} catch (error) {
-			// Roll back to the previous fold so notifications keep routing.
-			this.pump.register(previous.sessionId, previous.session);
-			throw error;
-		}
+		// No detach: resume() overwrites the pump registration under the same
+		// native id, which preserves the per-session completed-turn ledgers
+		// (fork candidates). Until resume succeeds, the previous fold keeps
+		// routing, so a failed re-sync needs no rollback.
+		const next = await withTimeout(
+			MuseNativeSessionController.resume(
+				this.host.spawned.connection,
+				this.pump,
+				readMuseDurability(this.host.spawned),
+				previous.sessionId,
+				this.cwd,
+			),
+			this.requestTimeoutMs,
+			`Muse session re-sync timed out after ${this.requestTimeoutMs}ms.`,
+		);
 		this.turns.dispose();
 		this.requests.dispose();
 		this.controller = next;

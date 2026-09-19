@@ -673,21 +673,23 @@ test("Muse native prompt resyncs and retries a wedged turn intake once", async (
 	const events = [];
 	session.subscribe((event) => events.push(event));
 	const nativeSessionId = session.getBinding().nativeSessionId;
+	await session.prompt({ text: "prime the session", source: "interactive" });
 	await scriptTurnStartFailures(fakeStateDir, { times: 1, kind: "commandRejected", message: WEDGED_INTAKE_MESSAGE });
 
 	await session.prompt({ text: "continue after compaction", source: "interactive" });
 
 	const state = await readFakeState(fakeStateDir);
-	assert.equal(state.turnStartRequests.length, 2);
-	assert.equal(state.turnStartRequests[0].rejected, true);
-	assert.equal(state.turnStartRequests[1].rejected, false);
+	assert.equal(state.turnStartRequests.length, 3);
+	assert.equal(state.turnStartRequests[1].rejected, true);
+	assert.equal(state.turnStartRequests[2].rejected, false);
 	assert.ok(events.some((event) => event.type === "warning" && /re-sync/.test(event.message)));
-	assert.equal(events.filter((event) => event.type === "turn_completed").length, 1);
+	assert.equal(events.filter((event) => event.type === "turn_completed").length, 2);
 	assert.ok(events.some((event) => event.type === "assistant_message" && /fake reply to/.test(event.text)));
 	assert.equal(session.getBinding().nativeSessionId, nativeSessionId);
+	assert.ok(session.controls.getForkCandidates().length >= 1);
 
 	await session.prompt({ text: "steady state", source: "interactive" });
-	assert.equal(events.filter((event) => event.type === "turn_completed").length, 2);
+	assert.equal(events.filter((event) => event.type === "turn_completed").length, 3);
 });
 
 test("Muse native prompt does not retry turn rejections without the wedge signature", async (t) => {
