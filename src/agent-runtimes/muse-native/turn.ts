@@ -259,6 +259,7 @@ export class MuseNativeTurnController {
 		let silentMs = 0;
 		let activityGeneration = 0;
 		let recoveryAnnounced = false;
+		let contradictionAnnounced = false;
 		let gapStallWarned = false;
 		let recoveredTotal = 0;
 		let nativeOverWithoutTerminal = false;
@@ -303,10 +304,11 @@ export class MuseNativeTurnController {
 			if (activeTurnId !== null && typeof activeTurnId !== "string") return undefined;
 			return { activeTurnId };
 		};
-		const foldRecoveredPage = (events: unknown): { frames: number; terminal: boolean; stalled: boolean } => {
-			if (!Array.isArray(events)) return { frames: 0, terminal: false, stalled: false };
+		const foldRecoveredPage = (events: unknown, acceptTerminal: boolean): { frames: number; terminal: boolean; stalled: boolean; contradicted: boolean } => {
+			if (!Array.isArray(events)) return { frames: 0, terminal: false, stalled: false, contradicted: false };
 			let frames = 0;
 			let terminal = false;
+			let contradicted = false;
 			for (const event of events) {
 				if (!event || typeof event !== "object") continue;
 				const record = event as { method?: unknown; params?: unknown };
@@ -315,6 +317,17 @@ export class MuseNativeTurnController {
 				if (record.method === "turn/started") continue;
 				const params = record.params as { turnId?: unknown; viewCursor?: unknown } | undefined;
 				const viewCursor = params?.viewCursor;
+				if (!acceptTerminal && record.method === "turn/completed" && params?.turnId === turnId) {
+					// The authoritative session/read says this turn is still
+					// running: a terminal frame for it is stale, synthetic, or
+					// corrupt and must not settle the turn. Leave the cursor
+					// unconsumed so a later walk re-evaluates it once the
+					// native turn is over (covers a read/walk race where the
+					// terminal is real but landed after the read).
+					if (typeof viewCursor === "string" && viewCursor) recoveredCursors.delete(viewCursor);
+					contradicted = true;
+					continue;
+				}
 				if (typeof viewCursor === "string" && viewCursor) {
 					// Repeated walks overlap; fold each cursor once so progress
 					// updates are never replayed and counts stay honest.
@@ -334,7 +347,7 @@ export class MuseNativeTurnController {
 				if (outcome?.fold?.kind === "bufferedDuringGap") {
 					// Not folded; a later walk must see this cursor again.
 					if (typeof viewCursor === "string" && viewCursor) recoveredCursors.delete(viewCursor);
-					return { frames, terminal, stalled: true };
+					return { frames, terminal, stalled: true, contradicted };
 				}
 				frames += 1;
 				if (record.method === "turn/completed" && params?.turnId === turnId) {
@@ -342,15 +355,16 @@ export class MuseNativeTurnController {
 					break;
 				}
 			}
-			return { frames, terminal, stalled: false };
+			return { frames, terminal, stalled: false, contradicted };
 		};
-		const walkView = async (startCursor: string | undefined): Promise<{ frames: number; terminal: boolean; stalled: boolean; pages: number; lastCursor: string | undefined }> => {
+		const walkView = async (startCursor: string | undefined, acceptTerminal: boolean): Promise<{ frames: number; terminal: boolean; stalled: boolean; contradicted: boolean; pages: number; lastCursor: string | undefined }> => {
 			let cursor = startCursor;
 			let lastCursor = startCursor;
 			let triedScratch = startCursor === undefined;
 			let frames = 0;
 			let terminal = false;
 			let stalled = false;
+			let contradicted = false;
 			let pages = 0;
 			for (;;) {
 				if (settled || pages >= maxPages) break;
@@ -384,8 +398,9 @@ export class MuseNativeTurnController {
 					}
 					break;
 				}
-				const folded = foldRecoveredPage(result.events);
+				const folded = foldRecoveredPage(result.events, acceptTerminal);
 				frames += folded.frames;
+				if (folded.contradicted) contradicted = true;
 				if (folded.stalled) {
 					stalled = true;
 					break;
@@ -399,7 +414,7 @@ export class MuseNativeTurnController {
 				cursor = next;
 				lastCursor = next;
 			}
-			return { frames, terminal, stalled, pages, lastCursor };
+			return { frames, terminal, stalled, contradicted, pages, lastCursor };
 		};
 		const reconcile = async (probeGeneration: number): Promise<void> => {
 			let read: { activeTurnId: string | null } | undefined;
@@ -421,7 +436,11 @@ export class MuseNativeTurnController {
 				// meanwhile are still applied, only their bookkeeping is deferred.
 				suppressActivity = true;
 				const liveBefore = this.recovery.lastViewCursor?.();
-				const walked = await walkView(recoveryCursor ?? liveBefore);
+				// A recovered terminal settles the turn only when the
+				// authoritative read agrees the native turn is over. A terminal
+				// frame for a still-running turn is stale, synthetic, or corrupt
+				// (observed against a dead view projection) and must not kill it.
+				const walked = await walkView(recoveryCursor ?? liveBefore, !nativeRunning);
 				// Recovered frames bypass the pump, so only a live arrival moves
 				// this cursor; a revived stream wins over any recovery verdict.
 				const liveRevived = this.recovery.lastViewCursor?.() !== liveBefore;
@@ -434,7 +453,7 @@ export class MuseNativeTurnController {
 				}
 				if (probeGeneration !== activityGeneration) return;
 				recoveredTotal += walked.frames;
-				if (walked.frames > 0 || !nativeRunning || walked.stalled) {
+				if (walked.frames > 0 || walked.contradicted || !nativeRunning || walked.stalled) {
 					this.emit({
 						type: "native_event",
 						event: {
@@ -444,6 +463,7 @@ export class MuseNativeTurnController {
 							pages: walked.pages,
 							frames: walked.frames,
 							terminalFound: walked.terminal,
+							terminalContradicted: walked.contradicted,
 							stalledBehindGap: walked.stalled,
 						},
 						redacted: true,
@@ -462,9 +482,13 @@ export class MuseNativeTurnController {
 					armWindow();
 					return;
 				}
-				if ((walked.frames > 0 || !nativeRunning) && !recoveryAnnounced) {
+				if ((walked.frames > 0 || walked.contradicted || !nativeRunning) && !recoveryAnnounced) {
 					recoveryAnnounced = true;
 					announce("Muse view stream stalled — reconciling missed events…");
+				}
+				if (walked.contradicted && !contradictionAnnounced) {
+					contradictionAnnounced = true;
+					announce("Muse view returned a terminal for a turn that is still running natively; ignoring it as stale.");
 				}
 				if (walked.terminal) {
 					announce(recoveredTotal === 1
@@ -474,7 +498,7 @@ export class MuseNativeTurnController {
 					return;
 				}
 				if (nativeRunning) {
-					if (walked.frames > 0) {
+					if (walked.frames > 0 || walked.contradicted) {
 						noteActivity();
 						return;
 					}
