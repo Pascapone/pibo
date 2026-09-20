@@ -10,6 +10,7 @@
 - **Beta 4.0 phase-2 checkpoint metadata fix**: corrected `generated.at` from the unsubstantiated `2026-09-20T17:30:00Z` (mislabeled local time, ahead of real UTC) to the actually captured `2026-09-20T15:54:34Z` in the 31 new checkpoint concepts. Bodies, originals, ZIP, and audit reports unchanged; hash provenance intact.
 - **Beta 4.0 work plan V4**: published the V3 successor on baseline `84101adc` with remote impact in all packages plus derived V4 HTML; V3 concept metadata marked superseded with body and hashes unchanged.
 - **Beta 4.0 remote contract docs**: added the draft remote-agent plugin contract spec with B-review limitations, entwurf Ist chapter 15 with corrected single-endpoint diagram, a baseline recount addendum, the historical source handoff, and a glossary entry.
+- **Beta 4.0 controller-review follow-up**: incorporated F7 (session-plus-query cursors) and F1/F3 nuances into V4, spec, entwurf, and glossary; framed stale V3 audit statements as historical; archived the binding controller review; no blanket error-free or fully-green product claim.
 
 ## 2026-09-19
 

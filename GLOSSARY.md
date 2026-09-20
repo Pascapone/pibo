@@ -34,7 +34,7 @@ Shared vocabulary for Pibo architecture, implementation, and specifications. Kee
 
 **Plugin / Plugin Registry** — A plugin statically registers Pibo capabilities. The registry stores and resolves profiles, tools, skills, subagents, channels, web apps, and related extensions.
 
-**Pibo Remote Agent** — The `pibo.remote-agent` plugin for room-scoped remote access: one loopback MCP endpoint serves all enabled rooms; per-room modules (sessions, observe, files, bash), Device-Code auth with 30-day revocable tokens, and a Sandbox/YOLO boundary. `remote_session_observe` mirrors `pibo_agents_observe` through the shared observation query engine.
+**Pibo Remote Agent** — The `pibo.remote-agent` plugin for room-scoped remote access: one loopback MCP endpoint serves all enabled rooms; per-room modules (sessions, observe, files, bash), Device-Code auth with 30-day revocable tokens, and a Sandbox/YOLO boundary. `remote_session_observe` shares the query engine with `pibo_agents_observe` with documented deviations (cursor scope per session plus query, roles superset, full-scan cost).
 
 **App Context** — The single product data space behind web authentication. Authentication grants access; it does not create user-specific tenants or storage partitions.
 

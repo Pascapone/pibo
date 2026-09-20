@@ -1,7 +1,7 @@
 ---
 type: "Specification"
 title: "Remote Agent Plugin Contract"
-description: "Defines the implemented pibo.remote-agent plugin contract: room-scoped MCP access, module tools, observation parity with pibo_agents_observe, auth lifecycle, and file/bash boundaries."
+description: "Defines the implemented pibo.remote-agent plugin contract: room-scoped MCP access, module tools, observation reuse with documented deviations from pibo_agents_observe, auth lifecycle, and file/bash boundaries."
 tags: ["remote-agent", "mcp", "plugins", "observation"]
 status: "draft"
 authority: "normative"
@@ -42,6 +42,8 @@ traceability:
       name: "observe module returns full message text without a remote cap"
     - path: test/remote-agent-modules.test.mjs
       name: "observe module mirrors tool detail, identity, and content filters"
+    - path: test/remote-agent-service.test.mjs
+      name: "observe resolves full message and observation content"
     failures:
     - Sessions outside the calling room are rejected with session_forbidden.
     - NUL text and literal or escaped NUL regex patterns are rejected.
@@ -186,3 +188,15 @@ F1-tie scenario) are documented, not retested here. Q3 duty tests:
 `remote-agent-modules` observe-mirroring trio plus
 `remote-agent-service` "observe resolves full message and observation
 content".
+
+Controller findings: F1 miss/duplicate probability is unmeasured (do not
+trivialize as guaranteed rare); a reproducible characterization test is the
+goal before any shared-contract extraction. F3: bounded output is not
+bounded work — all event-log pages, all observations, and payload reads
+happen before query limits (`service.ts:591–602`); a load test with large
+histories is required for I0/Q3. F7: auto-cursors belong to session plus
+normalized query, NOT to the token (`observe.ts:60–61,223–228`;
+`service.ts:604–606`); two entitled tokens can share consumption state. No
+cross-room access is proven by this, and no token-isolated cursors are
+promised; the multi-client case is a follow-up test-matrix item. No
+blanket error-free incremental observation is claimed.

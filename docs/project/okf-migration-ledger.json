@@ -14560,6 +14560,15 @@
       "file_bytes": 323,
       "file_sha256": "303a35c1b31d3eb79ad3964ecdf2214b333ec7141653b2a54df2a13078df671b",
       "body_sha256": "303a35c1b31d3eb79ad3964ecdf2214b333ec7141653b2a54df2a13078df671b"
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-controller-review-remote-integration.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 controller review",
+      "type": "Review Record",
+      "authority": "informative",
+      "status": "stable",
+      "lineage": null
     }
   ]
 }
