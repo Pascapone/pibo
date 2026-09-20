@@ -8,7 +8,7 @@ authority: "informative"
 superseded_by: "/plans/beta4-phase2/beta4-arbeitsplan-v3.md"
 generated:
   by: "muse-code/a1-session"
-  at: "2026-09-20T17:30:00Z"
+  at: "2026-09-20T15:54:34Z"
 sources:
   - id: "host-original"
     resource: "scope:beta4-phase2 host planning archive at commit time"
