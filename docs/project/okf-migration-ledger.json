@@ -14182,7 +14182,7 @@
       "classification": "Beta 4.0 phase-2 V3 work plan",
       "type": "Plan",
       "authority": "directive",
-      "status": "draft",
+      "status": "deprecated",
       "lineage": null
     },
     {
@@ -14510,6 +14510,15 @@
       "file_bytes": 71,
       "file_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be",
       "body_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be"
+    },
+    {
+      "path": "docs/plans/beta4-phase2/beta4-arbeitsplan-v4.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 V4 work plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
     }
   ]
 }

@@ -1,33 +1,34 @@
 ---
 type: "Plan"
-title: "Pibo Beta 4.0 work plan V3 (archived original)"
-description: "Accepted planning basis for Beta 4.0 cleanup and attachments work, archived with an OKF envelope."
-tags: ["beta-4", "phase-2", "plan"]
-status: "deprecated"
+title: "Pibo Beta 4.0 work plan V4 (remote integration update)"
+description: "V3 successor with integrated remote-agent reality on baseline 84101adc: identical product goals and attachment promises, remote impact in all packages, and a shared observation contract direction."
+tags: ["beta-4", "phase-2", "plan", "remote-agent"]
+status: "draft"
 authority: "directive"
-superseded_by: "/plans/beta4-phase2/beta4-arbeitsplan-v4.md"
 generated:
   by: "muse-code/a1-session"
-  at: "2026-09-20T15:54:34Z"
+  at: "2026-09-20T16:28:05Z"
 sources:
-  - id: "host-original"
-    resource: "scope:beta4-phase2 host planning archive at commit time"
-    title: "Unchanged host original; see checkpoint provenance for path and hash"
-checkpoint:
-  origin_path: ".pibo/planning/beta4-phase2-20260920/inputs/pibo-beta4-arbeitsplan-v3.md"
-  origin_sha256: "1d8f923b09b241a88ae0449d81a4cc204c485c7ac0522f87c66de6daa1633d18"
-  origin_bytes: 98949
-  archive: "docs/reports/artifacts/beta4-phase2/beta4-phase2-originals-20260920.zip"
-  archive_path: "inputs/pibo-beta4-arbeitsplan-v3.md"
-  transformations:
-    - "Added this OKF frontmatter envelope; body bytes after frontmatter are unchanged from the origin."
+  - id: "v3-plan"
+    resource: "scope:archived V3 concept docs/plans/beta4-phase2/beta4-arbeitsplan-v3.md, sha256 1d8f923b09b241a88ae0449d81a4cc204c485c7ac0522f87c66de6daa1633d18"
+    title: "V3 body as edit basis; V4 edits E1-E17 documented in section 14"
+  - id: "merge-evidence"
+    resource: "scope:merge commit 84101adc with parents 48a485e9 and 175afcfa, verified conflict-free with 65 of 65 remote tests passing"
+    title: "Integration evidence read from git history and isolated test runs"
 ---
-# Pibo Beta 4.0 – Arbeitsplan 03: Tiefe Module und einheitliche Attachments
+# Pibo Beta 4.0 – Arbeitsplan 04: Tiefe Module, einheitliche Attachments und integrierter Remote Agent
 
-**Stand:** 20. September 2026 · **Status:** fortgeschriebener Planungsvorschlag; Produktvorgaben zu K07 übernommen, keine gestartete Umsetzung.
-**Basis:** vorheriger HTML-/Markdown-Plan, Pascals Präzisierungen und der vollständig gelesene hochgeladene Skill (SKILL.md, DEEPENING.md, DESIGN-IT-TWICE.md). Ergänzt um Pascals bestätigte Attachment-Vorgaben; keine neue Repositoryprüfung in diesem Schritt.
+**Stand:** 20. September 2026 (nachmittags, UTC) · **Status:** fortgeschriebener Planungsvorschlag V4; Remote-Agent-Integration nachgezogen, keine gestartete Bloat-/K07-Umsetzung.
+**Basis:** V3-Plan (unverändert archiviert) + Beta-Commit `84101adc` mit integrierter Remote-Observe-Änderung `175afcfa`; 65/65 Remote-Tests grün. Produktziele, Attachment-Zusagen und Arbeitspakete identisch zu V3.
+**Vorgänger:** V3 (finale Downloadfassung, historisch; Metadaten als superseded markiert, Body unverändert).
 
 > **Planänderung 03:** K07 ist jetzt ausschließlich das Core-Attachment-System. Der frühere MCP-Interaktionsentwurf ist verworfen. Bilder und Dateien bleiben Core; Web Annotations nutzt denselben Pluginanschluss. Neu beauftragt sind Widget-Grid, persistente Sessiondrafts und explizites Kopieren. Der übrige Bereinigungsplan bleibt bestehen.
+
+> **Planänderung 04:** Remote-Basis `a3472458` war bereits via `ece5f18c` integriert; hinzu kommt exakt `175afcfa` (Observe-Spiegelung, 4 Dateien, Merge `84101adc`). Remote Agent ist ein ERHALTENES wichtiges Plugin und bleibt sauber vom Kern getrennt installierbar. K07 bleibt ausschließlich Attachments; der vorhandene Remote-MCP ist nicht der verworfene K07-MCP-Vorschlag.
+
+## 0. Was V4 ändert (Remote-Integration)
+
+V4 ist V3 mit neuer Baseline und nachgezogener Remote-Wirklichkeit; alle Produktziele, Attachment-Zusagen (inkl. AT-01–AT-22) und Arbeitspakete gelten unverändert. Konkret: (1) Baseline `84101adc` statt Audit-Baseline; die Remote-Basis `a3472458` war schon in `ece5f18c` enthalten — keine Komplett-Neuintegration, sondern exakt ein Commit `175afcfa` (Observe-Spiegelung `remote_session_observe` ≡ `pibo_agents_observe`: 2 Src- + 2 Testdateien). (2) Tatsächliche Tests: 65/65 `test/remote-agent-*.test.mjs` grün, `tsc`-Emit fehlerfrei; vorbestehende Rotfunde (Chat-UI-TS2322, Doku-Tracecommit) sind Baseline, kein V4-Versäumnis. (3) Remote Agent bleibt erhaltenes, separat installierbares Plugin (`pibo.remote-agent`) und ergänzt Cs Bündel — kein fünfter Dauer-Worker. (4) Redaktionell eindeutige Schreibgrenzen: B neutrale Verträge/Owner-Bindung, C Remote-/Transkriptions-/Tool-Verbraucher, D zentrale Web-/Attachment-Dateien, I Root/Builder; keine B+C-Doppelschreibrechte. (5) K07 ausschließlich Attachments; Unklarheiten zum Zukunftsvertrag vor dem jeweils benötigten Piloten klären (D1→I→C1 vor G1 bleibt). Details in Anhang R (§13) und im Remote-Plugin-Contract-Spec.
 
 ## 1. So läuft die Arbeit
 
@@ -65,7 +66,7 @@ Durchgezogene Pfeile sind Voraussetzungen; gestrichelte Pfeile Rückmeldungen, k
 
 ## 2. Was unverändert bleibt
 
-Beide Loops-Modi – gleiche logische Session oder frische Session pro Iteration –, aktives VS-Code-Web-Plugin, normale CLI, Basis-Web mit den festen Core-Ansichten, Sessions und Historie, Auth-Scope, Runtime-Fähigkeiten, Sub-Agenten und Benutzerdaten bleiben. Entfernt werden nur die ausdrücklich aufgegebenen alten Implementierungen. Keine Produktänderung durch eine beiläufige neue Paket- oder Namensentscheidung. Einzige ausdrücklich ergänzte Produktoberfläche: K07-Attachment-Grid, gemeinsame JSON-Anhänge, persistente Sessiondrafts und bestätigte Übernahme. Vorhandenes Bild-/Datei-/Annotationsverhalten bleibt dabei erhalten.
+Beide Loops-Modi – gleiche logische Session oder frische Session pro Iteration –, aktives VS-Code-Web-Plugin, normale CLI, Basis-Web mit den festen Core-Ansichten, Sessions und Historie, Auth-Scope, Runtime-Fähigkeiten, Sub-Agenten und Benutzerdaten bleiben. Entfernt werden nur die ausdrücklich aufgegebenen alten Implementierungen. Keine Produktänderung durch eine beiläufige neue Paket- oder Namensentscheidung. Einzige ausdrücklich ergänzte Produktoberfläche: K07-Attachment-Grid, gemeinsame JSON-Anhänge, persistente Sessiondrafts und bestätigte Übernahme. Vorhandenes Bild-/Datei-/Annotationsverhalten bleibt dabei erhalten. Der Remote Agent (`pibo.remote-agent`: Sessions, Observe, Dateien, Bash über MCP) bleibt als wichtiges Plugin erhalten und sauber vom Kern getrennt installierbar.
 
 ## 3. Was wir aus dem Skill übernehmen
 
@@ -122,7 +123,7 @@ Für ein oder zwei riskante Seams vergleichen B/C/D drei deutlich verschiedene E
 Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter oder neu geprüfter SDK-Signaturen. Bestehende Exporte und Verhaltenstests werden vor Umsetzung neu zugeordnet. Es sind nicht automatisch sieben neue Softwaremodule. K07 wird unten in Abschnitt 12 vollständig beschrieben.
 
 #### K01 – Runtime und Session
-**Owner:** B · **Aufrufer:** C: weitere Runtimes · D: Workflows · A: Verhaltensprüfung
+**Owner:** B · **Aufrufer:** C: weitere Runtimes (inkl. Remote-Session-Erzeugung über Raum-Defaultprofil) · D: Workflows · A: Verhaltensprüfung
 
 **Zweck:** Einen Auftrag an eine passende Runtime geben, ohne dass Aufrufer deren nativen Ablauf kennen müssen.
 
@@ -149,7 +150,7 @@ Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter 
 
 **Zweck:** Ein ausgewähltes Tool benutzen, ohne globale Konfiguration, Auswahlregeln oder Ressourcenverwaltung im Aufrufer nachzubauen.
 
-**Bestehendes zuerst:** PiboToolDefinition/-Result, Session-Tool-Auswahl und bestehende Runtime-Ressourcenverträge weiterführen. Neue Exporte nur für nachgewiesene Lücken.
+**Bestehendes zuerst:** PiboToolDefinition/-Result, Session-Tool-Auswahl und bestehende Runtime-Ressourcenverträge weiterführen. Für Beobachtung/History die gemeinsame Engine (`preparePiboAgentObservationQuery`, `selectPiboAgentObservationPage`, Cursor-Scope-Key, `formatAgentObservationsForModel`) verwenden; Ziel ist ein neutraler B-Vertrag statt privater `subagents/tool`-Querimporte. Neue Exporte nur für nachgewiesene Lücken.
 
 **Kleine äußere Oberfläche:** Bestehende Toolnamen, Schemata, Ergebnisse und Fortschrittswege; ein passender, begrenzter Ausführungskontext. Keine Übergabe des vollständigen PluginHosts an jedes Tool.
 
@@ -161,11 +162,11 @@ Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter 
 
 **Abhängigkeiten:** Pure Formatierung direkt testen. Lokale Dateitools mit isolierten realen Verzeichnissen prüfen. Einen Adapter nur dort einführen, wo Produktions- und Testgegenstelle wirklich wechseln.
 
-**Nachweis:** C liefert mindestens ein repräsentatives Dateitool-/Remote-Tool-Beispiel. Tests prüfen Ergebnis, Trunkierung beziehungsweise relevante Ausgabeformen, Abbruch, Fehler und Scope; kein echter Produkt-Workspace.
+**Nachweis:** C liefert mindestens ein repräsentatives Dateitool-/Remote-Tool-Beispiel (`remote_session_observe` mit Filtern, Cursor, Paging gegen `pibo_agents_observe`-Parität). Tests prüfen Ergebnis, Trunkierung beziehungsweise relevante Ausgabeformen, Abbruch, Fehler und Scope; kein echter Produkt-Workspace.
 
 **Freigabe:** Ein bisher schwer gekoppelter Toolfall ist durchgestochen. Verbraucher beziehen benötigtes Verhalten ohne private Pi-Querimporte; die vollständige Bundlebereinigung folgt B2/C2.
 
-**Nicht-Ziele:** Keine neue Toolwelt, keine umbenannten öffentlichen Tools und kein allgemeines Toolkit mit beliebig vielen Durchreiche-Methoden.
+**Nicht-Ziele:** Keine neue Toolwelt, keine umbenannten öffentlichen Tools, kein allgemeines Toolkit mit beliebig vielen Durchreiche-Methoden und kein neuer Server-/Auth-/Framework-Layer für den gemeinsamen Beobachtungsvertrag.
 
 #### K03 – Begrenzter Credential-Zugriff
 **Owner:** B · **Aufrufer:** C: Transkription und andere berechtigte Provider-Verbraucher
@@ -188,7 +189,7 @@ Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter 
 
 **Freigabe:** Owner und Verbraucher haben dieselbe Auth-Annahme und einen ausführbaren Test. Kein vorgeschlagenes Credential-Verhalten ist ohne Sicherheitsprüfung als fertig freigegeben.
 
-**Nicht-Ziele:** Kein getAllSecrets, keine Kopie nativer Anmeldedaten, keine neue universelle Auth-Schicht und keine still veränderten Berechtigungen.
+**Nicht-Ziele:** Kein getAllSecrets, keine Kopie nativer Anmeldedaten, keine neue universelle Auth-Schicht, keine still veränderten Berechtigungen und keine Verlagerung der Remote-Device-Code-/Token-Verwaltung in einen zentralen Service.
 
 #### K04 – Workflow-Modul und Host
 **Owner:** D · **Aufrufer:** B: allgemeine Session-Anschlüsse · C: Paketmuster · Web-Aufrufer
@@ -230,7 +231,7 @@ Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter 
 
 **Abhängigkeiten:** In-process: Formatierung. Browser-Umgebung: echte DOM-/Layout-Prüfung für visuelles Verhalten. Ein Mock allein beweist weder Fokus noch Einbettung.
 
-**Nachweis:** D prüft den gemeinsamen Helfer, C mindestens zwei echte Aufrufer. Das aktive VS-Code-Web-Plugin und feste Core-Ansichten zusätzlich im sichtbaren Browser prüfen.
+**Nachweis:** D prüft den gemeinsamen Helfer, C mindestens zwei echte Aufrufer. Das aktive VS-Code-Web-Plugin und feste Core-Ansichten zusätzlich im sichtbaren Browser prüfen. Der Remote-Agent-Einstieg (Katalogeintrag + Views `remote-agent-view.tsx`/`RemoteAgentArea.tsx`, kein Routenbereich) bleibt dabei unverändert erhalten.
 
 **Freigabe:** Das erhaltene VS-Code-Web-Plugin benutzt den gemeinsamen Stand. Gemeinsamer Code ist nicht nur dupliziert in ein zweites Paket kopiert.
 
@@ -253,7 +254,7 @@ Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter 
 
 **Abhängigkeiten:** Buildwerkzeuge von installiertem Runtime-Inhalt unterscheiden. Gemeinsame Root-Manifeste und Lockfile nur durch I ändern. Keine neue Dependency ohne benannten Owner und Bedarf.
 
-**Nachweis:** Saubere isolierte Installation der Pilotpakete, später der gesamten Zusammensetzung. Metafiles und installierte Dateien prüfen: tatsächliche Ausgabebytes zählen, nicht nur Manifest-Einträge.
+**Nachweis:** Saubere isolierte Installation der Pilotpakete, später der gesamten Zusammensetzung. Metafiles und installierte Dateien prüfen: tatsächliche Ausgabebytes zählen, nicht nur Manifest-Einträge. Remote Agent bleibt separat installier-/deinstallier-/reinstallierbar.
 
 **Freigabe:** G1 gibt Paketmuster und exakte SDK-Artefakte frei. I2/Q3 prüfen den zusammengehörigen neuen Kandidaten; alte Artefakte sind kein Beleg.
 
@@ -262,7 +263,7 @@ Diese Blätter sind konkrete Entwürfe, keine Behauptung fertig implementierter 
 #### K07 – Einheitliches Attachment-System
 **Owner:** D · **Vertragspartner:** B für neutrale Exporte/Medien; C für Web Annotations; A für Gegenprüfung; I für Integration.
 
-Ein Core-Modul verwaltet sessiongebundene, persistente JSON-Entwurfsanhänge und ihren Versand. Anbieter liefern Schema, Payload und Widgetdarstellung. Maximal 12 × 3 Zellen, mobil 3 × 3; Host-X, Auswahlübernahme und Materialisierung erst beim Senden. Details, technische Defaults, Fehlersemantik und AT-01–AT-22 stehen in Abschnitt 12. Kein zusätzlicher MCP- oder Tool-Layer.
+Ein Core-Modul verwaltet sessiongebundene, persistente JSON-Entwurfsanhänge und ihren Versand. Anbieter liefern Schema, Payload und Widgetdarstellung. Maximal 12 × 3 Zellen, mobil 3 × 3; Host-X, Auswahlübernahme und Materialisierung erst beim Senden. Details, technische Defaults, Fehlersemantik und AT-01–AT-22 stehen in Abschnitt 12. Kein zusätzlicher MCP- oder Tool-Layer. Der vorhandene Remote-Agent-MCP-Server (Raum-Fernzugriff, eigenes Plugin) ist NICHT der verworfene K07-MCP-Interaktionsvorschlag.
 
 ## 5. Review und Änderungsregel
 
@@ -294,6 +295,7 @@ Vor vier parallelen Arbeiten stehen ein prüfbarer Ausgangspunkt und gemeinsam v
 - Attachment-Produktentscheidungen sichern: Snapshot beim Anhängen, freies Widget im 12×3-/3×3-Rahmen, JSON-Payload, persistenter Sessiondraft, Materialisierung erst beim Senden und bestätigte Kopierauswahl. Technische Defaults und bestehende Medienlimits in K07-v0 dokumentieren.
 - D erhält K07 inklusive Typsemantik, Composer, State und Annahmepfad. B besitzt nötige neutrale SDK-/Registryänderungen. C besitzt den Web-Annotations-Anbieter. Den frühen D1-Pilot→I→C1-Übergabepunkt festlegen.
 
+- Remote-Baseline festhalten: `a3472458` war bereits via `ece5f18c` integriert; hinzu kam exakt `175afcfa` (Observe-Spiegelung, 4 Dateien, Merge `84101adc`); 65/65 Remote-Tests grün; Remote Agent als erhaltenes installierbares Plugin in Funktions-/Testmatrix aufnehmen.
 **Fertig, wenn:**
 - Ein gemeinsamer Start-Commit ist benannt; relevante Pflichtprüfungen laufen, Vorfehler sind sichtbar. Ein roter Ausgangsstand wird nicht als grün bezeichnet.
 - Jeder Worker kennt sein Ziel, seine Schreibrechte und seine Vertragspartner. Noch offene Interface-Fragen sind klar als vorläufig markiert.
@@ -319,6 +321,7 @@ Tote Implementierungen entfernen, ohne die heutigen Funktionen mitzunehmen.
 - Eigenen Löschstand an B zur Gegenprüfung übergeben; gemeinsame Doku-Änderungen selbst koordinieren. Historische Evidenz bleibt historisch.
 - Die bisherigen Attachment-Verhaltenstests für spätere Gegenprüfung erfassen; keine Composer-, Web-Annotations- oder aktiven Loop-Dateien neben den zuständigen Ownern ändern.
 
+- Genutzte Observation-/Regex-/ripgrep-Helfer (`subagents/observation-*`, rg-Suche) nicht mit alter TUI-/Subagent-Hygiene löschen; die Remote-Beobachtung läuft über dieselbe Engine.
 **Fertig, wenn:**
 - Beide Loop-Modi, bestehende Daten und die erhaltenen öffentlichen Wege sind durch passende Tests geschützt.
 - Alte TUI/Extension sind von aktiver CLI/Browser-IDE eindeutig getrennt. Keine implizite Funktionslöschung.
@@ -345,6 +348,7 @@ Ein Interface beschreibt die ganze Zusage an Aufrufer – nicht nur TypeScript-T
 - K07s neutrale Export-, Ressourcen- und Runtime-Anschlüsse zusammen mit D prüfen. Exporte/Registrierung in eigenen SDK-Dateien umsetzen, ohne einen zweiten Attachment-Kern anzulegen.
 - Einen aktuellen Bild-/Datei-Verbraucher gegen JSON-Umschlag und sichere Ressourcenreferenz prüfen. Native Medienfähigkeit, Sessionbindung und Credential-Grenzen dürfen durch Vereinheitlichung nicht verloren gehen.
 
+- Neutralen Observation-/History-Vertrag als Alternative mit entwerfen: gemeinsame Abfrage-/Cursor-/Trunkierungszusage statt privater `subagents/tool`-Querimporte; Kosten-/Outputgrenzen getrennt belegen; kein neuer Server-/Auth-/Framework-Layer.
 **Fertig, wenn:**
 - C und D können ihre konkreten Aufrufbeispiele gegen den gelieferten Stand ausführen; die Umsetzung existiert wirklich.
 - Die ausgewählten Interfaces sind klein und vollständig beschrieben. Interne Test-Seams werden nicht unnötig öffentlich.
@@ -371,6 +375,7 @@ Web Search und VS Code Web prüfen das Paketmuster. Ein zusätzlicher gezielter 
 - Zusätzlich Web Annotations als Attachment-Anbieter vorbereiten: festgehaltene JSON-Fassung, fachliche Optionen, Thumbnail/Fallback und deklarierte Kachelgrößen. Keine private Composer- oder Store-Integration.
 - Den K07-Anbieter gegen Ds früh integrierten Pilotstand erproben. Reale Abhängigkeit: D1-Pilot → I-Integration → C1-End-to-End-Test → G1. Bis dahin an den unabhängigen Paketpiloten und bisherigen schwierigen Fällen weiterarbeiten.
 
+- Remote als Verbraucher mit prüfen: Modul-/Raum-/Token-Verträge, Observe-Filter (`filter`/`cursorMode`/`afterSequence`/`order`/`limit`), echte `toolCallId`/`requestId`/`turnId`, Fehler-/Details-Verhalten. Remote ergänzt Cs Bündel; kein fünfter Worker.
 **Fertig, wenn:**
 - Ein Toolplugin und das Browser-IDE-Plugin funktionieren isoliert mit dem gemeinsamen Vertragsstand.
 - Mindestens eine problematische Tool-/Auth-Kopplung ist durch einen ausführbaren Versuch erprobt; der spätere große Umbau wird nicht vorgetäuscht.
@@ -399,6 +404,7 @@ D schützt das vorhandene Web-/Workflow-Verhalten und macht die später benötig
 - Rasterplatzierung (maximal 12×3, mobil 3×3), Überlaufseiten, Copy-Snapshot und Revisionen bei gleichzeitigem Versand an Beispielen prüfen. Draft-Bytes, Storageanschluss, Fehler und Schema-Limits festlegen.
 - B stellt benötigte neutrale Exporte in seinen Dateien bereit; D besitzt die Attachment-Semantik. Die bisherige Workflow-Vorbereitung bleibt ein eigener prüfbarer Zwischenstand derselben Spur.
 
+- K07-Pilotkette D1→I→C1 vor G1 beachten; die Remote-Änderungen berühren keine D-Webdateien.
 **Fertig, wenn:**
 - Aktuelles Workflow-Verhalten ist prüfbar beschrieben; der geplante Host-Anschluss wurde mit einem echten Beispiel verwendet.
 - Benutzerdaten, Zustandsbesitz, Abbruch und Registrierung haben eindeutige Owner.
@@ -425,6 +431,7 @@ Alle vier Vorbereitungen werden auf einem gemeinsamen Stand betrachtet. Nur ein 
 - K07 nur mit Core-Anhang und Web-Annotations-Anbieter auf demselben Commit freigeben. JSON-Version, Payload/UiState-Trennung, Medienzustellung, Persistenz, Copy-Scope, Grid/Overlays und Annahmesemantik gemeinsam prüfen.
 - Die neue K07-Funktionalität ist ein ausdrücklich beauftragter Zusatz. Baseline-Regression und neue Funktionstests getrennt nachweisen. Für den nachfolgenden Umbau keine offenen Signaturen oder Limits im benötigten Pfad lassen.
 
+- Remote-Vertrag (Observe/History, Raum/Token/Module, Sandbox) gemeinsam prüfen; Unklarheiten zum Zukunftsvertrag vor dem jeweils benötigten Piloten klären, nicht erst vor D2.
 **Fertig, wenn:**
 - Alle vier Vorbereitungen sind integriert, relevante Review-Befunde geschlossen und die gemeinsame Pflichtmatrix ist grün.
 - Kein offenes „TODO“ in einem von Phase 2 benötigten Interface. Der schwierige Plugin-Fall und der Workflow-Durchstich bestehen.
@@ -450,6 +457,7 @@ Pi-spezifischen Code aus neutralen Modulen lösen und den Core nach Zuständigke
 - Bei fehlendem Interface eine Änderungsanfrage stellen. Nur betroffene Arbeit pausiert; keine heimlichen Imports aus Cs/Ds Arbeitszweigen.
 - K07s neutralen Medien-/Runtime-Anschluss gegen die Core-Pi-Trennung mitprüfen. Keine zweite Serialisierung, keine Composer-Bearbeitung und kein neues Toolprotokoll.
 
+- Neutralen Observation-/History-Vertrag implementieren und Owner binden; Remote-/Transkriptions-Verbraucher stellen um. Keine B+C-Doppelschreibrechte an denselben Dateien.
 **Fertig, wenn:**
 - Core-Artefakte enthalten keinen unzulässigen Pi-/Runtime-Code; alle verbleibenden Abhängigkeiten haben einen begründeten Owner.
 - Kompaktierung, Wiederherstellung, Session-Bindings, Sub-Agenten, Abbruch und Cleanup sind unverändert abgesichert.
@@ -477,6 +485,7 @@ Die schweren und verstreuten Plugins nach dem bewiesenen Paketmuster bearbeiten.
 - Web Annotations vollständig auf K07 umstellen: JSON-Snapshot, fachliche Widgetoptionen, Renderer/Fallback, Ressourcen und Validierung. Bestehende Backend-Regeln erhalten.
 - Nach integrierter Parität den annotationsspezifischen alten Attachment-Sende-/State-Sonderweg entfernen. D bearbeitet zentrale Composerdateien, C nur die zugewiesenen Plugin-Dateien. Nicht jedes vorhandene Tab muss neue Widgets bekommen.
 
+- Remote als Verbraucher auf neutrale Verträge umstellen; Remote bleibt sauber installierbares Plugin; Transkriptions-/Tool-Verbraucher mitführen.
 **Fertig, wenn:**
 - Die weitergeführten Plugin-Familien brauchen keine privaten Querimporte in Core oder andere Implementierungen.
 - Auswahl, Aktivierung, Ausführung, Abbruch und Wiederinstallation funktionieren je Plugin.
@@ -506,6 +515,7 @@ Das Workflow-Plugin bekommt sein Backend; die Basis-Web-App bleibt vollständig 
 - Erst den gemeinsamen K07-Anschluss integrieren, dann in derselben Spur die großen Workflow-/Web-Umzüge abschließen. Attachmentumstellung, Copy-Feature und mechanische Umzüge in unterscheidbaren Zwischenständen liefern.
 - Bestehende Bilder, Dateien und Altentwürfe übernehmen; alte Sonderwege nach grüner gemeinsamer Parität löschen. Keine neue permanente Parallelpipeline.
 
+- K07 ausschließlich Attachments; Remote-MCP nicht mit verworfenem K07-MCP verwechseln; zentrale Web-/Attachment-Dateien bleiben D.
 **Fertig, wenn:**
 - Ohne Workflow-Plugin startet keine Workflow-Funktion; nach Wiederinstallation sind vorhandene Daten wieder nutzbar.
 - Workflows funktionieren mit ihren vorhandenen Session-, Job- und Benutzeraktionswegen.
@@ -533,6 +543,7 @@ Die getrennten Bausteine als ein zusammengehöriges Produkt prüfen und ausliefe
 - Den gemeinsamen K07-Stand im installierten Core ohne Featureplugins sowie mit Web Annotations prüfen. Kein konkreter Annotation-Code oder zusätzliche MCP-Abhängigkeit darf in den Core hineinziehen.
 - Attachment-Persistenz und Datenformate bei Update/Rücknahme berücksichtigen. Altentwürfe nicht löschen, neue Formate nicht still in einem Downgrade beschädigen.
 
+- Remote-Plugin installierbar/deinstallierbar/reinstallierbar prüfen; Root-/Builder-Änderungen nur durch I.
 **Fertig, wenn:**
 - Eine frische Installation funktioniert ohne den Quellcheckout und ohne versteckte globale Abhängigkeiten.
 - Minimal, Einzelplugin, Standard und Offlinepakete entsprechen ihrer ausdrücklich festgelegten Zusammensetzung.
@@ -559,6 +570,7 @@ Nicht jeder Agent erklärt nur seine eigene Arbeit für fertig. Geprüft wird de
 - K07-Matrix AT-01 bis AT-22 auf demselben Kandidaten prüfen: Containergrößen, Vorschau/Fokus, X/Toggle, Sessionwechsel, Kopie, Reload, Storagefehler, Snapshot und idempotente Annahme.
 - Kontrollieren, dass die Umstellung Bild-/Dateifunktion nicht auf bloße Textpfade reduziert, Plugin-JSON keine Systemrolle erhält und neue Entwurfsarbeit nicht von einer alten Sendequittung gelöscht wird.
 
+- Remote-Verhalten (65 Tests) und K07-AT-01–AT-22 am selben Stand abnehmen.
 **Fertig, wenn:**
 - Alle verpflichtenden Prüfungen sind grün; keine neue Regression und kein als bestanden umbenannter Vorfehler. Explizit entfernte Oberflächen haben eine dokumentierte Test-Ablösung.
 - Entfernter Code, kleinere Auslieferung und unveränderte Funktionen sind getrennt belegt.
@@ -588,6 +600,8 @@ Eigene Branches, Worktrees, Buildoutputs, Testdaten, HOME/PIBO_HOME und Ports. S
 
 **Gemeinsame Testmatrix, kanonische Dokumentation, Indizes und Log — A, I koordiniert:** Paketnahe Tests gehören dem jeweiligen Worker; gemeinsame Prüfungen bekommen einen einzelnen Owner. Jeder liefert Nachweise in seine eigene Übergabedatei.
 
+**V4-Schreibgrenzen (redaktionell eindeutig):** B neutrale Verträge/Owner-Bindung · C Remote-/Transkriptions-/Tool-Verbraucher · D zentrale Web-/Attachment-Dateien · I Root/Builder. Keine B+C-Doppelschreibrechte an denselben Dateien. Remote ergänzt Cs bestehendes Bündel; kein fünfter dauerhafter Worker.
+
 **K07-Core, Composer, Draftpersistenz, Grid, Copy-Ablage und Sendeannahme — D:** K07-Typsemantik und Implementation gehören zusammen. B übernimmt abgestimmte neue Exporte in seinen bestehenden SDK-/Registry-Dateien, nicht ein zweites Modul. C besitzt ausschließlich den Web-Annotations-Anbieter. K07 wird zuerst als prüfbarer Zwischenstand integriert; große Workflow-Umzüge folgen anschließend in derselben D-Spur.
 
 ## 8. Test- und Abnahmevertrag
@@ -607,6 +621,8 @@ Tatsächliche Artefakte, Worker und Browserassets prüfen. Outputbytes nicht mit
 Rücknahme: getrennt rücknehmbare Quellzwischenstände; nach Installation oder Zustandsänderung eine zusammengehörige vorherige Assembly und gegebenenfalls konsistente Daten-/Payload-Snapshots. Release, Publish und Deployment bleiben eine separate Freigabe.
 
 K07 wird zusätzlich über AT-01 bis AT-22 abgenommen; siehe Abschnitt 12.14. Quell-Snapshot, fachlicher Widgetzustand, Kopierablage, Ressourcen und Sendequittung müssen auch unter konkurrierenden Änderungen konsistent bleiben.
+
+V4-Evidenz (Merge `84101adc`): 65/65 `test/remote-agent-*.test.mjs` grün (isoliert, EXIT 0), `tsc`-Emit fehlerfrei (EXIT 0). Vorbefunde als Baseline, nicht als grün: `TS2322` in `chat-ui/composer-send.ts` (Typecheck EXIT 2, merge-unberührt) und Doku-Tracecommit `storage-maintenance.md`; keine Validatorabschwächung.
 
 ## 9. Gemeinsame Worker-Instruktion
 
@@ -642,6 +658,8 @@ Snapshot beim Anhängen; bewusste Widgeteingaben verändern nur die lokale Draft
 Raster maximal 12×3, mobil 3×3; bei Überlauf blätterbare Seiten. Core-X bleibt sichtbar; im Auswahlmodus sind innerhalb der Kacheln nur Core-Toggles bedienbar. Bestätigte Kopierablage persistent; Ziel lädt ausdrücklich unabhängige Kopien mit neuen IDs. Ursprung und vorhandener Zielbestand bleiben erhalten.
 
 Versand fixiert IDs, Revisionen und JSON zusammen mit clientTxnId. Receipt prüfen; nur bestätigte mitgesendete Revisionen verbrauchen. Kein stilles Weglassen fehlerhafter Anhänge. AT-01–AT-22 zu Tests und Belegen zuordnen. Neue Grid-/Copy-Funktionalität ist ausdrücklich beauftragt; andere Produktänderungen sind es nicht.
+
+REMOTE / ERHALTENES PLUGIN: Remote Agent (`pibo.remote-agent`) bleibt erhalten und separat installierbar; Basis a3472458 war integriert, hinzu kam exakt die Observe-Spiegelung (Merge 84101adc). Raum-/Token-/Modul-/Auth-/Revocation-/Sandbox-/Datei-/Bash-Verträge unverändert lassen. Beobachtung über die gemeinsame Engine (Filter/cursorMode/afterSequence/order/limit, echte toolCallId/requestId/turnId); genutzte Observation-/Regex-/Helfer nicht löschen. Remote-MCP ist nicht der verworfene K07-MCP. Schreibgrenzen: B neutral, C Remote-Verbraucher, D Web/Attachments, I Root/Builder; keine Doppelrechte.
 ```
 
 ## 10. Übergabevorlage
@@ -680,6 +698,9 @@ Die drei Original-Skilltexte mit Zeilennummern und SHA-256 stehen zusätzlich in
 
 **Arbeitsumfang dieses Updates:** vorhandene Quellen gelesen, Plan und Briefings um K07 ergänzt; HTML-/Demo-Prüfung betrifft nur diese lokale Präsentation und ist keine Pibo-Abnahme. **Nicht ausgeführt:** Repositoryänderung, Workerstart, Produktbuild, neue Pibo-Tests, Publish oder Deployment.
 
+
+- M1: Merge `84101adc` (Eltern `48a485e9` + `175afcfa`), verifiziert: nur 4 Remote-Dateien, 0 Konflikte, 65/65 Remote-Tests grün.
+- R1: `src/remote-agent/{service.ts,modules/observe.ts,tool.ts,types.ts,mcp-server.ts,auth.ts}` + `src/subagents/{tool.ts,observation-query.ts,observations.ts}` an 84101adc gelesen; Remote-Plugin-Contract-Spec und Entwurf Kap. 15.
 
 ## 12. K07 – Einheitliches Attachment-System
 
@@ -889,7 +910,7 @@ Keine privaten Dateien, beliebigen Serverpfade oder Credentials aus Plugin-JSON 
 | C2 | Web Annotations vollständig auf K07 umstellen, alte Sonderverdrahtung entfernen; übrige Pluginfamilien weiter entkoppeln. | Nutzung des G1-Vertrags und Ds integrierter Implementierungsstände. Keine Pflichtumstellung jedes beliebigen Tabs. |
 | I2 / Q3 | Dieselben Source-, Paket- und Vertragsstände zusammen installieren und vollständig prüfen. | Core ohne Annotation-Plugin; Bild-/Dateiparität; Plugin aktiv/aus/reinstalliert; Sessionkopien; Datenerhalt; alle Pflichtprüfungen. |
 
-C1 und D1 starten gleichzeitig, aber C1s K07-End-to-End-Prüfung hat eine echte kleine Abhängigkeit: **D1-Pilot → Integrator → C1-Anbindung → gemeinsamer G1-Review**. Sie wird nicht als „alles beliebig parallel“ versteckt. Die anderen C1-Aufgaben und A1/B1 können währenddessen weiterlaufen. Vier feste Worker und ein Integrator bleiben ausreichend; kein zusätzlicher dauerhafter E-Agent.
+C1 und D1 starten gleichzeitig, aber C1s K07-End-to-End-Prüfung hat eine echte kleine Abhängigkeit: **D1-Pilot → Integrator → C1-Anbindung → gemeinsamer G1-Review**. Sie wird nicht als „alles beliebig parallel“ versteckt. Die anderen C1-Aufgaben und A1/B1 können währenddessen weiterlaufen. Vier feste Worker und ein Integrator bleiben ausreichend; kein zusätzlicher dauerhafter E-Agent. Unklarheiten zum Zukunftsvertrag werden vor dem jeweils benötigten Piloten geklärt, nicht erst vor D2.
 
 ### 12.14 Abnahmematrix für K07
 
@@ -945,3 +966,16 @@ In diesem Update wurden die vorhandenen Gesprächsdateien gelesen und die Planar
 
 
 **Prüfung der HTML-Präsentation:** Raster mit 12, 6 und 3 Spalten, Overlay-Auswahl, Snapshotkopie, JSON-Vorschau und aktualisierte Worker-Dialoge wurden mit lokalen Beispieldaten im sichtbaren Chromium geprüft. Direkte Datei-/HTTP-Navigation war administrativ gesperrt; die Präsentation wurde offline geladen. Der Persistenz-Roundtrip nutzte einen Storage-Testadapter. Echte originbasierte Browserpersistenz, Binärressourcen und Pibo-Produktverhalten sind damit nicht geprüft.
+## 13. Anhang R – Remote-Integration (V4, Stand 84101adc)
+
+**Historie (keine Komplett-Neuintegration):** Die Remote-Basis `a3472458` („room-scoped MCP remote access“, 43 Dateien) war bereits via Merge `ece5f18c` in Beta enthalten. Hinzu kam exakt ein Commit `175afcfa` („mirror pibo_agents_observe in remote_session_observe“, 4 Dateien: `src/remote-agent/modules/observe.ts`, `src/remote-agent/service.ts`, 2 Tests), integriert als Merge `84101adc` (Eltern `48a485e9` + `175afcfa`, 0 Konflikte, Backup-Refs `refs/backup/pre-remote-merge-{beta,source}-20260920`).
+
+**Implementierter Beobachtungsvertrag (gelesen):** `remote_session_observe` nutzt dieselbe Engine wie `pibo_agents_observe`: `preparePiboAgentObservationQuery`, `selectPiboAgentObservationPage`, `piboAgentObservationCursorScopeKey` (Scope `remote:<sha>`, gemeinsame Auto-Cursor-Tabelle), `formatAgentObservationsForModel` plus Text/Kind/Role/Details-Helfer. Port: `RemoteObservePort` (`getRoomSession`, `listSessionMessages`, `listSessionObservations`, `getObservationCursor`, `advanceObservationCursor`). Filter: `requestIds`/`toolCallIds`/`agentIds`/`names`/`threadKeys`/`eventTypes`/`kinds`/`roles` (je ≤50, Rollen ≤20, Kinds ≤6), `since`/`until` (ISO, inklusiv), `textContains` (case-insensitiv), `textRegex` (rg/Rust, NUL abgewiesen, optionales rg-Binary nötig), `cursorMode` auto/history, `afterSequence` (≥0), `order` asc/desc (Default desc), `limit` 1–200 (Default 20), `includeTools`/`toolDetail`/`includeDetails`. Vollständige Payloadauflösung (`resolveRemoteMessageText`, `resolveRemoteObservation`: Payload → Inline → Preview), echte `toolCallId`/`requestId`(=runId)/`turnId`, Details pro Eventtyp (args/partialResult/result/payload), Fehler via `session_error`/error-Status. Begrenzung: Cursor + Limit + Trunkierung der Engine; Kosten getrennt belegbar (kein eigener Cost-Layer).
+
+**Unverändert (nicht anfassen):** Raum-/Token-/Modulselektion, Device-Code→30-Tage-Token-Auth, Einzel-/Raum-Revocation, Sandbox-/YOLO-Datei-/Bash-Verträge, Modulmenge sessions/observe/files/bash, Toolnamen, MCP-Endpunkt (einer für alle Räume, Loopback, Raumtrennung über Auth). Genutzte Observation-/Regex-/ripgrep-Helfer bleiben (keine Löschung mit TUI-/Hygiene-Begründung).
+
+**Grenzen (offen, u. a. B-Review):** keine Cursor-/Skalierungs-/Security-Garantien über die gelesenen Tests hinaus; kein neuer Server-/Auth-/Framework-Layer; Remote bleibt separat installierbares Plugin. K07 ausschließlich Attachments; Remote-MCP ≠ verworfener K07-MCP.
+
+## 14. V4-Änderungsprotokoll (gegen V3, alle Editionen dokumentiert)
+
+E1 Titel 03→04 · E2 Stand/Basis/Vorgänger · E3 Planänderung-04-Callout · E4 neuer §0 · E5 §2 Remote-Erhalt · E6 K01-Aufrufer · E7a–c K02-Engine/Nachweis/Nicht-Ziele · E8 K05-Nachweis · E9 K06-Nachweis · E10 K07-Abgrenzung · E10b K03-Nicht-Ziele · E11 je ein Remote-Bullet in I0/A1/B1/C1/D1/G1/B2/C2/D2/I2/Q3 · E12 §7-Schreibgrenzen · E13 §8-Evidenz · E14 §9-Remoteabsatz · E15 §11-Quellen M1/R1 · E16 12.13-Pilotregel · E17 dieser Anhang + Protokoll. V3-Body sonst unverändert übernommen; V3-Konzept bleibt mit superseded-Metadaten archiviert.
