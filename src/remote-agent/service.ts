@@ -5,6 +5,9 @@ import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { chatRoomIdFromMetadata, withChatRoomId } from "../apps/chat/types/rooms.js";
 import { piboHomePath } from "../core/pibo-home.js";
 import { getDefaultPiboWorkspace } from "../core/workspace.js";
+import type { StoredPiboEventLogRow } from "../data/event-log.js";
+import type { StoredChatMessage } from "../data/message-store.js";
+import type { ObservationRecord } from "../data/observation-store.js";
 import { createDefaultPiboDataStore, type PiboDataStore } from "../data/pibo-store.js";
 import { DEFAULT_GATEWAY_PORT as DEFAULT_REMOTE_GATEWAY_PORT } from "../gateway/protocol.js";
 import { sendGatewayMessageAndWaitForReply } from "../gateway/request.js";
@@ -15,7 +18,7 @@ import { PiboRemoteAgentMcpServer, type PiboRemoteAgentServerAddress } from "./m
 import { PiboRemoteAgentOAuth, REMOTE_OAUTH_PATHS } from "./oauth.js";
 import { buildBashModuleTools } from "./modules/bash.js";
 import { buildFilesModuleTools } from "./modules/files.js";
-import { buildObserveModuleTools, type RemoteObservePort } from "./modules/observe.js";
+import { buildObserveModuleTools, type RemoteObservationRecord, type RemoteObservePort } from "./modules/observe.js";
 import { buildSessionModuleTools, type RemoteSessionPort, type RemoteSessionSummary } from "./modules/sessions.js";
 import { assertAbsoluteSandboxRoot } from "./sandbox.js";
 import { createDefaultPiboRemoteAgentStore, PiboRemoteAgentStore } from "./store.js";
@@ -81,6 +84,66 @@ function sessionSummary(session: PiboSession): RemoteSessionSummary {
 		kind: session.kind,
 		createdAt: session.createdAt,
 		updatedAt: session.updatedAt,
+	};
+}
+
+/** Full message text: payload first, inline text next, preview only as a last resort. */
+function resolveRemoteMessageText(data: PiboDataStore, message: StoredChatMessage): string {
+	if (message.contentPayloadRef) {
+		try {
+			return data.payloads.readPayloadText(message.contentPayloadRef);
+		} catch {
+			// Fall through to inline text or preview when the payload is unavailable.
+		}
+	}
+	const inline = message.attributes?.inlineText;
+	if (typeof inline === "string" && inline) return inline;
+	return message.contentPreview ?? "";
+}
+
+/** Full observation content: payload first, inline event payload next, preview only as a last resort. */
+function resolveRemoteObservation(data: PiboDataStore, record: ObservationRecord, event: StoredPiboEventLogRow | undefined): RemoteObservationRecord {
+	const attributes = record.attributes ?? {};
+	let sourceText: string | undefined;
+	let sourceValue: unknown;
+	let hasValue = false;
+	if (record.payloadRef) {
+		try {
+			const payload = data.payloads.getPayload(record.payloadRef);
+			if (payload?.contentType.startsWith("text/")) sourceText = data.payloads.readPayloadText(record.payloadRef);
+			else if (payload) {
+				sourceValue = data.payloads.readPayloadJson(record.payloadRef);
+				hasValue = true;
+			}
+		} catch {
+			// Fall through to inline payload or preview when the payload is unavailable.
+		}
+	}
+	if (sourceText === undefined && !hasValue) {
+		const inline = event?.attributes?.inlinePayload;
+		if (typeof inline === "string") sourceText = inline;
+		else if (inline !== undefined) {
+			sourceValue = inline;
+			hasValue = true;
+		}
+	}
+	if (sourceText === undefined && !hasValue && record.previewText) sourceText = record.previewText;
+	const attributeToolCallId = attributes.toolCallId;
+	const turnId = record.turnId ?? event?.turnId;
+	return {
+		sequence: record.sequence,
+		status: record.status,
+		startedAt: record.startedAt,
+		...(typeof attributes.eventType === "string" ? { eventType: attributes.eventType } : {}),
+		...(sourceText !== undefined ? { sourceText } : {}),
+		...(hasValue ? { sourceValue } : {}),
+		...(record.kind === "tool" && record.name ? { toolName: record.name } : {}),
+		...(event?.toolCallId ?? (typeof attributeToolCallId === "string" ? attributeToolCallId : undefined)
+			? { toolCallId: (event?.toolCallId ?? attributeToolCallId) as string }
+			: {}),
+		...(event?.runId ? { requestId: event.runId } : {}),
+		...(turnId ? { turnId } : {}),
+		attributes,
 	};
 }
 
@@ -519,20 +582,28 @@ export class PiboRemoteAgentService {
 				return data.messages.listMessages(sessionId).map((message) => ({
 					id: message.id,
 					role: message.role,
-					text: message.contentPreview ?? "",
+					text: resolveRemoteMessageText(data, message),
 					createdAt: message.createdAt,
+					...(message.turnId ? { turnId: message.turnId } : {}),
+					attributes: message.attributes ?? {},
 				}));
 			},
-			listSessionObservations(sessionId: string, limit: number) {
-				return data.observations.listObservations(sessionId, limit).map((record) => ({
-					sequence: record.sequence,
-					kind: record.kind,
-					status: record.status,
-					...(record.previewText ? { text: record.previewText } : {}),
-					...(record.kind === "tool" && record.name ? { toolName: record.name } : {}),
-					startedAt: record.startedAt,
-				}));
+			listSessionObservations(sessionId: string) {
+				const events = new Map<number, StoredPiboEventLogRow>();
+				let afterStreamId: number | undefined;
+				for (;;) {
+					const page = data.eventLog.listEvents({ sessionId, ...(afterStreamId !== undefined ? { afterStreamId } : {}), limit: 1000 });
+					for (const event of page) events.set(event.streamId, event);
+					if (page.length < 1000) break;
+					afterStreamId = page[page.length - 1]!.streamId;
+				}
+				return data.observations.listObservations(sessionId, Number.MAX_SAFE_INTEGER).map((record) =>
+					resolveRemoteObservation(data, record, record.eventStreamId === undefined ? undefined : events.get(record.eventStreamId)),
+				);
 			},
+			getObservationCursor: (sessionId, scope) => sessions.getAgentObservationAutoCursor?.(sessionId, scope),
+			advanceObservationCursor: (sessionId, scope, sequence) =>
+				sessions.advanceAgentObservationAutoCursor?.(sessionId, scope, sequence) ?? sequence,
 		};
 	}
 
