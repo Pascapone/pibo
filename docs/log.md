@@ -11,6 +11,7 @@
 - **Beta 4.0 work plan V4**: published the V3 successor on baseline `84101adc` with remote impact in all packages plus derived V4 HTML; V3 concept metadata marked superseded with body and hashes unchanged.
 - **Beta 4.0 remote contract docs**: added the draft remote-agent plugin contract spec with B-review limitations, entwurf Ist chapter 15 with corrected single-endpoint diagram, a baseline recount addendum, the historical source handoff, and a glossary entry.
 - **Beta 4.0 controller-review follow-up**: incorporated F7 (session-plus-query cursors) and F1/F3 nuances into V4, spec, entwurf, and glossary; framed stale V3 audit statements as historical; archived the binding controller review; no blanket error-free or fully-green product claim.
+- **Beta 4.0 foreign final-run attribution**: recorded the separate foreign `npm test` final run at `84101adc` (16:28–16:32Z, exit 1 at the pre-existing 22/21 composition gate, 0 tests) in V4 evidence instead of a blanket never-attempted claim; no own rerun, no gate changes.
 
 ## 2026-09-19
 
