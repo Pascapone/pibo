@@ -4,6 +4,7 @@
 
 ## Concepts
 
+* [Baseline recount at 84101adc &#40;remote integration addendum&#41;](beta4-baseline-recount-84101adc.md) - Same&#45;method recount of source inventory at the merged baseline; the original baseline review stays historical and unchanged&#46;
 * [Beta 4&#46;0 baseline and legacy&#45;confusion review](beta4-baseline-legacy-review.md) - Independent read&#45;only baseline and legacy&#45;confusion check at ece5f18, archived with an OKF envelope&#46;
 * [Beta 4&#46;0 phase&#45;2 A1 analysis &#40;archived research&#41;](beta4-phase2-a1-analysis.md) - Worker A1 analysis from the analysis&#45;only round, archived as non&#45;approved research with an OKF envelope&#46;
 * [Beta 4&#46;0 phase&#45;2 A1 contract draft &#40;archived research&#41;](beta4-phase2-a1-contracts.md) - Worker A1 contract draft from the analysis&#45;only round, archived as non&#45;approved research with an OKF envelope&#46;

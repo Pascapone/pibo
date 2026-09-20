@@ -14519,6 +14519,47 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null
+    },
+    {
+      "path": "docs/specs/resources/remote-agent-plugin-contract.md",
+      "state": "conformant",
+      "classification": "Remote agent plugin contract",
+      "type": "Specification",
+      "authority": "normative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-baseline-recount-84101adc.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 baseline recount addendum",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/beta4-remote-integration/remote-agent-source-handoff.md",
+      "state": "conformant",
+      "classification": "Remote agent source handoff",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/beta4-remote-integration/index.md",
+      "state": "reserved",
+      "classification": "reserved index/log",
+      "authority": null,
+      "status": null,
+      "lineage": null,
+      "reason": "Required OKF index for the remote integration archive.",
+      "current_present": true,
+      "synthetic": false,
+      "file_bytes": 323,
+      "file_sha256": "303a35c1b31d3eb79ad3964ecdf2214b333ec7141653b2a54df2a13078df671b",
+      "body_sha256": "303a35c1b31d3eb79ad3964ecdf2214b333ec7141653b2a54df2a13078df671b"
     }
   ]
 }

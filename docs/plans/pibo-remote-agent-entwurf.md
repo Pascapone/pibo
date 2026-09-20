@@ -10,7 +10,7 @@ generated: { by: "meta/muse-spark", at: "2026-09-19T17:30:00Z" }
 
 # Pibo Remote Agent — Entwurf V2 (nach CEO-Feedback)
 
-**Stand:** 19.09.2026 · **Basis:** Beta-Branch `beta/4.0-plugin-system` (Pibo 4.0 Plugin-System)
+**Stand:** 20.09.2026 (Kap. 15: Ist ab Merge `84101adc`; Entwurf V2 + Kap. 13/14 historisch) · **Basis:** Beta-Branch `beta/4.0-plugin-system` (Pibo 4.0 Plugin-System)
 **Status:** Alle 5 CEO-Entscheidungen eingearbeitet (siehe Kapitel 13).
 **Sprache:** bewusst einfach gehalten. Technik nur dort, wo sie Entscheidungen erklärt.
 
@@ -45,7 +45,7 @@ flowchart LR
     end
 
     subgraph PIBO["Pibo-Instanz (dieser Server)"]
-        MCP["📡 Pibo Remote Agent\n(MCP-Server pro Raum)"]
+        MCP["📡 Pibo Remote Agent\n(ein MCP-Endpunkt, Räume via Auth)"]
         TAB["Eigener Tab\nin der Pibo-Oberfläche"]
         CORE["Pibo-Kern\nSessions · Observe · Pi-Tools\n(read/write/edit/bash)"]
     end
@@ -268,6 +268,7 @@ flowchart TB
 - **Wiederverwendung:** Baut auf dem **vorhandenen Observe-Tool** auf
   (`pibo_agents_observe` aus dem Pibo-Kern). Dasselbe Interface — nur durch
   die Remote-Brille (Raum + Token + Modul geprüft).
+- **V4-Nachtrag (Stand `84101adc`, [Spec](/specs/resources/remote-agent-plugin-contract.md)):** Die Spiegelung ist vollständig: Vollinhalte (Payload → Inline → Preview), volle Filtersprache, persistierte Auto-Cursor, `toolDetail`/`includeDetails`, gemeinsames Textformat. Gewollte Brüche für bestehende Remote-Caller: Default neueste-zuerst (statt faktisch älteste-zuerst), Wiederhol-Queries liefern nur Neues, Volltexte statt 512-Vorschau, neues Textformat. Bekannte Limitationen (B-Review F1–F3/F6): Positions-Sequenzen bei ms-Gleichstand, `roles:[user]`-Superset, Vollscan-Kosten pro Call, geteilter Cursor-LRU.
 
 **Modul 3 — Dateien (`files`) — inkl. Schreiben schon in V1**
 
@@ -649,3 +650,11 @@ Technische Entscheidungen, die bei der Implementation gefallen sind:
 
 *Ende des Entwurfs V2 (mit Umsetzungsnotizen). Branch: `feature/pibo-remote-agent`,
 Worktree: `.worktrees/pibo-remote-agent`.*
+
+---
+
+## 15. Ist-Stand ab Merge `84101adc` (20.09.2026) und Plan-Verweis
+
+**Ist (implementiert, gelesen):** Die Remote-Basis `a3472458` war bereits via `ece5f18c` in Beta; hinzu kam exakt `175afcfa` (`remote_session_observe` spiegelt `pibo_agents_observe` über die gemeinsame Engine: gleiche Filter, Cursor, Paging, Trunkierung; Scope `remote:<sha>` in der gemeinsamen Auto-Cursor-Tabelle). Module sessions/observe/files/bash, Toolnamen `remote_*`, Raum-/Token-/Auth-/Revocation-/Sandbox-Verträge und der eine MCP-Endpunkt für alle Räume (Kap. 14.1 gilt; die alte Formulierung „ein Server pro Raum“ im Diagramm ist berichtigt). Nachweis: 65/65 `test/remote-agent-*.test.mjs` grün, `tsc`-Emit fehlerfrei.
+
+**Plan:** Arbeitsplan V4 (`beta4-phase2/beta4-arbeitsplan-v4.md`, Anhang R) + normative Details in der [Remote-Agent-Plugin-Contract-Spec](/specs/resources/remote-agent-plugin-contract.md). Remote bleibt erhaltenes, separat installierbares Plugin und ergänzt Cs Bündel; K07 bleibt ausschließlich Attachments. Offene Grenzen (Cursor/Skalierung/Security über Testbelege hinaus) stehen in der Spec; B-Review ausstehend.

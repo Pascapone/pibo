@@ -49,6 +49,7 @@
 ## Directories
 
 * [Beta4 phase2](beta4-phase2/) - Documentation under `beta4&#45;phase2/`.
+* [Beta4 remote integration](beta4-remote-integration/) - Documentation under `beta4&#45;remote&#45;integration/`.
 * [Handoffs](handoffs/) - Documentation under `handoffs/`.
 * [Plans](plans/) - Documentation under `plans/`.
 * [Progress](progress/) - Documentation under `progress/`.
