@@ -20,3 +20,7 @@
 * [Unified plugin system implementation and acceptance](unified-plugin-system-execution.md) - Tracks the preserved implementation checkpoint, remaining integration and acceptance for the complete plugin&#45;system rebuild&#46;
 * [Windows Better Auth Direct Validation Plan](windows-better-auth-direct-validation.md) - Defines the active direct Windows validation work for Better Auth SQLite recovery and packed installation behavior&#46;
 * [Workflow Trigger and Runtime Follow&#45;ups](workflow-trigger-and-runtime-follow-ups.md) - Directive plan for remaining workflow trigger, integrated execution, recovery, and validation gaps&#46;
+
+## Directories
+
+* [Beta4 phase2](beta4-phase2/) - Documentation under `beta4&#45;phase2/`.

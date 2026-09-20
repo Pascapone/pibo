@@ -8,6 +8,8 @@
 * [Agent Runtime Adapter Authoring Skill Validation — 2026&#45;08&#45;15](runtime-adapter-authoring-skill-validation-2026-08-15.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Agent Runtime Foundation Validation](agent-runtime-foundation-validation-2026-08-14.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Archon&#45;Recherchebericht für Pibo Workflow System V1](2026-05-10-workflow-research-archon.md) - Preserves the original report body as stable research without promoting historical claims&#46;
+* [Beta 4&#46;0 audit inventory appendix](beta-4-0-core-plugin-bloat-audit-2026-09-20-inventory.md) - Raw inventory tables for the Beta 4&#46;0 audit: per&#45;area LOC, largest files, tarball bytes, bundled modules, and dependency importer counts&#46;
+* [Beta 4&#46;0 core, plugin, bloat, and architecture audit](beta-4-0-core-plugin-bloat-audit-2026-09-20.md) - Evidence&#45;based audit of the Beta 4&#46;0 plugin&#45;system branch covering baseline, inventory, core and plugin boundaries, legacy residue, dependencies, quality, and a phased cut&#45;down roadmap&#46;
 * [Better Auth SQLite Migration Hardening Validation — 2026&#45;08&#45;20](better-auth-sqlite-migration-hardening-validation-2026-08-20.md) - Preserves the original report body as stable evidence without promoting historical claims&#46;
 * [Bounded telemetry maintenance, backups and scoped captures: package G validation](performance-scalability-maintenance-2026-09-07.md) - Records the resumable bounded telemetry maintenance worker, SQLite online backups with external payload manifests, opt&#45;in scoped capture storage, bounded manual prune and backup WAL quotas, and the isolated Pibo2 slot acceptance&#46;
 * [Chat Web Session Switch Fast Path Implementation Report](chat-web-session-switch-fast-path-implementation-2026-07-05.md) - Preserves the original report body as stable research without promoting historical claims&#46;
@@ -127,6 +129,7 @@
 ## Directories
 
 * [Artifacts](artifacts/) - Documentation under `artifacts/`.
+* [Beta4 phase2](beta4-phase2/) - Documentation under `beta4&#45;phase2/`.
 * [Coverage](coverage/) - Documentation under `coverage/`.
 * [Cron test reports](cron-test-reports/) - Documentation under `cron&#45;test&#45;reports/`.
 * [Research](research/) - Documentation under `research/`.

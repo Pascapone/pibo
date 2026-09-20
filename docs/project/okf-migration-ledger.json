@@ -14157,6 +14157,359 @@
       "authority": "directive",
       "status": "draft",
       "lineage": null
+    },
+    {
+      "path": "docs/reports/beta-4-0-core-plugin-bloat-audit-2026-09-20.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 core plugin bloat audit",
+      "type": "Investigation Report",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta-4-0-core-plugin-bloat-audit-2026-09-20-inventory.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 audit inventory appendix",
+      "type": "Reference",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/beta4-phase2/beta4-arbeitsplan-v3.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 V3 work plan",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/beta4-phase2/beta4-phase2-assignment-a1.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 assignment A1",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/beta4-phase2/beta4-phase2-assignment-b1.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 assignment B1",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/beta4-phase2/beta4-phase2-assignment-c1.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 assignment C1",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/beta4-phase2/beta4-phase2-assignment-d1.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 assignment D1",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-a1-analysis.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 A1 analysis",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-a1-contracts.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 A1 contract draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-a1-implementation-plan.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 A1 implementation-plan draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-a1-handoff.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 A1 handoff summary",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-b1-analysis.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 B1 analysis",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-b1-contracts.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 B1 contract draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-b1-implementation-plan.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 B1 implementation-plan draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-b1-handoff.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 B1 handoff summary",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-c1-analysis.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 C1 analysis",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-c1-contracts.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 C1 contract draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-c1-implementation-plan.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 C1 implementation-plan draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-c1-handoff.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 C1 handoff summary",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-d1-analysis.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 D1 analysis",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-d1-contracts.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 D1 contract draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-d1-implementation-plan.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 D1 implementation-plan draft",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-d1-handoff.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 D1 handoff summary",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-joint-review-2026-09-20.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 joint review",
+      "type": "Review Record",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-review-checklist.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 review checklist",
+      "type": "Reference",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-baseline-legacy-review.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 baseline legacy review",
+      "type": "Research",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-plugin-session-interaction-research.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 plugin-session interaction research (superseded)",
+      "type": "Research",
+      "authority": "informative",
+      "status": "deprecated",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-phase2-research-acceptance-2026-09-20.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 research acceptance",
+      "type": "Review Record",
+      "authority": "informative",
+      "status": "stable",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/references/codebase-design-skill.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 codebase-design skill reference",
+      "type": "Reference",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/references/codebase-design-deepening.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 codebase-design deepening reference",
+      "type": "Reference",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/references/codebase-design-design-it-twice.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 codebase-design design-it-twice reference",
+      "type": "Reference",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/references/codebase-design-quellen.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 codebase-design sources record reference",
+      "type": "Reference",
+      "authority": "informative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/legacy/beta4-phase2/beta4-phase2-review-r1-historical.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 phase-2 review draft r1",
+      "type": "Historical Record",
+      "authority": "historical",
+      "status": "deprecated",
+      "lineage": null
+    },
+    {
+      "path": "docs/plans/beta4-phase2/index.md",
+      "state": "reserved",
+      "classification": "reserved index/log",
+      "authority": null,
+      "status": null,
+      "lineage": null,
+      "reason": "Required OKF index for the Beta 4.0 phase-2 documentation checkpoint.",
+      "current_present": true,
+      "synthetic": false,
+      "file_bytes": 71,
+      "file_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be",
+      "body_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be"
+    },
+    {
+      "path": "docs/reports/beta4-phase2/index.md",
+      "state": "reserved",
+      "classification": "reserved index/log",
+      "authority": null,
+      "status": null,
+      "lineage": null,
+      "reason": "Required OKF index for the Beta 4.0 phase-2 documentation checkpoint.",
+      "current_present": true,
+      "synthetic": false,
+      "file_bytes": 71,
+      "file_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be",
+      "body_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be"
+    },
+    {
+      "path": "docs/reports/beta4-phase2/references/index.md",
+      "state": "reserved",
+      "classification": "reserved index/log",
+      "authority": null,
+      "status": null,
+      "lineage": null,
+      "reason": "Required OKF index for the Beta 4.0 phase-2 documentation checkpoint.",
+      "current_present": true,
+      "synthetic": false,
+      "file_bytes": 71,
+      "file_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be",
+      "body_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be"
+    },
+    {
+      "path": "docs/legacy/beta4-phase2/index.md",
+      "state": "reserved",
+      "classification": "reserved index/log",
+      "authority": null,
+      "status": null,
+      "lineage": null,
+      "reason": "Required OKF index for the Beta 4.0 phase-2 documentation checkpoint.",
+      "current_present": true,
+      "synthetic": false,
+      "file_bytes": 71,
+      "file_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be",
+      "body_sha256": "f8b8d2fe8de6328eecf30d1726c3e4ea33e975334f52703a2db1ec57856df2be"
     }
   ]
 }

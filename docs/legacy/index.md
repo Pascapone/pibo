@@ -48,6 +48,7 @@
 
 ## Directories
 
+* [Beta4 phase2](beta4-phase2/) - Documentation under `beta4&#45;phase2/`.
 * [Handoffs](handoffs/) - Documentation under `handoffs/`.
 * [Plans](plans/) - Documentation under `plans/`.
 * [Progress](progress/) - Documentation under `progress/`.
