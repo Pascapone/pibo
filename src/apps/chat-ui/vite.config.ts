@@ -29,6 +29,7 @@ export default defineConfig({
 				"pibo-plugin-workflows": resolve(root, "src/plugins/workflows-view.tsx"),
 				"pibo-plugin-cron": resolve(root, "src/plugins/cron-view.tsx"),
 				"pibo-plugin-loops": resolve(root, "src/plugins/loops-view.tsx"),
+				"pibo-plugin-remote-agent": resolve(root, "src/plugins/remote-agent-view.tsx"),
 			},
 			output: {
 				entryFileNames: (chunk) => chunk.name.startsWith("pibo-plugin-")

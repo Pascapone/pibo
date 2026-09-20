@@ -360,6 +360,12 @@ export type AgentRuntimeSandboxResult = {
 	supported: boolean;
 	enabled: boolean;
 	mode?: string;
+	/**
+	 * Effective sandboxed-network posture of this host (Muse: the --sandbox-network
+	 * value). Absent means the engine default applies, or the sandbox is disabled
+	 * and the network is inherently open.
+	 */
+	network?: string;
 	changed?: boolean;
 	restarted?: boolean;
 	warning?: string;

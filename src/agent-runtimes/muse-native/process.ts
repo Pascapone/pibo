@@ -81,6 +81,8 @@ export type StartMuseNativeHostInput = PrepareMuseNativeSessionPathsInput & {
 	baseEnvironment?: NodeJS.ProcessEnv;
 	resourceEnvironment?: Readonly<NodeJS.ProcessEnv>;
 	onDiagnostic?: (diagnostic: MuseNativeHostDiagnostic) => void;
+	/** Outgoing-network posture for this host. Only applied while the sandbox stays engaged. */
+	sandboxNetwork?: MuseSandboxNetworkAccess;
 };
 
 export type MuseNativeProcessErrorCode =
@@ -104,10 +106,19 @@ export type MuseNativeHostDiagnostic = {
 	message: string;
 };
 
+/**
+ * Outgoing-network posture for a sandboxed Muse host, mapped 1:1 to
+ * `muse serve --sandbox-network <restricted|enabled>` (installed Muse 1.3.0).
+ * Absent means the engine default (proxy-only) applies.
+ */
+export type MuseSandboxNetworkAccess = "restricted" | "enabled";
+
 export type MuseNativeHostSandboxState = {
 	mode: MuseNativeSandboxMode;
 	/** False when the host started with --disable-sandbox; true means the default host posture (sandbox engaged where the platform supports it). */
 	enabled: boolean;
+	/** The --sandbox-network value passed to this host. Absent means the engine default applies (or the sandbox is disabled, leaving the network open). */
+	network?: MuseSandboxNetworkAccess;
 };
 
 export type MuseNativeHostProcess = {
@@ -166,6 +177,8 @@ export type ResolveMuseSandboxArgsInput = {
 	mode: MuseNativeSandboxMode;
 	workspace: string;
 	executable: string;
+	/** Outgoing-network posture for this host. Omitted while the sandbox is disabled (network inherently open). */
+	sandboxNetwork?: MuseSandboxNetworkAccess;
 	platform?: NodeJS.Platform;
 	pathEnv?: string;
 	findExecutable?: (name: string) => string | undefined;
@@ -177,6 +190,14 @@ export type ResolveMuseSandboxArgsResult = {
 	diagnostic?: MuseNativeHostDiagnostic;
 };
 
+function withSandboxNetworkArgs(
+	result: ResolveMuseSandboxArgsResult,
+	sandboxNetwork: MuseSandboxNetworkAccess | undefined,
+): ResolveMuseSandboxArgsResult {
+	if (!sandboxNetwork || result.args.includes("--disable-sandbox")) return result;
+	return { ...result, args: [...result.args, "--sandbox-network", sandboxNetwork] };
+}
+
 /**
  * Resolve `muse serve` sandbox flags. muse refuses every shell command when
  * its Linux sandbox cannot engage: bubblewrap missing or non-functional, or
@@ -186,9 +207,9 @@ export type ResolveMuseSandboxArgsResult = {
  */
 export async function resolveMuseSandboxArgs(input: ResolveMuseSandboxArgsInput): Promise<ResolveMuseSandboxArgsResult> {
 	if (input.mode === "disabled") return { args: ["--disable-sandbox"] };
-	if (input.mode === "enabled") return { args: [] };
+	if (input.mode === "enabled") return withSandboxNetworkArgs({ args: [] }, input.sandboxNetwork);
 	const platform = input.platform ?? process.platform;
-	if (platform !== "linux") return { args: [] };
+	if (platform !== "linux") return withSandboxNetworkArgs({ args: [] }, input.sandboxNetwork);
 	const pathEnv = input.pathEnv ?? process.env.PATH;
 	const findExecutable = input.findExecutable ?? ((name: string) => findExecutableOnPath(name, pathEnv));
 	const executablePath = isAbsolute(input.executable) ? input.executable : findExecutable(input.executable);
@@ -221,7 +242,7 @@ export async function resolveMuseSandboxArgs(input: ResolveMuseSandboxArgsInput)
 			},
 		};
 	}
-	return { args: [] };
+	return withSandboxNetworkArgs({ args: [] }, input.sandboxNetwork);
 }
 
 function museExecutableInvocation(executable: string, args: readonly string[]): { command: string; args: string[] } {
@@ -402,6 +423,7 @@ export async function startMuseNativeHost(input: StartMuseNativeHostInput): Prom
 		mode: input.config.sandbox,
 		workspace: input.workspace,
 		executable: input.config.executable,
+		...(input.sandboxNetwork ? { sandboxNetwork: input.sandboxNetwork } : {}),
 	});
 	if (sandbox.diagnostic) report(sandbox.diagnostic);
 	const invocation = museExecutableInvocation(input.config.executable, ["serve", ...sandbox.args]);
@@ -452,10 +474,15 @@ export async function startMuseNativeHost(input: StartMuseNativeHostInput): Prom
 		});
 	}
 	let closed = false;
+	const sandboxEnabled = !sandbox.args.includes("--disable-sandbox");
 	return {
 		paths,
 		spawned,
-		sandbox: { mode: input.config.sandbox, enabled: !sandbox.args.includes("--disable-sandbox") },
+		sandbox: {
+			mode: input.config.sandbox,
+			enabled: sandboxEnabled,
+			...(sandboxEnabled && input.sandboxNetwork ? { network: input.sandboxNetwork } : {}),
+		},
 		getDiagnostics: () => [...diagnostics],
 		close: async () => {
 			if (closed) return;

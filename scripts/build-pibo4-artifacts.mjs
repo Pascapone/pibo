@@ -17,6 +17,7 @@ const packages = [
 	["web-annotations", defaults.webAnnotationsPackageManifest, "src/plugins/packaged-web-annotations.ts", "setup", [["WebAnnotationsView", "src/apps/chat-ui/src/plugins/web-annotations-view.tsx"], ["BuildContextView", "src/apps/chat-ui/src/plugins/build-context-view.tsx"]]],
 	["goal-loops", defaults.goalControlPackageManifest, "src/plugins/packaged-goal-loops.ts", "setupGoalControl", [["ToolFamilyView", "src/apps/chat-ui/src/plugins/tool-family-view.tsx"], ["LoopsView", "src/apps/chat-ui/src/plugins/loops-view.tsx"]]],
 	["cron", defaults.cronPackageManifest, "src/plugins/packaged-cron.ts", "setupCron", [["CronView", "src/apps/chat-ui/src/plugins/cron-view.tsx"]]],
+	["remote-agent", defaults.remoteAgentPackageManifest, "src/plugins/packaged-remote-agent.ts", "setupRemoteAgent", [["RemoteAgentView", "src/apps/chat-ui/src/plugins/remote-agent-view.tsx"]]],
 	["workflows", defaults.workflowsPackageManifest, "src/plugins/packaged-workflows.ts", "setupWorkflows", [["WorkflowsView", "src/apps/chat-ui/src/plugins/workflows-view.tsx"]]],
 	["runtime-pi", defaults.piRuntimePackageManifest, "src/plugins/packaged-runtime-pi.ts", "setupPiRuntime", []],
 	["runtime-codex-native", defaults.codexNativeRuntimePackageManifest, "src/plugins/packaged-runtime-codex-native.ts", "setupCodexNativeRuntime", [["RuntimeRequestsView", "src/apps/chat-ui/src/plugins/runtime-requests-view.tsx"]]],

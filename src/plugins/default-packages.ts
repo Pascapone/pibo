@@ -36,6 +36,7 @@ export const MUSE_NATIVE_RUNTIME_PLUGIN_ID = "pibo.runtime-muse-native";
 export const OMP_RUNTIME_PLUGIN_ID = "pibo.runtime-omp";
 export const BUILTIN_PROFILES_PLUGIN_ID = "pibo.builtin-profiles";
 export const MCP_CLI_PLUGIN_ID = "pibo.mcp-cli";
+export const REMOTE_AGENT_PLUGIN_ID = "pibo.remote-agent";
 const DEFAULT_PACKAGE_VERSION = "1.0.0";
 const WEB_ANNOTATION_TOOL_NAMES = [
 	"web_annotations_list",
@@ -110,6 +111,31 @@ export function cronPackageManifest(): PluginManifest {
 			productView("view", "Cron", "CronView", "cron"),
 		],
 	};
+}
+
+export function remoteAgentPackageManifest(): PluginManifest {
+	return {
+		schemaVersion: 1,
+		id: REMOTE_AGENT_PLUGIN_ID,
+		name: "Pibo Remote Agent",
+		version: DEFAULT_PACKAGE_VERSION,
+		sdk: "^1.0.0",
+		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
+		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }, { id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }] },
+		contributions: [
+			// No chatRoute: views with a route are hidden from the new-tab catalog,
+			// and there is no "remote-agent" route area. Catalog entry is the way in.
+			productView("view", "Remote Agent", "RemoteAgentView"),
+			remoteAgentModuleContribution("module-sessions", "sessions", "Sessions: create, list, and message room sessions."),
+			remoteAgentModuleContribution("module-observe", "observe", "Observe: read room session history through the shared observation query."),
+			remoteAgentModuleContribution("module-files", "files", "Files: Pi read/write/edit/list/find/grep passthrough."),
+			remoteAgentModuleContribution("module-bash", "bash", "Bash: Pi shell passthrough."),
+		],
+	};
+}
+
+function remoteAgentModuleContribution(id: string, name: string, description: string): PluginContribution {
+	return { id, kind: "remote-module", name, title: name, scope: "app", required: false, defaultEnabled: true, schemaVersion: 1, context: { kind: "none", reason: description } };
 }
 
 export function workflowsPackageManifest(): PluginManifest {
@@ -455,7 +481,7 @@ export function mcpCliPackageManifest(): PluginManifest {
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
-	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "runtime-pi" | "runtime-codex-native" | "runtime-muse-native" | "runtime-omp" | "profiles" | "mcp-cli";
+	backendModule: "preview" | "vscode-web" | "cron" | "workflows" | "transcription-openai-chatgpt" | "transcription-openai" | "web-annotations" | "code-runtime" | "file-editing" | "web-search" | "browser-tools" | "gateway-tools" | "codex-compat" | "run-control" | "goal-loops" | "runtime-pi" | "runtime-codex-native" | "runtime-muse-native" | "runtime-omp" | "profiles" | "mcp-cli" | "remote-agent";
 	webOnly?: boolean;
 	browserModules?: readonly { exports: string; asset: string }[];
 };
@@ -464,6 +490,7 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 	{ manifest: previewPackageManifest, backendExport: "setupPreview", backendModule: "preview", webOnly: true, browserModules: [{ exports: "PreviewView", asset: "pibo-plugin-preview.js" }] },
 	{ manifest: vscodeWebPackageManifest, backendExport: "setupVscodeWeb", backendModule: "vscode-web", webOnly: true, browserModules: [{ exports: "VscodeView", asset: "pibo-plugin-vscode-web.js" }] },
 	{ manifest: cronPackageManifest, backendExport: "setupCron", backendModule: "cron", webOnly: true, browserModules: [{ exports: "CronView", asset: "pibo-plugin-cron.js" }] },
+	{ manifest: remoteAgentPackageManifest, backendExport: "setupRemoteAgent", backendModule: "remote-agent", webOnly: true, browserModules: [{ exports: "RemoteAgentView", asset: "pibo-plugin-remote-agent.js" }] },
 	{ manifest: workflowsPackageManifest, backendExport: "setupWorkflows", backendModule: "workflows", browserModules: [{ exports: "WorkflowsView", asset: "pibo-plugin-workflows.js" }] },
 	{ manifest: openAiChatGptTranscriptionPackageManifest, backendExport: "setupOpenAiChatGptTranscription", backendModule: "transcription-openai-chatgpt" },
 	{ manifest: openAiTranscriptionPackageManifest, backendExport: "setupOpenAiTranscription", backendModule: "transcription-openai" },
