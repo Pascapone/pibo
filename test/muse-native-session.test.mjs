@@ -1099,6 +1099,65 @@ test("Muse native turn fails fast when the native turn is over but unrecoverable
 	controller.dispose();
 });
 
+test("Muse native recovery ignores a terminal for a natively running turn", async () => {
+	const events = [];
+	let resolveCompleted;
+	const stubTurn = {
+		turnId: "turn-stub-phantom",
+		observedStart: true,
+		completed: new Promise((resolve) => {
+			resolveCompleted = resolve;
+		}),
+		async *items() {},
+		async *deltas() {},
+	};
+	const applied = [];
+	const stubSession = {
+		sendUserTurn: async () => stubTurn,
+		apply: (frame) => {
+			applied.push(frame);
+			return { fold: { kind: "item" }, io: Promise.resolve([]), retirements: [] };
+		},
+	};
+	const stubConnection = {
+		command: async () => ({}),
+		request: async (method) => {
+			// Authoritative read: the native turn is still running.
+			if (method === "session/read") return { session: { activeTurnId: "turn-stub-phantom" } };
+			// Dead view projection serves a stale terminal for the running turn.
+			if (method === "view/page") {
+				return {
+					events: [
+						{
+							method: "turn/completed",
+							params: { turnId: "turn-stub-phantom", terminal: "failed", reason: "incomplete", viewCursor: "v:phantom" },
+						},
+					],
+					nextCursor: null,
+				};
+			}
+			throw new Error(`unexpected ${method}`);
+		},
+	};
+	const controller = new MuseNativeTurnController(stubConnection, stubSession, "session-1", 60_000, (event) => events.push(event), { pollMs: 30 });
+	const run = controller.start("hello");
+	// Let several silence windows elapse: the phantom terminal must never settle the running turn.
+	await delay(150);
+	assert.ok(applied.every((frame) => frame.method !== "turn/completed"));
+	assert.equal(events.some((event) => event.type === "turn_failed"), false);
+	assert.ok(events.some((event) => event.type === "reasoning_finished" && /reconciling missed events/.test(event.text ?? "")));
+	assert.ok(events.some((event) => event.type === "reasoning_finished" && /still running natively/.test(event.text ?? "")));
+	const recovery = events.find((event) => event.type === "native_event" && event.event?.kind === "muse-view-recovery");
+	assert.equal(recovery?.event?.terminalContradicted, true);
+	// The turn still settles normally once its real terminal arrives.
+	resolveCompleted({ kind: "completed", observedStart: true, params: { terminal: "completed" } });
+	await run;
+	const completed = events.filter((event) => event.type === "turn_completed").at(-1);
+	assert.equal(completed.status, "completed");
+	assert.equal(controller.streaming, false);
+	controller.dispose();
+});
+
 test("Muse native sandbox toggle override wins on reopen", async (t) => {
 	const { root } = await testRoot(t);
 	const { registry, instanceId } = createAdapter(root, "muse-native-sandbox-reopen", { sandbox: "enabled" });
