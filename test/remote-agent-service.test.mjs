@@ -92,3 +92,74 @@ test("service starts the MCP server and reports its URL", async () => {
 	await service.stop();
 	assert.equal(service.status().running, false);
 });
+
+test("observe resolves full message and observation content", async () => {
+	const messagePayload = `P${"q".repeat(599)}`;
+	const toolStdout = `X${"w".repeat(599)}`;
+	const sessionStore = fakeSessionStore();
+	sessionStore.sessions.set("ps_1", { id: "ps_1", title: "Alpha", profile: "default", metadata: { chatRoomId: "room-a" } });
+	const dataStore = {
+		messages: {
+			listMessages: () => [
+				{ id: "m1", sessionId: "ps_1", role: "assistant", contentPreview: "PAY", contentPayloadRef: "pay-msg", createdAt: "2026-09-19T10:00:00.000Z", attributes: {} },
+				{ id: "m2", sessionId: "ps_1", role: "user", contentPreview: "inl", createdAt: "2026-09-19T10:01:00.000Z", attributes: { inlineText: "inline full user text" } },
+				{ id: "m3", sessionId: "ps_1", role: "assistant", contentPreview: "only preview", createdAt: "2026-09-19T10:02:00.000Z", attributes: {} },
+			],
+		},
+		observations: {
+			listObservations: () => [
+				{ sequence: 1, kind: "tool", status: "completed", startedAt: "2026-09-19T10:00:30.000Z", previewText: "read", payloadRef: "pay-obs", name: "read", eventStreamId: 7, attributes: { eventType: "tool_execution_finished" } },
+				{ sequence: 2, kind: "tool", status: "completed", startedAt: "2026-09-19T10:00:40.000Z", previewText: "bash", name: "bash", eventStreamId: 8, attributes: { eventType: "tool_call" } },
+			],
+		},
+		eventLog: {
+			listEvents: () => [
+				{ streamId: 7, toolCallId: "tc-9", runId: "run-9", turnId: "turn-9", attributes: {} },
+				{ streamId: 8, toolCallId: "tc-10", runId: "run-9", turnId: "turn-9", attributes: { inlinePayload: { cmd: "ls -la" } } },
+			],
+		},
+		payloads: {
+			getPayload: (id) => id === "pay-msg"
+				? { contentType: "text/plain; charset=utf-8" }
+				: id === "pay-obs" ? { contentType: "application/json" } : undefined,
+			readPayloadText: (id) => {
+				assert.equal(id, "pay-msg");
+				return messagePayload;
+			},
+			readPayloadJson: (id) => {
+				assert.equal(id, "pay-obs");
+				return { stdout: toolStdout };
+			},
+		},
+	};
+	const service = new PiboRemoteAgentService({
+		store: new PiboRemoteAgentStore({ path: ":memory:" }),
+		sessionStore,
+		dataStore,
+		sendMessage: async () => ({ eventId: "ev_1", reply: "ok" }),
+	});
+	services.push(service);
+	const observe = service.catalogTools().find((tool) => tool.name === "remote_session_observe");
+	assert.ok(observe);
+	const context = { roomId: "room-a", tokenId: "t1", label: "test", mode: "sandbox", sandboxRoot: tmpdir(), cwd: tmpdir(), toolCallId: "call-1" };
+	const page = await observe.execute({
+		sessionId: "ps_1",
+		cursorMode: "history",
+		eventTypes: ["user_message", "assistant_message", "tool_call", "tool_execution_finished"],
+		includeTools: true,
+		toolDetail: "full",
+	}, context);
+	assert.ok(page.text.includes(messagePayload));
+	assert.ok(page.text.includes("inline full user text"));
+	assert.ok(page.text.includes("only preview"));
+	assert.ok(page.text.includes(toolStdout));
+	assert.ok(page.text.includes("toolCallId=tc-9"));
+	assert.ok(page.text.includes("toolCallId=tc-10"));
+	assert.ok(page.text.includes("ls -la"));
+	const byCall = await observe.execute({ sessionId: "ps_1", cursorMode: "history", toolCallIds: ["tc-10"] }, context);
+	assert.equal(byCall.details.observations.length, 1);
+	await assert.rejects(
+		observe.execute({ sessionId: "ps_1", cursorMode: "history" }, { ...context, roomId: "room-b" }),
+		(error) => error instanceof RemoteAgentError && error.code === "session_forbidden",
+	);
+});

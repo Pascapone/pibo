@@ -75,41 +75,120 @@ test("sessions module refuses cross-room access", async () => {
 // -- observe ----------------------------------------------------------------
 
 function fakeObservePort() {
+	const cursors = new Map();
+	const long600 = `L${"o".repeat(598)}g`;
+	const long5000 = `X${"y".repeat(4998)}Z`;
 	return {
+		cursors,
+		long600,
+		long5000,
 		getRoomSession: (roomId, sessionId) => roomId === "room-a" && sessionId === "ps_a1" ? { id: "ps_a1", title: "Alpha" } : undefined,
 		listSessionMessages: () => [
-			{ id: "m1", role: "user", text: "fix the login bug", createdAt: "2026-09-19T10:00:00.000Z" },
-			{ id: "m2", role: "assistant", text: "looking at the auth module now", createdAt: "2026-09-19T10:01:00.000Z" },
+			{ id: "m1", role: "user", text: "fix the login bug", createdAt: "2026-09-19T10:00:00.000Z", turnId: "t1" },
+			{ id: "m2", role: "assistant", text: "looking at the auth module now", createdAt: "2026-09-19T10:01:00.000Z", turnId: "t1" },
+			{ id: "m3", role: "assistant", text: long600, createdAt: "2026-09-19T10:02:00.000Z", turnId: "t2" },
+			{ id: "m4", role: "assistant", text: long5000, createdAt: "2026-09-19T10:03:00.000Z", turnId: "t3" },
 		],
 		listSessionObservations: () => [
-			{ sequence: 1, kind: "tool", status: "completed", text: "read src/auth.ts", toolName: "read", startedAt: "2026-09-19T10:01:30.000Z" },
+			{ sequence: 1, status: "completed", startedAt: "2026-09-19T10:00:30.000Z", eventType: "tool_call", sourceValue: { path: "src/auth.ts", bigBlob: `B${"z".repeat(1998)}` }, toolName: "read", toolCallId: "tc1", requestId: "run-1", turnId: "t1", attributes: { eventType: "tool_call" } },
+			{ sequence: 2, status: "completed", startedAt: "2026-09-19T10:00:40.000Z", eventType: "tool_execution_finished", sourceValue: { lines: 120 }, toolName: "read", toolCallId: "tc1", requestId: "run-1", turnId: "t1", attributes: { eventType: "tool_execution_finished" } },
 		],
+		getObservationCursor: (sessionId, scope) => cursors.get(`${sessionId} ${scope}`),
+		advanceObservationCursor: (sessionId, scope, sequence) => {
+			const advanced = Math.max(cursors.get(`${sessionId} ${scope}`) ?? 0, sequence);
+			cursors.set(`${sessionId} ${scope}`, advanced);
+			return advanced;
+		},
 	};
 }
 
-test("observe module reuses the shared observation paging", async () => {
-	const tools = buildObserveModuleTools(fakeObservePort());
+function observeHistoryArgs(extra = {}) {
+	return { sessionId: "ps_a1", cursorMode: "history", ...extra };
+}
+
+test("observe module mirrors pibo_agents_observe: default view, cursors, paging", async () => {
+	const port = fakeObservePort();
+	const tools = buildObserveModuleTools(port);
 	const context = contextFor("room-a", tmpdir());
 	const observe = toolByName(tools, "remote_session_observe");
-	// Default view matches pibo_agents_observe: assistant messages only.
+	// Default view matches pibo_agents_observe: newest assistant messages first, tools hidden.
 	const def = await observe.execute({ sessionId: "ps_a1" }, context);
-	assert.match(def.text, /looking at the auth module/);
+	assert.equal(def.details.observations.length, 3);
+	assert.ok(def.text.indexOf("Xyyy") < def.text.indexOf("looking at the auth module"));
 	assert.ok(!def.text.includes("fix the login bug"));
-	const full = await observe.execute({ sessionId: "ps_a1", eventTypes: ["user_message", "assistant_message"] }, context);
-	assert.match(full.text, /fix the login bug/);
-	assert.match(full.text, /looking at the auth module/);
-	const first = await observe.execute({ sessionId: "ps_a1", eventTypes: ["user_message", "assistant_message"], limit: 1 }, context);
-	assert.match(first.text, /fix the login bug/);
-	assert.equal(first.details.nextAfterSequence, 1);
+	assert.ok(!def.text.includes("toolCallId=tc1"));
+	assert.equal(def.details.truncated, false);
+	assert.equal(def.details.autoCursorSequence, 6);
+	// Auto cursor: the same query has nothing new afterwards.
+	const again = await observe.execute({ sessionId: "ps_a1" }, context);
+	assert.equal(again.details.observations.length, 0);
+	assert.match(again.text, /No new/);
+	// History rereads everything; explicit paging walks oldest-unseen first.
+	const first = await observe.execute(observeHistoryArgs({ eventTypes: ["user_message", "assistant_message"], order: "asc", limit: 2 }), context);
+	assert.equal(first.details.observations.length, 2);
 	assert.equal(first.details.truncated, true);
-	const second = await observe.execute({ sessionId: "ps_a1", eventTypes: ["user_message", "assistant_message"], afterSequence: first.details.nextAfterSequence }, context);
-	assert.match(second.text, /looking at the auth module/);
-	const toolsPage = await observe.execute({ sessionId: "ps_a1", includeTools: true }, context);
-	assert.match(toolsPage.text, /read src\/auth\.ts/);
+	assert.match(first.text, /fix the login bug/);
+	assert.match(first.text, /looking at the auth module/);
+	const second = await observe.execute(observeHistoryArgs({ eventTypes: ["user_message", "assistant_message"], order: "asc", afterSequence: first.details.nextAfterSequence }), context);
+	assert.ok(second.text.includes(port.long600));
+	assert.equal(second.details.truncated, false);
 	await assert.rejects(
 		observe.execute({ sessionId: "ps_b1" }, context),
 		(error) => error instanceof RemoteAgentError && error.code === "session_forbidden",
 	);
+});
+
+test("observe module returns full message text without a remote cap", async () => {
+	const port = fakeObservePort();
+	const tools = buildObserveModuleTools(port);
+	const context = contextFor("room-a", tmpdir());
+	const observe = toolByName(tools, "remote_session_observe");
+	const page = await observe.execute(observeHistoryArgs({ eventTypes: ["assistant_message"], order: "asc" }), context);
+	// 600 chars: complete, proving the old 512-char preview cap is gone.
+	assert.ok(page.text.includes(port.long600));
+	// Over-long text is bounded only by the shared observation logic (4KB + ellipsis).
+	const huge = page.details.observations.find((entry) => entry.text?.startsWith("Xyyy"));
+	assert.ok(huge);
+	assert.ok(huge.text.length <= 4096);
+	assert.ok(huge.text.endsWith("…"));
+});
+
+test("observe module mirrors tool detail, identity, and content filters", async () => {
+	const tools = buildObserveModuleTools(fakeObservePort());
+	const context = contextFor("room-a", tmpdir());
+	const observe = toolByName(tools, "remote_session_observe");
+	const summary = await observe.execute(observeHistoryArgs({ includeTools: true }), context);
+	assert.match(summary.text, /read/);
+	assert.ok(!summary.text.includes("Bzzz"));
+	const full = await observe.execute(observeHistoryArgs({ includeTools: true, toolDetail: "full" }), context);
+	assert.ok(full.text.includes("Bzzz"));
+	const byCall = await observe.execute(observeHistoryArgs({ toolCallIds: ["tc1"] }), context);
+	assert.equal(byCall.details.observations.length, 2);
+	const noCall = await observe.execute(observeHistoryArgs({ toolCallIds: ["nope"] }), context);
+	assert.equal(noCall.details.observations.length, 0);
+	const byRun = await observe.execute(observeHistoryArgs({ requestIds: ["run-1"], includeTools: true }), context);
+	assert.equal(byRun.details.observations.length, 2);
+	const byTurn = await observe.execute(observeHistoryArgs({ eventTypes: ["user_message", "assistant_message", "tool_call", "tool_execution_finished"], threadKeys: ["t1"] }), context);
+	assert.equal(byTurn.details.observations.length, 4);
+	const byName = await observe.execute(observeHistoryArgs({ names: ["Alpha"] }), context);
+	assert.equal(byName.details.observations.length, 3);
+	assert.equal((await observe.execute(observeHistoryArgs({ names: ["Beta"] }), context)).details.observations.length, 0);
+	assert.equal((await observe.execute(observeHistoryArgs({ agentIds: ["ps_a1"] }), context)).details.observations.length, 3);
+	assert.equal((await observe.execute(observeHistoryArgs({ agentIds: ["ps_x"] }), context)).details.observations.length, 0);
+	const toolsOnly = await observe.execute(observeHistoryArgs({ kinds: ["tool"] }), context);
+	assert.equal(toolsOnly.details.observations.length, 2);
+	const userOnly = await observe.execute(observeHistoryArgs({ eventTypes: ["user_message", "assistant_message"], roles: ["user"] }), context);
+	assert.equal(userOnly.details.observations.length, 1);
+	assert.match(userOnly.text, /fix the login bug/);
+	const contained = await observe.execute(observeHistoryArgs({ eventTypes: ["user_message", "assistant_message"], textContains: "LOGIN" }), context);
+	assert.equal(contained.details.observations.length, 1);
+	const ranged = await observe.execute(observeHistoryArgs({ eventTypes: ["user_message", "assistant_message"], since: "2026-09-19T10:02:00.000Z" }), context);
+	assert.equal(ranged.details.observations.length, 2);
+	const withDetails = await observe.execute(observeHistoryArgs({ includeDetails: true, limit: 1 }), context);
+	assert.ok(withDetails.details.observations[0].details);
+	const withoutDetails = await observe.execute(observeHistoryArgs({ limit: 1 }), context);
+	assert.equal(withoutDetails.details.observations[0].details, undefined);
+	await assert.rejects(observe.execute(observeHistoryArgs({ limit: 500 }), context));
 });
 
 // -- files ------------------------------------------------------------------
