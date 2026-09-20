@@ -360,6 +360,7 @@ export type ChatWebAppOptions = {
 	workflowStorePath?: string;
 	cronStorePath?: string;
 	ralphStorePath?: string;
+	remoteAgentStorePath?: string;
 };
 
 type ChatPersistenceMetrics = {

@@ -48,7 +48,9 @@ import {
 	startMuseNativeHost,
 	withTimeout,
 	type MuseNativeHostProcess,
+	type MuseSandboxNetworkAccess,
 } from "./process.js";
+import { isRemoteAgentCreatedSession, resolveRemoteRoomSandboxNetwork } from "./remote-posture.js";
 import {
 	MUSE_NATIVE_ADAPTER_ID,
 	MuseNativeConnectionPump,
@@ -288,6 +290,8 @@ function validateOpenBinding(
 export type MuseNativeSessionSandboxInput = {
 	config: MuseNativeRuntimeConfig;
 	override?: MuseNativeSandboxMode;
+	/** Room scope for re-resolving the remote-agent internet posture on host restarts. */
+	remoteRoom?: { roomId: string; createdByRemoteAgent: boolean };
 };
 
 export class MuseNativeSession implements AgentRuntimeSession {
@@ -511,6 +515,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				supported: true,
 				enabled: this.host.sandbox.enabled,
 				mode: this.host.sandbox.mode,
+				...(this.host.sandbox.network ? { network: this.host.sandbox.network } : {}),
 			},
 			contextUsage: this.settings.currentContextUsage,
 			warnings: [
@@ -630,6 +635,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 			supported: true,
 			enabled: this.host.sandbox.enabled,
 			mode: this.host.sandbox.mode,
+			...(this.host.sandbox.network ? { network: this.host.sandbox.network } : {}),
 		};
 	}
 
@@ -643,14 +649,26 @@ export class MuseNativeSession implements AgentRuntimeSession {
 		const target: MuseNativeSandboxMode = enabled ? "enabled" : "disabled";
 		const current = this.getSandbox();
 		if (current.enabled === enabled) {
-			return { supported: true, enabled: current.enabled, mode: current.mode, changed: false, restarted: false };
+			return {
+				supported: true,
+				enabled: current.enabled,
+				mode: current.mode,
+				...(current.network ? { network: current.network } : {}),
+				changed: false,
+				restarted: false,
+			};
 		}
 		// Sandbox posture is fixed for the host's lifetime and is not negotiable over the
 		// wire, so a toggle restarts the host and resumes the same native session. The new
 		// host starts first: when it (or the resume) fails, the live session is untouched.
 		// Portable-tool credentials stay valid because resource delivery outlives the restart.
+		// The room internet posture is re-resolved so the restarted host picks up room changes.
+		const sandboxNetwork: MuseSandboxNetworkAccess | undefined = this.sandboxInput.remoteRoom
+			? resolveRemoteRoomSandboxNetwork(this.sandboxInput.remoteRoom)
+			: undefined;
 		const nextHost = await startMuseNativeHost({
 			config: { ...this.sandboxInput.config, sandbox: target },
+			...(sandboxNetwork ? { sandboxNetwork } : {}),
 			runtimeInstanceId: this.runtimeInstanceId,
 			piboSessionId: this.binding.piboSessionId,
 			sessionGeneration: `sandbox-toggle-${randomUUID()}`,
@@ -707,6 +725,7 @@ export class MuseNativeSession implements AgentRuntimeSession {
 				supported: true,
 				enabled: nextHost.sandbox.enabled,
 				mode: nextHost.sandbox.mode,
+				...(nextHost.sandbox.network ? { network: nextHost.sandbox.network } : {}),
 				changed: true,
 				restarted: true,
 				...(warning ? { warning: warning.message } : {}),
@@ -966,6 +985,14 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			sandboxOverride?: MuseNativeSandboxMode;
 		} = binding.state === "bound" ? readMusePersistedSettings(binding.metadata) : { profileOptions: {} };
 		const effectiveSandbox = persisted.sandboxOverride ?? profileOptions.sandbox ?? this.config.sandbox;
+		// Room internet posture for remote-created sessions only, resolved live so room
+		// changes apply to every newly started host. Other sessions resolve nothing and
+		// keep the engine default.
+		const remoteRoom = {
+			roomId: input.productContext.piboRoomId?.trim() ?? "",
+			createdByRemoteAgent: isRemoteAgentCreatedSession(input.piboSession.metadata),
+		};
+		const sandboxNetwork: MuseSandboxNetworkAccess | undefined = resolveRemoteRoomSandboxNetwork(remoteRoom);
 		let resourceDelivery: MuseNativeResourceDelivery | undefined;
 		let host: MuseNativeHostProcess | undefined;
 		let settings: MuseSessionSettingsController | undefined;
@@ -977,6 +1004,7 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 			});
 			host = await startMuseNativeHost({
 				config: { ...this.config, sandbox: effectiveSandbox },
+				...(sandboxNetwork ? { sandboxNetwork } : {}),
 				runtimeInstanceId: this.instanceId,
 				piboSessionId: input.piboSession.id,
 				sessionGeneration,
@@ -1055,6 +1083,7 @@ class MuseNativeAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				{
 					config: this.config,
 					...(persisted.sandboxOverride ? { override: persisted.sandboxOverride } : {}),
+					...(remoteRoom.createdByRemoteAgent && remoteRoom.roomId ? { remoteRoom } : {}),
 				},
 			);
 		} catch (error) {

@@ -220,6 +220,12 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		return;
 	}
 
+	if (argv[2] === "remote-agent") {
+		const { runRemoteAgentCli } = await import("./remote-agent/cli.js");
+		await runRemoteAgentCli([argv[0] ?? "node", "pibo remote-agent", ...argv.slice(3)]);
+		return;
+	}
+
 	if (argv[2] === "loop") {
 		const { runLoopCli } = await import("./loops/cli.js");
 		await runLoopCli([argv[0] ?? "node", "pibo loop", ...argv.slice(3)]);
@@ -346,6 +352,18 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.action(async (args: string[]) => {
 			const { runSkillsCli } = await import("./skills/cli.js");
 			await runSkillsCli([argv[0] ?? "node", "pibo skills", ...args]);
+		});
+
+	program
+		.command("remote-agent")
+		.description("Expose rooms to external agents through a room-scoped MCP server")
+		.helpOption(false)
+		.allowUnknownOption(true)
+		.allowExcessArguments(true)
+		.argument("[args...]")
+		.action(async (args: string[]) => {
+			const { runRemoteAgentCli } = await import("./remote-agent/cli.js");
+			await runRemoteAgentCli([argv[0] ?? "node", "pibo remote-agent", ...args]);
 		});
 
 	program
@@ -545,6 +563,7 @@ Commands:
   setup        Plan and manage supported host installation profiles
   skills       Manage Pibo user skills
   cron         Manage scheduled Pibo jobs
+  remote-agent Expose rooms to external agents through a room-scoped MCP server
   loop         Manage continuous agent loops (goal mode by default)
   ralph        Legacy alias for Ralph-mode loops
   profile      Inspect a pibo profile, including active saved Chat custom agents
