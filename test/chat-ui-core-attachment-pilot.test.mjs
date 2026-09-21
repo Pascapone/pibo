@@ -487,6 +487,229 @@ const SESSION_MEDIA_METADATA_SCENARIO = PRELUDE + `
 	assert.equal(reloadedFailing.storageError, undefined);
 `;
 
+const WRITER_CONSISTENCY_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	let tick = 0;
+	const goodNow = () => "2026-09-21T20:00:0" + (tick++) + ".000Z";
+	const store = new CoreAttachmentDraftStore(storage, "ps_w", { now: goodNow, createId: createIdSequence("att_w") });
+	const idA = await store.add({ sessionId: "ps_w", type: "pibo.core/note", schemaVersion: 1, payload: { v: 1 } });
+	const open = store.freezeForSend("txn_w_1", "hello");
+	const bytesBefore = storage.entries.get("pibo.chat.coreAttachments.draft.ps_w");
+	const writesBefore = storage.writes;
+
+	for (const badText of [123, null, undefined, { text: "x" }]) {
+		const err = throwsWithCode(() => store.freezeForSend("txn_w_bad", badText), "ATT_INVALID_JSON");
+		assert.equal(err.retryable, false);
+	}
+	assert.equal(storage.entries.get("pibo.chat.coreAttachments.draft.ps_w"), bytesBefore);
+	assert.equal(storage.writes, writesBefore);
+	assert.deepEqual(store.list().map((record) => record.envelope.id), [idA]);
+	const same = store.freezeForSend("txn_w_1", "hello");
+	assert.equal(same.frozenAt, open.frozenAt);
+	assert.equal(storage.writes, writesBefore);
+
+	for (const badNow of [() => 123, () => "", () => null, () => undefined]) {
+		const lying = new CoreAttachmentDraftStore(storage, "ps_w", { now: badNow, createId: createIdSequence("att_lying") });
+		const clockAdd = await rejectsWithCode(lying.add({ sessionId: "ps_w", type: "pibo.core/note", schemaVersion: 1, payload: {} }), "ATT_INVALID_JSON");
+		assert.equal(clockAdd.retryable, false);
+		const clockUpdate = await rejectsWithCode(lying.update(idA, 1, { payload: { v: 2 } }), "ATT_INVALID_JSON");
+		assert.equal(clockUpdate.retryable, false);
+		const clockFreeze = throwsWithCode(() => lying.freezeForSend("txn_w_clock", "hi"), "ATT_INVALID_JSON");
+		assert.equal(clockFreeze.retryable, false);
+		assert.equal(storage.entries.get("pibo.chat.coreAttachments.draft.ps_w"), bytesBefore);
+		assert.equal(storage.writes, writesBefore);
+		assert.deepEqual(lying.list().map((record) => [record.envelope.id, record.envelope.revision]), [[idA, 1]]);
+	}
+
+	const healed = new CoreAttachmentDraftStore(storage, "ps_w", { now: goodNow, createId: createIdSequence("att_healed") });
+	const healedId = await healed.add({ sessionId: "ps_w", type: "pibo.core/note", schemaVersion: 1, payload: { healed: true } });
+	assert.equal(healedId, "att_healed_1");
+	await healed.update(idA, 1, { payload: { v: 2 } });
+	assert.equal(healed.get(idA).envelope.revision, 2);
+	const healedFreeze = healed.freezeForSend("txn_w_clock", "hi");
+	assert.equal(healedFreeze.attachments.length, 2);
+	const healedApply = healed.applyAcceptance(healedFreeze, { clientTxnId: "txn_w_clock", accepted: true });
+	assert.deepEqual(healedApply.consumed.sort(), [healedId, idA].sort());
+	const reloaded = new CoreAttachmentDraftStore(storage, "ps_w", { now: goodNow });
+	assert.deepEqual(reloaded.list(), []);
+	assert.equal(reloaded.storageError, undefined);
+
+	const badIds = createMemoryStorage();
+	const badIdStore = new CoreAttachmentDraftStore(badIds, "ps_g", { createId: createIdSequence("att_g") });
+	const keptId = await badIdStore.add({ sessionId: "ps_g", type: "pibo.core/note", schemaVersion: 1, payload: { n: 0 } });
+	const genBytes = badIds.entries.get("pibo.chat.coreAttachments.draft.ps_g");
+	const genWrites = badIds.writes;
+	const badIdStore2 = new CoreAttachmentDraftStore(badIds, "ps_g", { createId: (() => { const values = ["", 123, null]; return () => values.shift(); })() });
+	for (let i = 0; i < 3; i++) {
+		const err = await rejectsWithCode(badIdStore2.add({ sessionId: "ps_g", type: "pibo.core/note", schemaVersion: 1, payload: { n: i + 1 } }), "ATT_INVALID_JSON");
+		assert.equal(err.retryable, false);
+	}
+	assert.equal(badIds.entries.get("pibo.chat.coreAttachments.draft.ps_g"), genBytes);
+	assert.equal(badIds.writes, genWrites);
+	assert.deepEqual(badIdStore2.list().map((record) => record.envelope.id), [keptId]);
+	const genReloaded = new CoreAttachmentDraftStore(badIds, "ps_g");
+	assert.deepEqual(genReloaded.list().map((record) => record.envelope.id), [keptId]);
+`;
+
+const CONTROLLED_ERRORS_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	const store = new CoreAttachmentDraftStore(storage, "ps_c", { now: () => "2026-09-21T20:02:00.000Z", createId: createIdSequence("att_c") });
+	const idA = await store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: { v: 1 } });
+	const open = store.freezeForSend("txn_c_1", "hi");
+	const bytesBefore = storage.entries.get("pibo.chat.coreAttachments.draft.ps_c");
+	const writesBefore = storage.writes;
+
+	for (const bad of [null, undefined, [], "x", 42]) {
+		const err = await rejectsWithCode(store.add(bad), "ATT_INVALID_JSON");
+		assert.equal(err.retryable, false);
+	}
+	for (const bad of [null, undefined, [], "x"]) {
+		const err = await rejectsWithCode(store.update(idA, 1, bad), "ATT_INVALID_JSON");
+		assert.equal(err.retryable, false);
+	}
+	await rejectsWithCode(store.update("att_unknown", 1, null), "ATT_STALE_REVISION");
+	await rejectsWithCode(store.update(idA, 999, null), "ATT_STALE_REVISION");
+	await store.update(idA, 1, {});
+	assert.equal(storage.writes, writesBefore);
+
+	const direct = { a: 1 };
+	direct.self = direct;
+	await rejectsWithCode(store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: direct }), "ATT_INVALID_JSON");
+	const indirectA = {};
+	const indirectB = { back: indirectA };
+	indirectA.forward = indirectB;
+	await rejectsWithCode(store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: indirectA }), "ATT_INVALID_JSON");
+	const arrayCycle = [];
+	arrayCycle.push(arrayCycle);
+	await rejectsWithCode(store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: arrayCycle }), "ATT_INVALID_JSON");
+	const uiCycle = {};
+	uiCycle.me = uiCycle;
+	await rejectsWithCode(store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: { ok: 1 }, uiState: uiCycle }), "ATT_INVALID_JSON");
+	await rejectsWithCode(store.update(idA, 1, { payload: direct }), "ATT_INVALID_JSON");
+
+	assert.deepEqual(store.list().map((record) => [record.envelope.id, record.envelope.revision]), [[idA, 1]]);
+	assert.equal(storage.entries.get("pibo.chat.coreAttachments.draft.ps_c"), bytesBefore);
+	assert.equal(storage.writes, writesBefore);
+	const same = store.freezeForSend("txn_c_1", "hi");
+	assert.equal(same.frozenAt, open.frozenAt);
+
+	const shared = { n: 1, deep: { x: [1, 2] } };
+	const idS = await store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: { left: shared, right: shared } });
+	shared.n = 999;
+	shared.deep.x.push(3);
+	assert.deepEqual(store.get(idS).payload, { left: { n: 1, deep: { x: [1, 2] } }, right: { n: 1, deep: { x: [1, 2] } } });
+	const sharedReloaded = new CoreAttachmentDraftStore(storage, "ps_c");
+	assert.deepEqual(sharedReloaded.get(idS).payload, { left: { n: 1, deep: { x: [1, 2] } }, right: { n: 1, deep: { x: [1, 2] } } });
+
+	let deep = { leaf: true };
+	for (let i = 0; i < 500; i++) deep = { nest: deep };
+	const idD = await store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: deep });
+	let probe = store.get(idD).payload;
+	for (let i = 0; i < 500; i++) probe = probe.nest;
+	assert.deepEqual(probe, { leaf: true });
+
+	let cursor = [];
+	const extreme = cursor;
+	for (let i = 0; i < 100000; i++) {
+		const next = [];
+		cursor.push(next);
+		cursor = next;
+	}
+	const bytesBeforeExtreme = storage.entries.get("pibo.chat.coreAttachments.draft.ps_c");
+	const writesBeforeExtreme = storage.writes;
+	const extremeErr = await rejectsWithCode(store.add({ sessionId: "ps_c", type: "pibo.core/note", schemaVersion: 1, payload: extreme }), "ATT_INVALID_JSON");
+	assert.equal(extremeErr.retryable, false);
+	assert.equal(storage.entries.get("pibo.chat.coreAttachments.draft.ps_c"), bytesBeforeExtreme);
+	assert.equal(storage.writes, writesBeforeExtreme);
+	assert.equal(store.list().length, 3);
+`;
+
+const FREEZE_THROW_RECOVERY_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	const store = new CoreAttachmentDraftStore(storage, "ps_f", { now: () => "2026-09-21T20:03:00.000Z", createId: createIdSequence("att_f") });
+	const idA = await store.add({ sessionId: "ps_f", type: "pibo.core/note", schemaVersion: 1, payload: { v: 1 } });
+	const control = store.freezeForSend("txn_ctrl", "control");
+	const bytesBefore = storage.entries.get("pibo.chat.coreAttachments.draft.ps_f");
+	const writesBefore = storage.writes;
+
+	const realWrite = storage.writeText;
+	let attempts = 0;
+	storage.writeText = () => { attempts += 1; throw new Error("disk full"); };
+	const thrown = throwsWithCode(() => store.freezeForSend("txn_new_1", "send"), "ATT_STORAGE_FAILED");
+	assert.equal(thrown.retryable, true);
+	assert.equal(attempts, 1);
+	assert.equal(storage.entries.get("pibo.chat.coreAttachments.draft.ps_f"), bytesBefore);
+	assert.equal(storage.writes, writesBefore);
+	assert.deepEqual(store.list().map((record) => record.envelope.id), [idA]);
+	const controlSame = store.freezeForSend("txn_ctrl", "control");
+	assert.equal(controlSame.frozenAt, control.frozenAt);
+	storage.writeText = realWrite;
+
+	const healed = store.freezeForSend("txn_new_1", "send");
+	assert.equal(healed.attachments.length, 1);
+	const writesAfterHeal = storage.writes;
+	const identical = store.freezeForSend("txn_new_1", "send");
+	assert.equal(identical.frozenAt, healed.frozenAt);
+	assert.equal(storage.writes, writesAfterHeal);
+	const applied = store.applyAcceptance(healed, { clientTxnId: "txn_new_1", accepted: true });
+	assert.deepEqual(applied, { consumed: [idA], duplicate: false });
+	const reloaded = new CoreAttachmentDraftStore(storage, "ps_f");
+	assert.deepEqual(reloaded.list(), []);
+	const dup = reloaded.applyAcceptance(healed, { clientTxnId: "txn_new_1", accepted: true });
+	assert.deepEqual(dup, { consumed: [], duplicate: true });
+`;
+
+const UISTATE_REFREEZE_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	let tick = 0;
+	const store = new CoreAttachmentDraftStore(storage, "ps_u", { now: () => "2026-09-21T20:04:0" + (tick++) + ".000Z", createId: createIdSequence("att_u") });
+	const idA = await store.add({ sessionId: "ps_u", type: "pibo.core/note", schemaVersion: 1, payload: { v: 1 }, uiState: { tab: "a" } });
+	const first = store.freezeForSend("txn_ui_1", "hello");
+	const writesAfterFreeze = storage.writes;
+	await store.update(idA, 1, { uiState: { tab: "b" } });
+	const refrozen = store.freezeForSend("txn_ui_1", "hello");
+	assert.deepEqual(refrozen, first);
+	assert.equal(refrozen.frozenAt, first.frozenAt);
+	assert.equal(storage.writes, writesAfterFreeze + 1);
+	const applied = store.applyAcceptance(refrozen, { clientTxnId: "txn_ui_1", accepted: true });
+	assert.deepEqual(applied, { consumed: [idA], duplicate: false });
+`;
+
+const REISSUE_DUP_RECEIPT_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	const scripted = ["att_re", "att_re", "att_next"];
+	const store = new CoreAttachmentDraftStore(storage, "ps_r", { now: () => "2026-09-21T20:05:00.000Z", createId: () => scripted.shift() });
+	const firstId = await store.add({ sessionId: "ps_r", type: "pibo.core/note", schemaVersion: 1, payload: { gen: 1 } });
+	assert.equal(firstId, "att_re");
+	const snapshot = store.freezeForSend("txn_re_1", "send");
+	const applied = store.applyAcceptance(snapshot, { clientTxnId: "txn_re_1", accepted: true });
+	assert.deepEqual(applied, { consumed: ["att_re"], duplicate: false });
+	const secondId = await store.add({ sessionId: "ps_r", type: "pibo.core/note", schemaVersion: 1, payload: { gen: 2 } });
+	assert.equal(secondId, "att_re");
+	const stale = store.applyAcceptance(snapshot, { clientTxnId: "txn_re_1", accepted: true });
+	assert.deepEqual(stale, { consumed: [], duplicate: true });
+	assert.deepEqual(store.get("att_re").payload, { gen: 2 });
+	assert.equal(store.get("att_re").envelope.revision, 1);
+	const fresh = store.freezeForSend("txn_re_2", "again");
+	const appliedFresh = store.applyAcceptance(fresh, { clientTxnId: "txn_re_2", accepted: true });
+	assert.deepEqual(appliedFresh, { consumed: ["att_re"], duplicate: false });
+	assert.deepEqual(store.list(), []);
+`;
+
+const UISTATE_KEEP_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	const store = new CoreAttachmentDraftStore(storage, "ps_k", { now: () => "2026-09-21T20:06:00.000Z", createId: createIdSequence("att_k") });
+	const idA = await store.add({ sessionId: "ps_k", type: "pibo.core/note", schemaVersion: 1, payload: { v: 1 }, uiState: { tab: "details", scroll: 42 } });
+	await store.update(idA, 1, { payload: { v: 2 } });
+	assert.equal(store.get(idA).envelope.revision, 2);
+	assert.deepEqual(store.get(idA).payload, { v: 2 });
+	assert.deepEqual(store.get(idA).uiState, { tab: "details", scroll: 42 });
+	const reloaded = new CoreAttachmentDraftStore(storage, "ps_k");
+	assert.equal(reloaded.get(idA).envelope.revision, 2);
+	assert.deepEqual(reloaded.get(idA).payload, { v: 2 });
+	assert.deepEqual(reloaded.get(idA).uiState, { tab: "details", scroll: 42 });
+`;
+
 async function runScenario(script) {
 	try {
 		await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
@@ -534,4 +757,28 @@ test("failed mutations keep state and recover through retry", async () => {
 
 test("draft sessions stay isolated and media metadata survives reload; byte resolvability deferred to RV-02/05/07", async () => {
 	await assert.doesNotReject(runScenario(SESSION_MEDIA_METADATA_SCENARIO));
+});
+
+test("writers reject values the loader would refuse", async () => {
+	await assert.doesNotReject(runScenario(WRITER_CONSISTENCY_SCENARIO));
+});
+
+test("null, malformed and cyclic inputs fail controlled without state damage", async () => {
+	await assert.doesNotReject(runScenario(CONTROLLED_ERRORS_SCENARIO));
+});
+
+test("failed freeze stores nothing and heals into a normal transaction", async () => {
+	await assert.doesNotReject(runScenario(FREEZE_THROW_RECOVERY_SCENARIO));
+});
+
+test("uiState-only edits keep the frozen transaction idempotent", async () => {
+	await assert.doesNotReject(runScenario(UISTATE_REFREEZE_SCENARIO));
+});
+
+test("reissued ids survive stale duplicate receipts", async () => {
+	await assert.doesNotReject(runScenario(REISSUE_DUP_RECEIPT_SCENARIO));
+});
+
+test("payload updates keep stored uiState across reload", async () => {
+	await assert.doesNotReject(runScenario(UISTATE_KEEP_SCENARIO));
 });
