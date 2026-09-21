@@ -119,9 +119,20 @@ async function resolveOpenAiChatGptTranscriptionAuth(): Promise<OpenAiChatGptTra
 	const resolvedAuth = await resolvePiProviderAuth(OPENAI_CODEX_AUTH_PROVIDER_ID);
 	const accessToken = resolvedAuth?.auth.apiKey;
 	if (!accessToken) return undefined;
+	// FP-K03-PAIR-C: resolution may rotate the token, so the pre-read stored id
+	// must never be paired blindly. Pair only with a post-resolution OAuth read
+	// carrying exactly this token. A missing or re-typed entry means the
+	// credentials are gone (absence); a present but different token is an
+	// observed credential change that must not be mixed. No pre-read fallback,
+	// no silent retry; the consumer lookup catch maps the fixed error below.
+	const paired = await readPiCredential(OPENAI_CODEX_AUTH_PROVIDER_ID);
+	if (paired?.type !== "oauth") return undefined;
+	if (paired.access !== accessToken) {
+		throw new Error("OpenAI Codex OAuth credential changed during authentication resolution.");
+	}
 	return {
 		accessToken,
-		accountId: getOpenAiAccountId(accessToken, credential.accountId),
+		accountId: getOpenAiAccountId(accessToken, paired.accountId),
 	};
 }
 
