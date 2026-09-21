@@ -40,7 +40,9 @@ function restorePiboHome() {
 
 async function startProductWithRemote(root) {
 	process.env.PIBO_HOME = join(root, "pibo-home");
-	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
+	// Same file the store defaults would open (piboHomePath("pibo.sqlite")):
+	// only then can an outer txn on `data` prove the injection avoids a second connection.
+	const data = new PiboDataStore(join(process.env.PIBO_HOME, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const host = new PluginHost();
 	const product = await startPluginProductRuntime({
 		host,
@@ -176,6 +178,32 @@ test("remote stop failure still closes the own store and never the borrowed stor
 		PiboRemoteAgentStore.prototype.close = originalClose;
 		await host.remove("pibo.remote-agent").catch(() => {});
 		await disposeProduct(product, data, root);
+	}
+});
+
+test("same-DB setup without injection reproduces the lock under an outer txn", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-remote-lifecycle-"));
+	process.env.PIBO_HOME = join(root, "pibo-home");
+	const data = new PiboDataStore(join(process.env.PIBO_HOME, "pibo.sqlite"));
+	const host = new PluginHost();
+	host.provideCoreService({ id: "pibo.product.options", version: "1.0.0", value: {} });
+	host.provideCoreService({ id: "pibo.chat.extensions", version: "1.0.0", value: new PiboChatExtensionRegistry() });
+	// NOTE: no pibo.data.store service -> defaults open the same file (manifest still declares it).
+	try {
+		data.db.exec("BEGIN IMMEDIATE");
+		try {
+			const error = await host.start({ plugins: [remoteDefinition()] }).then(() => null, (cause) => cause);
+			assert.ok(error, "expected setup to fail while the outer txn holds the same DB file");
+			assert.match(String(error?.message ?? error), /database is locked/);
+		} finally {
+			try { data.db.exec("ROLLBACK"); } catch {}
+		}
+	} finally {
+		await host.remove("pibo.remote-agent").catch(() => {});
+		await host.stop().catch(() => {});
+		try { data.close(); } catch {}
+		restorePiboHome();
+		await rm(root, { recursive: true, force: true });
 	}
 });
 
