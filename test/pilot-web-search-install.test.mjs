@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -75,6 +75,35 @@ function assertPortableBackend(backendText, backendMeta) {
 	return inputs;
 }
 
+function isNodeBuiltinSpecifier(specifier) {
+	return specifier === "node" || specifier.startsWith("node:");
+}
+
+function isAllowedPackage(specifier, allowedPackages) {
+	return allowedPackages.some((name) => specifier === name || specifier.startsWith(`${name}/`));
+}
+
+function collectOutputImports(metafile) {
+	const found = [];
+	for (const [output, meta] of Object.entries(metafile.outputs ?? {})) {
+		for (const entry of meta.imports ?? []) {
+			found.push({ output, path: entry.path, kind: entry.kind, external: entry.external === true });
+		}
+	}
+	return found;
+}
+
+// CC-C03: only node builtins or manifest-declared runtime dependencies may
+// remain as external output imports. allowedPackages comes from the pilot
+// wrapper package.json (this pilot declares none); the node-platform bundle
+// form inlines everything else.
+function assertOnlyAllowedOutputImports(metafile, { allowedPackages = [] } = {}) {
+	const imports = collectOutputImports(metafile);
+	const violations = imports.filter((entry) => entry.external && !isNodeBuiltinSpecifier(entry.path) && !isAllowedPackage(entry.path, allowedPackages));
+	assert.deepEqual(violations, [], `bundle output has disallowed external imports: ${JSON.stringify(violations)}`);
+	return imports;
+}
+
 function assertBridgedBrowser(browserText) {
 	for (const bare of ['from "react"', "from 'react'", 'from "react-dom"', 'from "react/jsx-runtime"', 'from "@tanstack/react-query"']) {
 		assert.ok(!browserText.includes(bare), `browser bundle must bridge ${bare}`);
@@ -113,10 +142,11 @@ async function buildPilotSource() {
 		legalComments: "none",
 		logLevel: "warning",
 	});
-	await build({
+	const browserResult = await build({
 		entryPoints: [join(PILOT_ROOT, "src/browser.ts")],
 		outfile: join(source, "browser/index.js"),
 		bundle: true,
+		metafile: true,
 		platform: "browser",
 		format: "esm",
 		target: "es2022",
@@ -127,7 +157,7 @@ async function buildPilotSource() {
 		legalComments: "none",
 		logLevel: "warning",
 	});
-	return { root, source, backendMeta: backendResult.metafile };
+	return { root, source, backendMeta: backendResult.metafile, browserMeta: browserResult.metafile };
 }
 
 function openManager(root) {
@@ -178,7 +208,7 @@ function hostDefinition(installation, setup) {
 }
 
 test("C1 pilot web-search: installed artefact activates in the real host", async () => {
-	const { root, source, backendMeta } = await buildPilotSource();
+	const { root, source, backendMeta, browserMeta } = await buildPilotSource();
 	const { data, manager } = openManager(root);
 	const host = new PluginHost();
 	try {
@@ -208,6 +238,9 @@ test("C1 pilot web-search: installed artefact activates in the real host", async
 		const stagedBrowser = join(staged.artifactPath, staged.manifest.entrypoints.browser);
 		const backendInputs = assertPortableBackend(await readFile(stagedBackend, "utf8"), backendMeta);
 		assertBridgedBrowser(await readFile(stagedBrowser, "utf8"));
+		const allowedPackages = Object.keys(wrapper.dependencies ?? {});
+		const backendOutputImports = assertOnlyAllowedOutputImports(backendMeta, { allowedPackages });
+		const browserOutputImports = assertOnlyAllowedOutputImports(browserMeta, { allowedPackages });
 		const backendBytes = (await stat(stagedBackend)).size;
 		const browserBytes = (await stat(stagedBrowser)).size;
 
@@ -258,6 +291,8 @@ test("C1 pilot web-search: installed artefact activates in the real host", async
 			installWeightBytes,
 			contentHash: first.installation.contentHash,
 			backendInputs,
+			backendOutputImports,
+			browserOutputImports,
 			setupSource: "artifactPath",
 			esbuildVersion,
 			nodeVersion: process.version,
@@ -266,6 +301,51 @@ test("C1 pilot web-search: installed artefact activates in the real host", async
 		await host.remove(PLUGIN_ID).catch(() => {});
 		await host.stop().catch(() => {});
 		data.close();
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("C1-R07/CC-C03: output-import check rejects disallowed external bare imports", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pibo-c1-external-fixture-"));
+	try {
+		const entry = join(root, "entry.js");
+		await writeFile(entry, 'import "definitely-disallowed-c1-fixture";\nimport "@c1-fixture/disallowed/subpath";\nexport const marker = 1;\n');
+		const result = await build({
+			entryPoints: [entry],
+			bundle: true,
+			write: false,
+			metafile: true,
+			platform: "node",
+			format: "esm",
+			external: ["definitely-disallowed-c1-fixture", "@c1-fixture/disallowed/subpath"],
+			logLevel: "warning",
+		});
+		assert.throws(
+			() => assertOnlyAllowedOutputImports(result.metafile, { allowedPackages: [] }),
+			(error) => error instanceof assert.AssertionError
+				&& error.message.includes("definitely-disallowed-c1-fixture")
+				&& error.message.includes("@c1-fixture/disallowed/subpath"),
+		);
+		assert.throws(
+			() => assertOnlyAllowedOutputImports(result.metafile, { allowedPackages: ["@c1-fixture/disallowed"] }),
+			(error) => error instanceof assert.AssertionError
+				&& error.message.includes("definitely-disallowed-c1-fixture")
+				&& !error.message.includes("@c1-fixture/disallowed/subpath"),
+		);
+		const builtinEntry = join(root, "builtin.js");
+		await writeFile(builtinEntry, 'import { readFile } from "node:fs";\nexport const reader = readFile;\n');
+		const builtinResult = await build({
+			entryPoints: [builtinEntry],
+			bundle: true,
+			write: false,
+			metafile: true,
+			platform: "node",
+			format: "esm",
+			logLevel: "warning",
+		});
+		const builtinImports = assertOnlyAllowedOutputImports(builtinResult.metafile, { allowedPackages: [] });
+		assert.ok(builtinImports.some((entry) => entry.path === "node:fs" && entry.external));
+	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
 });
