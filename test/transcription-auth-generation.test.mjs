@@ -7,8 +7,8 @@ import { createOpenAiChatGptTranscriptionProvider } from "../dist/transcription/
 import { PiboTranscriptionError } from "../dist/transcription/types.js";
 
 // FP-K03-PAIR-C: generation pairing against the REAL default resolver of the
-// ChatGPT transcription provider (no getAuth option is passed, so the private
-// resolveOpenAiChatGptTranscriptionAuth runs). The private resolver, the pi
+// ChatGPT transcription provider (no getAuth option is passed, so the integrated
+// B-owned bindPiProviderOAuthAccess runs). The binding, the pi credential
 // store and the ModelRuntime refresh are NOT mocked. Test-local control uses
 // only the existing seams: PI_CODING_AGENT_DIR for the real file-backed pi
 // credential store, and a global fetch stub that answers ONLY the OAuth token
@@ -203,7 +203,7 @@ test("divergent token observed after resolution fails safe without a request or 
 						&& error.code === "provider_error"
 						&& error.message === "ChatGPT Subscription authentication could not be loaded."
 						&& error.cause instanceof Error
-						&& error.cause.message === "OpenAI Codex OAuth credential changed during authentication resolution.",
+						&& error.cause.message === 'Observed credential change for provider "openai-codex"; refusing to pair a resolved token with an accountId from another generation.',
 				);
 				assert.equal(requests.length, 0);
 				assert.equal(stub.calls.length, 1);

@@ -1,4 +1,4 @@
-import { getPiProviderAuthStatus, resolvePiProviderAuth } from "../agent-runtimes/pi/credentials.js";
+import { bindPiProviderApiKeyAccess } from "../agent-runtimes/pi/credentials.js";
 import {
 	PiboTranscriptionError,
 	type PiboTranscriptionProvider,
@@ -23,8 +23,9 @@ export function createOpenAiTranscriptionProvider(
 	const model = options.model ?? DEFAULT_OPENAI_TRANSCRIPTION_MODEL;
 	const url = options.url ?? DEFAULT_OPENAI_TRANSCRIPTION_URL;
 	const fetchImpl = options.fetch ?? fetch;
-	const getApiKey = options.getApiKey ?? (async () => (await resolvePiProviderAuth(OPENAI_API_CREDENTIAL_PROVIDER_ID))?.auth.apiKey);
-	const isConfigured = options.isConfigured ?? (async () => (await getPiProviderAuthStatus(OPENAI_API_CREDENTIAL_PROVIDER_ID)).configured);
+	const ownerAccess = bindPiProviderApiKeyAccess(OPENAI_API_CREDENTIAL_PROVIDER_ID);
+	const getApiKey = options.getApiKey ?? ownerAccess.getApiKey;
+	const isConfigured = options.isConfigured ?? ownerAccess.isConfigured;
 
 	return {
 		id: OPENAI_TRANSCRIPTION_PROVIDER_ID,

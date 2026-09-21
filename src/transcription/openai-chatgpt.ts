@@ -1,7 +1,4 @@
-import {
-	readPiCredential,
-	resolvePiProviderAuth,
-} from "../agent-runtimes/pi/credentials.js";
+import { bindPiProviderOAuthAccess } from "../agent-runtimes/pi/credentials.js";
 import {
 	PiboTranscriptionError,
 	type PiboTranscriptionProvider,
@@ -29,8 +26,9 @@ export function createOpenAiChatGptTranscriptionProvider(
 ): PiboTranscriptionProvider {
 	const url = options.url ?? DEFAULT_OPENAI_CHATGPT_TRANSCRIPTION_URL;
 	const fetchImpl = options.fetch ?? fetch;
-	const getAuth = options.getAuth ?? resolveOpenAiChatGptTranscriptionAuth;
-	const isConfigured = options.isConfigured ?? hasOpenAiCodexOAuthCredential;
+	const ownerAccess = bindPiProviderOAuthAccess(OPENAI_CODEX_AUTH_PROVIDER_ID);
+	const getAuth = options.getAuth ?? ownerAccess.getAuth;
+	const isConfigured = options.isConfigured ?? ownerAccess.isConfigured;
 
 	return {
 		id: OPENAI_CHATGPT_TRANSCRIPTION_PROVIDER_ID,
@@ -106,33 +104,6 @@ export function createOpenAiChatGptTranscriptionProvider(
 			}
 			return { text };
 		},
-	};
-}
-
-async function hasOpenAiCodexOAuthCredential(): Promise<boolean> {
-	return (await readPiCredential(OPENAI_CODEX_AUTH_PROVIDER_ID))?.type === "oauth";
-}
-
-async function resolveOpenAiChatGptTranscriptionAuth(): Promise<OpenAiChatGptTranscriptionAuth | undefined> {
-	const credential = await readPiCredential(OPENAI_CODEX_AUTH_PROVIDER_ID);
-	if (credential?.type !== "oauth") return undefined;
-	const resolvedAuth = await resolvePiProviderAuth(OPENAI_CODEX_AUTH_PROVIDER_ID);
-	const accessToken = resolvedAuth?.auth.apiKey;
-	if (!accessToken) return undefined;
-	// FP-K03-PAIR-C: resolution may rotate the token, so the pre-read stored id
-	// must never be paired blindly. Pair only with a post-resolution OAuth read
-	// carrying exactly this token. A missing or re-typed entry means the
-	// credentials are gone (absence); a present but different token is an
-	// observed credential change that must not be mixed. No pre-read fallback,
-	// no silent retry; the consumer lookup catch maps the fixed error below.
-	const paired = await readPiCredential(OPENAI_CODEX_AUTH_PROVIDER_ID);
-	if (paired?.type !== "oauth") return undefined;
-	if (paired.access !== accessToken) {
-		throw new Error("OpenAI Codex OAuth credential changed during authentication resolution.");
-	}
-	return {
-		accessToken,
-		accountId: getOpenAiAccountId(accessToken, paired.accountId),
 	};
 }
 
