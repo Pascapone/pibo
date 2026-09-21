@@ -220,3 +220,73 @@ test("b1-refresh api-key resolution performs no token-endpoint traffic", async (
 	const access = bindPiProviderApiKeyAccess("openai");
 	assert.equal(await access.getApiKey(), API_KEY_FIXTURE);
 });
+
+test("b1-refresh rotation persist failure surfaces as auth error, then heals on retry", async (t) => {
+	// Proven boundary: a callback/modify error BEFORE the physical write,
+	// after the real rotation was computed (the intercepted refresh ran and
+	// returned). This is NOT a disk-failure/crash-atomicity proof: no
+	// partial write, no torn file and no lock contention are exercised.
+	// AuthStorage offers no fault-injection seam, so the real store object
+	// that ModelRuntime.create receives is wrapped test-locally; the
+	// original create runs and the bindings are never stubbed.
+	const rotatedAccess = syntheticCodexAccessToken(NEW_ACCOUNT);
+	const peer = createRefreshPeer({
+		kind: "rotate",
+		accessToken: rotatedAccess,
+		refreshToken: NEW_REFRESH,
+		expiresIn: 3600,
+	});
+	installFetch(t, peer.fetch);
+	const planted = expiredOauthEntry();
+	await writePiCredential("openai-codex", planted);
+	t.after(() => deletePiCredential("openai-codex"));
+
+	const modifyFailure = new Error("synthetic store modify failure b1-r2-store");
+	const computedRotations = [];
+	let failModify = true;
+	const originalCreate = ModelRuntime.create;
+	t.mock.method(ModelRuntime, "create", async (options) => {
+		if (!failModify) return originalCreate.call(ModelRuntime, options);
+		const realStore = options.credentials;
+		const writeFailingStore = Object.create(
+			Object.getPrototypeOf(realStore),
+			Object.getOwnPropertyDescriptors(realStore),
+		);
+		writeFailingStore.modify = async (providerId, fn) => {
+			const current = await realStore.read(providerId);
+			const next = await fn(current);
+			computedRotations.push(next);
+			throw modifyFailure;
+		};
+		return originalCreate.call(ModelRuntime, { ...options, credentials: writeFailingStore });
+	});
+
+	const access = bindPiProviderOAuthAccess("openai-codex");
+	await assert.rejects(
+		access.getAuth(),
+		(error) => {
+			assert.equal(error?.name, "ModelsError");
+			assert.equal(error?.code, "auth");
+			assert.ok(error.message.includes("modify failed"));
+			assert.ok(!error.message.includes(OLD_ACCESS));
+			assert.ok(!error.message.includes(OLD_REFRESH));
+			return true;
+		},
+	);
+	assert.equal(peer.requests.length, 1, "the refresh ran before the persist boundary failed");
+	assert.equal(computedRotations.length, 1);
+	assert.equal(computedRotations[0]?.access, rotatedAccess);
+	assert.deepEqual(await readPiCredential("openai-codex"), planted);
+	assert.equal(await access.isConfigured(), true);
+
+	failModify = false;
+	const healed = await access.getAuth();
+	assert.equal(healed.accessToken, rotatedAccess);
+	assert.equal(peer.requests.length, 2, "retry performs a second real refresh");
+	const stored = await readPiCredential("openai-codex");
+	assert.equal(stored.access, rotatedAccess);
+	assert.equal(stored.refresh, NEW_REFRESH);
+	assert.equal(stored.accountId, NEW_ACCOUNT);
+	assert.deepEqual(await access.getAuth(), { accessToken: rotatedAccess, accountId: NEW_ACCOUNT });
+	assert.equal(peer.requests.length, 2, "the healed rotation is reused without further refresh");
+});
