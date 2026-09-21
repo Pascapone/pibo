@@ -222,14 +222,17 @@ export type PiProviderOAuthAccess = {
  * enumeration (`listPiCredentials`) is unaffected by this shape.
  *
  * Absence (no entry, or an entry that resolves to nothing usable) returns
- * `undefined`/`false` without throwing. Genuine lookup/store/runtime
- * failures propagate — this binding catches nothing — with no fallback to
- * other accounts or runtimes; the consumer maps thrown failures to
+ * `undefined`/`false` without throwing. Failed store READS surface as
+ * absence too: pi's store read swallows IO errors into an empty/stale
+ * snapshot instead of throwing, so "the binding catches nothing" does not
+ * make every lower IO exception visible. Failures that do throw —
+ * refresh/rotation/resolve errors — propagate unchanged, with no fallback
+ * to other accounts or runtimes; the consumer maps thrown failures to
  * `provider_error` and only absence to `not_configured`. Nothing is cached:
  * every call re-reads the store. With an api_key entry, resolution performs
- * local reads only; if an OAuth entry is stored under the bound id instead,
- * resolution follows the OAuth path (including a possible refresh, see
- * below) and returns its access token.
+ * local reads only and no token-endpoint traffic; if an OAuth entry is
+ * stored under the bound id instead, resolution follows the OAuth path
+ * (including a possible refresh, see below) and returns its access token.
  */
 export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKeyAccess {
 	return {
@@ -242,8 +245,9 @@ export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKey
  * Bind OAuth access for one provider at its credential owner (K03).
  * Same scope, absence, error and lifetime promise as the API-key binding:
  * trusted internal consumers with fixed ids only, no caller authorization
- * (owner I); thrown lookup/store/refresh failures propagate for the
- * consumer to map to `provider_error`; absence stays `not_configured`.
+ * (owner I); thrown refresh/rotation/resolve failures propagate for the
+ * consumer to map to `provider_error`; absence — including failed store
+ * reads — stays `not_configured`.
  *
  * Refresh side effect: a stored token expiring within ~5 minutes triggers
  * an OAuth refresh with network access (~15s timeout). Success persists
@@ -252,11 +256,15 @@ export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKey
  *
  * The binding reads twice (type gate, then resolution): logout or refresh
  * may land between the reads. Both outcomes stay correct (absence resolves
- * `undefined`); no single-generation snapshot is promised.
+ * `undefined`); no single-generation snapshot is promised. After a
+ * rotation, the returned accountId may still come from the pre-refresh
+ * read while the store already holds the rotated one; the next read
+ * observes the new value.
  *
- * `accountId` is the stored credential value only, passed through verbatim;
- * provider-specific derivation stays with the consumer, which prefers the
- * stored accountId, then its JWT fallback, then no header.
+ * `accountId` is the stored credential value only, trimmed (blank values
+ * are omitted, never passed as empty strings); provider-specific
+ * derivation stays with the consumer, which prefers the stored accountId,
+ * then its JWT fallback, then no header.
  */
 export function bindPiProviderOAuthAccess(providerId: string): PiProviderOAuthAccess {
 	return {
