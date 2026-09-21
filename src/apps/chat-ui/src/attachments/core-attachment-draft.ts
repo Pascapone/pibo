@@ -674,6 +674,16 @@ export class CoreAttachmentDraftStore {
 		}
 		if (next.payload === undefined && next.uiState === undefined) return;
 		const touchesPayload = next.payload !== undefined;
+		const nextRevision = touchesPayload ? record.envelope.revision + 1 : record.envelope.revision;
+		// The writer must never persist a revision rejected by the loader.
+		// Do not wrap or clamp: either would break snapshot/CAS identity.
+		if (!Number.isSafeInteger(nextRevision) || nextRevision < 1) {
+			throw new AttachmentDraftError({
+				code: "ATT_LIMIT_EXCEEDED",
+				message: "Attachment revision limit reached; the existing draft is unchanged.",
+				retryable: false,
+			});
+		}
 		if (touchesPayload) assertJsonValue(next.payload, "Attachment payload");
 		if (next.uiState !== undefined) assertJsonValue(next.uiState, "Attachment UI state");
 		const timestamp = this.timestamp();
@@ -685,7 +695,7 @@ export class CoreAttachmentDraftStore {
 				: {}),
 			envelope: {
 				...record.envelope,
-				revision: (touchesPayload ? record.envelope.revision + 1 : record.envelope.revision) as AttachmentRevision,
+				revision: nextRevision as AttachmentRevision,
 				updatedAt: timestamp,
 			},
 			status: "ready",

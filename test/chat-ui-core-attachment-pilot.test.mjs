@@ -782,3 +782,41 @@ test("reissued ids survive stale duplicate receipts", async () => {
 test("payload updates keep stored uiState across reload", async () => {
 	await assert.doesNotReject(runScenario(UISTATE_KEEP_SCENARIO));
 });
+
+test("revision exhaustion preserves persisted drafts, open transactions and UI-only edits", async () => {
+	await assert.doesNotReject(runScenario(PRELUDE + `
+		const storage = createMemoryStorage();
+		const sessionId = "ps_revision_boundary";
+		const options = { now: () => "2026-09-21T20:00:00Z", createId: () => "att_boundary" };
+		const initial = new CoreAttachmentDraftStore(storage, sessionId, options);
+		const id = await initial.add({ sessionId, type: "pibo.core/note", schemaVersion: 1, payload: { value: 1 }, uiState: { expanded: false } });
+		const key = "pibo.chat.coreAttachments.draft." + sessionId;
+		const seeded = JSON.parse(storage.readText(key));
+		seeded.records[0].envelope.revision = Number.MAX_SAFE_INTEGER - 1;
+		storage.writeText(key, JSON.stringify(seeded));
+		const store = new CoreAttachmentDraftStore(storage, sessionId, options);
+		assert.equal(store.storageError, undefined);
+		await store.update(id, Number.MAX_SAFE_INTEGER - 1, { payload: { value: 2 } });
+		assert.equal(store.get(id).envelope.revision, Number.MAX_SAFE_INTEGER);
+		const frozen = store.freezeForSend("txn_boundary", "send current revision");
+		const before = storage.readText(key);
+		const beforeRecords = store.list();
+		const beforeWrites = storage.writes;
+		const error = await rejectsWithCode(store.update(id, Number.MAX_SAFE_INTEGER, { payload: { value: 3 } }), "ATT_LIMIT_EXCEEDED");
+		assert.equal(error.retryable, false);
+		assert.equal(storage.readText(key), before);
+		assert.equal(storage.writes, beforeWrites);
+		assert.deepEqual(store.list(), beforeRecords);
+		assert.deepEqual(store.freezeForSend("txn_boundary", "send current revision"), frozen);
+		await store.update(id, Number.MAX_SAFE_INTEGER, {});
+		assert.equal(storage.writes, beforeWrites);
+		await store.update(id, Number.MAX_SAFE_INTEGER, { uiState: { expanded: true } });
+		assert.equal(store.get(id).envelope.revision, Number.MAX_SAFE_INTEGER);
+		assert.deepEqual(store.freezeForSend("txn_boundary", "send current revision"), frozen);
+		const reloaded = new CoreAttachmentDraftStore(storage, sessionId, options);
+		assert.equal(reloaded.storageError, undefined);
+		assert.deepEqual(reloaded.list(), store.list());
+		assert.deepEqual(reloaded.applyAcceptance(frozen, { clientTxnId: "txn_boundary", accepted: true }), { consumed: [id], duplicate: false });
+		assert.deepEqual(new CoreAttachmentDraftStore(storage, sessionId, options).list(), []);
+	`));
+});
