@@ -13449,6 +13449,24 @@
       "body_sha256": "53f9970e576ca271a5b0ae895e8a51a9b366e93044bc395b9daf022099179f3d"
     },
     {
+      "path": "packages/pibo-plugin-vscode-web/README.md",
+      "state": "host-exception",
+      "reason": "Package-local VS Code Web pilot usage and fixture acceptance instructions colocated with the package.",
+      "classification": "host-owned exception",
+      "authority": null,
+      "status": null,
+      "lineage": null
+    },
+    {
+      "path": "packages/pibo-plugin-web-search/README.md",
+      "state": "host-exception",
+      "reason": "Package-local Web Search pilot usage and isolated installation instructions colocated with the package.",
+      "classification": "host-owned exception",
+      "authority": null,
+      "status": null,
+      "lineage": null
+    },
+    {
       "path": "packages/workflows/README.md",
       "state": "host-exception",
       "reason": "Colocated package documentation distributed with the package.",

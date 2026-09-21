@@ -23,12 +23,13 @@ test("annotation source changes cannot replace an attached Core draft snapshot",
       const payload = JSON.parse(JSON.stringify(prepared.attachments[0]));
       const draft = new CoreAttachmentDraftStore(storage, "ps_joint", { createId: () => "att_joint" });
       const id = await draft.add({ sessionId: "ps_joint", type: "pibo.web-annotations/note", schemaVersion: 1, payload });
-      annotations.patchAnnotation("ps_joint", "wa_joint", { note: "source changed after attaching" });
-      assert.equal(annotations.getAnnotation("ps_joint", "wa_joint").note, "source changed after attaching");
+      annotations.resolveAnnotation("ps_joint", "wa_joint", "resolved after attaching");
+      assert.equal(annotations.getAnnotation("ps_joint", "wa_joint").status, "resolved");
       payload.note = "caller object changed";
       const reloaded = new CoreAttachmentDraftStore(storage, "ps_joint");
       assert.equal(reloaded.storageError, undefined);
       assert.equal(reloaded.get(id).payload.note, "original annotation");
+      assert.equal(reloaded.get(id).payload.status, "open", "source status changes must not replace the captured JSON");
       const frozen = reloaded.freezeForSend("txn_joint", "Review");
       assert.equal(frozen.attachments[0].payload.note, "original annotation");
       await reloaded.update(id, 1, { payload: { ...reloaded.get(id).payload, note: "new draft revision" } });
