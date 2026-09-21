@@ -62,7 +62,9 @@ test("b1-k03 credential bindings are scoped to their bound provider", async (t) 
 	assert.equal(await access.isConfigured(), false);
 });
 
-test("b1-k03 access objects expose no credential enumeration", () => {
+test("b1-k03 access objects keep a two-field shape (form regression, not a security boundary)", () => {
+	// This pins the object shape only. It does not restrict store enumeration:
+	// listPiCredentials stays available to importers by design.
 	assert.deepEqual(Object.keys(bindPiProviderApiKeyAccess(API_KEY_PROVIDER)).sort(), ["getApiKey", "isConfigured"]);
 	assert.deepEqual(Object.keys(bindPiProviderOAuthAccess(OAUTH_PROVIDER)).sort(), ["getAuth", "isConfigured"]);
 });
@@ -113,7 +115,96 @@ test("b1-k03 stored oauth derivation honors the refresh margin", () => {
 	assert.equal(deriveStoredOAuthAuthResult(undefined), undefined);
 });
 
-test("b1-k03 owner-bound api-key access drives the transcription seam", async (t) => {
+test("b1-k03 type matrix documents best-effort isConfigured gaps", async (t) => {
+	// NOTE: matrix cells use the real openai/openai-codex ids, because pi
+	// only resolves registered provider ids. Synthetic ids stay unresolved.
+	await writePiCredential(API_KEY_PROVIDER, { type: "api_key", key: API_KEY_FIXTURE });
+	t.after(() => deletePiCredential(API_KEY_PROVIDER));
+	const apiOnKey = bindPiProviderApiKeyAccess(API_KEY_PROVIDER);
+	assert.equal(await apiOnKey.getApiKey(), API_KEY_FIXTURE);
+	assert.equal(await apiOnKey.isConfigured(), true);
+	const oauthOnKey = bindPiProviderOAuthAccess(API_KEY_PROVIDER);
+	assert.equal(await oauthOnKey.getAuth(), undefined);
+	assert.equal(await oauthOnKey.isConfigured(), false);
+	await deletePiCredential(API_KEY_PROVIDER);
+
+	await writePiCredential(OAUTH_PROVIDER, {
+		type: "oauth",
+		access: OAUTH_ACCESS_FIXTURE,
+		expires: Date.now() + 3600_000,
+		accountId: OAUTH_ACCOUNT_FIXTURE,
+	});
+	t.after(() => deletePiCredential(OAUTH_PROVIDER));
+	const oauthOnOauth = bindPiProviderOAuthAccess(OAUTH_PROVIDER);
+	assert.deepEqual(await oauthOnOauth.getAuth(), {
+		accessToken: OAUTH_ACCESS_FIXTURE,
+		accountId: OAUTH_ACCOUNT_FIXTURE,
+	});
+	assert.equal(await oauthOnOauth.isConfigured(), true);
+	const apiOnOauth = bindPiProviderApiKeyAccess(OAUTH_PROVIDER);
+	assert.equal(
+		await apiOnOauth.getApiKey(),
+		OAUTH_ACCESS_FIXTURE,
+		"documents existing resolution: an oauth entry under the id resolves its access token",
+	);
+	assert.equal(await apiOnOauth.isConfigured(), true);
+	await deletePiCredential(OAUTH_PROVIDER);
+
+	const unknownApi = bindPiProviderApiKeyAccess("b1-k03-unknown-provider");
+	assert.equal(await unknownApi.getApiKey(), undefined);
+	assert.equal(await unknownApi.isConfigured(), false);
+});
+
+test("b1-k03 expired oauth reports configured without triggering a refresh", async (t) => {
+	// isConfigured is read-only (no refresh). getAuth on this entry would
+	// start a real OAuth refresh and is deliberately NOT called here.
+	await writePiCredential(OAUTH_PROVIDER, {
+		type: "oauth",
+		access: OAUTH_ACCESS_FIXTURE,
+		expires: Date.now() - 1000,
+		accountId: OAUTH_ACCOUNT_FIXTURE,
+	});
+	t.after(() => deletePiCredential(OAUTH_PROVIDER));
+	const access = bindPiProviderOAuthAccess(OAUTH_PROVIDER);
+	assert.equal(await access.isConfigured(), true);
+});
+
+test("b1-k03 unusable entries resolve to absence without throwing", async (t) => {
+	await writePiCredential(OAUTH_PROVIDER, {
+		type: "oauth",
+		expires: Date.now() + 3600_000,
+	});
+	t.after(() => deletePiCredential(OAUTH_PROVIDER));
+	const oauthAccess = bindPiProviderOAuthAccess(OAUTH_PROVIDER);
+	assert.equal(await oauthAccess.getAuth(), undefined);
+	assert.equal(await oauthAccess.isConfigured(), true);
+
+	await writePiCredential(API_KEY_PROVIDER, { type: "api_key", key: "" });
+	t.after(() => deletePiCredential(API_KEY_PROVIDER));
+	const apiAccess = bindPiProviderApiKeyAccess(API_KEY_PROVIDER);
+	assert.equal(await apiAccess.getApiKey(), undefined);
+	assert.equal(
+		await apiAccess.isConfigured(),
+		true,
+		"documents existing gap: a stored but empty entry still reports configured",
+	);
+});
+
+test("b1-k03 oauth binding passes accountId through verbatim and invents none", async (t) => {
+	const jwtShapedAccess = "eyJiLXN5bnRoZXRpYy1maXh0dXJlLW5vLXNpZ25hdHVyZX0";
+	await writePiCredential(OAUTH_PROVIDER, {
+		type: "oauth",
+		access: jwtShapedAccess,
+		expires: Date.now() + 3600_000,
+		refresh: "b1-fixture-refresh-token",
+	});
+	t.after(() => deletePiCredential(OAUTH_PROVIDER));
+	const access = bindPiProviderOAuthAccess(OAUTH_PROVIDER);
+	assert.deepEqual(await access.getAuth(), { accessToken: jwtShapedAccess });
+});
+
+test("b1-k03 owner-bound api-key access matches the BASE consumer plug shape (pre-integration)", async (t) => {
+	// Pre-integration shape check only, not the joint B→I→C end-to-end proof.
 	await writePiCredential(API_KEY_PROVIDER, { type: "api_key", key: API_KEY_FIXTURE });
 	t.after(() => deletePiCredential(API_KEY_PROVIDER));
 	const access = bindPiProviderApiKeyAccess(API_KEY_PROVIDER);
@@ -128,7 +219,8 @@ test("b1-k03 owner-bound api-key access drives the transcription seam", async (t
 	assert.equal(result.model, "gpt-4o-mini-transcribe");
 });
 
-test("b1-k03 owner-bound oauth access drives the chatgpt transcription seam", async (t) => {
+test("b1-k03 owner-bound oauth access matches the BASE consumer plug shape (pre-integration)", async (t) => {
+	// Pre-integration shape check only, not the joint B→I→C end-to-end proof.
 	await writePiCredential(OAUTH_PROVIDER, {
 		type: "oauth",
 		access: OAUTH_ACCESS_FIXTURE,
@@ -156,7 +248,10 @@ test("b1-k03 owner-bound oauth access drives the chatgpt transcription seam", as
 	assert.equal(captured.init.headers["ChatGPT-Account-Id"], OAUTH_ACCOUNT_FIXTURE);
 });
 
-test("b1-k03 unconfigured bindings fail transcription as not configured without network", async () => {
+test("b1-k03 unconfigured bindings fail BASE transcription as not configured without network", async () => {
+	// Plug-shape compatibility with the BASE consumer in this worktree. The
+	// joint B→I→C end-to-end proof (C provider_error mapping, injected-path
+	// JWT derivation) stays blocked_on_integration and is NOT claimed here.
 	let requested = false;
 	const failingFetch = async () => {
 		requested = true;

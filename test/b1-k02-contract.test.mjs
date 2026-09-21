@@ -207,6 +207,23 @@ test("b1-k02 tool contract neither invents nor strips the yielded run scope", as
 	assert.deepEqual(directContext, { cwd: "/tmp/b1-k02" });
 });
 
+test("b1-k02 pibo tools observe a set yielded run scope by context identity", async () => {
+	const context = { cwd: "/tmp/b1-k02", yieldedRunId: "run-b1-k02-set" };
+	const definition = definePiboTool({
+		name: "b1_yield_passthrough",
+		title: "B1 Yield Passthrough",
+		description: "Yield passthrough fixture.",
+		inputSchema: Type.Object({}),
+		async execute(_toolCallId, _input, _signal, _onUpdate, received) {
+			assert.equal(received, context);
+			assert.equal(received.yieldedRunId, "run-b1-k02-set");
+			return { content: [] };
+		},
+	});
+	await definition.execute("call-5", {}, undefined, undefined, context);
+	assert.deepEqual(context, { cwd: "/tmp/b1-k02", yieldedRunId: "run-b1-k02-set" });
+});
+
 test("b1-k02 plugin runtime re-exports the shared tool contract helpers", () => {
 	const provider = {
 		createSession: () => ({ tools: [] }),

@@ -229,7 +229,10 @@ test("b1-k01 assert helper throws contract errors with instance identity", () =>
 	);
 });
 
-test("b1-k01 failed turns emit exactly one terminal failure", async () => {
+test("b1-k01 Fake: failed turns reject the prompt and emit exactly one terminal failure", async () => {
+	// Fake-specific rejection: the Fake adapter rejects scripted failures. Pi resolves
+	// every turn outcome; Codex/Muse resolve native terminals and reject only on
+	// diagnostic/process/protocol/dispose failures. Consumers must read the events.
 	const session = await openFakeSession("ps_b1_k01_failed", { script: { failWith: "synthetic failure" } });
 	const events = [];
 	const unsubscribe = session.subscribe((event) => events.push(event));
@@ -244,7 +247,10 @@ test("b1-k01 failed turns emit exactly one terminal failure", async () => {
 	}
 });
 
-test("b1-k01 abort during a turn settles with a single aborted terminal event", async () => {
+test("b1-k01 Fake: abort emits its terminal synchronously, before the prompt settles", async () => {
+	// Fake-specific order: the terminal comes from abort() itself. Pi emits no
+	// terminal for a cancelled turn; Codex delivers its legitimate terminal
+	// asynchronously AFTER abort() returns (see b1-real-adapter-contract).
 	const session = await openFakeSession("ps_b1_k01_abort", { script: { waitForAbort: true } });
 	const events = [];
 	const unsubscribe = session.subscribe((event) => events.push(event));
@@ -252,6 +258,8 @@ test("b1-k01 abort during a turn settles with a single aborted terminal event", 
 		const promptPromise = session.prompt({ text: "long turn", source: "rpc" });
 		await new Promise((resolve) => setImmediate(resolve));
 		await session.abort();
+		const atAbortReturn = events.map((event) => event.type);
+		assert.deepEqual(atAbortReturn, ["turn_started", "turn_completed"]);
 		await promptPromise;
 		const terminal = events.filter((event) => event.type === "turn_completed" || event.type === "turn_failed");
 		assert.equal(terminal.length, 1);
@@ -264,7 +272,39 @@ test("b1-k01 abort during a turn settles with a single aborted terminal event", 
 	}
 });
 
-test("b1-k01 dispose is idempotent and ends event delivery", async () => {
+test("b1-k01 Fake: abort after dispose is a documented no-op (differs from real adapters)", async () => {
+	// Fake-specific: abort() never checks disposed. Codex/Muse/OMP throw after
+	// dispose; Pi resolves without effect (see b1-real-adapter-contract).
+	const session = await openFakeSession("ps_b1_k01_abort_disposed");
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	await session.dispose();
+	await session.abort();
+	await session.abort();
+	assert.deepEqual(events, []);
+	assert.equal(session.getStatus().streaming, false);
+});
+
+test("b1-k01 Fake: dispose during a turn settles the prompt and ends delivery", async () => {
+	// Fake-specific event picture: dispose aborts the waiting turn (one
+	// aborted terminal) and clears listeners, so nothing arrives afterwards.
+	// Real adapters differ per turn (see b1-real-adapter-contract).
+	const session = await openFakeSession("ps_b1_k01_dispose_turn", { script: { waitForAbort: true } });
+	const events = [];
+	session.subscribe((event) => events.push(event));
+	const promptPromise = session.prompt({ text: "long turn", source: "rpc" });
+	await new Promise((resolve) => setImmediate(resolve));
+	await session.dispose();
+	await promptPromise;
+	assert.deepEqual(events.map((event) => event.type), ["turn_started", "turn_completed"]);
+	assert.equal(events[1].status, "aborted");
+	await session.dispose();
+	await new Promise((resolve) => setTimeout(resolve, 25));
+	assert.equal(events.length, 2);
+	assert.equal(session.getStatus().streaming, false);
+});
+
+test("b1-k01 Fake: idle dispose is idempotent and ends event delivery", async () => {
 	const session = await openFakeSession("ps_b1_k01_dispose");
 	const events = [];
 	session.subscribe((event) => events.push(event));
