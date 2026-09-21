@@ -148,8 +148,13 @@ function validateCandidateAssemblyManifest(value: unknown): CandidateAssemblyMan
 	}
 	if (!Array.isArray(manifest.artifacts)) throw new Error("Candidate assembly artifacts are missing");
 	const artifacts = manifest.artifacts as CandidateAssemblyArtifact[];
-	if (artifacts.length !== 26 || artifacts.filter((entry) => entry.role === "plugin").length !== 21 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
-		throw new Error("Candidate assembly must contain one Core, one Cutover runner, one Standard, exactly 21 plugin artifacts, and two runtime dependencies");
+	// Fixed expectation on purpose: the Minimal-Core closure cannot import the
+	// plugin catalog, so per-package identity binding happens downstream in the
+	// Standard CLI against its shipped package set. Keep in sync with
+	// standardPluginCoordinates() in src/plugins/default-packages.ts.
+	const EXPECTED_PLUGIN_ARTIFACTS = 22;
+	if (artifacts.length !== EXPECTED_PLUGIN_ARTIFACTS + 5 || artifacts.filter((entry) => entry.role === "plugin").length !== EXPECTED_PLUGIN_ARTIFACTS || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "core").length !== 1 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1) {
+		throw new Error(`Candidate assembly must contain one Core, one Cutover runner, one Standard, exactly ${EXPECTED_PLUGIN_ARTIFACTS} plugin artifacts, and two runtime dependencies`);
 	}
 	const packages = new Set<string>();
 	const files = new Set<string>();

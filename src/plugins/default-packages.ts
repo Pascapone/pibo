@@ -478,6 +478,29 @@ export function mcpCliPackageManifest(): PluginManifest {
 	};
 }
 
+export interface StandardPluginCoordinate {
+	package: string;
+	pluginId: string;
+	version: string;
+}
+
+function defaultPackageSuffix(backendModule: DefaultPackageDescriptor["backendModule"]): string {
+	return backendModule === "profiles" ? "standard-profiles" : backendModule;
+}
+
+/**
+ * Canonical Pibo Standard plugin composition: one packed coordinate per default
+ * package. This is the single authority the Pibo 4 Standard and Candidate
+ * assembly gates compare the built artifacts against; a missing, duplicated,
+ * unexpected, or version-mismatched entry must fail the build.
+ */
+export function standardPluginCoordinates(): StandardPluginCoordinate[] {
+	return DEFAULT_PACKAGES.map((descriptor) => {
+		const manifest = descriptor.manifest();
+		return { package: `@pasko70/pibo-plugin-${defaultPackageSuffix(descriptor.backendModule)}`, pluginId: manifest.id, version: manifest.version };
+	});
+}
+
 type DefaultPackageDescriptor = {
 	manifest: () => PluginManifest;
 	backendExport: string;
@@ -513,7 +536,7 @@ const DEFAULT_PACKAGES: readonly DefaultPackageDescriptor[] = [
 
 async function materializeDefaultPackage(artifactRoot: string, descriptor: DefaultPackageDescriptor): Promise<{ manifest: PluginManifest; source: string }> {
 	const expected = descriptor.manifest();
-	const packageSuffix = descriptor.backendModule === "profiles" ? "standard-profiles" : descriptor.backendModule;
+	const packageSuffix = defaultPackageSuffix(descriptor.backendModule);
 	const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 	const candidates = [
 		resolve(moduleDirectory, "..", "pibo4-artifacts", packageSuffix),

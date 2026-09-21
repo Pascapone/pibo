@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { tsImport } from "tsx/esm/api";
-
-const defaults = await tsImport("../src/plugins/default-packages.ts", import.meta.url);
+import * as defaults from "../dist/plugins/default-packages.js";
 
 test("Preview and VS Code are ordinary plugin workspace tabs", async () => {
 	const preview = defaults.previewPackageManifest();

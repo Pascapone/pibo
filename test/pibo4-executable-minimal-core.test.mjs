@@ -10,6 +10,9 @@ import { promisify } from "node:util";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { ensureDeploymentArtifact } from "../dist/compute/pool/artifacts.js";
+import { standardPluginCoordinates } from "../dist/plugins/default-packages.js";
+
+const expectedPluginCount = standardPluginCoordinates().length;
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -69,7 +72,7 @@ async function packAllPibo4Packages(destination) {
 		...packageSet.plugins.map((entry) => resolve("dist/pibo4-artifacts", entry.package.slice("@pasko70/pibo-plugin-".length))),
 		resolve("dist/pibo4-standard-package"),
 	];
-	assert.equal(packages.length, 24);
+	assert.equal(packages.length, packageSet.plugins.length + 3);
 	const packed = [];
 	for (const directory of packages) {
 		packed.push({
@@ -219,7 +222,7 @@ test("Minimal-Core physical closure excludes runtime, feature-tool, and first-pa
 	}
 });
 
-test("all 24 Pibo 4 tarballs install together offline and Standard resolves its exact package set", { timeout: 180_000 }, async (t) => {
+test("all Pibo 4 tarballs install together offline and Standard resolves its exact package set", { timeout: 180_000 }, async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo4-offline-package-set-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const tarballs = join(root, "tarballs");
@@ -246,14 +249,14 @@ test("all 24 Pibo 4 tarballs install together offline and Standard resolves its 
 	}
 	const imported = await execFileAsync(process.execPath, ["--input-type=module", "--eval", "import { packageSet } from '@pasko70/pibo-standard'; console.log(JSON.stringify(packageSet));"], { cwd: project });
 	const packageSet = JSON.parse(imported.stdout);
-	assert.equal(packageSet.plugins.length, 21);
+	assert.equal(packageSet.plugins.length, expectedPluginCount);
 	for (const entry of packageSet.plugins) {
 		const installed = JSON.parse(await readFile(join(project, "node_modules", ...entry.package.split("/"), "package.json"), "utf8"));
 		assert.equal(installed.version, entry.version);
 	}
 });
 
-test("packed Standard installs alone offline and starts exactly its 21 plugin packages", { timeout: 180_000 }, async (t) => {
+test("packed Standard installs alone offline and starts exactly its declared plugin packages", { timeout: 180_000 }, async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "pibo4-executable-standard-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const tarballs = join(root, "tarballs");
@@ -269,7 +272,7 @@ test("packed Standard installs alone offline and starts exactly its 21 plugin pa
 	assert.deepEqual(standardPackage.bin, { pibo: "./bin/pibo.js", "pibo-standard": "./bin/pibo.js" });
 	assert.equal((await lstat(join(project, "node_modules/.bin/pibo"))).isSymbolicLink(), true);
 	const packageSet = JSON.parse(await readFile(join(standardRoot, "package-set.json"), "utf8"));
-	assert.equal(packageSet.plugins.length, 21);
+	assert.equal(packageSet.plugins.length, expectedPluginCount);
 	for (const entry of packageSet.plugins) {
 		const installed = JSON.parse(await readFile(join(standardRoot, "node_modules", ...entry.package.split("/"), "package.json"), "utf8"));
 		assert.equal(installed.version, entry.version, entry.package);
@@ -279,7 +282,7 @@ test("packed Standard installs alone offline and starts exactly its 21 plugin pa
 	const cliEnv = { ...process.env, HOME: home, PIBO_HOME: home };
 	const rootHelp = await execFileAsync(cliPath, ["--help"], { cwd: project, env: cliEnv });
 	assert.match(rootHelp.stdout, /Pibo Standard/);
-	assert.match(rootHelp.stdout, /21 plugin packages/);
+	assert.match(rootHelp.stdout, new RegExp(`${packageSet.plugins.length} plugin packages`));
 	const webPort = await freePort();
 	const gatewayPort = await freePort();
 	let stderr = "";
@@ -300,7 +303,7 @@ test("packed Standard installs alone offline and starts exactly its 21 plugin pa
 	const installationsResponse = await fetch(`http://127.0.0.1:${webPort}/api/chat/plugins`);
 	assert.equal(installationsResponse.status, 200);
 	const installations = (await installationsResponse.json()).installations;
-	assert.equal(installations.length, 21);
+	assert.equal(installations.length, packageSet.plugins.length);
 	assert.deepEqual(new Set(installations.map((entry) => entry.pluginId)), new Set(packageSet.plugins.map((entry) => entry.pluginId)));
 	assert.equal(installations.every((entry) => entry.enabled && entry.state === "active"), true);
 	const catalogResponse = await fetch(`http://127.0.0.1:${webPort}/api/chat/agent-catalog`);
@@ -320,7 +323,7 @@ test("packed Standard installs alone offline and starts exactly its 21 plugin pa
 	t.after(() => stopProcess(restarted).catch(() => {}));
 	await waitForHttp(`http://127.0.0.1:${webPort}/health`, restarted, 60_000);
 	const restartedInstallations = (await (await fetch(`http://127.0.0.1:${webPort}/api/chat/plugins`)).json()).installations;
-	assert.equal(restartedInstallations.length, 21);
+	assert.equal(restartedInstallations.length, packageSet.plugins.length);
 	assert.equal(restartedInstallations.every((entry) => entry.enabled && entry.state === "active"), true);
 	await stopProcess(restarted);
 });

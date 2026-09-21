@@ -4,6 +4,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { assertStandardPluginComposition } from "./pibo4-composition-check.mjs";
 
 const execFileAsync = promisify(execFile);
 const root = process.cwd();
@@ -27,9 +28,11 @@ const codexPlatformPackage = process.platform === "linux" && process.arch === "x
 						: undefined;
 if (!codexPlatformPackage) throw new Error("Pibo Candidate assembly does not support Codex Native on this build platform");
 
-if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard" || packageSet.plugins.length !== 21) {
-	throw new Error("Candidate assembly requires Core, Standard, and exactly 21 plugin packages");
+const defaults = await import(new URL("../dist/plugins/default-packages.js", import.meta.url));
+if (packageSet.core !== "@pasko70/pibo" || packageSet.standard !== "@pasko70/pibo-standard") {
+	throw new Error("Candidate assembly requires the Core and Standard package identities");
 }
+const expectedPluginCount = assertStandardPluginComposition(packageSet.plugins, defaults.standardPluginCoordinates(), "Candidate assembly");
 
 const packageDirectories = [
 	{ role: "core", directory: resolve(root, "dist/pibo4-core-package") },
@@ -66,8 +69,9 @@ for (const input of packageDirectories) {
 }
 
 const pluginArtifacts = artifacts.filter((entry) => entry.role === "plugin");
-if (artifacts.length !== 26 || pluginArtifacts.length !== 21 || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== 26) {
-	throw new Error("Candidate assembly package identities are incomplete or duplicated");
+const expectedArtifactCount = expectedPluginCount + 5;
+if (artifacts.length !== expectedArtifactCount || pluginArtifacts.length !== expectedPluginCount || artifacts.filter((entry) => entry.role === "dependency").length !== 2 || artifacts.filter((entry) => entry.role === "cutover").length !== 1 || artifacts.filter((entry) => entry.role === "standard").length !== 1 || new Set(artifacts.map((entry) => entry.package)).size !== expectedArtifactCount) {
+	throw new Error(`Candidate assembly package identities are incomplete or duplicated: expected ${expectedPluginCount} plugin artifacts plus Core, Cutover, Standard, and two runtime dependencies`);
 }
 
 let sourceCommit = process.env.PIBO_SOURCE_COMMIT?.trim() || "unknown";

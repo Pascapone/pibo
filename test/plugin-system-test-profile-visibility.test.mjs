@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { tsImport } from "tsx/esm/api";
+import { webAnnotationsPackageManifest } from "../dist/plugins/default-packages.js";
 
-const { webAnnotationsPackageManifest } = await tsImport("../src/plugins/default-packages.ts", import.meta.url);
 const { createAgentPluginSelectionForProfile } = await tsImport("../src/plugins/selection.ts", import.meta.url);
 const { resolvePluginContributions } = await tsImport("../src/plugins/resolution.ts", import.meta.url);
 

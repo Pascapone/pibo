@@ -55,7 +55,7 @@ export function beginComposerDraftSend(
 
 export function updateComposerDraft(tracker: ComposerDraftTracker, value: string): ComposerDraftTracker {
 	const revision = tracker.revision + 1;
-	const owner = tracker.owner?.clearedRevision === undefined && value === ""
+	const owner = tracker.owner !== undefined && tracker.owner.clearedRevision === undefined && value === ""
 		? { ...tracker.owner, clearedRevision: revision }
 		: undefined;
 	return { value, revision, ...(owner ? { owner } : {}) };

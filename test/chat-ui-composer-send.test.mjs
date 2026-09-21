@@ -145,6 +145,11 @@ async function runComposerSendScenario() {
 
 		draft = settleComposerDraftSend(draft, newerPlan.clientTxnId);
 		assert.equal(draft.owner, undefined);
+
+		const plainDraft = updateComposerDraft(createComposerDraftTracker("hello"), "");
+		assert.equal(plainDraft.value, "");
+		assert.equal(plainDraft.revision, 1);
+		assert.equal(plainDraft.owner, undefined);
 	`;
 	await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
 }

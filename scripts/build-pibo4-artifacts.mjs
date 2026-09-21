@@ -2,6 +2,7 @@ import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { assertStandardPluginComposition } from "./pibo4-composition-check.mjs";
 
 const root = process.cwd();
 const outputRoot = resolve(root, "dist/pibo4-artifacts");
@@ -147,5 +148,6 @@ for (const [packageSuffix, manifestFactory, backendSource, backendExport, browse
 }
 
 const standardSet = { schemaVersion: 1, core: "@pasko70/pibo", standard: "@pasko70/pibo-standard", plugins: packages.map(([suffix, manifestFactory]) => ({ package: `@pasko70/pibo-plugin-${suffix}`, pluginId: manifestFactory().id, version: manifestFactory().version })) };
+assertStandardPluginComposition(standardSet.plugins, defaults.standardPluginCoordinates(), "Pibo 4 plugin artifacts");
 await writeFile(join(outputRoot, "standard-package-set.json"), `${JSON.stringify(standardSet, null, 2)}\n`);
 console.log(`Built ${packages.length} Pibo 4 plugin package artifacts in ${outputRoot}`);
