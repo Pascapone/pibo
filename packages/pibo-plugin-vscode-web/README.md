@@ -17,11 +17,18 @@ declared dependencies — on the real implementation.
 - `src/backend.ts` — backend entry, re-exports `setupVscodeWeb as setup`.
 - `src/browser.ts` — browser entry, re-exports `VscodeView` plus the pure
   helpers `vscodeWebUrl`/`vscodeWorkbenchReady` for artefact-level checks.
+  Pilot delta vs the root builder (C1-R06): the builder bundles `VscodeView`
+  only; this pilot additionally exports the 2 check helpers. Browser bundle =
+  builder pattern + 2 check helpers (vscode only).
 
 ## Declared dependencies
 
 None at runtime. Build-time only: the root builder's esbuild configuration,
 mirrored package-locally by `test/pilot-vscode-web-install.test.mjs`.
+Build toolchain: the repo's provisioned esbuild, resolved from the root
+`node_modules` at test time. Exact versions are recorded per run in the pilot
+test's JSON log line (`esbuildVersion`/`nodeVersion`); no minimum version is
+claimed (C1-R07).
 
 ## Transitional imports (documented, not permanent)
 
@@ -39,5 +46,7 @@ The built artefacts must contain no remaining relative (backend) or bare React
   methods) via required service `pibo.chat.extensions@1.0.0`.
 - `PluginViewProps` contract, probe states (`checking`/`ready`/`unavailable`),
   abort handling and the unconfigured fallback of `VscodeView`.
-- No visual change in C1; no new headful acceptance is owed by this pilot.
-  Existing headful coverage for the view is untouched.
+- Headful acceptance of the pilot browser artefact is REQUIRED (C1-R01):
+  `test/pilot-vscode-web-browser.test.mjs` mounts the built bundle in real
+  Chromium (headful gate plus a headless supplement that never replaces it).
+  This pilot itself makes no visual changes to the view.

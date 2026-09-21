@@ -20,6 +20,11 @@ browser view, declared dependencies — on the real implementation.
 
 None at runtime. Build-time only: the root builder's esbuild configuration,
 mirrored package-locally by `test/pilot-web-search-install.test.mjs`.
+The browser entry matches the builder exactly (`ToolFamilyView` only, C1-R06).
+Build toolchain: the repo's provisioned esbuild, resolved from the root
+`node_modules` at test time. Exact versions are recorded per run in the pilot
+test's JSON log line (`esbuildVersion`/`nodeVersion`); no minimum version is
+claimed (C1-R07).
 
 ## Transitional imports (documented, not permanent)
 
