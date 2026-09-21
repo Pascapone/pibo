@@ -116,3 +116,46 @@ test("Loop UI draft shows uncached after Ralph-to-Goal switch while legacy Goals
 	assert.match(rendered.legacyGoal, /legacy Goal keeps total-token accounting, including cache reads and writes/);
 	assert.match(rendered.newGoal, /data-pibo-goal-token-accounting="uncached"/);
 });
+
+test("Loop detail header exposes an accessible copyable loop ID", async () => {
+	const script = `
+		import React from "react";
+		globalThis.React = React;
+		import { renderToStaticMarkup } from "react-dom/server";
+		const { LoopIdButton } = await import("./src/apps/chat-ui/src/LoopArea.tsx");
+		console.log(renderToStaticMarkup(React.createElement(LoopIdButton, { jobId: "loop_issue204" })));
+	`;
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	assert.match(stdout, />Loop ID</);
+	assert.match(stdout, /loop_issue204/);
+	assert.match(stdout, /<button[^>]+type="button"/);
+	assert.match(stdout, /title="Copy loop ID"/);
+	assert.match(stdout, /aria-label="Copy loop ID"/);
+	assert.match(stdout, /focus:ring-\[\#11a4d4\]/);
+	// Static markup cannot exercise the copied toggle; pin its label text at source level instead.
+	const source = await readFile(new URL("../src/apps/chat-ui/src/LoopArea.tsx", import.meta.url), "utf8");
+	assert.match(source, /Copied loop ID/);
+});
+
+test("new Loop jobs default to a writable room and exclude archived room options", async () => {
+	const room = (id, name, archived = false) => ({
+		id,
+		name,
+		type: "chat",
+		createdAt: "2026-07-14T00:00:00Z",
+		updatedAt: "2026-07-14T00:00:00Z",
+		metadata: archived ? { chatRoomArchivedAt: "2026-07-14T01:00:00Z" } : {},
+	});
+	const script = `
+		import React from "react";
+		globalThis.React = React;
+		import { renderToStaticMarkup } from "react-dom/server";
+		const { LoopArea } = await import("./src/apps/chat-ui/src/LoopArea.tsx");
+		const bootstrap = { rooms: ${JSON.stringify([room("room-archived", "Archived Room", true), room("room-active", "Active Room")])}, agents: [], customAgents: [] };
+		console.log(renderToStaticMarkup(React.createElement(LoopArea, { bootstrap })));
+	`;
+	const { stdout } = await execFileAsync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], { cwd: process.cwd() });
+	assert.doesNotMatch(stdout, /Archived Room/);
+	assert.match(stdout, /<option value="room-active" selected="">Active Room<\/option>/);
+	assert.match(stdout, /Target: <span[^>]*>Active Room<\/span>/);
+});
