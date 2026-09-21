@@ -417,8 +417,9 @@ export type AgentRuntimeCompatibilityMetadata = {
  * adapter- and path-defined: Pi resolves every turn outcome and rejects
  * only enqueue errors; Codex/Muse resolve native terminals (including
  * failed/interrupted) and reject on diagnostic/process/protocol/dispose
- * failures; OMP resolves local and agent_end terminals and rejects on
- * protocol failure/dispose; Fake rejects scripted failures. New consumers
+ * failures; OMP resolves local and agent_end terminals, resolves without
+ * any terminal event on its hard stream deadline, and rejects on protocol
+ * failure/dispose; Fake rejects scripted failures. New consumers
  * must derive success/failure from the terminal EVENTS, never from promise
  * settlement alone. The router accepts both styles and dedups via its
  * failure flag.
@@ -437,7 +438,8 @@ export type AgentRuntimeCompatibilityMetadata = {
  * prompt; Muse settles the turn. Resource/credential cleanup lives with
  * `PiboRuntimeResourceSession.dispose()`, not with this handle.
  *
- * `abort()` with no active turn is a no-op. After `dispose()`, `abort()`
+ * `abort()` with no active turn delivers no events (OMP still sends an
+ * ineffectual abort request). After `dispose()`, `abort()`
  * throws on Codex/Muse/OMP, is a no-op on Fake, and resolves without effect
  * on Pi (pass-through to the idle harness); `prompt()` throws on
  * Pi/Codex/Muse/OMP after dispose, and `subscribe()` throws on

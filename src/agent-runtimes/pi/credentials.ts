@@ -228,8 +228,11 @@ export type PiProviderOAuthAccess = {
  * make every lower IO exception visible. Failures that do throw —
  * refresh/rotation/resolve errors — propagate unchanged, with no fallback
  * to other accounts or runtimes; the consumer maps thrown failures to
- * `provider_error` and only absence to `not_configured`. Nothing is cached:
- * every call re-reads the store. With an api_key entry, resolution performs
+ * `provider_error` and only absence to `not_configured`. The binding itself
+ * caches nothing: every call re-reads through pi's revision-checked snapshot
+ * cache, which serves the in-memory state while the file is unchanged and
+ * may serve stale or empty snapshots when a read fails. With an api_key
+ * entry, resolution performs
  * local reads only and no token-endpoint traffic; if an OAuth entry is
  * stored under the bound id instead, resolution follows the OAuth path
  * (including a possible refresh, see below) and returns its access token.
@@ -251,15 +254,24 @@ export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKey
  *
  * Refresh side effect: a stored token expiring within ~5 minutes triggers
  * an OAuth refresh with network access (~15s timeout). Success persists
- * the rotated credential; failure throws. Reads are otherwise fresh per
- * call; nothing is cached.
+ * the rotated credential; failure throws. The binding itself caches
+ * nothing: every call re-reads through pi's revision-checked snapshot
+ * cache, which serves the in-memory state while the file is unchanged and
+ * may serve stale or empty snapshots when a read fails.
  *
- * The binding reads twice (type gate, then resolution): logout or refresh
- * may land between the reads. Both outcomes stay correct (absence resolves
- * `undefined`); no single-generation snapshot is promised. After a
- * rotation, the returned accountId may still come from the pre-refresh
- * read while the store already holds the rotated one; the next read
- * observes the new value.
+ * FP-K03-PAIR-B: after a successful resolution the entry is read again and
+ * the accountId is taken only from a post-resolution OAuth entry whose
+ * `access` equals the resolved token (in-memory compare, never logged).
+ * This holds for the concrete codex path, where `toAuth` passes the stored
+ * access through verbatim; other provider derivations are untested and
+ * fail closed with the mismatch error. A vanished or retyped entry yields
+ * absence (`undefined`), never resurrected pre-read credentials; a present
+ * but different token raises a fixed secret-free inconsistency error. No
+ * retry loop, no global multi-process/logout atomicity: the check covers
+ * the observed revision-checked store state only, not a new authorization
+ * or revocation guarantee. Thrown pi failures are classified internally by
+ * `name`/`code` (pi ships nested module copies, so cross-copy `instanceof`
+ * is invalid); that classification is no authenticity or permission proof.
  *
  * `accountId` is the stored credential value only, trimmed (blank values
  * are omitted, never passed as empty strings); provider-specific
@@ -273,8 +285,19 @@ export function bindPiProviderOAuthAccess(providerId: string): PiProviderOAuthAc
 			if (credential?.type !== "oauth") return undefined;
 			const accessToken = (await resolvePiProviderAuth(providerId))?.auth.apiKey;
 			if (!accessToken) return undefined;
-			const accountId = typeof credential.accountId === "string" && credential.accountId.trim()
-				? credential.accountId.trim()
+			// FP-K03-PAIR-B: resolution may have rotated the entry, so the
+			// pre-read accountId must not be paired blindly. Pair only with
+			// a post-resolution entry holding this exact token (in-memory
+			// compare, never logged). No retry, no fallback pairing.
+			const reread = await readPiCredential(providerId);
+			if (reread?.type !== "oauth") return undefined;
+			if (reread.access !== accessToken) {
+				throw new Error(
+					`Observed credential change for provider "${providerId}"; refusing to pair a resolved token with an accountId from another generation.`,
+				);
+			}
+			const accountId = typeof reread.accountId === "string" && reread.accountId.trim()
+				? reread.accountId.trim()
 				: undefined;
 			return accountId === undefined ? { accessToken } : { accessToken, accountId };
 		},
