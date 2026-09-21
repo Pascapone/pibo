@@ -130,7 +130,11 @@ test("migration plan records bounded standing authority for trivial validator an
 test("host exceptions use exact path-specific role reasons", () => {
 	const ledger = JSON.parse(read("docs/project/okf-migration-ledger.json"));
 	const exceptions = ledger.records.filter((record) => record.state === "host-exception");
-	assert.equal(exceptions.length, 46);
+	// The two reviewed pilot packages add their own colocated READMEs.
+	assert.equal(exceptions.length, 48);
+	for (const path of ["packages/pibo-plugin-vscode-web/README.md", "packages/pibo-plugin-web-search/README.md"]) {
+		assert.equal(exceptions.filter((record) => record.path === path).length, 1, path);
+	}
 	for (const record of exceptions) {
 		assert(!/[*?{}[\]]/.test(record.path), record.path);
 		assert.equal(record.path.endsWith("/"), false, record.path);

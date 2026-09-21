@@ -346,7 +346,7 @@ test("chat signal routes return 503 when registry functions are unavailable", as
 
 test("chat navigation and bootstrap use one bulk signal snapshot for large session projections", async () => {
 	const signalSnapshotCalls = { bulk: 0, perSession: 0 };
-	const { channel, baseURL, sessions, signals, emitOutput } = await startSignalWebHost({ signalSnapshotCalls });
+	const { channel, baseURL, sessions, signals, emitOutput, drainOutput } = await startSignalWebHost({ signalSnapshotCalls });
 	try {
 		const selected = createSession(sessions, "ps_bulk_selected");
 		const activeRoot = createSession(sessions, "ps_bulk_active_root");
@@ -365,6 +365,8 @@ test("chat navigation and bootstrap use one bulk signal snapshot for large sessi
 		assert.deepEqual(signalSnapshotCalls, { bulk: 1, perSession: 0 });
 
 		emitOutput({ type: "session_error", piboSessionId: failed.id, eventId: "bulk-error", error: "boom" });
+		// Marking read acknowledges the durable event, not only its earlier live projection.
+		await drainOutput();
 		signalSnapshotCalls.bulk = 0;
 		signalSnapshotCalls.perSession = 0;
 		const navigation = await fetch(`${baseURL}/api/chat/navigation?piboSessionId=${selected.id}`, { headers: { "x-test-user": "user-1" } });

@@ -66,8 +66,12 @@ function createFetchMock({ existing = false, existingAsset = true, uploadStatus 
 	return { calls, fetchImpl };
 }
 
-async function makeFixture(t) {
-	const root = await mkdtemp(join(tmpdir(), "pibo-create-release-test-"));
+async function makeFixture(t, { dropsPrivileges = false } = {}) {
+	// A UID-dropped child cannot traverse a caller-owned private TMPDIR parent.
+	// Use a fresh POSIX /tmp child only for this synthetic permission fixture;
+	// never chmod the caller's private directories or use real credentials.
+	const parent = dropsPrivileges && process.platform !== "win32" ? "/tmp" : tmpdir();
+	const root = await mkdtemp(join(parent, "pibo-create-release-test-"));
 	await chmod(root, 0o755);
 	const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 	const appKeyPath = join(root, "synthetic-private-key.pem");
@@ -260,7 +264,7 @@ async function runCli(fixture, assetPath, options = {}) {
 }
 
 test("CLI rejects an unreadable asset without remote mutation", { skip: process.platform === "win32" }, async (t) => {
-	const fixture = await makeFixture(t);
+	const fixture = await makeFixture(t, { dropsPrivileges: process.getuid?.() === 0 });
 	const assetPath = join(fixture.root, "unreadable.vsix");
 	await writeFile(assetPath, "fixture", { mode: 0o000 });
 	const childIdentity = process.getuid?.() === 0 ? { uid: 65534, gid: 65534 } : {};

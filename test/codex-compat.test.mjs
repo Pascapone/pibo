@@ -28,7 +28,8 @@ test("ordinary runtime packages expose base and native profiles without retired 
 	const registry = await productRegistry(t);
 	const profile = registry.createProfile("base");
 
-	assert.deepEqual(registry.getProfileNames(), ["base", "pibo-gateway-producer", "codex-native", "orp"]);
+	// The canonical 22-plugin composition includes the native Muse runtime.
+	assert.deepEqual(registry.getProfileNames(), ["base", "pibo-gateway-producer", "codex-native", "muse-native", "orp"]);
 	assert.equal(profile.profileName, "base");
 	assert.equal(profile.builtinTools, "default");
 	assert.deepEqual(profile.builtinToolNames, ["read", "bash", "edit", "write"]);

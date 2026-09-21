@@ -16,7 +16,9 @@ test("Workflow Session dialog preserves supported configuration boundaries", asy
   assert.match(dialog, /overrides\?\.prompt === true/);
   assert.match(dialog, /Only workflow inputs, explicitly eligible prompts/);
   assert.match(dialog, /Create Workflow Session/);
-  assert.match(sidebar, /aria-label="New Workflow Session"/);
+  // The sidebar-folder UI exposes this action as a labelled menu item, not
+  // the former icon button. Keep both the visible label and callback pinned.
+  assert.match(sidebar, /<ActionMenuItem onSelect=\{selectedSessionActions\.onCreateWorkflowSession\}>[\s\S]*?New Workflow Session[\s\S]*?<\/ActionMenuItem>/);
   assert.match(app, /navigateToRoute\(\{ area: "sessions", roomId: data\.selectedRoomId, piboSessionId: result\.session\.id \}, false, "workflow"\)/);
 });
 
