@@ -11,7 +11,7 @@ import test from "node:test";
 import { resolvePiboSessionInitialFastMode, resolvePiboSessionInitialThinkingLevel } from "../dist/core/session-router.js";
 import { PiboLoopService } from "../dist/loops/service.js";
 import { PiboLoopStore } from "../dist/loops/store.js";
-import { PROMISE_COMPLETE_STOP_TOKEN, createBuiltInLoopStopConditions, evaluateLoopStopPolicy } from "../dist/loops/stopping.js";
+import { GOAL_STATUS_STOP_CONDITION, PROMISE_COMPLETE_STOP_TOKEN, createBuiltInLoopStopConditions, evaluateLoopStopPolicy } from "../dist/loops/stopping.js";
 import { getLoopJobTemplate, listLoopJobTemplates } from "../dist/loops/templates.js";
 import { createPiboSession } from "../dist/sessions/store.js";
 
@@ -568,6 +568,28 @@ test("Loop max-iterations stop condition counts failed after-run outcomes", asyn
 	assert.equal(result.evaluation.finalAction, "stop-after-run");
 	assert.equal(result.evaluation.reason, "max-iterations");
 	assert.deepEqual(result.evaluation.decisions.find((decision) => decision.id === "max-iterations")?.details, { maxIterations: 1, completedIterations: 1 });
+});
+
+test("Loop goal-status condition stops terminal goals and continues otherwise", async () => {
+	const timestamp = new Date().toISOString();
+	const facts = { list: () => [], count: () => 0 };
+	const cases = [
+		{ name: "complete", mode: "goal", enabled: true, goalStatus: "complete", phase: "after-run", action: "stop-after-run", reason: "goal-complete", details: { status: "complete" } },
+		{ name: "blocked", mode: "goal", enabled: false, goalStatus: "blocked", phase: "after-run", action: "stop-after-run", reason: "goal-blocked", details: { status: "blocked" } },
+		{ name: "budget_limited", mode: "goal", enabled: false, goalStatus: "budget_limited", phase: "after-run", action: "stop-after-run", reason: "goal-budget_limited", details: { status: "budget_limited" } },
+		{ name: "terminal before-run", mode: "goal", enabled: true, goalStatus: "blocked", phase: "before-run", action: "stop-after-run", reason: "goal-blocked", details: { status: "blocked" } },
+		{ name: "active", mode: "goal", enabled: true, goalStatus: "active", phase: "after-run", action: "continue", reason: undefined, details: { status: "active" } },
+		{ name: "enabled default", mode: "goal", enabled: true, goalStatus: undefined, phase: "after-run", action: "continue", reason: undefined, details: { status: "active" } },
+		{ name: "paused default", mode: "goal", enabled: false, goalStatus: undefined, phase: "after-run", action: "continue", reason: undefined, details: { status: "paused" } },
+		{ name: "ralph mode", mode: "ralph", enabled: true, goalStatus: "blocked", phase: "after-run", action: "continue", reason: undefined, details: undefined },
+	];
+	for (const entry of cases) {
+		const job = { id: "loop_1", name: "job", mode: entry.mode, enabled: entry.enabled, target: { kind: "default-chat" }, profile: "base", prompt: "work", stopPolicy: { mode: "any", conditions: [{ id: "goal", type: GOAL_STATUS_STOP_CONDITION }] }, state: { completedIterations: 0, ...(entry.goalStatus === undefined ? {} : { goalStatus: entry.goalStatus }) }, createdAt: timestamp, updatedAt: timestamp };
+		const result = await evaluateLoopStopPolicy({ job, phase: entry.phase, definitions: createBuiltInLoopStopConditions(), facts, outcome: { status: "ok" } });
+		assert.equal(result.evaluation.finalAction, entry.action, entry.name);
+		assert.equal(result.evaluation.reason, entry.reason, entry.name);
+		assert.deepEqual(result.evaluation.decisions[0]?.details, entry.details, entry.name);
+	}
 });
 
 test("built-in Loop job templates keep Ralph-mode PRD coverage with loop stop types", () => {
