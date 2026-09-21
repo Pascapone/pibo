@@ -33,6 +33,11 @@ function remoteDefinition() {
 
 const savedPiboHome = process.env.PIBO_HOME;
 
+function restorePiboHome() {
+	if (savedPiboHome === undefined) delete process.env.PIBO_HOME;
+	else process.env.PIBO_HOME = savedPiboHome;
+}
+
 async function startProductWithRemote(root) {
 	process.env.PIBO_HOME = join(root, "pibo-home");
 	const data = new PiboDataStore(join(root, "pibo.sqlite"), { payloadRootDir: join(root, "payloads") });
@@ -47,45 +52,73 @@ async function startProductWithRemote(root) {
 }
 
 async function disposeProduct(product, data, root) {
-	await product.dispose().catch(() => {});
-	try { data.close(); } catch {}
-	process.env.PIBO_HOME = savedPiboHome;
+	try {
+		await product.dispose();
+	} catch {}
+	try {
+		data.close();
+	} catch {}
+	restorePiboHome();
 	await rm(root, { recursive: true, force: true });
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function waitForFlag(ref, timeoutMs, label) {
+	const start = Date.now();
+	while (!ref.current) {
+		if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${label}`);
+		await sleep(10);
+	}
+}
+
+function containsMessage(error, message) {
+	if (error instanceof AggregateError) return error.errors.some((entry) => containsMessage(entry, message));
+	return error instanceof Error && error.message === message;
+}
+
 test("remote plugin setup under an outer migration write transaction uses the shared store", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-remote-lifecycle-"));
 	const { data, host, product } = await startProductWithRemote(root);
-	data.db.exec("BEGIN IMMEDIATE");
 	try {
-		await assert.doesNotReject(host.add({ plugins: [remoteDefinition()] }));
-		assert.equal(host.inspect().plugins.some((entry) => entry.pluginId === "pibo.remote-agent"), true);
+		data.db.exec("BEGIN IMMEDIATE");
+		try {
+			await assert.doesNotReject(host.add({ plugins: [remoteDefinition()] }));
+			assert.equal(host.inspect().plugins.some((entry) => entry.pluginId === "pibo.remote-agent"), true);
+		} finally {
+			try { data.db.exec("ROLLBACK"); } catch {}
+		}
+		await host.remove("pibo.remote-agent");
 	} finally {
-		try { data.db.exec("ROLLBACK"); } catch {}
+		await host.remove("pibo.remote-agent").catch(() => {});
+		await disposeProduct(product, data, root);
 	}
-	await host.remove("pibo.remote-agent");
-	await disposeProduct(product, data, root);
 });
 
 test("borrowed product store stays usable after remote plugin disposal", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-remote-lifecycle-"));
 	const { data, host, product } = await startProductWithRemote(root);
-	await host.add({ plugins: [remoteDefinition()] });
-	await host.remove("pibo.remote-agent");
-	assert.equal(data.db.prepare("SELECT 1 AS ok").get().ok, 1);
-	await disposeProduct(product, data, root);
+	try {
+		await host.add({ plugins: [remoteDefinition()] });
+		await host.remove("pibo.remote-agent");
+		assert.equal(data.db.prepare("SELECT 1 AS ok").get().ok, 1);
+	} finally {
+		await host.remove("pibo.remote-agent").catch(() => {});
+		await disposeProduct(product, data, root);
+	}
 });
 
 test("host disposal waits for a delayed remote stop before closing resources", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-remote-lifecycle-"));
 	const { data, host, product } = await startProductWithRemote(root);
-	await host.add({ plugins: [remoteDefinition()] });
+	const releaseRef = { current: null };
+	const stopEntered = { current: false };
 	const originalStop = PiboRemoteAgentService.prototype.stop;
 	let releaseStop;
 	const stopGate = new Promise((resolve) => { releaseStop = resolve; });
+	releaseRef.current = releaseStop;
 	PiboRemoteAgentService.prototype.stop = async function (...args) {
+		stopEntered.current = true;
 		await stopGate;
 		return originalStop.apply(this, args);
 	};
@@ -96,30 +129,33 @@ test("host disposal waits for a delayed remote stop before closing resources", a
 		return originalClose.apply(this, args);
 	};
 	try {
+		await host.add({ plugins: [remoteDefinition()] });
 		let settled = null;
 		const removal = host.remove("pibo.remote-agent").then(
 			() => { settled = "resolved"; },
 			(error) => { settled = error; },
 		);
+		await waitForFlag(stopEntered, 2000, "remote stop entry");
 		await sleep(50);
 		assert.equal(ownStoreClosed, false);
 		assert.equal(settled, null);
-		releaseStop();
+		releaseRef.current();
 		await removal;
 		assert.equal(settled, "resolved");
 		assert.equal(ownStoreClosed, true);
 		assert.equal(data.db.prepare("SELECT 1 AS ok").get().ok, 1);
 	} finally {
+		releaseRef.current?.();
 		PiboRemoteAgentService.prototype.stop = originalStop;
 		PiboRemoteAgentStore.prototype.close = originalClose;
+		await host.remove("pibo.remote-agent").catch(() => {});
+		await disposeProduct(product, data, root);
 	}
-	await disposeProduct(product, data, root);
 });
 
 test("remote stop failure still closes the own store and never the borrowed store", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pibo-remote-lifecycle-"));
 	const { data, host, product } = await startProductWithRemote(root);
-	await host.add({ plugins: [remoteDefinition()] });
 	const originalStop = PiboRemoteAgentService.prototype.stop;
 	PiboRemoteAgentService.prototype.stop = async () => { throw new Error("boom-remote-stop"); };
 	const originalClose = PiboRemoteAgentStore.prototype.close;
@@ -129,14 +165,18 @@ test("remote stop failure still closes the own store and never the borrowed stor
 		return originalClose.apply(this, args);
 	};
 	try {
-		await assert.rejects(host.remove("pibo.remote-agent"));
+		await host.add({ plugins: [remoteDefinition()] });
+		const error = await host.remove("pibo.remote-agent").then(() => null, (cause) => cause);
+		assert.ok(error instanceof AggregateError, "expected an AggregateError from host disposal");
+		assert.ok(containsMessage(error, "boom-remote-stop"), "expected the injected stop failure in the error chain");
 		assert.equal(ownStoreClosed, true);
 		assert.equal(data.db.prepare("SELECT 1 AS ok").get().ok, 1);
 	} finally {
 		PiboRemoteAgentService.prototype.stop = originalStop;
 		PiboRemoteAgentStore.prototype.close = originalClose;
+		await host.remove("pibo.remote-agent").catch(() => {});
+		await disposeProduct(product, data, root);
 	}
-	await disposeProduct(product, data, root);
 });
 
 test("remote plugin setup without a provided data store keeps file defaults", async () => {
@@ -149,8 +189,9 @@ test("remote plugin setup without a provided data store keeps file defaults", as
 		await assert.doesNotReject(host.start({ plugins: [remoteDefinition()] }));
 		await host.remove("pibo.remote-agent");
 	} finally {
+		await host.remove("pibo.remote-agent").catch(() => {});
 		await host.stop().catch(() => {});
-		process.env.PIBO_HOME = savedPiboHome;
+		restorePiboHome();
 		await rm(root, { recursive: true, force: true });
 	}
 });
