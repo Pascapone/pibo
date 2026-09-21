@@ -7,7 +7,7 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "muse-code/start-ready-session"
-  at: "2026-09-21T07:59:21Z"
+  at: "2026-09-21T08:11:10Z"
 sources:
   - id: "suite-log"
     resource: "scope:ignored .pibo/planning/beta4-start-ready-20260921/logs/ at tested tree state"
@@ -23,9 +23,9 @@ sources:
 # Build-Gate-Abschluss: 22-Plugin-Komposition und isolierte Prüfung
 
 > Stand: Fix-Commit `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b`
-> mit frischem Build und isolierter Pflichtmatrix daran (326/326 grün;
-> Gateway-CLI separat 1/5). KEIN gebündelter Gesamtlauf. Keine
-> Erfolgsbehauptung über das Gemessene hinaus.
+> mit frischem Build und isolierter Pflichtmatrix daran (357/357 grün
+> in 63 Dateien; Gateway-CLI separat 1/5). KEIN gebündelter Gesamtlauf.
+> Keine Erfolgsbehauptung über das Gemessene hinaus.
 
 ## 1. Durchführung (serielle Isolationsläufe am Fix-Commit)
 
@@ -61,6 +61,15 @@ Läufe am Fix-Commit-Baum (UTC 21.09., frischer Build; echte Summaries):
 | B1/D1 + Loader + Composer-Rest (16) | 07:53:57→07:55:52Z | 0 | 84/84 |
 | `typecheck` (alle 4 Schritte) | 07:55:58→07:56:39Z | 0 | 0 Fehler |
 | Gateway-CLI-Nachprüfung (1 Datei) | 07:56:44→07:58:27Z | 1 | 1/5 |
+| Runtime-Regressionen (3 Dateien) | 08:07:59→08:08:51Z | 0 | 31/31 |
+| Lifecycle gehärtet (Repo-dist, hashgleich) | 08:07:09→08:07:52Z | 0 | 5/5 |
+
+63 eindeutige Dateien (Liste `09-fix2-matrix-files.txt`, Duplikat-
+und Existenz-geprüft); 357 ausgeführte Tests (Runner-Summaries inkl.
+Subtests). Frühere Angabe „46 Dateien/326“ korrigiert (falsch summiert;
+326 war die Teilsumme ohne Runtime-Regressionen bei ebenfalls falscher
+Dateizahl). Die Lifecycle-Datei zählt einmal; ihre gehärtete Fassung
+(`716847b8`) ist separat 5/5 auf hashgleichem dist verifiziert.
 
 Frühere belegte Stände: 320/321 am Vor-Commit `9b23ef3b` (Cutover-Lock
 dort gesperrt, Fix erst hier committen); Lock-Repro mit/ohne Injection;
@@ -75,8 +84,9 @@ Rohlogs unverändert erhalten.
 
 ## 2. Ergebnis
 
-- Am Fix-Commit: 326/326 Tests grün (46 Dateien), Build + Typen grün.
-  Cutover-Lücke geschlossen: gepackte Strecke 1/1, Lifecycle 5/5.
+- Am Fix-Commit: 357/357 Tests grün (63 Dateien), Build + Typen grün.
+  Cutover-Lücke geschlossen: gepackte Strecke 1/1, Lifecycle 5/5
+  (gehärtet: finally-Cleanup, Stop-Handshake, AggregateError-Nachweis).
 - Separat rot: Gateway-CLI 1/5 (4× ~20-s-Timeout, 1× Pass bei 18,2 s).
 - Buildkette frisch grün: Standard mit 22 Paketen, Candidate-Assembly
   mit 27 Artefakten (22 Plugins + Core/Cutover/Standard/2 Deps).
@@ -124,12 +134,13 @@ Rohlogs unverändert erhalten.
 
 ## 5. Doku-Gates und Commits
 
-- Gates (08:01:23→08:01:40Z): `docs:validate` Exit 0,
+- Gates (08:11:27→08:11:45Z): `docs:validate` Exit 0,
   `docs:indexes:check` Exit 0, `docs:log:check` Exit 0,
   `docs:validator:test` 87/87 Exit 0.
-- Code-Checkpoints: `9b23ef3b…` (14 Dateien) und Fix-Commit
-  `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b` (5 Dateien, kein
-  `git add -A`, kein Amend/Reset).
+- Code-Checkpoints: `9b23ef3b…` (14 Dateien), Fix-Commit
+  `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b` (5 Dateien) und Test-
+  Härtung `716847b800f168a35209dc9b736ca317a2eeecf2` (1 Datei);
+  kein `git add -A`, kein Amend/Reset.
 - Doku-Commit: dieser Commit (docs-only nach Fix-Commit; Baum-
   Identität Fix→Docs unten bestätigt). Er kann BASE sein.
 - Uncommitteter Rest nach Docs-Commit: keiner (bis auf ignorierte
