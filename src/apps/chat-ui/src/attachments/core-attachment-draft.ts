@@ -3,20 +3,46 @@
  *
  * Owns the session-bound draft side of K07-v0: add/update/remove with revision
  * compare-and-swap, reload-proof persistence through an injected storage
- * adapter, send snapshots frozen to a clientTxnId, and controlled acceptance
- * that consumes only the frozen revisions.
+ * adapter, send snapshots frozen to a normalized clientTxnId, and controlled
+ * acceptance that consumes only the frozen revisions.
  *
- * Pilot decisions pending RV-02/05/07 agreement with B/C (not wired to any
- * production composer, provider, or SDK surface yet):
- * - Unknown attachment id on update behaves as ATT_STALE_REVISION (no
- *   separate not-found code exists in K07-v0).
- * - remove() is idempotent: removing an unknown id succeeds.
- * - Payload changes bump the revision; uiState-only changes persist without
- *   bumping the revision (presentation state is not model payload).
- * - clientTxnId reuses the existing 160-char message limit; no new JSON byte
- *   budgets are invented here.
- * - Accepted clientTxnIds are never frozen again (same id, changed payload
- *   is rejected with ATT_ACCEPTANCE_UNKNOWN).
+ * Storage model (single versioned state object, formatVersion 1, at the
+ * existing key `pibo.chat.coreAttachments.draft.<sessionId>`): records plus
+ * open-transaction bindings plus accepted transaction ids live in ONE
+ * serialized object. Every mutation builds a complete validated candidate,
+ * writes it with a SINGLE synchronous writeText, and only then publishes the
+ * RAM state. A failed write leaves RAM exactly as before; recovery is simply
+ * "heal, then retry the same call". RAM always holds the last persisted-good
+ * state, so stored record status is always "ready" and no "saving" state is
+ * ever persisted. Legacy bare-array entries (format 0) are adopted by a
+ * tested compat reader; historic acceptances in that form are unknown and are
+ * NOT invented. The storage seam is assumed to replace the full entry text on
+ * success and to throw without partial effects on failure; multi-tab /
+ * multi-process compare-and-swap is explicitly NOT provided (D2).
+ *
+ * Transaction rules: a normalized clientTxnId binds EXACTLY one internally
+ * held original send snapshot (text plus ordered id/revision/type/schema/
+ * JSON/media). Re-freezing the same id with identical send value is idempotent
+ * (same original, same frozenAt, no extra write); a changed send value under
+ * the same id is rejected. Caller-passed snapshots are validated for shape
+ * and must match the bound original; forged or mutated objects never consume.
+ * Accepted ids are persisted reload-proof and are never frozen again. Routine
+ * duplicate handling on the accepted path consumes nothing.
+ *
+ * Pilot boundaries (pending RV-02/05/07 agreement with B/C, not wired to any
+ * production composer, provider, or SDK surface yet): media holds an
+ * UNRESOLVED draftResourceId reference (metadata round-trip only; byte
+ * storage, resolvability, and preview regeneration are deferred to the B/C
+ * resource decision). Text is opaque to the draft; server text requirements
+ * apply at composition. Unknown attachment id on update behaves as
+ * ATT_STALE_REVISION (no separate not-found code exists in K07-v0). remove()
+ * is idempotent. Payload changes bump the revision; uiState-only changes
+ * persist without bumping (presentation state is not model payload).
+ * Attachment ids are never reused while live or referenced by an open
+ * transaction; reissue after acceptance is allowed and harmless because
+ * consumption only flows through open-transaction match plus revision
+ * equality. Corrupt or foreign entries fail closed (empty draft plus a named
+ * storageError); per-record quarantine is D2.
  */
 
 export type AttachmentId = string & { readonly brand: "AttachmentId" };
@@ -127,13 +153,55 @@ export type AttachmentAcceptanceResult = {
 	duplicate: boolean;
 };
 
+export type CoreAttachmentDraftPersistedState = {
+	formatVersion: 1;
+	sessionId: string;
+	records: AttachmentDraftRecord[];
+	openTransactions: Record<string, AttachmentSendSnapshot>;
+	acceptedTransactions: string[];
+};
+
 export type CoreAttachmentDraftStoreOptions = {
 	now?: () => string;
 	createId?: () => string;
 };
 
+export const CORE_ATTACHMENT_DRAFT_STATE_VERSION = 1;
 export const CORE_ATTACHMENT_DRAFT_STORAGE_PREFIX = "pibo.chat.coreAttachments.draft.";
 export const CORE_ATTACHMENT_CLIENT_TXN_ID_MAX = 160;
+const CORE_ATTACHMENT_ADD_ID_ATTEMPTS = 5;
+
+/**
+ * Local clientTxnId normalizer. Must mirror the server oracle
+ * normalizeClientTxnId (trim, then non-empty, then 160-char limit) and is
+ * conformance-tested against it. Boundary difference: the server field is
+ * optional (undefined passes through), the pilot always requires an id.
+ */
+export function normalizeDraftClientTxnId(value: unknown): string {
+	if (typeof value !== "string") {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "clientTxnId must be a string.",
+			retryable: false,
+		});
+	}
+	const id = value.trim();
+	if (!id) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "clientTxnId must be a non-empty string.",
+			retryable: false,
+		});
+	}
+	if (id.length > CORE_ATTACHMENT_CLIENT_TXN_ID_MAX) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "clientTxnId is too long.",
+			retryable: false,
+		});
+	}
+	return id;
+}
 
 function draftKey(sessionId: string): string {
 	return `${CORE_ATTACHMENT_DRAFT_STORAGE_PREFIX}${sessionId}`;
@@ -176,6 +244,13 @@ function cloneJson<T>(value: T): T {
 }
 
 function assertValidMedia(media: AttachmentDraftMedia): void {
+	if (!media || typeof media !== "object") {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Media attachments must be objects.",
+			retryable: false,
+		});
+	}
 	if (!media.draftResourceId || typeof media.draftResourceId !== "string") {
 		throw new AttachmentDraftError({
 			code: "ATT_BYTES_MISSING",
@@ -199,31 +274,189 @@ function assertValidMedia(media: AttachmentDraftMedia): void {
 	}
 }
 
-function assertValidClientTxnId(clientTxnId: string): asserts clientTxnId is ClientTxnId {
-	if (!clientTxnId || clientTxnId.length > CORE_ATTACHMENT_CLIENT_TXN_ID_MAX) {
+function assertValidEnvelopeInput(type: unknown, schemaVersion: unknown): asserts type is string {
+	if (!type || typeof type !== "string") {
 		throw new AttachmentDraftError({
 			code: "ATT_INVALID_JSON",
-			message: `clientTxnId must be 1-${CORE_ATTACHMENT_CLIENT_TXN_ID_MAX} characters.`,
+			message: "Attachment drafts require a non-empty string type.",
+			retryable: false,
+		});
+	}
+	if (!Number.isInteger(schemaVersion) || (schemaVersion as number) < 0) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Attachment schemaVersion must be a finite integer >= 0.",
 			retryable: false,
 		});
 	}
 }
 
-function isRecordShape(value: unknown): value is AttachmentDraftRecord {
-	if (typeof value !== "object" || value === null) return false;
-	const record = value as Partial<AttachmentDraftRecord>;
-	if (typeof record.envelope !== "object" || record.envelope === null) return false;
-	const envelope = record.envelope as Partial<AttachmentEnvelope>;
-	return (
-		envelope.formatVersion === 1 &&
-		typeof envelope.id === "string" &&
-		typeof envelope.sessionId === "string" &&
-		typeof envelope.type === "string" &&
-		typeof envelope.schemaVersion === "number" &&
-		typeof envelope.revision === "number" &&
-		(record.status === "ready" || record.status === "saving" || record.status === "error")
-	);
+function nonEmptyString(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0;
 }
+
+function validateStoredRecord(value: unknown, sessionId: string, index: number): AttachmentDraftRecord {
+	const label = `record ${index}`;
+	if (typeof value !== "object" || value === null) throw new Error(`${label} is not an object.`);
+	const record = value as Partial<AttachmentDraftRecord>;
+	const envelope = record.envelope as Partial<AttachmentEnvelope> | undefined;
+	if (!envelope || typeof envelope !== "object") throw new Error(`${label} has no envelope.`);
+	if (envelope.formatVersion !== 1) throw new Error(`${label} has unsupported envelope formatVersion.`);
+	if (!nonEmptyString(envelope.id)) throw new Error(`${label} has no string id.`);
+	if (envelope.sessionId !== sessionId) throw new Error(`${label} belongs to a foreign session.`);
+	if (!nonEmptyString(envelope.type)) throw new Error(`${label} has no string type.`);
+	if (!Number.isInteger(envelope.schemaVersion) || (envelope.schemaVersion as number) < 0) {
+		throw new Error(`${label} has invalid schemaVersion.`);
+	}
+	if (!Number.isSafeInteger(envelope.revision) || (envelope.revision as number) < 1) {
+		throw new Error(`${label} has invalid revision.`);
+	}
+	if (!nonEmptyString(envelope.createdAt) || !nonEmptyString(envelope.updatedAt)) {
+		throw new Error(`${label} has invalid timestamps.`);
+	}
+	if (record.status !== "ready" && record.status !== "saving" && record.status !== "error") {
+		throw new Error(`${label} has invalid status.`);
+	}
+	if (record.status === "error") throw new Error(`${label} carries an unconfirmed error status.`);
+	try {
+		assertJsonValue(record.payload, `${label} payload`);
+		if (record.uiState !== undefined) assertJsonValue(record.uiState, `${label} UI state`);
+		if (record.media !== undefined) assertValidMedia(record.media);
+	} catch (error) {
+		throw new Error(error instanceof Error ? error.message : `${label} is invalid.`);
+	}
+	return {
+		envelope: {
+			formatVersion: 1,
+			id: envelope.id as AttachmentId,
+			sessionId,
+			type: envelope.type,
+			schemaVersion: envelope.schemaVersion as number,
+			revision: envelope.revision as AttachmentRevision,
+			createdAt: envelope.createdAt,
+			updatedAt: envelope.updatedAt,
+		},
+		payload: cloneJson(record.payload),
+		...(record.uiState !== undefined ? { uiState: cloneJson(record.uiState) } : {}),
+		...(record.media !== undefined ? { media: { ...record.media } } : {}),
+		status: "ready",
+	};
+}
+
+function validateSnapshotShape(value: unknown): AttachmentSendSnapshot {
+	if (typeof value !== "object" || value === null) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Send snapshots must be objects.",
+			retryable: false,
+		});
+	}
+	const snapshot = value as Partial<AttachmentSendSnapshot>;
+	if (typeof snapshot.clientTxnId !== "string" || typeof snapshot.sessionId !== "string") {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Send snapshots require string clientTxnId and sessionId.",
+			retryable: false,
+		});
+	}
+	if (typeof snapshot.text !== "string" || typeof snapshot.frozenAt !== "string") {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Send snapshots require string text and frozenAt.",
+			retryable: false,
+		});
+	}
+	if (!Array.isArray(snapshot.attachments)) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Send snapshots require an attachments array.",
+			retryable: false,
+		});
+	}
+	for (const [index, entry] of snapshot.attachments.entries()) {
+		const candidate = entry as Partial<FrozenAttachment> | undefined;
+		if (!candidate || typeof candidate !== "object") {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: `Snapshot attachment ${index} is not an object.`,
+				retryable: false,
+			});
+		}
+		if (!nonEmptyString(candidate.id) || !nonEmptyString(candidate.type)) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: `Snapshot attachment ${index} requires string id and type.`,
+				retryable: false,
+			});
+		}
+		if (!Number.isSafeInteger(candidate.revision) || (candidate.revision as number) < 1) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: `Snapshot attachment ${index} has invalid revision.`,
+				retryable: false,
+			});
+		}
+		if (!Number.isInteger(candidate.schemaVersion) || (candidate.schemaVersion as number) < 0) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: `Snapshot attachment ${index} has invalid schemaVersion.`,
+				retryable: false,
+			});
+		}
+		assertJsonValue(candidate.payload, `Snapshot attachment ${index} payload`);
+		if (candidate.media !== undefined) assertValidMedia(candidate.media);
+	}
+	return snapshot as AttachmentSendSnapshot;
+}
+
+function validateReceiptShape(value: unknown): { clientTxnId: string; accepted: boolean } {
+	if (typeof value !== "object" || value === null) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Acceptance receipts must be objects.",
+			retryable: false,
+		});
+	}
+	const receipt = value as Partial<AttachmentAcceptanceReceipt>;
+	if (typeof receipt.accepted !== "boolean") {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Acceptance receipts require a boolean accepted flag.",
+			retryable: false,
+		});
+	}
+	return { clientTxnId: normalizeDraftClientTxnId(receipt.clientTxnId), accepted: receipt.accepted };
+}
+
+function canonicalSendValue(text: string, attachments: FrozenAttachment[]): string {
+	return JSON.stringify({
+		text,
+		attachments: attachments.map((entry) => ({
+			id: entry.id,
+			revision: entry.revision,
+			type: entry.type,
+			schemaVersion: entry.schemaVersion,
+			payload: entry.payload,
+			media: entry.media ?? null,
+		})),
+	});
+}
+
+function canonicalSnapshot(snapshot: AttachmentSendSnapshot): string {
+	return JSON.stringify({
+		clientTxnId: snapshot.clientTxnId,
+		sessionId: snapshot.sessionId,
+		text: snapshot.text,
+		frozenAt: snapshot.frozenAt,
+		attachments: JSON.parse(canonicalSendValue(snapshot.text, snapshot.attachments)) as unknown,
+	});
+}
+
+type DraftStateCandidate = {
+	records: AttachmentDraftRecord[];
+	openTransactions: Map<string, AttachmentSendSnapshot>;
+	acceptedTransactions: Set<string>;
+};
 
 export class CoreAttachmentDraftStore {
 	private readonly storage: CoreAttachmentDraftStorage;
@@ -231,8 +464,9 @@ export class CoreAttachmentDraftStore {
 	private readonly now: () => string;
 	private readonly createId: () => string;
 	private records: AttachmentDraftRecord[] = [];
+	private openTransactions = new Map<string, AttachmentSendSnapshot>();
 	private acceptedTransactions = new Set<string>();
-	readonly storageError: AttachmentError | undefined;
+	storageError: AttachmentError | undefined;
 
 	constructor(storage: CoreAttachmentDraftStorage, sessionId: string, options?: CoreAttachmentDraftStoreOptions) {
 		if (!sessionId) {
@@ -248,33 +482,21 @@ export class CoreAttachmentDraftStore {
 		this.createId =
 			options?.createId ??
 			(() => `att_${Date.now().toString(36)}_${Math.floor(Math.random() * 0xffffffff).toString(36)}`);
-		let storageError: AttachmentError | undefined;
 		try {
-			const raw = storage.readText(draftKey(sessionId));
-			if (raw !== null) {
-				const parsed: unknown = JSON.parse(raw);
-				if (!Array.isArray(parsed) || !parsed.every(isRecordShape)) {
-					throw new Error("Draft entry is not a draft record array.");
-				}
-				for (const record of parsed) {
-					if (record.envelope.sessionId !== sessionId) {
-						throw new Error("Draft entry contains a foreign session record.");
-					}
-				}
-				this.records = parsed.map((record) => ({
-					...cloneJson(record),
-					status: record.status === "error" ? ("error" as const) : ("ready" as const),
-				}));
-			}
-		} catch {
+			const loaded = this.load(draftKey(sessionId));
+			this.records = loaded.records;
+			this.openTransactions = loaded.openTransactions;
+			this.acceptedTransactions = loaded.acceptedTransactions;
+		} catch (error) {
 			this.records = [];
-			storageError = {
+			this.openTransactions = new Map();
+			this.acceptedTransactions = new Set();
+			this.storageError = {
 				code: "ATT_STORAGE_FAILED",
-				message: "Stored attachment drafts could not be loaded; starting empty.",
+				message: `Stored attachment drafts could not be loaded: ${error instanceof Error ? error.message : "unknown cause"}`,
 				retryable: false,
 			};
 		}
-		this.storageError = storageError;
 	}
 
 	get boundSessionId(): string {
@@ -298,21 +520,32 @@ export class CoreAttachmentDraftStore {
 				retryable: false,
 			});
 		}
-		if (!input.type) {
-			throw new AttachmentDraftError({
-				code: "ATT_INVALID_JSON",
-				message: "Attachment drafts require a type.",
-				retryable: false,
-			});
-		}
+		assertValidEnvelopeInput(input.type, input.schemaVersion);
 		assertJsonValue(input.payload, "Attachment payload");
 		if (input.uiState !== undefined) assertJsonValue(input.uiState, "Attachment UI state");
 		if (input.media !== undefined) assertValidMedia(input.media);
+		const reserved = new Set<string>(this.records.map((record) => record.envelope.id));
+		for (const snapshot of this.openTransactions.values()) {
+			for (const entry of snapshot.attachments) reserved.add(entry.id);
+		}
+		let id = "";
+		let attempts = 0;
+		do {
+			id = this.createId();
+			attempts += 1;
+		} while (reserved.has(id) && attempts < CORE_ATTACHMENT_ADD_ID_ATTEMPTS);
+		if (reserved.has(id)) {
+			throw new AttachmentDraftError({
+				code: "ATT_STORAGE_FAILED",
+				message: "Attachment id generator produced only duplicate ids.",
+				retryable: true,
+			});
+		}
 		const timestamp = this.now();
 		const record: AttachmentDraftRecord = {
 			envelope: {
 				formatVersion: 1,
-				id: this.createId() as AttachmentId,
+				id: id as AttachmentId,
 				sessionId: this.sessionId,
 				type: input.type,
 				schemaVersion: input.schemaVersion,
@@ -323,21 +556,9 @@ export class CoreAttachmentDraftStore {
 			payload: cloneJson(input.payload),
 			...(input.uiState !== undefined ? { uiState: cloneJson(input.uiState) } : {}),
 			...(input.media !== undefined ? { media: { ...input.media } } : {}),
-			status: "saving",
+			status: "ready",
 		};
-		this.records.push(record);
-		try {
-			this.persist();
-		} catch {
-			record.status = "error";
-			record.error = {
-				code: "ATT_STORAGE_FAILED",
-				message: "Attachment draft could not be stored; it is not reload-proof.",
-				retryable: true,
-			};
-			throw new AttachmentDraftError(record.error);
-		}
-		record.status = "ready";
+		this.commit({ records: [...this.records, record], openTransactions: this.openTransactions, acceptedTransactions: this.acceptedTransactions }, "Attachment draft could not be stored; it is not reload-proof.");
 		return record.envelope.id;
 	}
 
@@ -352,50 +573,49 @@ export class CoreAttachmentDraftStore {
 				retryable: false,
 			});
 		}
+		if (next.payload === undefined && next.uiState === undefined) return;
 		const touchesPayload = next.payload !== undefined;
 		if (touchesPayload) assertJsonValue(next.payload, "Attachment payload");
 		if (next.uiState !== undefined) assertJsonValue(next.uiState, "Attachment UI state");
-		if (touchesPayload) {
-			record.payload = cloneJson(next.payload);
-			record.envelope.revision = (record.envelope.revision + 1) as AttachmentRevision;
-		}
-		if (next.uiState !== undefined) record.uiState = cloneJson(next.uiState);
-		record.envelope.updatedAt = this.now();
-		record.status = "saving";
-		try {
-			this.persist();
-		} catch {
-			record.status = "error";
-			record.error = {
-				code: "ATT_STORAGE_FAILED",
-				message: "Attachment draft change could not be stored.",
-				retryable: true,
-			};
-			throw new AttachmentDraftError(record.error);
-		}
-		record.status = "ready";
-		delete record.error;
+		const candidate: AttachmentDraftRecord = {
+			...cloneJson(record),
+			payload: touchesPayload ? cloneJson(next.payload) : cloneJson(record.payload),
+			...(next.uiState !== undefined || record.uiState !== undefined
+				? { uiState: cloneJson(next.uiState !== undefined ? next.uiState : record.uiState) }
+				: {}),
+			envelope: {
+				...record.envelope,
+				revision: (touchesPayload ? record.envelope.revision + 1 : record.envelope.revision) as AttachmentRevision,
+				updatedAt: this.now(),
+			},
+			status: "ready",
+		};
+		if (candidate.uiState === undefined) delete candidate.uiState;
+		this.commit(
+			{
+				records: this.records.map((entry) => (entry.envelope.id === id ? candidate : entry)),
+				openTransactions: this.openTransactions,
+				acceptedTransactions: this.acceptedTransactions,
+			},
+			"Attachment draft change could not be stored.",
+		);
 	}
 
 	async remove(id: AttachmentId): Promise<void> {
-		const index = this.records.findIndex((candidate) => candidate.envelope.id === id);
-		if (index === -1) return;
-		const [removed] = this.records.splice(index, 1);
-		try {
-			this.persist();
-		} catch {
-			this.records.splice(index, 0, removed);
-			throw new AttachmentDraftError({
-				code: "ATT_STORAGE_FAILED",
-				message: "Attachment removal could not be stored.",
-				retryable: true,
-			});
-		}
+		if (!this.records.some((candidate) => candidate.envelope.id === id)) return;
+		this.commit(
+			{
+				records: this.records.filter((candidate) => candidate.envelope.id !== id),
+				openTransactions: this.openTransactions,
+				acceptedTransactions: this.acceptedTransactions,
+			},
+			"Attachment removal could not be stored.",
+		);
 	}
 
 	freezeForSend(clientTxnId: string, text: string): AttachmentSendSnapshot {
-		assertValidClientTxnId(clientTxnId);
-		if (this.acceptedTransactions.has(clientTxnId)) {
+		const txn = normalizeDraftClientTxnId(clientTxnId);
+		if (this.acceptedTransactions.has(txn)) {
 			throw new AttachmentDraftError({
 				code: "ATT_ACCEPTANCE_UNKNOWN",
 				message: "Accepted transaction ids are never frozen again with new content.",
@@ -410,34 +630,74 @@ export class CoreAttachmentDraftStore {
 				retryable: true,
 			});
 		}
-		return {
-			clientTxnId: clientTxnId as ClientTxnId,
+		const attachments: FrozenAttachment[] = this.records.map((record) => ({
+			id: record.envelope.id,
+			revision: record.envelope.revision,
+			type: record.envelope.type,
+			schemaVersion: record.envelope.schemaVersion,
+			payload: cloneJson(record.payload),
+			...(record.media !== undefined ? { media: { ...record.media } } : {}),
+		}));
+		const sendValue = canonicalSendValue(text, attachments);
+		const bound = this.openTransactions.get(txn);
+		if (bound) {
+			if (canonicalSendValue(bound.text, bound.attachments) === sendValue) return cloneJson(bound);
+			throw new AttachmentDraftError({
+				code: "ATT_ACCEPTANCE_UNKNOWN",
+				message: "Transaction id is already bound to a different send value.",
+				retryable: false,
+			});
+		}
+		const snapshot: AttachmentSendSnapshot = {
+			clientTxnId: txn as ClientTxnId,
 			sessionId: this.sessionId,
 			text,
 			frozenAt: this.now(),
-			attachments: this.records.map((record) => ({
-				id: record.envelope.id,
-				revision: record.envelope.revision,
-				type: record.envelope.type,
-				schemaVersion: record.envelope.schemaVersion,
-				payload: cloneJson(record.payload),
-				...(record.media !== undefined ? { media: { ...record.media } } : {}),
-			})),
+			attachments,
 		};
+		const openTransactions = new Map(this.openTransactions);
+		openTransactions.set(txn, snapshot);
+		this.commit(
+			{ records: this.records, openTransactions, acceptedTransactions: this.acceptedTransactions },
+			"Send snapshot could not be stored; the transaction was not bound.",
+		);
+		return cloneJson(snapshot);
 	}
 
 	applyAcceptance(snapshot: AttachmentSendSnapshot, receipt: AttachmentAcceptanceReceipt): AttachmentAcceptanceResult {
-		if (receipt.clientTxnId !== snapshot.clientTxnId || snapshot.sessionId !== this.sessionId) {
+		const checkedReceipt = validateReceiptShape(receipt);
+		const checkedSnapshot = validateSnapshotShape(snapshot);
+		if (checkedSnapshot.sessionId !== this.sessionId) {
+			throw new AttachmentDraftError({
+				code: "ATT_ACCESS_DENIED",
+				message: "Send snapshots belong to exactly one session.",
+				retryable: false,
+			});
+		}
+		if (normalizeDraftClientTxnId(checkedSnapshot.clientTxnId) !== checkedReceipt.clientTxnId) {
 			throw new AttachmentDraftError({
 				code: "ATT_ACCEPTANCE_UNKNOWN",
 				message: "Receipt does not match this send snapshot.",
 				retryable: true,
 			});
 		}
-		if (this.acceptedTransactions.has(snapshot.clientTxnId)) {
-			return { consumed: [], duplicate: true };
+		const bound = this.openTransactions.get(checkedReceipt.clientTxnId);
+		if (!bound) {
+			if (this.acceptedTransactions.has(checkedReceipt.clientTxnId)) return { consumed: [], duplicate: true };
+			throw new AttachmentDraftError({
+				code: "ATT_ACCEPTANCE_UNKNOWN",
+				message: "Transaction was never frozen in this session.",
+				retryable: true,
+			});
 		}
-		if (!receipt.accepted) {
+		if (canonicalSnapshot(checkedSnapshot) !== canonicalSnapshot(bound)) {
+			throw new AttachmentDraftError({
+				code: "ATT_ACCEPTANCE_UNKNOWN",
+				message: "Snapshot does not match the bound original send.",
+				retryable: false,
+			});
+		}
+		if (!checkedReceipt.accepted) {
 			throw new AttachmentDraftError({
 				code: "ATT_ACCEPTANCE_UNKNOWN",
 				message: "Acceptance is unknown; reconcile the receipt and retry unchanged.",
@@ -445,28 +705,120 @@ export class CoreAttachmentDraftStore {
 			});
 		}
 		const consumed: AttachmentId[] = [];
-		this.records = this.records.filter((record) => {
-			const frozen = snapshot.attachments.find((candidate) => candidate.id === record.envelope.id);
+		const remaining = this.records.filter((record) => {
+			const frozen = bound.attachments.find((candidate) => candidate.id === record.envelope.id);
 			if (frozen && frozen.revision === record.envelope.revision) {
 				consumed.push(record.envelope.id);
 				return false;
 			}
 			return true;
 		});
-		this.acceptedTransactions.add(snapshot.clientTxnId);
-		try {
-			this.persist();
-		} catch {
-			throw new AttachmentDraftError({
-				code: "ATT_STORAGE_FAILED",
-				message: "Acceptance was recorded but the remaining drafts could not be stored.",
-				retryable: true,
-			});
-		}
+		const openTransactions = new Map(this.openTransactions);
+		openTransactions.delete(checkedReceipt.clientTxnId);
+		const acceptedTransactions = new Set(this.acceptedTransactions);
+		acceptedTransactions.add(checkedReceipt.clientTxnId);
+		this.commit(
+			{ records: remaining, openTransactions, acceptedTransactions },
+			"Acceptance could not be stored; nothing was consumed.",
+		);
 		return { consumed, duplicate: false };
 	}
 
-	private persist(): void {
-		this.storage.writeText(draftKey(this.sessionId), JSON.stringify(this.records));
+	private load(key: string): DraftStateCandidate {
+		const raw = this.storage.readText(key);
+		if (raw === null) {
+			return { records: [], openTransactions: new Map(), acceptedTransactions: new Set() };
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			throw new Error("entry is not valid JSON.");
+		}
+		if (Array.isArray(parsed)) {
+			return {
+				records: this.validateRecordArray(parsed),
+				openTransactions: new Map(),
+				acceptedTransactions: new Set(),
+			};
+		}
+		if (typeof parsed !== "object" || parsed === null) throw new Error("unsupported stored draft format.");
+		const state = parsed as Partial<CoreAttachmentDraftPersistedState>;
+		if (state.formatVersion !== CORE_ATTACHMENT_DRAFT_STATE_VERSION) {
+			throw new Error(`unsupported stored draft formatVersion ${String(state.formatVersion)}.`);
+		}
+		if (state.sessionId !== this.sessionId) throw new Error("stored state belongs to a foreign session.");
+		if (!Array.isArray(state.records)) throw new Error("stored state has no records array.");
+		if (typeof state.openTransactions !== "object" || state.openTransactions === null || Array.isArray(state.openTransactions)) {
+			throw new Error("stored state has no open-transactions object.");
+		}
+		if (!Array.isArray(state.acceptedTransactions)) throw new Error("stored state has no accepted-transactions array.");
+		const records = this.validateRecordArray(state.records);
+		const openTransactions = new Map<string, AttachmentSendSnapshot>();
+		for (const [keyName, entry] of Object.entries(state.openTransactions)) {
+			let checked: AttachmentSendSnapshot;
+			try {
+				checked = validateSnapshotShape(entry);
+			} catch (error) {
+				throw new Error(`stored open transaction is invalid: ${error instanceof Error ? error.message : "unknown cause"}`);
+			}
+			if (checked.sessionId !== this.sessionId) throw new Error("stored open transaction belongs to a foreign session.");
+			let normalizedKey: string;
+			try {
+				normalizedKey = normalizeDraftClientTxnId(checked.clientTxnId);
+			} catch {
+				throw new Error("stored open transaction has an invalid id.");
+			}
+			if (keyName !== normalizedKey) throw new Error("stored open transaction key mismatches its snapshot.");
+			openTransactions.set(keyName, {
+				clientTxnId: keyName as ClientTxnId,
+				sessionId: this.sessionId,
+				text: checked.text,
+				frozenAt: checked.frozenAt,
+				attachments: cloneJson(checked.attachments),
+			});
+		}
+		const acceptedTransactions = new Set<string>();
+		for (const entry of state.acceptedTransactions) {
+			if (typeof entry !== "string" || entry !== entry.trim() || entry.length === 0 || entry.length > CORE_ATTACHMENT_CLIENT_TXN_ID_MAX) {
+				throw new Error("stored accepted transaction id is invalid.");
+			}
+			if (acceptedTransactions.has(entry) || openTransactions.has(entry)) {
+				throw new Error("stored accepted transaction id is duplicated or still open.");
+			}
+			acceptedTransactions.add(entry);
+		}
+		return { records, openTransactions, acceptedTransactions };
+	}
+
+	private validateRecordArray(entries: unknown[]): AttachmentDraftRecord[] {
+		const records = entries.map((entry, index) => validateStoredRecord(entry, this.sessionId, index));
+		const ids = new Set<string>();
+		for (const record of records) {
+			if (ids.has(record.envelope.id)) throw new Error(`duplicate attachment id ${record.envelope.id}.`);
+			ids.add(record.envelope.id);
+		}
+		return records;
+	}
+
+	private commit(candidate: DraftStateCandidate, failureMessage: string): void {
+		const text = JSON.stringify({
+			formatVersion: CORE_ATTACHMENT_DRAFT_STATE_VERSION,
+			sessionId: this.sessionId,
+			records: candidate.records,
+			openTransactions: Object.fromEntries(candidate.openTransactions),
+			acceptedTransactions: [...candidate.acceptedTransactions],
+		} satisfies CoreAttachmentDraftPersistedState);
+		try {
+			this.storage.writeText(draftKey(this.sessionId), text);
+		} catch {
+			const failure: AttachmentError = { code: "ATT_STORAGE_FAILED", message: failureMessage, retryable: true };
+			this.storageError = failure;
+			throw new AttachmentDraftError(failure);
+		}
+		this.records = candidate.records;
+		this.openTransactions = candidate.openTransactions;
+		this.acceptedTransactions = candidate.acceptedTransactions;
+		this.storageError = undefined;
 	}
 }
