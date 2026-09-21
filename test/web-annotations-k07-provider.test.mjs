@@ -7,6 +7,7 @@ import {
 	serializeWebAnnotationAttachment,
 } from "../dist/web-annotations/attachments.js";
 import { WebAnnotationStore } from "../dist/web-annotations/store.js";
+import { webAnnotationsPackageManifest } from "../dist/plugins/default-packages.js";
 
 // C1 provider-side snapshot preparation for K07. Provider scope only: the
 // existing annotation record, its JSON snapshot and the attach-time rules.
@@ -114,6 +115,24 @@ test("serialized attachment truncates long provider fields to fixed bounds", () 
 		store.close();
 	}
 });
+
+test("provider view and terminal-card registrations pin renderer and fallback metadata", () => {
+	const manifest = webAnnotationsPackageManifest();
+	const view = manifest.contributions.find((entry) => entry.id === "annotations");
+	assert.equal(view.kind, "view");
+	assert.equal(view.view.exportName, "WebAnnotationsView");
+	assert.equal(view.view.presentation, "workspace");
+	assert.equal(view.view.mount, "keep-alive");
+	assert.deepEqual(view.view.subviews.map((entry) => entry.id), ["annotations", "settings", "context"]);
+	const terminal = manifest.contributions.find((entry) => entry.kind === "terminal-card");
+	assert.equal(terminal.title, "Web Annotation");
+	assert.deepEqual(terminal.metadata, { renderer: "web-annotation", fallback: "Web annotation unavailable" });
+});
+
+// Tile sizes and grid placement have no provider-side code today: the K07 grid,
+// clamping and overlay rules are owned by the D core draft (D1 -> I -> C1).
+// Acceptance for that path is the same-commit Core+provider end-to-end test
+// (AT-03/AT-04 rendering incl. overflow pages), not an invented local grid API.
 
 test("prepare resolves real store records and rejects resolved or missing ones", () => {
 	const store = openStore();
