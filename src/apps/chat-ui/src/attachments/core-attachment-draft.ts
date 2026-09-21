@@ -43,6 +43,21 @@
  * consumption only flows through open-transaction match plus revision
  * equality. Corrupt or foreign entries fail closed (empty draft plus a named
  * storageError); per-record quarantine is D2.
+ *
+ * Writer/loader self-consistency (R2): no successful write may produce a
+ * state the loader rejects. Freeze text must be a string (empty stays allowed
+ * and opaque); clock results and generated ids must be non-empty strings
+ * exactly as the loader requires (no ISO/date or id-service rules added).
+ * Violations fail with ATT_INVALID_JSON before any write, RAM, or transaction
+ * change. Null/array/mistyped add/update inputs are rejected the same way;
+ * addressing (unknown/stale) is still checked first.
+ *
+ * JSON boundary (R2): structural checks run on an iterative walker with
+ * active-ancestor cycle detection — shared acyclic references are valid,
+ * true cycles fail with ATT_INVALID_JSON. No global depth cap is imposed;
+ * clone, canonicalization, and commit serialization each fail controlled as
+ * ATT_INVALID_JSON instead, strictly before any storage write (storage
+ * failures keep their own ATT_STORAGE_FAILED contract).
  */
 
 export type AttachmentId = string & { readonly brand: "AttachmentId" };
@@ -213,34 +228,89 @@ function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
 	return prototype === Object.prototype || prototype === null;
 }
 
-function assertJsonValue(value: unknown, label: string): void {
+function invalidJson(message: string): AttachmentDraftError {
+	return new AttachmentDraftError({ code: "ATT_INVALID_JSON", message, retryable: false });
+}
+
+function assertJsonLeaf(value: unknown, label: string): void {
 	if (value === null || typeof value === "boolean" || typeof value === "string") return;
 	if (typeof value === "number") {
 		if (Number.isFinite(value)) return;
-		throw new AttachmentDraftError({
-			code: "ATT_INVALID_JSON",
-			message: `${label} must be finite JSON numbers.`,
-			retryable: false,
-		});
+		throw invalidJson(`${label} must be finite JSON numbers.`);
 	}
-	if (Array.isArray(value)) {
-		for (const entry of value) assertJsonValue(entry, label);
-		return;
+	if (Array.isArray(value) || isPlainJsonObject(value)) return;
+	throw invalidJson(`${label} must be plain JSON (no functions, undefined, BigInt, symbols, or class instances).`);
+}
+
+type JsonWalkFrame = { container: unknown[] | Record<string, unknown>; keys: Array<string | number>; index: number };
+
+function jsonChildKeys(container: unknown[] | Record<string, unknown>): Array<string | number> {
+	if (Array.isArray(container)) {
+		const keys: number[] = [];
+		for (let index = 0; index < container.length; index++) keys.push(index);
+		return keys;
 	}
-	if (isPlainJsonObject(value)) {
-		for (const entry of Object.values(value)) assertJsonValue(entry, label);
-		return;
+	return Object.keys(container);
+}
+
+/**
+ * Iterative structural JSON check with active-ancestor cycle detection. A
+ * shared but acyclic reference ({left: shared, right: shared}) is valid plain
+ * JSON and accepted; only a true back-reference fails. No depth cap is
+ * enforced here: the walker itself is stack-safe, and the later
+ * serialization step fails controlled as well. Foreign access failures
+ * (throwing getters/proxies) are rejected as non-plain JSON; this is the
+ * documented plain-JSON boundary, not a sandbox.
+ */
+function assertJsonValue(value: unknown, label: string): void {
+	try {
+		assertJsonLeaf(value, label);
+		if (!Array.isArray(value) && !isPlainJsonObject(value)) return;
+		const root = value as unknown[] | Record<string, unknown>;
+		const ancestors = new Set<unknown>([root]);
+		const stack: JsonWalkFrame[] = [{ container: root, keys: jsonChildKeys(root), index: 0 }];
+		while (stack.length > 0) {
+			const frame = stack[stack.length - 1];
+			if (frame.index >= frame.keys.length) {
+				stack.pop();
+				ancestors.delete(frame.container);
+				continue;
+			}
+			const key = frame.keys[frame.index++];
+			const child = Array.isArray(frame.container)
+				? frame.container[key as number]
+				: (frame.container as Record<string, unknown>)[key as string];
+			assertJsonLeaf(child, label);
+			if (!Array.isArray(child) && !isPlainJsonObject(child)) continue;
+			if (ancestors.has(child)) {
+				throw invalidJson(`${label} must not contain cycles.`);
+			}
+			const container = child as unknown[] | Record<string, unknown>;
+			ancestors.add(container);
+			stack.push({ container, keys: jsonChildKeys(container), index: 0 });
+		}
+	} catch (error) {
+		if (error instanceof AttachmentDraftError) throw error;
+		throw invalidJson(`${label} could not be read as plain JSON.`);
 	}
-	throw new AttachmentDraftError({
-		code: "ATT_INVALID_JSON",
-		message: `${label} must be plain JSON (no functions, undefined, BigInt, symbols, or class instances).`,
-		retryable: false,
-	});
+}
+
+function toJsonText(value: unknown, label: string): string {
+	try {
+		return JSON.stringify(value);
+	} catch {
+		throw invalidJson(`${label} could not be serialized as JSON.`);
+	}
 }
 
 function cloneJson<T>(value: T): T {
 	if (value === undefined) return value;
-	return JSON.parse(JSON.stringify(value)) as T;
+	try {
+		return JSON.parse(toJsonText(value, "Value")) as T;
+	} catch (error) {
+		if (error instanceof AttachmentDraftError) throw error;
+		throw invalidJson("Value could not be cloned as JSON.");
+	}
 }
 
 function assertValidMedia(media: AttachmentDraftMedia): void {
@@ -428,8 +498,8 @@ function validateReceiptShape(value: unknown): { clientTxnId: string; accepted: 
 	return { clientTxnId: normalizeDraftClientTxnId(receipt.clientTxnId), accepted: receipt.accepted };
 }
 
-function canonicalSendValue(text: string, attachments: FrozenAttachment[]): string {
-	return JSON.stringify({
+function canonicalSendStructure(text: string, attachments: FrozenAttachment[]): unknown {
+	return {
 		text,
 		attachments: attachments.map((entry) => ({
 			id: entry.id,
@@ -439,17 +509,24 @@ function canonicalSendValue(text: string, attachments: FrozenAttachment[]): stri
 			payload: entry.payload,
 			media: entry.media ?? null,
 		})),
-	});
+	};
+}
+
+function canonicalSendValue(text: string, attachments: FrozenAttachment[]): string {
+	return toJsonText(canonicalSendStructure(text, attachments), "Send value");
 }
 
 function canonicalSnapshot(snapshot: AttachmentSendSnapshot): string {
-	return JSON.stringify({
-		clientTxnId: snapshot.clientTxnId,
-		sessionId: snapshot.sessionId,
-		text: snapshot.text,
-		frozenAt: snapshot.frozenAt,
-		attachments: JSON.parse(canonicalSendValue(snapshot.text, snapshot.attachments)) as unknown,
-	});
+	return toJsonText(
+		{
+			clientTxnId: snapshot.clientTxnId,
+			sessionId: snapshot.sessionId,
+			text: snapshot.text,
+			frozenAt: snapshot.frozenAt,
+			send: canonicalSendStructure(snapshot.text, snapshot.attachments),
+		},
+		"Send snapshot",
+	);
 }
 
 type DraftStateCandidate = {
@@ -513,6 +590,13 @@ export class CoreAttachmentDraftStore {
 	}
 
 	async add(input: AttachmentInput): Promise<AttachmentId> {
+		if (!input || typeof input !== "object" || Array.isArray(input)) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: "Attachment input must be an object.",
+				retryable: false,
+			});
+		}
 		if (input.sessionId !== this.sessionId) {
 			throw new AttachmentDraftError({
 				code: "ATT_ACCESS_DENIED",
@@ -524,6 +608,7 @@ export class CoreAttachmentDraftStore {
 		assertJsonValue(input.payload, "Attachment payload");
 		if (input.uiState !== undefined) assertJsonValue(input.uiState, "Attachment UI state");
 		if (input.media !== undefined) assertValidMedia(input.media);
+		const timestamp = this.timestamp();
 		const reserved = new Set<string>(this.records.map((record) => record.envelope.id));
 		for (const snapshot of this.openTransactions.values()) {
 			for (const entry of snapshot.attachments) reserved.add(entry.id);
@@ -531,7 +616,15 @@ export class CoreAttachmentDraftStore {
 		let id = "";
 		let attempts = 0;
 		do {
-			id = this.createId();
+			const generated: unknown = this.createId();
+			if (!nonEmptyString(generated)) {
+				throw new AttachmentDraftError({
+					code: "ATT_INVALID_JSON",
+					message: "Attachment id generator must produce a non-empty string id.",
+					retryable: false,
+				});
+			}
+			id = generated;
 			attempts += 1;
 		} while (reserved.has(id) && attempts < CORE_ATTACHMENT_ADD_ID_ATTEMPTS);
 		if (reserved.has(id)) {
@@ -541,7 +634,6 @@ export class CoreAttachmentDraftStore {
 				retryable: true,
 			});
 		}
-		const timestamp = this.now();
 		const record: AttachmentDraftRecord = {
 			envelope: {
 				formatVersion: 1,
@@ -573,10 +665,18 @@ export class CoreAttachmentDraftStore {
 				retryable: false,
 			});
 		}
+		if (!next || typeof next !== "object" || Array.isArray(next)) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: "Attachment changes must be an object.",
+				retryable: false,
+			});
+		}
 		if (next.payload === undefined && next.uiState === undefined) return;
 		const touchesPayload = next.payload !== undefined;
 		if (touchesPayload) assertJsonValue(next.payload, "Attachment payload");
 		if (next.uiState !== undefined) assertJsonValue(next.uiState, "Attachment UI state");
+		const timestamp = this.timestamp();
 		const candidate: AttachmentDraftRecord = {
 			...cloneJson(record),
 			payload: touchesPayload ? cloneJson(next.payload) : cloneJson(record.payload),
@@ -586,7 +686,7 @@ export class CoreAttachmentDraftStore {
 			envelope: {
 				...record.envelope,
 				revision: (touchesPayload ? record.envelope.revision + 1 : record.envelope.revision) as AttachmentRevision,
-				updatedAt: this.now(),
+				updatedAt: timestamp,
 			},
 			status: "ready",
 		};
@@ -615,6 +715,13 @@ export class CoreAttachmentDraftStore {
 
 	freezeForSend(clientTxnId: string, text: string): AttachmentSendSnapshot {
 		const txn = normalizeDraftClientTxnId(clientTxnId);
+		if (typeof text !== "string") {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: "Send text must be a string.",
+				retryable: false,
+			});
+		}
 		if (this.acceptedTransactions.has(txn)) {
 			throw new AttachmentDraftError({
 				code: "ATT_ACCEPTANCE_UNKNOWN",
@@ -652,7 +759,7 @@ export class CoreAttachmentDraftStore {
 			clientTxnId: txn as ClientTxnId,
 			sessionId: this.sessionId,
 			text,
-			frozenAt: this.now(),
+			frozenAt: this.timestamp(),
 			attachments,
 		};
 		const openTransactions = new Map(this.openTransactions);
@@ -801,14 +908,29 @@ export class CoreAttachmentDraftStore {
 		return records;
 	}
 
+	private timestamp(): string {
+		const stamped: unknown = this.now();
+		if (!nonEmptyString(stamped)) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: "Clock must produce a non-empty string timestamp.",
+				retryable: false,
+			});
+		}
+		return stamped;
+	}
+
 	private commit(candidate: DraftStateCandidate, failureMessage: string): void {
-		const text = JSON.stringify({
-			formatVersion: CORE_ATTACHMENT_DRAFT_STATE_VERSION,
-			sessionId: this.sessionId,
-			records: candidate.records,
-			openTransactions: Object.fromEntries(candidate.openTransactions),
-			acceptedTransactions: [...candidate.acceptedTransactions],
-		} satisfies CoreAttachmentDraftPersistedState);
+		const text = toJsonText(
+			{
+				formatVersion: CORE_ATTACHMENT_DRAFT_STATE_VERSION,
+				sessionId: this.sessionId,
+				records: candidate.records,
+				openTransactions: Object.fromEntries(candidate.openTransactions),
+				acceptedTransactions: [...candidate.acceptedTransactions],
+			} satisfies CoreAttachmentDraftPersistedState,
+			"Draft state",
+		);
 		try {
 			this.storage.writeText(draftKey(this.sessionId), text);
 		} catch {
