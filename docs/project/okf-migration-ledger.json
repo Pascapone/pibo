@@ -18,6 +18,15 @@
   },
   "records": [
     {
+      "path": "docs/reports/incident-2026-09-21-remote-gateway-redeploy.md",
+      "state": "conformant",
+      "classification": "Remote gateway redeploy incident with composition, send-port, and queue findings",
+      "type": "Incident Report",
+      "authority": "evidentiary",
+      "status": "stable",
+      "lineage": null
+    },
+    {
       "path": "docs/reports/agent-designer-revert-escape-validation-2026-09-19.md",
       "state": "conformant",
       "classification": "Agent Designer revert escape validation",
