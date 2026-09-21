@@ -8,6 +8,7 @@ import test from "node:test";
 import { build } from "esbuild";
 import { connectCdpTarget, listCdpTargets, openCdpTarget } from "../dist/tools/cdp-client.js";
 import { startFixtureServer } from "../packages/pibo-plugin-vscode-web/test-fixtures/fixture-server.mjs";
+import { chromeNotFoundError, resolveChromeBinary } from "../packages/pibo-plugin-vscode-web/test-fixtures/chrome-probe.mjs";
 import { probeDisplay } from "../packages/pibo-plugin-vscode-web/test-fixtures/display-probe.mjs";
 
 const PILOT_ROOT = fileURLToPath(new URL("../packages/pibo-plugin-vscode-web", import.meta.url));
@@ -68,18 +69,10 @@ async function sleep(ms) {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function resolveChrome() {
-	const candidates = [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean);
-	for (const candidate of candidates) {
-		try {
-			await readFile(candidate);
-			return candidate;
-		} catch {
-			// try next candidate
-		}
-	}
-	return undefined;
-}
+// C1-R2-02: explicit real-browser candidate list for the actual browser flow.
+// Usability (regular file + executable) is decided by the shared chrome probe;
+// an empty or unusable list there never falls back to other system paths.
+const DEFAULT_CHROME_CANDIDATES = [process.env.CHROME_BIN, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].filter(Boolean);
 
 function chromeVersionText(binary) {
 	try {
@@ -91,9 +84,9 @@ function chromeVersionText(binary) {
 }
 
 async function displayDiscovery() {
-	const chromeBinary = await resolveChrome();
+	const { binary: chromeBinary, checked: chromeChecked } = await resolveChromeBinary(DEFAULT_CHROME_CANDIDATES);
 	const display = await probeDisplay();
-	return { chromeBinary, ...display };
+	return { chromeBinary, chromeChecked, ...display };
 }
 
 function headfulBlockedError(discovery, detail) {
@@ -177,7 +170,8 @@ async function stopChrome(chrome) {
 async function runBrowserFlow({ headful }) {
 	const mode = headful ? "headful" : "headless";
 	const discovery = await displayDiscovery();
-	if (!discovery.chromeBinary) throw headfulBlockedError(discovery, "no Chrome/Chromium binary found");
+	// C1-R2-02: one binary gate for both modes, ahead of the display gate.
+	if (!discovery.chromeBinary) throw chromeNotFoundError(discovery.chromeChecked);
 	if (headful && discovery.verdict === "none") {
 		throw headfulBlockedError(discovery, "no reachable X11 or Wayland display");
 	}
@@ -329,7 +323,7 @@ async function runBrowserFlow({ headful }) {
 		assert.ok(state.alertText?.includes("not configured"), `second retry returns to fallback, got: ${state.alertText}`);
 		await screenshot("retry");
 
-		// Scenario C: ready path with a real iframe and genuine workbench markers.
+		// Scenario C: ready path with a real iframe and controlled fixture workbench markers.
 		fixture.setMode("ready");
 		await client.evaluate(`window.__C1_FIXTURE__.unmount(); window.__C1_FIXTURE__.mount("/pilot-browser.js")`);
 		for (let i = 0; i < 150; i++) {
