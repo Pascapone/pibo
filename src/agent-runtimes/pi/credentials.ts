@@ -193,6 +193,7 @@ export async function getPiProviderAuthStatus(providerId: string): Promise<{
 /**
  * Owner-bound API-key access for exactly one provider (K03).
  * Structural seam for consumers with injectable `getApiKey`/`isConfigured` options.
+ * `isConfigured` is a best-effort pre-check; the read result is authoritative.
  */
 export type PiProviderApiKeyAccess = {
 	getApiKey: () => Promise<string | undefined>;
@@ -211,10 +212,24 @@ export type PiProviderOAuthAccess = {
 
 /**
  * Bind API-key access for one provider at its credential owner (K03).
- * Scope is exactly the bound provider id; the access object exposes no
- * enumeration. Absence resolves to `undefined`/`false` without throwing;
- * genuine storage or runtime failures propagate, with no fallback to other
- * accounts or runtimes. Nothing is cached: every call re-reads the store.
+ *
+ * Scope is exactly the bound provider id. This is a location binding inside
+ * the owner module, not caller authorization: any importer can name any
+ * provider id, and the runtime-instance/adapter-shared scope choice is
+ * pending (owner I). For this round only the trusted internal transcription
+ * consumers with fixed ids use it; no SDK/remote/tool widening, no secret
+ * service. The access object itself exposes no list function; store
+ * enumeration (`listPiCredentials`) is unaffected by this shape.
+ *
+ * Absence (no entry, or an entry that resolves to nothing usable) returns
+ * `undefined`/`false` without throwing. Genuine lookup/store/runtime
+ * failures propagate — this binding catches nothing — with no fallback to
+ * other accounts or runtimes; the consumer maps thrown failures to
+ * `provider_error` and only absence to `not_configured`. Nothing is cached:
+ * every call re-reads the store. With an api_key entry, resolution performs
+ * local reads only; if an OAuth entry is stored under the bound id instead,
+ * resolution follows the OAuth path (including a possible refresh, see
+ * below) and returns its access token.
  */
 export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKeyAccess {
 	return {
@@ -225,9 +240,23 @@ export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKey
 
 /**
  * Bind OAuth access for one provider at its credential owner (K03).
- * Same scope, absence, error, and lifetime promise as the API-key binding.
- * `accountId` is the stored credential value only; provider-specific
- * derivation stays with the consumer.
+ * Same scope, absence, error and lifetime promise as the API-key binding:
+ * trusted internal consumers with fixed ids only, no caller authorization
+ * (owner I); thrown lookup/store/refresh failures propagate for the
+ * consumer to map to `provider_error`; absence stays `not_configured`.
+ *
+ * Refresh side effect: a stored token expiring within ~5 minutes triggers
+ * an OAuth refresh with network access (~15s timeout). Success persists
+ * the rotated credential; failure throws. Reads are otherwise fresh per
+ * call; nothing is cached.
+ *
+ * The binding reads twice (type gate, then resolution): logout or refresh
+ * may land between the reads. Both outcomes stay correct (absence resolves
+ * `undefined`); no single-generation snapshot is promised.
+ *
+ * `accountId` is the stored credential value only, passed through verbatim;
+ * provider-specific derivation stays with the consumer, which prefers the
+ * stored accountId, then its JWT fallback, then no header.
  */
 export function bindPiProviderOAuthAccess(providerId: string): PiProviderOAuthAccess {
 	return {

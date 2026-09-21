@@ -74,7 +74,9 @@ export type PiboToolExecutionContext = Omit<PiboToolDefinitionContext, "cwd"> & 
 	/**
 	 * Present only while a tool executes inside pibo_run_start. Set solely by the
 	 * yielded-run executor; the tool contract passes the scope through untouched
-	 * and never invents it.
+	 * and never invents it. Pibo tools observe it on the execution context;
+	 * legacy tools receive only nativeContext and never observe it. The
+	 * contract layer does not mutate the outer context object.
 	 */
 	yieldedRunId?: string;
 	/** Adapter-private compatibility context. Portable tools must not depend on this field. */

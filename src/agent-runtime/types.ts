@@ -401,11 +401,47 @@ export type AgentRuntimeCompatibilityMetadata = {
 };
 
 /**
- * Behavioral session invariants (K01, pinned by contract tests):
- * at most one terminal event (`turn_completed` xor `turn_failed`) per accepted
- * turn after `turn_started`; after `abort()`/`dispose()` settle, no new terminal
- * results or overwrites; `abort()` and `dispose()` are idempotent, and
- * `dispose()` ends event delivery without leaving credentials behind.
+ * Session lifecycle contract (K01). Read against the Pi, Codex-native,
+ * Muse-native, OMP and Fake adapters; shared rules and per-adapter
+ * differences are explicit. Pinned by `test/b1-k01-contract.test.mjs`
+ * (Fake behavior, labeled as such) and
+ * `test/b1-real-adapter-contract.test.mjs` (real adapter/turn objects).
+ *
+ * Terminals: at most one terminal event (`turn_completed` xor `turn_failed`)
+ * per accepted turn after `turn_started`. `error`/`warning` are diagnostics,
+ * not terminals: Pi emits `error` plus `turn_failed` for one failure. OMP
+ * local-only turns resolve with no events at all.
+ *
+ * `prompt()` settles after the turn reaches a terminal state or the turn
+ * machinery fails. Whether it additionally REJECTS on failure is
+ * adapter- and path-defined: Pi resolves every turn outcome and rejects
+ * only enqueue errors; Codex/Muse resolve native terminals (including
+ * failed/interrupted) and reject on diagnostic/process/protocol/dispose
+ * failures; OMP resolves local and agent_end terminals and rejects on
+ * protocol failure/dispose; Fake rejects scripted failures. New consumers
+ * must derive success/failure from the terminal EVENTS, never from promise
+ * settlement alone. The router accepts both styles and dedups via its
+ * failure flag.
+ *
+ * `abort()` REQUESTS cancellation; it does not define the terminal. Pi emits
+ * no terminal for a cancelled turn; Fake emits `turn_completed/aborted`
+ * synchronously from `abort()` itself; Codex delivers its legitimate
+ * `interrupted` terminal asynchronously AFTER `abort()` returns; Muse waits
+ * for settlement (bounded, forced local settle on timeout). Never filter
+ * events or derive completion from the `abort()` return alone.
+ *
+ * `dispose()` is idempotent everywhere and ends event delivery; after it
+ * settles, no new events are delivered. Dispose during a turn is
+ * adapter-defined: Pi emits `turn_failed` for the active message and
+ * resolves the prompt; Codex/OMP drop the pending turn and reject the
+ * prompt; Muse settles the turn. Resource/credential cleanup lives with
+ * `PiboRuntimeResourceSession.dispose()`, not with this handle.
+ *
+ * `abort()` with no active turn is a no-op. After `dispose()`, `abort()`
+ * throws on Codex/Muse/OMP, is a no-op on Fake, and resolves without effect
+ * on Pi (pass-through to the idle harness); `prompt()` throws on
+ * Pi/Codex/Muse/OMP after dispose, and `subscribe()` throws on
+ * Codex/Muse/OMP but not on Pi/Fake.
  */
 export interface AgentRuntimeSession {
 	readonly adapterId: AgentRuntimeAdapterId;
