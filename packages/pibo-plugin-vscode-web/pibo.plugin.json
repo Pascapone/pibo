@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "pibo.vscode-web",
+  "name": "Pibo VS Code Web",
+  "version": "1.0.0",
+  "sdk": "^1.0.0",
+  "entrypoints": {
+    "backend": "backend.mjs",
+    "browser": "browser/index.js"
+  },
+  "services": {
+    "requires": [
+      {
+        "id": "pibo.chat.extensions",
+        "version": "1.0.0"
+      }
+    ]
+  },
+  "contributions": [
+    {
+      "id": "view",
+      "kind": "view",
+      "title": "VS Code",
+      "scope": "app",
+      "required": true,
+      "defaultEnabled": true,
+      "schemaVersion": 1,
+      "context": {
+        "kind": "none",
+        "reason": "Product view; no model context."
+      },
+      "view": {
+        "title": "VS Code",
+        "exportName": "VscodeView",
+        "presentation": "workspace",
+        "instance": "singleton",
+        "mount": "unmount",
+        "stateSchemaVersion": 1,
+        "stateSchema": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

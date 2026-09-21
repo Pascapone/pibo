@@ -42,13 +42,14 @@ export function createOpenAiChatGptTranscriptionProvider(
 				throw new PiboTranscriptionError("The audio recording is empty.", "invalid_audio");
 			}
 
+			// K03 (B1-R06/C1-R08): a throwing lookup is a provider failure, not absence.
 			let auth: OpenAiChatGptTranscriptionAuth | undefined;
 			try {
 				auth = await getAuth();
 			} catch (error) {
 				throw new PiboTranscriptionError(
-					"ChatGPT Subscription authentication could not be loaded. Sign in again under Settings → Providers.",
-					"not_configured",
+					"ChatGPT Subscription authentication could not be loaded.",
+					"provider_error",
 					{ cause: error },
 				);
 			}
@@ -70,7 +71,10 @@ export function createOpenAiChatGptTranscriptionProvider(
 				Referer: "https://chatgpt.com/",
 				"User-Agent": chatGptUserAgent(input.clientUserAgent),
 			};
-			if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
+			// K03 (B1-R05): C-owned account derivation applies to injected auth too:
+			// valid stored accountId wins, else the existing JWT fallback, else none.
+			const accountId = getOpenAiAccountId(auth.accessToken, auth.accountId);
+			if (accountId) headers["ChatGPT-Account-Id"] = accountId;
 
 			let response: Response;
 			try {
@@ -115,9 +119,20 @@ async function resolveOpenAiChatGptTranscriptionAuth(): Promise<OpenAiChatGptTra
 	const resolvedAuth = await resolvePiProviderAuth(OPENAI_CODEX_AUTH_PROVIDER_ID);
 	const accessToken = resolvedAuth?.auth.apiKey;
 	if (!accessToken) return undefined;
+	// FP-K03-PAIR-C: resolution may rotate the token, so the pre-read stored id
+	// must never be paired blindly. Pair only with a post-resolution OAuth read
+	// carrying exactly this token. A missing or re-typed entry means the
+	// credentials are gone (absence); a present but different token is an
+	// observed credential change that must not be mixed. No pre-read fallback,
+	// no silent retry; the consumer lookup catch maps the fixed error below.
+	const paired = await readPiCredential(OPENAI_CODEX_AUTH_PROVIDER_ID);
+	if (paired?.type !== "oauth") return undefined;
+	if (paired.access !== accessToken) {
+		throw new Error("OpenAI Codex OAuth credential changed during authentication resolution.");
+	}
 	return {
 		accessToken,
-		accountId: getOpenAiAccountId(accessToken, credential.accountId),
+		accountId: getOpenAiAccountId(accessToken, paired.accountId),
 	};
 }
 

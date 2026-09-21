@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "id": "pibo.web-search",
+  "name": "Pibo Web Search",
+  "version": "1.0.0",
+  "sdk": "^1.0.0",
+  "entrypoints": {
+    "backend": "backend.mjs",
+    "browser": "browser/index.js"
+  },
+  "config": {
+    "schemaVersion": 1,
+    "scopes": [
+      "app",
+      "agent",
+      "session"
+    ],
+    "schema": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "contributions": [
+    {
+      "id": "web_search",
+      "kind": "tool",
+      "name": "web_search",
+      "title": "web search",
+      "scope": "agent",
+      "required": false,
+      "defaultEnabled": false,
+      "schemaVersion": 1,
+      "runtime": {
+        "adapterIds": [
+          "pi"
+        ]
+      },
+      "yieldable": false,
+      "context": {
+        "kind": "context",
+        "stage": "provider-tools",
+        "description": "OpenAI provider web-search declaration and result contract.",
+        "loading": "runtime"
+      }
+    },
+    {
+      "id": "settings",
+      "kind": "view",
+      "title": "Pibo Web Search settings",
+      "scope": "app",
+      "required": true,
+      "defaultEnabled": true,
+      "schemaVersion": 1,
+      "context": {
+        "kind": "none",
+        "reason": "Compatibility view for retained tabs; configuration is owned by Settings > Plugins."
+      },
+      "view": {
+        "title": "Pibo Web Search settings",
+        "exportName": "ToolFamilyView",
+        "presentation": "internal",
+        "instance": "singleton",
+        "mount": "unmount",
+        "stateSchemaVersion": 1,
+        "stateSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "subviewNavigation": "renderer",
+        "subviews": [
+          {
+            "id": "settings",
+            "title": "Settings",
+            "purpose": "settings",
+            "settingsScopes": [
+              "app",
+              "agent",
+              "session"
+            ]
+          },
+          {
+            "id": "context",
+            "title": "Context",
+            "purpose": "context"
+          }
+        ]
+      }
+    }
+  ]
+}
