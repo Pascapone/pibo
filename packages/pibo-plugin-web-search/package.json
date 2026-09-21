@@ -1,0 +1,10 @@
+{
+  "name": "@pasko70/pibo-plugin-web-search",
+  "version": "1.0.0",
+  "type": "module",
+  "files": [
+    "pibo.plugin.json",
+    "backend.mjs",
+    "browser"
+  ]
+}
