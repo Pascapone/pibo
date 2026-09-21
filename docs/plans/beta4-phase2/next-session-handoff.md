@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "muse-code/start-ready-session"
-  at: "2026-09-21T06:15:27Z"
+  at: "2026-09-21T07:59:21Z"
 sources:
   - id: "v4-plan"
     resource: "scope:docs/plans/beta4-phase2/beta4-arbeitsplan-v4.md at handoff commit"
@@ -24,14 +24,15 @@ sources:
 
 ## 0. Lagebild (10 Zeilen)
 
-1. Branch `beta/4.0-plugin-system`; Code-Commit `9b23ef3b` (14 Dateien),
-   Docs-Commit dieser Handoff-Revision (BASE-Kandidat); kein Push.
-2. Der 22-vs-21-Paketbau-Blocker ist behoben und am Commit belegt:
-   frischer Build Exit 0, K06-Trio 15/15; alle 22 Plugins inkl.
-   Remote Agent erhalten.
+1. Branch `beta/4.0-plugin-system`; Commits `9b23ef3b` (Code),
+   `9730634b` (Docs), `a6ef1a2f` (Lockfix), Docs-Commit dieser
+   Revision (BASE-Kandidat); kein Push.
+2. Der 22-vs-21-Paketbau-Blocker ist behoben und am Fix-Commit belegt:
+   frischer Build Exit 0, K06-Trio 15/15, Cutover 1/1; alle 22
+   Plugins inkl. Remote Agent erhalten.
 3. KEIN gebündelter `npm test`-Schlusslauf: alter Lauf (20.09.) endet
    unbelegt (23 ✖ bis Logende, kein Exitcode); isolierte Pflichtmatrix
-   am Commit 320/321 grün, Cutover-Lock gesperrter Pfad (§2).
+   am Fix-Commit 326/326 grün, Gateway-CLI separat 1/5 (§2).
 4. Worktree `.worktrees/pibo-remote-agent` steht und bleibt live (Gateway);
    NICHT anfassen, kein Prune/Restart/Deploy.
 5. V4-Plan (`beta4-arbeitsplan-v4.md`) ist die aktuelle Richtung; V3 und alte
@@ -42,8 +43,8 @@ sources:
    behoben ausgeben; sie gehören zu B/C-Seam/Q3.
 8. Kein Refactoring, keine Piloten, keine neuen Sessions/Worker/Worktrees
    gestartet; B/C/D und merge-cleanup bleiben beendet.
-9. Nächste Schritte: Review des uncommitteten Lockfix, Controller-
-   Prüfung, erst danach I0-Entscheidung und Session-Dispatch (§8).
+9. Nächste Schritte: Controller-Prüfung, Pascal-Freigabe, erst
+   danach I0-Bindung und Session-Dispatch (§8).
 10. Kopierbarer Starttext für die neue Session steht in §10.
 
 ## 1. ERLEDIGT
@@ -76,6 +77,10 @@ Framework-Neuentwicklung):
   Standard-CLI gegen das ausgelieferte Package-Set.
 - Keine Prüfung gelöscht/geskippt, kein `>= 21`, kein Einzel-21→22-Ersatz
   bei stehenbleibenden 26/24/18-Annahmen.
+- Cutover-Lockfix: Live-Store als `pibo.data.store`-Core-Service
+  bereitgestellt und im Remote-Setup injiziert (Fallback erhalten),
+  Manifest optional deklariert; Async-Disposer wartet `service.stop()`
+  und schließt nur den eigenen Store, nie den geliehenen.
 
 ### 1.2 Tests
 
@@ -88,16 +93,18 @@ Framework-Neuentwicklung):
   `test/pibo4-standard-cutover.test.mjs`: feste 21/26/24/18-Annahmen auf
   abgeleitete Erwartungen umgestellt; Verhaltensassertions (z. B. Cron/
   Goal-Control installiert, Web-Search deinstalliert) unverändert.
+- Neu `test/remote-agent-plugin-lifecycle.test.mjs`: 5 echte Host-
+  Regressionen (Txn-Setup, Disposal-Nutzbarkeit, verzögerter Stop,
+  Stop-Fehler, Fallback) mit Fail-First gegen void-Disposer.
 
 ### 1.3 Commits und Dokumentation
 
-- Code-Checkpoint: `9b23ef3b126de71a9292f5fb4685eeed9a280246`
-  (14 Dateien: Kompositionsfix + Helper/Kompositionstest + 2 Loader-
-  Importe + Composer-Guard + Regression; kein `git add -A`).
-- Uncommitteter Rest (Review ausstehend): 4 Lockfix-Dateien
-  (`product-services.ts`, `product-runtime.ts`,
-  `packaged-remote-agent.ts`, Manifest-Hunk in `default-packages.ts`).
-- Getesteter Stand = Code-Commit + frischer Build daraus; kein
+- Code-Checkpoints: `9b23ef3b126de71a9292f5fb4685eeed9a280246`
+  (14 Dateien) und Fix-Commit `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b`
+  (5 Dateien: Lockfix + Lifecycle-Regression; kein `git add -A`).
+- Uncommitteter Rest vor Docs-Commit: nur Doku-Dateien; danach Baum
+  sauber (bis auf ignorierte Evidenz, kein Repo-Inhalt).
+- Getesteter Stand = Fix-Commit + frischer Build daraus; kein
   gebündelter Vollsuite-Nachweis (§2).
 - Schluss-/Testbericht:
   [beta4-build-gate-closure.md](../../reports/beta4-phase2/beta4-build-gate-closure.md).
@@ -113,22 +120,20 @@ Framework-Neuentwicklung):
 
 ## 2. TESTERGEBNIS
 
-> KEIN gebündelter Gesamtlauf. Belegt: frischer Build aus Code-Commit
-> `9b23ef3b` (05:57:17→06:01:47Z, Exit 0) plus isolierte Pflichtmatrix
+> KEIN gebündelter Gesamtlauf. Belegt: frischer Build aus Fix-Commit
+> `a6ef1a2f` (07:42:25→07:46:55Z, Exit 0) plus isolierte Pflichtmatrix
 > daran (Runner `scripts/run-test-suite.mjs`, Node v24.21.0).
 
-- Build Exit 0; K06-Trio 15/15; Remote 65/65; Loops+Attachments
-  102/102; Ralph/UI+Composer+Storage 54/54; B1/D1-Eingänge 63/63;
-  Loader 6/6; Composer-Rest 15/15; Typen Exit 0 — Summe 320 grün.
-- Cutover 0/1 am Commit (`database is locked`): belegte Ursache
-  (zweite DB-Connection unter Migrationstransaktion), Fix existiert
-  reviewbedürftig uncommittet und macht die Strecke grün (Baum-
-  Regression 1/1) → gesperrter Pfad mit Owner I, NICHT grün.
+- Build Exit 0; K06+Cutover+Lifecycle 21/21; Remote 65/65;
+  Loops+Attachments 102/102; Ralph/UI+Composer+Storage 54/54;
+  B1/D1+Loader+Composer-Rest 84/84; Typen Exit 0 — Summe 326 grün.
+- Cutover-Lücke geschlossen: Lockfix committen, gepackte Strecke 1/1,
+  Lifecycle 5/5 mit Fail-First gegen void-Disposer.
 - Loader-tsx-Defekt: Tests per dist-Import grün (Assertions identisch);
   Defekt im tsx-Hook bleibt Toolchain-Befund (I/B).
-- `gateway-web-cli` 0/5: je ~20-s-Timeout bei separat ~50-s-Bootdauer
-  → plausibler Timingzusammenhang, kein universeller Ursachenbeweis;
-  keine Timeouts geändert.
+- `gateway-web-cli` 1/5 am Fix-Commit (4× ~20-s-Timeout, 1× Pass bei
+  18,2 s): Timing-Grenze belegt, kein universeller Ursachenbeweis;
+  keine Timeouts geändert. Owner I (Baseline).
 - Composer-TS2322 per Owner-Guard behoben + Regression grün; Storage-
   Spec per echter Prüfung neu gebunden (10/10).
 - Alter Lauf (20.09.): 17:29:57Z bis Logende 18:27Z (4424 Zeilen,
@@ -146,12 +151,11 @@ Historisch (NICHT frisch, NICHT als aktuelle Suite ausgeben):
 
 - RV-01…RV-08 (Quelle: Research-Acceptance, s. §5): bis auf den
   belegten K06-Kompositionsanteil alle offen; RV-03 nur teilweise
-  bedient — Commit + Build + Matrix liegen vor, aber kein Vollsuite-
+  bedient — Commits + Build + Matrix liegen vor, aber kein Vollsuite-
   Lauf, keine Worktrees, keine B/C/D-Eingangsbestätigung.
-- Cutover-Lockfix uncommittet (Review ausstehend, Owner I); Pfad am
-  Commit gesperrt, Abnahme auf Fixbaum belegt.
-- Gateway-CLI-Timing und tsx-Defekt: dokumentierte Befunde (§2), kein
-  erfundenes Grün. Composer/Storage geschlossen.
+- Gateway-CLI-Timing (1/5, Owner I), tsx-Defekt (I/B), F1–F7 und
+  ~460 ungeprüfte Suite-Dateien: dokumentierte offene Befunde (§2),
+  kein erfundenes Grün. Cutover/Composer/Storage geschlossen.
 - Nächste inhaltliche Schritte: §8.
 
 ## 4. NICHT BEAUFTRAGT (nicht begonnen)
@@ -235,13 +239,11 @@ Abnahmeziele mitführen (V4 §12.14); keine Implementation.
 ## 8. Nächste Schritte für die neue Session
 
 1. Dieses Handoff + Schlussbericht (§1.3) + V4-Plan + Startpaket (§9) lesen.
-2. Lockfix-Review abschließen (4 Dateien + Regression `repro-11`);
-   erst danach über Aufnahme in Folge-Commit entscheiden.
-3. Controller-Prüfung und Pascal-Freigabe abwarten; KEINE Sessions,
+2. Controller-Prüfung und Pascal-Freigabe abwarten; KEINE Sessions,
    Worktrees oder Dispatches vor ausdrücklicher Freigabe.
-4. Erst nach Freigabe: I0-Bindung (BASE, Claims, Worktrees,
+3. Erst nach Freigabe: I0-Bindung (BASE, Claims, Worktrees,
    Eingangsbestätigungen) gemäß `launch-control.json`-Ablauf.
-5. Offene Befunde aus §3 übernehmen und neu zuordnen.
+4. Offene Befunde aus §3 übernehmen und neu zuordnen.
 
 ## 9. Historie und Belege (nicht als frisch ausgeben)
 
@@ -257,11 +259,11 @@ Abnahmeziele mitführen (V4 §12.14); keine Implementation.
   sind Momentaufnahmen, keine Zusicherung. Keine Pushes.
 - Historische Session-IDs sind reine Quellen, KEINE Dispatch-Ziele;
   vier NEUE Sessions erst nach Pascal-Freigabe (s. Startpaket unten).
-- Startpaket (ignoriert, gehasht 06:11:29Z, nicht versendet):
-  `assignments/A1.md` (`df0976c6…`), `B1.md` (`b23022f7…`), `C1.md`
-  (`50fdce8a…`), `D1.md` (`64ed1b35…`), `worker-briefings.md`
-  (`5680ade6…`), `ownership.json` (`34b883fb…`); Ablauf in
-  `launch-control.json` (Status `preparing-not-ready`, Freigaben false).
+- Startpaket (ignoriert, gehasht 07:59:56Z, nicht versendet):
+  `assignments/A1.md` (`89d49b44…`), `B1.md` (`744918c0…`), `C1.md`
+  (`5d8171e3…`), `D1.md` (`92eded14…`), `worker-briefings.md`
+  (`a28f67fb…`), `ownership.json` (`ea0f1b26…`); Ablauf in
+  `launch-control.json` (`9f85feaa…`, Freigaben false per 07:59Z-Lesung).
   Der versionierte Startpunkt ist dieser Handoff + BASE-Commit.
 - Lesereihenfolge: `AGENTS.md`, `GLOSSARY.md`,
   `docs/project/documentation-profile.md`, V4-Plan + HTML-Asset,
@@ -279,8 +281,8 @@ Bitte orientiere dich auf Branch beta/4.0-plugin-system am BASE-Kandidaten.
 Lies zuerst docs/plans/beta4-phase2/next-session-handoff.md vollständig
 (Lagebild, ERLEDIGT/TESTERGEBNIS/OFFEN/NICHT BEAUFTRAGT, nächste Schritte)
 sowie den dort verlinkten Schlussbericht
-docs/reports/beta4-phase2/beta4-build-gate-closure.md. Code-Commit 9b23ef3b
-ist gebaut und isoliert geprüft (320 grün, Cutover-Lock gesperrter Pfad,
+docs/reports/beta4-phase2/beta4-build-gate-closure.md. Fix-Commit a6ef1a2f
+ist gebaut und isoliert geprüft (326 grün, Gateway-CLI 1/5 separat,
 kein Gesamtlauf, siehe §2); keine Sessions/Worktrees/Dispatches ohne
 Pascals ausdrückliche Freigabe. Worktree .worktrees/pibo-remote-agent
 NICHT anfassen (live Gateway).
@@ -288,7 +290,7 @@ NICHT anfassen (live Gateway).
 
 ## 11. Grenzen dieses Handoffs
 
-- Ergebnisstand bezieht sich auf Code-Commit `9b23ef3b` plus frischen
+- Ergebnisstand bezieht sich auf Fix-Commit `a6ef1a2f` plus frischen
   Build und isolierte Matrix daran (§1.3, §2); gebündelter Schlusslauf
   steht aus und wird nicht behauptet.
 - Alle Zeitangaben sind echte UTC-Zeiten, keine Schätzungen.
