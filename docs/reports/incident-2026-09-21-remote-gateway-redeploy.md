@@ -1,13 +1,13 @@
 ---
 type: "Incident Report"
 title: "Incident 2026-09-21: Pibo Remote Gateway redeploy from Beta 4.0 with send and queue failures"
-description: "Records the post-reboot redeploy of the FRP-exposed remote gateway from beta/4.0-plugin-system, two composition-migration crashes, the missing gateway-port fix, the end-to-end CONNECTIVITY_OK proof, the oldest_wait_age queue rejection analysis, and a follow-up assessment of recurring send timeouts plus a non-Pibo safety-filter rejection."
+description: "Records the post-reboot redeploy of the FRP-exposed remote gateway from beta/4.0-plugin-system, two composition-migration crashes, the missing gateway-port fix, the end-to-end CONNECTIVITY_OK proof, the oldest_wait_age queue rejection analysis, and follow-up assessments of recurring send timeouts, a non-Pibo safety-filter rejection, and debug CLI store resolution."
 tags: ["remote-agent", "gateway", "frp", "incident", "beta-4.0", "plugin-system", "message-queue"]
 status: "stable"
 authority: "evidentiary"
 generated:
   by: "muse-code/muse-spark"
-  at: "2026-09-21T17:14:34Z"
+  at: "2026-09-21T18:24:53Z"
 sources:
   - id: "deploy-checkout"
     resource: "scope:repository checkout beta/4.0-plugin-system at 47342db6 with uncommitted plugin/compute changes"
@@ -65,6 +65,14 @@ An agent using the Pibo Remote tool reported (read-only investigation, nothing c
 **Send timeouts — same known mechanism, now broader.** Between 16:43Z and 17:10Z, nine more `remote_session_send` calls returned `Timed out waiting for assistant reply` (120 s) across seven sessions (`ps_e564…` ×4, `ps_ac85…`, `ps_9372…`, `ps_6a15…`, `ps_cba1…`, `ps_dde7…`, `ps_9ad7…`), plus two `oldest_wait_age` rejections on `ps_ec3ef267-…` (16:42Z/16:46Z, oldest waiter ≈ 35 min vs the 10-minute limit). All timeouts were accepted-but-slow sends, not losses — the agent's handling (verify acceptance, no gateway-failure conclusion) is exactly right and validates finding 3 above. 607 remote calls succeeded in the same window, so the tool path itself is healthy; the constraint is session-side turn duration vs the fixed 120 s MCP reply wait. Live status during analysis: `ps_e564…` processing with 1 queued; `ps_ac85…` processing with **stale telemetry** (`message_started`, `stale=true`) — a turn making no progress, worth watching but left untouched per the read-only constraint; all other involved sessions idle with drained queues.
 
 **`launch-control.json` safety-filter rejection — not Pibo-side.** The `remote_tool_calls` log holds zero failed file calls for that path; the same file was successfully read and edited through the same tool earlier the same day (edits 12:22Z and 15:18Z, read 16:44Z), and the room (`room_86bb3bca-…`) runs in YOLO mode with all modules, i.e. no server-side path fencing applies at all. A Pibo-side rejection would have left an `ok=0` record — none exists — so the safety filter that refused the write lives in the external agent's own toolchain (their harness/client side). It cannot be diagnosed from Pibo logs; the exact client-side error text would be needed. File states confirm the agent's workaround: `beta4-parallel-start-20260920/launch-control.json` still shows `wave1-corrections-running` (last write 15:18Z), while `beta4-wave1-revision2-20260921/revision2-control.json` carries the current statuses (edited 16:54Z, last write 17:06Z).
+
+## Addendum 2026-09-21 (late evening): four more timeouts and debug CLI store mismatch
+
+A further tooling note reported four more send calls with reply timeouts (acceptance verified afterwards via a follow-up request plus reading the correct order in each target session; nothing sent twice) and an observation from a read audit: the debug CLI pointed at the isolated runtime store instead of the wanted product store. Both check out; neither indicates a gateway failure.
+
+**Timeouts — same accepted-but-slow mechanism.** The `remote_tool_calls` log shows the four sends at 18:09–18:17Z (`FINAL PASS A1` → `ps_85a932e1-…`, `B1` → `ps_9ad75e27-…`, `C1` → `ps_3b6d2b0b-…`, `D1` → `ps_81a8c461-…`), each `Timed out waiting for assistant reply` after exactly 120 s. Session-side turns simply exceed the fixed MCP reply wait; the agent's verify-after-timeout routine is the correct handling and confirms no loss and no duplication.
+
+**Debug CLI store mismatch — root cause in store resolution.** `pibo debug session` resolves every store purely through `piboHomePath()` (`src/debug/stores.ts`), i.e. `$PIBO_HOME` or `~/.pibo`, with no `--home`/`--store` override. Runtime child processes additionally run under a rewritten isolated `HOME` (e.g. `env.HOME = paths.processHome` in `src/agent-runtimes/muse-native/process.ts`), so `~/.pibo` inside a session runtime points at the generation's isolated home, not at any product store. Anyone running the debug CLI from such a runtime shell — or with default env (`~/.pibo`, the prod home) instead of the remote home — reads the wrong database, exactly the reported "isolated runtime store instead of the product store" symptom. Workaround: always run the audit with the remote home pinned, e.g. `PIBO_HOME=/root/.pibo-remote-oauth-test pibo debug session <id>`. A `--home`/`--store` flag on the debug CLI would remove the footgun; not implemented here.
 
 ## Follow-ups (not done)
 
