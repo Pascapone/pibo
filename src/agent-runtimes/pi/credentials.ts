@@ -189,3 +189,58 @@ export async function getPiProviderAuthStatus(providerId: string): Promise<{
 		label: credential.type === "oauth" ? "OAuth" : "API key",
 	};
 }
+
+/**
+ * Owner-bound API-key access for exactly one provider (K03).
+ * Structural seam for consumers with injectable `getApiKey`/`isConfigured` options.
+ */
+export type PiProviderApiKeyAccess = {
+	getApiKey: () => Promise<string | undefined>;
+	isConfigured: () => Promise<boolean>;
+};
+
+/** Owner-bound OAuth access for exactly one provider (K03). */
+export type PiProviderOAuthAuth = {
+	accessToken: string;
+	accountId?: string;
+};
+export type PiProviderOAuthAccess = {
+	getAuth: () => Promise<PiProviderOAuthAuth | undefined>;
+	isConfigured: () => Promise<boolean>;
+};
+
+/**
+ * Bind API-key access for one provider at its credential owner (K03).
+ * Scope is exactly the bound provider id; the access object exposes no
+ * enumeration. Absence resolves to `undefined`/`false` without throwing;
+ * genuine storage or runtime failures propagate, with no fallback to other
+ * accounts or runtimes. Nothing is cached: every call re-reads the store.
+ */
+export function bindPiProviderApiKeyAccess(providerId: string): PiProviderApiKeyAccess {
+	return {
+		getApiKey: async () => (await resolvePiProviderAuth(providerId))?.auth.apiKey,
+		isConfigured: async () => (await getPiProviderAuthStatus(providerId)).configured,
+	};
+}
+
+/**
+ * Bind OAuth access for one provider at its credential owner (K03).
+ * Same scope, absence, error, and lifetime promise as the API-key binding.
+ * `accountId` is the stored credential value only; provider-specific
+ * derivation stays with the consumer.
+ */
+export function bindPiProviderOAuthAccess(providerId: string): PiProviderOAuthAccess {
+	return {
+		getAuth: async () => {
+			const credential = await readPiCredential(providerId);
+			if (credential?.type !== "oauth") return undefined;
+			const accessToken = (await resolvePiProviderAuth(providerId))?.auth.apiKey;
+			if (!accessToken) return undefined;
+			const accountId = typeof credential.accountId === "string" && credential.accountId.trim()
+				? credential.accountId.trim()
+				: undefined;
+			return accountId === undefined ? { accessToken } : { accessToken, accountId };
+		},
+		isConfigured: async () => (await readPiCredential(providerId))?.type === "oauth",
+	};
+}

@@ -400,6 +400,13 @@ export type AgentRuntimeCompatibilityMetadata = {
 	productRawEventType?: "pi_event";
 };
 
+/**
+ * Behavioral session invariants (K01, pinned by contract tests):
+ * at most one terminal event (`turn_completed` xor `turn_failed`) per accepted
+ * turn after `turn_started`; after `abort()`/`dispose()` settle, no new terminal
+ * results or overwrites; `abort()` and `dispose()` are idempotent, and
+ * `dispose()` ends event delivery without leaving credentials behind.
+ */
 export interface AgentRuntimeSession {
 	readonly adapterId: AgentRuntimeAdapterId;
 	readonly runtimeInstanceId: AgentRuntimeInstanceId;
