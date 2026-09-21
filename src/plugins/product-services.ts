@@ -16,6 +16,7 @@ export const PIBO_LOOP_SERVICE = "pibo.loops.service";
 export const PIBO_USER_RESOURCES_SERVICE = "pibo.user-resources.service";
 export const PIBO_CHAT_EXTENSION_SERVICE = "pibo.chat.extensions";
 export const PIBO_MESSAGE_PREFLIGHT_SERVICE = "pibo.message-preflight";
+export const PIBO_DATA_STORE_SERVICE = "pibo.data.store";
 
 export type PiboChatRoomActions = {
 	getRoom(id: string): PiboRoom | undefined;

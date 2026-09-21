@@ -11,7 +11,7 @@ import type { PluginContribution, PluginInstallation, PluginManifest, PluginRunt
 import type { PluginManager } from "./manager.js";
 import type { PluginConsumer, PluginOperation } from "./operations.js";
 import type { StoredPluginInstallation } from "./store.js";
-import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_LOOP_SERVICE, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
+import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_DATA_STORE_SERVICE, PIBO_LOOP_SERVICE, PIBO_MESSAGE_PREFLIGHT_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE } from "./product-services.js";
 import { PIBO_STANDARD_SKILL_NAMES } from "./standard-skills.js";
 
 export const CHATGPT_TRANSCRIPTION_PLUGIN_ID = "pibo.transcription.openai-chatgpt";
@@ -121,7 +121,7 @@ export function remoteAgentPackageManifest(): PluginManifest {
 		version: DEFAULT_PACKAGE_VERSION,
 		sdk: "^1.0.0",
 		entrypoints: { backend: "backend.mjs", browser: "browser.mjs" },
-		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }, { id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }] },
+		services: { requires: [{ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", optional: true }, { id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0" }, { id: PIBO_DATA_STORE_SERVICE, version: "1.0.0", optional: true }] },
 		contributions: [
 			// No chatRoute: views with a route are hidden from the new-tab catalog,
 			// and there is no "remote-agent" route area. Catalog entry is the way in.

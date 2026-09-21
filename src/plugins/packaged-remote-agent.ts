@@ -1,10 +1,13 @@
 import type { ChatWebAppOptions } from "../apps/chat/web-app.js";
 import { handleChatRemoteAgentApiRequest } from "../apps/chat/remote-agent-api.js";
+import type { PiboDataStore } from "../data/pibo-store.js";
 import { PiboRemoteAgentService } from "../remote-agent/service.js";
 import { PiboRemoteAgentStore } from "../remote-agent/store.js";
+import { PiboDataSessionStore } from "../sessions/pibo-data-store.js";
 import type { PluginSetupContext } from "./host.js";
 import {
 	PIBO_CHAT_EXTENSION_SERVICE,
+	PIBO_DATA_STORE_SERVICE,
 	PIBO_PRODUCT_OPTIONS_SERVICE,
 	type PiboChatExtensionService,
 	type PiboPluginProductOptions,
@@ -41,7 +44,7 @@ function publicBaseUrlFromEnv(): string | undefined {
 	return raw;
 }
 
-export function setupRemoteAgent(context: PluginSetupContext): () => void {
+export function setupRemoteAgent(context: PluginSetupContext): () => Promise<void> {
 	const product = context.services.get<PiboPluginProductOptions>(PIBO_PRODUCT_OPTIONS_SERVICE);
 	const chatOptions = { ...(product?.web?.chat ?? {}) } as ChatWebAppOptions;
 	context.register("view", {});
@@ -52,8 +55,10 @@ export function setupRemoteAgent(context: PluginSetupContext): () => void {
 	const mcpPort = mcpPortFromEnv();
 	const publicBaseUrl = publicBaseUrlFromEnv();
 	const gatewayPort = gatewayPortFromEnv();
+	const dataStore = context.services.get<PiboDataStore>(PIBO_DATA_STORE_SERVICE);
 	const service = new PiboRemoteAgentService({
 		store,
+		...(dataStore ? { dataStore, sessionStore: new PiboDataSessionStore(dataStore) } : {}),
 		...(chatOptions.defaultProfile ? { defaultProfile: chatOptions.defaultProfile } : {}),
 		...(mcpPort !== undefined ? { mcpPort } : {}),
 		...(publicBaseUrl ? { publicBaseUrl } : {}),
@@ -72,8 +77,12 @@ export function setupRemoteAgent(context: PluginSetupContext): () => void {
 			console.error(`[pibo] Remote Agent MCP server failed to start: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	})();
-	return () => {
+	return async () => {
 		disposeRoute();
-		void service.stop().finally(() => store.close());
+		try {
+			await service.stop();
+		} finally {
+			store.close();
+		}
 	};
 }

@@ -7,7 +7,7 @@ import { handoffPluginSdkResolutionAtStoppedBoundary, preparePluginSdkResolution
 import { createStagedPluginDefinition } from "./staged-definition.js";
 import { verifyPluginArtifact, type PluginSourceInput } from "./sources.js";
 import type { PluginConsumerCollector } from "./operations.js";
-import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, PiboChatExtensionRegistry, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
+import { PIBO_CHAT_EXTENSION_SERVICE, PIBO_DATA_STORE_SERVICE, PIBO_PRODUCT_OPTIONS_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, PiboChatExtensionRegistry, type PiboPluginProductOptions, type PluginSessionPlanReader } from "./product-services.js";
 import type { PluginInstallation } from "./manifest.js";
 import { prepareCoreUserResources } from "../core/user-resources.js";
 import { provideCoreCapabilities } from "../core/capabilities.js";
@@ -129,6 +129,7 @@ export async function startPluginProductRuntime(options: {
 		host.provideCoreService({ id: PLUGIN_HOST_SERVICE, version: "1.0.0", value: host }),
 		host.provideCoreService({ id: PLUGIN_MANAGEMENT_SERVICE, version: "1.0.0", value: manager }),
 		host.provideCoreService({ id: PIBO_PRODUCT_OPTIONS_SERVICE, version: "1.0.0", value: Object.freeze({ ...options.productOptions }) }),
+		host.provideCoreService({ id: PIBO_DATA_STORE_SERVICE, version: "1.0.0", value: data }),
 		host.provideCoreService({ id: PIBO_CHAT_EXTENSION_SERVICE, version: "1.0.0", value: chatExtensions }),
 		...(options.readSessionPlan ? [host.provideCoreService({ id: PLUGIN_SESSION_PLAN_SERVICE, version: "1.0.0", value: options.readSessionPlan })] : []),
 		provideCoreCapabilities(host),
