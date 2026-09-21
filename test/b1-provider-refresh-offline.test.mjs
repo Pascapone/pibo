@@ -86,9 +86,12 @@ test("b1-refresh oauth binding propagates dependency throws on an expired entry"
 });
 
 test("b1-refresh valid stored oauth still resolves when the harness fails unexpectedly", async (t) => {
-	// Existing fallback semantics, pinned explicitly: a non-ModelsError
-	// harness failure plus a still-valid stored token resolves the token
-	// instead of throwing. ModelsError rethrows immediately (see above).
+	// Existing fallback semantics, pinned explicitly: the failure rethrows
+	// when no fallback derivation applies; a non-ModelsError harness failure
+	// plus a still-valid stored token resolves the token instead. (Whether a
+	// thrown ModelsError reaches the fallback depends on the module copy that
+	// created it; pi's nested copy misses the local instanceof check, so
+	// availability of a valid derivation decides.)
 	await writePiCredential("openai-codex", {
 		type: "oauth",
 		access: OLD_ACCESS,
@@ -121,8 +124,8 @@ test("b1-refresh expired oauth performs a real intercepted refresh with rotation
 	assert.equal(auth.accessToken, rotatedAccess);
 	assert.equal(
 		auth.accountId,
-		OLD_ACCOUNT,
-		"documents the double-read boundary: accountId comes from the pre-refresh read",
+		NEW_ACCOUNT,
+		"FP-K03-PAIR-B: the first read already pairs the rotated generation",
 	);
 	assert.equal(peer.requests.length, 1);
 	assert.equal(peer.requests[0].href, B1_CODEX_TOKEN_URL);
@@ -219,6 +222,89 @@ test("b1-refresh api-key resolution performs no token-endpoint traffic", async (
 	t.after(() => deletePiCredential("openai"));
 	const access = bindPiProviderApiKeyAccess("openai");
 	assert.equal(await access.getApiKey(), API_KEY_FIXTURE);
+});
+
+function riggedRuntime(t, getAuthImpl) {
+	const originalCreate = ModelRuntime.create;
+	const context = t.mock.method(ModelRuntime, "create", async (options) => {
+		const runtime = await originalCreate.call(ModelRuntime, options);
+		const rigged = Object.create(Object.getPrototypeOf(runtime), Object.getOwnPropertyDescriptors(runtime));
+		rigged.getAuth = getAuthImpl;
+		return rigged;
+	});
+	return context;
+}
+
+test("b1-refresh mismatched post-resolution token throws without pairing or retry", async (t) => {
+	// FP-K03-PAIR-B: resolution returned one token while the store holds
+	// another (observed credential change). The binding must neither pair
+	// across generations nor retry; the fixed error carries no secrets.
+	await writePiCredential("openai-codex", {
+		type: "oauth",
+		access: OLD_ACCESS,
+		refresh: OLD_REFRESH,
+		expires: Date.now() + 3600_000,
+		accountId: OLD_ACCOUNT,
+	});
+	t.after(() => deletePiCredential("openai-codex"));
+	const createMock = riggedRuntime(t, async () => ({
+		auth: { apiKey: "b1-fixture-divergent-token" },
+		source: "OAuth",
+	}));
+	const access = bindPiProviderOAuthAccess("openai-codex");
+	await assert.rejects(
+		access.getAuth(),
+		(error) => {
+			assert.equal(
+				error?.message,
+				'Observed credential change for provider "openai-codex"; refusing to pair a resolved token with an accountId from another generation.',
+			);
+			assert.ok(!error.message.includes(OLD_ACCESS));
+			assert.ok(!error.message.includes("b1-fixture-divergent-token"));
+			return true;
+		},
+	);
+	assert.equal(createMock.mock.calls.length, 1, "no automatic retry");
+});
+
+test("b1-refresh post-resolution logout or type change resolves to absence", async (t) => {
+	// FP-K03-PAIR-B: no pre-read fallback — a vanished or retyped entry
+	// yields absence, never resurrected old credentials.
+	await writePiCredential("openai-codex", {
+		type: "oauth",
+		access: OLD_ACCESS,
+		refresh: OLD_REFRESH,
+		expires: Date.now() + 3600_000,
+		accountId: OLD_ACCOUNT,
+	});
+	t.after(() => deletePiCredential("openai-codex"));
+	const originalCreate = ModelRuntime.create;
+	const createMock = riggedRuntime(t, async () => {
+		await deletePiCredential("openai-codex");
+		return { auth: { apiKey: "b1-fixture-orphan-token" }, source: "OAuth" };
+	});
+	const access = bindPiProviderOAuthAccess("openai-codex");
+	assert.equal(await access.getAuth(), undefined);
+	assert.equal(await readPiCredential("openai-codex"), undefined);
+
+	await writePiCredential("openai-codex", {
+		type: "oauth",
+		access: OLD_ACCESS,
+		refresh: OLD_REFRESH,
+		expires: Date.now() + 3600_000,
+		accountId: OLD_ACCOUNT,
+	});
+	createMock.mock.mockImplementation(async (options) => {
+		const runtime = await originalCreate.call(ModelRuntime, options);
+		const rigged = Object.create(Object.getPrototypeOf(runtime), Object.getOwnPropertyDescriptors(runtime));
+		rigged.getAuth = async () => {
+			await writePiCredential("openai-codex", { type: "api_key", key: API_KEY_FIXTURE });
+			return { auth: { apiKey: "b1-fixture-orphan-token" }, source: "OAuth" };
+		};
+		return rigged;
+	});
+	assert.equal(await access.getAuth(), undefined);
+	assert.deepEqual(await readPiCredential("openai-codex"), { type: "api_key", key: API_KEY_FIXTURE });
 });
 
 test("b1-refresh rotation persist failure surfaces as auth error, then heals on retry", async (t) => {

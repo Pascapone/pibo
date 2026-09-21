@@ -190,7 +190,7 @@ test("b1-k03 unusable entries resolve to absence without throwing", async (t) =>
 	);
 });
 
-test("b1-k03 oauth binding passes accountId through verbatim and invents none", async (t) => {
+test("b1-k03 oauth binding passes stored accountId through trimmed and invents none", async (t) => {
 	const jwtShapedAccess = "eyJiLXN5bnRoZXRpYy1maXh0dXJlLW5vLXNpZ25hdHVyZX0";
 	await writePiCredential(OAUTH_PROVIDER, {
 		type: "oauth",
@@ -201,6 +201,29 @@ test("b1-k03 oauth binding passes accountId through verbatim and invents none", 
 	t.after(() => deletePiCredential(OAUTH_PROVIDER));
 	const access = bindPiProviderOAuthAccess(OAUTH_PROVIDER);
 	assert.deepEqual(await access.getAuth(), { accessToken: jwtShapedAccess });
+});
+
+test("b1-k03 oauth binding trims stored accountId and omits blank values", async (t) => {
+	await writePiCredential(OAUTH_PROVIDER, {
+		type: "oauth",
+		access: OAUTH_ACCESS_FIXTURE,
+		expires: Date.now() + 3600_000,
+		accountId: "  padded-account  ",
+	});
+	t.after(() => deletePiCredential(OAUTH_PROVIDER));
+	assert.deepEqual(await bindPiProviderOAuthAccess(OAUTH_PROVIDER).getAuth(), {
+		accessToken: OAUTH_ACCESS_FIXTURE,
+		accountId: "padded-account",
+	});
+	await writePiCredential(OAUTH_PROVIDER, {
+		type: "oauth",
+		access: OAUTH_ACCESS_FIXTURE,
+		expires: Date.now() + 3600_000,
+		accountId: "   ",
+	});
+	assert.deepEqual(await bindPiProviderOAuthAccess(OAUTH_PROVIDER).getAuth(), {
+		accessToken: OAUTH_ACCESS_FIXTURE,
+	});
 });
 
 test("b1-k03 owner-bound api-key access matches the BASE consumer plug shape (pre-integration)", async (t) => {

@@ -55,6 +55,45 @@ async function waitForState(predicate, label, timeoutMs = 10_000) {
 	}
 }
 
+function installFetchGuard(t) {
+	const original = globalThis.fetch;
+	let attempts = 0;
+	const urls = [];
+	globalThis.fetch = async (url) => {
+		attempts += 1;
+		try {
+			urls.push(String(typeof url === "string" ? url : (url?.url ?? url)));
+		} catch {
+			urls.push("<unprintable>");
+		}
+		throw new Error("b1 real-adapter: unexpected fetch attempt");
+	};
+	t.after(() => {
+		globalThis.fetch = original;
+		if (attempts > 0) {
+			console.error(`b1 real-adapter fetch attempts (${attempts}): ${urls.join(", ")}`);
+		}
+	});
+	return { count: () => attempts, urls: () => [...urls] };
+}
+
+function installProvider401Stub(t) {
+	const original = globalThis.fetch;
+	let attempts = 0;
+	globalThis.fetch = async (url) => {
+		const href = String(typeof url === "string" ? url : (url?.url ?? url));
+		if (href !== "https://api.openai.com/v1/responses") {
+			throw new Error(`b1 real-adapter: unexpected fetch attempt to ${href}`);
+		}
+		attempts += 1;
+		return new Response("fixture unauthorized", { status: 401 });
+	};
+	t.after(() => {
+		globalThis.fetch = original;
+	});
+	return () => attempts;
+}
+
 function scriptedCodexRig() {
 	const events = [];
 	const requests = [];
@@ -235,7 +274,15 @@ async function openPiSession(t, suffix) {
 	return session;
 }
 
-test("b1-real pi failure resolves the prompt with error plus turn_failed", async (t) => {
+test("b1-real pi provider failure resolves the prompt with error plus turn_failed", async (t) => {
+	// Pi attempts provider HTTP even without credentials (no local auth
+	// pre-check on this path — exposed by the throwing guard as 18 fetch
+	// attempts feeding the retryable-error recovery loop). Offline is NOT
+	// claimed here; instead the controlled 401 proves the real error
+	// mapping deterministically without real network. T-cancel/T-dispose
+	// below prove zero-fetch where it holds. Unknown models fail eagerly
+	// at openSession and cannot serve as prompt-time probes.
+	const providerAttempts = installProvider401Stub(t);
 	const session = await openPiSession(t, "error");
 	const events = [];
 	session.subscribe((event) => events.push(event));
@@ -247,9 +294,12 @@ test("b1-real pi failure resolves the prompt with error plus turn_failed", async
 	assert.ok(failed[0].message.length > 0);
 	assert.ok(events.some((event) => event.type === "error"), "pi failure also emits an error diagnostic");
 	assert.equal(session.getStatus().streaming, false);
+	await session.dispose();
+	assert.ok(providerAttempts() >= 1, "the provider call was attempted against the stub");
 });
 
 test("b1-real pi cancel resolves the prompt with no terminal", async (t) => {
+	const fetchGuard = installFetchGuard(t);
 	const session = await openPiSession(t, "cancel");
 	const events = [];
 	session.subscribe((event) => events.push(event));
@@ -259,9 +309,12 @@ test("b1-real pi cancel resolves the prompt with no terminal", async (t) => {
 	assert.equal(events.filter((event) => event.type === "turn_completed").length, 0);
 	assert.equal(events.filter((event) => event.type === "turn_failed").length, 0);
 	assert.equal(session.getStatus().streaming, false);
+	await session.dispose();
+	assert.equal(fetchGuard.count(), 0, `no fetch attempts in this scenario, saw: ${fetchGuard.urls().join(", ")}`);
 });
 
 test("b1-real pi abort after dispose resolves without effect", async (t) => {
+	const fetchGuard = installFetchGuard(t);
 	const session = await openPiSession(t, "disposed");
 	const events = [];
 	session.subscribe((event) => events.push(event));
@@ -271,6 +324,7 @@ test("b1-real pi abort after dispose resolves without effect", async (t) => {
 	await withBound(session.abort(), 30_000, "pi second abort after dispose");
 	assert.deepEqual(events, []);
 	await assert.rejects(session.prompt({ text: "too late", source: "rpc" }), /disposed/);
+	assert.equal(fetchGuard.count(), 0, `no fetch attempts in this scenario, saw: ${fetchGuard.urls().join(", ")}`);
 });
 
 function scriptedOmpRig() {
@@ -341,4 +395,28 @@ test("b1-real omp interrupt sends abort, dispose rejects, late frames are ignore
 	rig.turn.dispose();
 	await assert.rejects(rig.turn.prompt("after dispose"), /disposed/);
 	await assert.rejects(rig.turn.interrupt(), /disposed/);
+});
+
+test("b1-real omp interrupt without a pending turn still sends an abort request", async (t) => {
+	const rig = scriptedOmpRig();
+	t.after(() => rig.turn.dispose());
+	await rig.turn.interrupt();
+	assert.ok(rig.requests.some((entry) => entry.payload?.type === "abort"));
+	assert.deepEqual(rig.events, []);
+});
+
+test("b1-real omp hard deadline resolves the prompt without terminal events", async (t) => {
+	scriptedOmpRig.nextPromptData = {};
+	const rig = scriptedOmpRig();
+	const previousTimeout = process.env.PIBO_OMP_TURN_TIMEOUT_MS;
+	process.env.PIBO_OMP_TURN_TIMEOUT_MS = "50";
+	t.after(() => {
+		rig.turn.dispose();
+		scriptedOmpRig.nextPromptData = undefined;
+		if (previousTimeout === undefined) delete process.env.PIBO_OMP_TURN_TIMEOUT_MS;
+		else process.env.PIBO_OMP_TURN_TIMEOUT_MS = previousTimeout;
+	});
+	await withBound(rig.turn.prompt("hello agent"), 10_000, "omp deadline prompt");
+	assert.deepEqual(rig.events, []);
+	assert.equal(rig.turn.streaming, false);
 });
