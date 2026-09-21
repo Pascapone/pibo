@@ -14521,11 +14521,29 @@
       "lineage": null
     },
     {
+      "path": "docs/plans/beta4-phase2/next-session-handoff.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 next-session handoff",
+      "type": "Plan",
+      "authority": "directive",
+      "status": "draft",
+      "lineage": null
+    },
+    {
       "path": "docs/specs/resources/remote-agent-plugin-contract.md",
       "state": "conformant",
       "classification": "Remote agent plugin contract",
       "type": "Specification",
       "authority": "normative",
+      "status": "draft",
+      "lineage": null
+    },
+    {
+      "path": "docs/reports/beta4-phase2/beta4-build-gate-closure.md",
+      "state": "conformant",
+      "classification": "Beta 4.0 build-gate closure report",
+      "type": "Validation Report",
+      "authority": "evidentiary",
       "status": "draft",
       "lineage": null
     },

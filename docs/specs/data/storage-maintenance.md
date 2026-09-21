@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T18:00:00Z"
+  at: "2026-09-21T06:15:27Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "730cf01fcfa1032ce9c4640656617b8bdd831ba2"
+  commit: "9b23ef3b126de71a9292f5fb4685eeed9a280246"
   requirements:
     - id: "PIBO-STORAGE-MAINT-001"
       status: "implemented"

@@ -8,5 +8,6 @@
 * [Beta 4&#46;0 phase&#45;2 analysis assignment B1 &#40;archived original&#41;](beta4-phase2-assignment-b1.md) - Original German work order for worker B1 covering runtime and tool interfaces analysis&#46;
 * [Beta 4&#46;0 phase&#45;2 analysis assignment C1 &#40;archived original&#41;](beta4-phase2-assignment-c1.md) - Original German work order for worker C1 covering packaged pilots and annotation provider analysis&#46;
 * [Beta 4&#46;0 phase&#45;2 analysis assignment D1 &#40;archived original&#41;](beta4-phase2-assignment-d1.md) - Original German work order for worker D1 covering web workflows and attachments analysis&#46;
+* [Handoff an die nächste Controller&#45;/Chat&#45;Session &#40;Beta 4&#46;0&#41;](next-session-handoff.md) - Einarbeitungsdokument mit Lage, Entscheidungen, Testergebnissen, offenen Schritten und Grenzen nach dem Paketbau&#45;Abschluss&#46;
 * [Pibo Beta 4&#46;0 work plan V3 &#40;archived original&#41;](beta4-arbeitsplan-v3.md) - Accepted planning basis for Beta 4&#46;0 cleanup and attachments work, archived with an OKF envelope&#46;
 * [Pibo Beta 4&#46;0 work plan V4 &#40;remote integration update&#41;](beta4-arbeitsplan-v4.md) - V3 successor with integrated remote&#45;agent reality on baseline 84101adc: identical product goals and attachment promises, remote impact in all packages, and a shared observation contract direction&#46;

@@ -25,6 +25,7 @@
 * [Beta 4&#46;0 phase&#45;2 joint review of four analyses](beta4-phase2-joint-review-2026-09-20.md) - Dispatcher review confirming 16 delivered analysis documents with corrections; eight links retargeted to archive paths&#46;
 * [Beta 4&#46;0 phase&#45;2 research acceptance](beta4-phase2-research-acceptance-2026-09-20.md) - Acceptance of the research and planning basis with open points RV&#45;01 to RV&#45;08; no implementation release&#46;
 * [Beta 4&#46;0 phase&#45;2 review checklist &#40;archived original&#41;](beta4-phase2-review-checklist.md) - Document and cross&#45;check list used for the joint analysis review, without any release&#46;
+* [Beta4 build&#45;gate closure: 22&#45;plugin composition and isolated verification](beta4-build-gate-closure.md) - Evidence for the 22&#45;vs&#45;21 build&#45;gate repair and isolated verification runs at the code checkpoint commit&#46;
 * [Controller review: remote integration and documentation boundaries](beta4-controller-review-remote-integration.md) - Binding controller verdict accepting the merge as lossless code adoption with F1&#45;F7 limitations; no blanket green product claim&#46;
 * [Plugin&#45;session interaction research &#40;superseded; K07 is attachments&#45;only&#41;](beta4-plugin-session-interaction-research.md) - Discarded MCP and WebMCP interaction draft kept for provenance; the accepted V3 plan defines K07 as attachments only&#46;
 
