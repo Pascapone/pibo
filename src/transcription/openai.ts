@@ -35,7 +35,17 @@ export function createOpenAiTranscriptionProvider(
 			if (input.audio.bytes.byteLength === 0) {
 				throw new PiboTranscriptionError("The audio recording is empty.", "invalid_audio");
 			}
-			const apiKey = await getApiKey();
+			// K03 (B1-R06/C1-R08): a throwing lookup is a provider failure, not absence.
+			let apiKey: string | undefined;
+			try {
+				apiKey = await getApiKey();
+			} catch (error) {
+				throw new PiboTranscriptionError(
+					"OpenAI API authentication could not be loaded.",
+					"provider_error",
+					{ cause: error },
+				);
+			}
 			if (!apiKey) {
 				throw new PiboTranscriptionError(
 					"OpenAI API authentication is not configured. Add an OpenAI API key in Settings → Providers.",

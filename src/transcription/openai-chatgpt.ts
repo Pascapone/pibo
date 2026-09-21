@@ -42,13 +42,14 @@ export function createOpenAiChatGptTranscriptionProvider(
 				throw new PiboTranscriptionError("The audio recording is empty.", "invalid_audio");
 			}
 
+			// K03 (B1-R06/C1-R08): a throwing lookup is a provider failure, not absence.
 			let auth: OpenAiChatGptTranscriptionAuth | undefined;
 			try {
 				auth = await getAuth();
 			} catch (error) {
 				throw new PiboTranscriptionError(
-					"ChatGPT Subscription authentication could not be loaded. Sign in again under Settings → Providers.",
-					"not_configured",
+					"ChatGPT Subscription authentication could not be loaded.",
+					"provider_error",
 					{ cause: error },
 				);
 			}
@@ -70,7 +71,10 @@ export function createOpenAiChatGptTranscriptionProvider(
 				Referer: "https://chatgpt.com/",
 				"User-Agent": chatGptUserAgent(input.clientUserAgent),
 			};
-			if (auth.accountId) headers["ChatGPT-Account-Id"] = auth.accountId;
+			// K03 (B1-R05): C-owned account derivation applies to injected auth too:
+			// valid stored accountId wins, else the existing JWT fallback, else none.
+			const accountId = getOpenAiAccountId(auth.accessToken, auth.accountId);
+			if (accountId) headers["ChatGPT-Account-Id"] = accountId;
 
 			let response: Response;
 			try {
