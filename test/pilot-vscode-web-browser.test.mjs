@@ -8,14 +8,17 @@ import test from "node:test";
 import { build } from "esbuild";
 import { connectCdpTarget, listCdpTargets, openCdpTarget } from "../dist/tools/cdp-client.js";
 import { startFixtureServer } from "../packages/pibo-plugin-vscode-web/test-fixtures/fixture-server.mjs";
+import { probeDisplay } from "../packages/pibo-plugin-vscode-web/test-fixtures/display-probe.mjs";
 
 const PILOT_ROOT = fileURLToPath(new URL("../packages/pibo-plugin-vscode-web", import.meta.url));
 const FIXTURES_ROOT = join(PILOT_ROOT, "test-fixtures");
 
 // C1-R01: the BUILT pilot browser bundle runs in a real browser with real
 // React, real DOM/iframe semantics, and a controlled loopback fixture server.
-// This proves the pilot view + fixture only - never a productive complete
-// VS Code server installation, product gateway, or product data contact.
+// This proves the pilot view + fixture only: screenshots show pilot-view
+// rendering states, never a productive complete VS Code server installation,
+// product gateway, product data, or full IDE/design acceptance. The headful
+// pilot view and a later full host integration stay separate claims.
 
 // Test-local mirror of the React-bridge esbuild plugin in
 // scripts/build-pibo4-artifacts.mjs (I-owned builder). Mirror drift is caught
@@ -54,7 +57,7 @@ const VIEW_STATE_READER = `(() => {
 			src: iframe.getAttribute("src"),
 			visible: iframe.classList.contains("visible"),
 			ariaHidden: iframe.getAttribute("aria-hidden"),
-			workbench: (() => { try { return !!iframe.contentDocument?.querySelector(".monaco-workbench"); } catch { return "cross-origin"; } })(),
+			fixtureWorkbench: (() => { try { return !!iframe.contentDocument?.querySelector(".monaco-workbench"); } catch { return "cross-origin"; } })(),
 		} : null,
 		starting: !!status,
 		htmlBytes: main.outerHTML.length,
@@ -87,34 +90,28 @@ function chromeVersionText(binary) {
 	}
 }
 
-async function xSocketPresent(display) {
-	const match = /^:(\d+)(?:\.\d+)?$/.exec(display ?? "");
-	if (!match) return false;
-	try {
-		await readFile(`/tmp/.X11-unix/X${match[1]}`);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 async function displayDiscovery() {
-	const display = process.env.DISPLAY ?? "";
-	return {
-		display,
-		wayland: process.env.WAYLAND_DISPLAY ?? "",
-		xSocketPresent: await xSocketPresent(display),
-		chromeBinary: await resolveChrome(),
-	};
+	const chromeBinary = await resolveChrome();
+	const display = await probeDisplay();
+	return { chromeBinary, ...display };
 }
 
 function headfulBlockedError(discovery, detail) {
 	return new Error([
 		"HEADFUL_BLOCKED (C1-R01): no usable display for headful Chromium.",
-		`Discovery: DISPLAY=${JSON.stringify(discovery.display)} WAYLAND=${JSON.stringify(discovery.wayland)} xSocket=${discovery.xSocketPresent} chrome=${discovery.chromeBinary ?? "none"}.`,
+		`Discovery: ${discovery.detail}; chrome=${discovery.chromeBinary ?? "none"}.`,
 		`Cause: ${detail}`,
 		"Need: an X server/Xvfb/Wayland display for headful chrome (no --headless flag).",
 		"The headless supplement in this file validates all fixture machinery except headful mode.",
+	].join("\n"));
+}
+
+function chromeLaunchFailedError(argv, chromeLogTail, cause) {
+	return new Error([
+		"CHROME_LAUNCH_FAILED: Chromium started but did not expose CDP.",
+		`Cause: ${cause}`,
+		`Argv: ${JSON.stringify(argv)}`,
+		`Stderr tail: ${chromeLogTail || "empty"}`,
 	].join("\n"));
 }
 
@@ -181,8 +178,8 @@ async function runBrowserFlow({ headful }) {
 	const mode = headful ? "headful" : "headless";
 	const discovery = await displayDiscovery();
 	if (!discovery.chromeBinary) throw headfulBlockedError(discovery, "no Chrome/Chromium binary found");
-	if (headful && !discovery.display) {
-		throw headfulBlockedError(discovery, "DISPLAY is empty and no Wayland session is advertised");
+	if (headful && discovery.verdict === "none") {
+		throw headfulBlockedError(discovery, "no reachable X11 or Wayland display");
 	}
 
 	const root = await mkdtemp(join(tmpdir(), `pibo-c1-browser-${mode}-`));
@@ -276,8 +273,7 @@ async function runBrowserFlow({ headful }) {
 			chromeVersion = await waitForCdp(cdpUrl, headful ? 20_000 : 15_000);
 		} catch (error) {
 			const tail = await readFile(chromeLogPath, "utf8").then((text) => text.trim().split("\n").slice(-5).join(" | ").slice(0, 800)).catch(() => "");
-			if (headful) throw headfulBlockedError(discovery, `chrome did not expose CDP (${error.message}; stderr: ${tail || "empty"})`);
-			throw error;
+			throw chromeLaunchFailedError(argv, tail, error.message);
 		}
 		await writeFile(join(evidenceDir, `${mode}-argv.json`), JSON.stringify({ headful, argv, chromeVersion }, null, 2));
 		await writeFile(join(evidenceDir, `${mode}-discovery.json`), JSON.stringify({ ...discovery, chromeVersionText: chromeVersionText(discovery.chromeBinary) }, null, 2));
@@ -345,7 +341,7 @@ async function runBrowserFlow({ headful }) {
 		assert.equal(state.iframe.src, "/fixture-vscode");
 		assert.equal(state.iframe.visible, true);
 		assert.equal(state.iframe.ariaHidden, "false");
-		assert.equal(state.iframe.workbench, true, "iframe exposes genuine .monaco-workbench markers same-origin");
+		assert.equal(state.iframe.fixtureWorkbench, true, "controlled fixture counterpart exposes .monaco-workbench markers (not a real VS Code server)");
 		await screenshot("ready");
 		await writeFile(join(evidenceDir, `${mode}-dom-ready.json`), JSON.stringify(state, null, 2));
 
@@ -357,7 +353,7 @@ async function runBrowserFlow({ headful }) {
 		await client.evaluate(`window.__C1_FIXTURE__.abort()`);
 		await sleep(900);
 		state = await viewState();
-		assert.equal(state.checking, true, "aborted probe stays visibly checking (real view behavior)");
+		assert.equal(state.checking, true, "aborted probe stays visibly checking until the host unmounts the view (observed here; whether the real host unmounts immediately is a host-lifecycle question, no product contract asserted)");
 		assert.equal(apiRequests().length, beforeAbort, "no request storm after abort");
 		assert.equal(apiRequests().at(-1).aborted, true, "server observed the aborted fetch");
 		await screenshot("abort");
