@@ -7,7 +7,7 @@ status: "draft"
 authority: "directive"
 generated:
   by: "muse-code/start-ready-session"
-  at: "2026-09-21T08:11:10Z"
+  at: "2026-09-21T08:17:37Z"
 sources:
   - id: "v4-plan"
     resource: "scope:docs/plans/beta4-phase2/beta4-arbeitsplan-v4.md at handoff commit"
@@ -32,7 +32,7 @@ sources:
    Plugins inkl. Remote Agent erhalten.
 3. KEIN gebündelter `npm test`-Schlusslauf: alter Lauf (20.09.) endet
    unbelegt (23 ✖ bis Logende, kein Exitcode); isolierte Pflichtmatrix
-   357/357 grün in 63 Dateien, Gateway-CLI separat 1/5 (§2).
+   358/358 grün in 63 Dateien, Gateway-CLI separat 1/5 (§2).
 4. Worktree `.worktrees/pibo-remote-agent` steht und bleibt live (Gateway);
    NICHT anfassen, kein Prune/Restart/Deploy.
 5. V4-Plan (`beta4-arbeitsplan-v4.md`) ist die aktuelle Richtung; V3 und alte
@@ -93,19 +93,20 @@ Framework-Neuentwicklung):
   `test/pibo4-standard-cutover.test.mjs`: feste 21/26/24/18-Annahmen auf
   abgeleitete Erwartungen umgestellt; Verhaltensassertions (z. B. Cron/
   Goal-Control installiert, Web-Search deinstalliert) unverändert.
-- Neu `test/remote-agent-plugin-lifecycle.test.mjs`: 5 echte Host-
-  Regressionen (Txn-Setup, Disposal-Nutzbarkeit, verzögerter Stop,
-  Stop-Fehler, Fallback) mit Fail-First gegen void-Disposer, danach
-  gehärtet (finally-Cleanup, Stop-Handshake, AggregateError-Nachweis).
+- Neu `test/remote-agent-plugin-lifecycle.test.mjs`: 6 echte Host-
+  Regressionen (Same-DB-Txn-Setup, Negativkontrolle ohne Injection,
+  Disposal-Nutzbarkeit, verzögerter Stop, Stop-Fehler, Fallback) mit
+  Fail-First gegen void-Disposer und Härtung (finally-Cleanup,
+  Stop-Handshake, AggregateError-Nachweis).
 - Direkt-Regressionen der gemeinsamen ProductRuntime mitgeprüft:
   `plugin-system-product-runtime`, `-lifecycle`, `-install` (31/31).
 
 ### 1.3 Commits und Dokumentation
 
-- Code-Checkpoints: `9b23ef3b126de71a9292f5fb4685eeed9a280246`
-  (14 Dateien), Fix-Commit `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b`
-  (5 Dateien: Lockfix + Lifecycle-Regression) und Test-Härtung
-  `716847b800f168a35209dc9b736ca317a2eeecf2`; kein `git add -A`.
+- Code-Checkpoints: `9b23ef3b…` (14), Fix-Commit `a6ef1a2f…` (5),
+  Test-Härtung `716847b8…` und Same-DB-Fixtur
+  `26518872ed091e075db824df028712ee11103bb9` (je 1); kein `git add -A`.
+  Produktionscode seit Fix-Commit unverändert (0 Zeilen).
 - Uncommitteter Rest vor Docs-Commit: nur Doku-Dateien; danach Baum
   sauber (bis auf ignorierte Evidenz, kein Repo-Inhalt).
 - Getesteter Stand = Fix-Commit + frischer Build daraus; kein
@@ -128,10 +129,9 @@ Framework-Neuentwicklung):
 > `a6ef1a2f` (07:42:25→07:46:55Z, Exit 0) plus isolierte Pflichtmatrix
 > daran (Runner `scripts/run-test-suite.mjs`, Node v24.21.0).
 
-- Build Exit 0; K06+Cutover+Lifecycle 21/21; Remote 65/65;
-  Loops+Attachments 102/102; Ralph/UI+Composer+Storage 54/54;
-  B1/D1+Loader+Composer-Rest 84/84; Runtime-Regressionen 31/31;
-  Typen Exit 0 — Summe 357 grün in 63 Dateien (Liste im Bericht).
+- Build Exit 0; Matrix 357 (darin Lifecycle-alt 5/5) − 5 + 6
+  (aktuelle Same-DB-Fassung, FIX2-Module) = 358 grün in 63 Dateien
+  (Liste im Bericht); Typen Exit 0.
 - Cutover-Lücke geschlossen: Lockfix committen, gepackte Strecke 1/1,
   Lifecycle 5/5 mit Fail-First gegen void-Disposer.
 - Loader-tsx-Defekt: Tests per dist-Import grün (Assertions identisch);
@@ -159,8 +159,9 @@ Historisch (NICHT frisch, NICHT als aktuelle Suite ausgeben):
   bedient — Commits + Build + Matrix liegen vor, aber kein Vollsuite-
   Lauf, keine Worktrees, keine B/C/D-Eingangsbestätigung.
 - Gateway-CLI-Timing (1/5, Owner I), tsx-Defekt (I/B), F1–F7 und
-  ~460 ungeprüfte Suite-Dateien: dokumentierte offene Befunde (§2),
-  kein erfundenes Grün. Cutover/Composer/Storage geschlossen.
+  443 exakt ungeprüfte Suite-Dateien (64/507 ausgeführt): dokumentierte
+  offene Befunde (§2), kein erfundenes Grün. Cutover/Composer/Storage
+  geschlossen.
 - Nächste inhaltliche Schritte: §8.
 
 ## 4. NICHT BEAUFTRAGT (nicht begonnen)
@@ -287,7 +288,7 @@ Lies zuerst docs/plans/beta4-phase2/next-session-handoff.md vollständig
 (Lagebild, ERLEDIGT/TESTERGEBNIS/OFFEN/NICHT BEAUFTRAGT, nächste Schritte)
 sowie den dort verlinkten Schlussbericht
 docs/reports/beta4-phase2/beta4-build-gate-closure.md. Fix-Commit a6ef1a2f
-ist gebaut und isoliert geprüft (357 grün in 63 Dateien, Gateway-CLI 1/5 separat,
+ist gebaut und isoliert geprüft (358 grün in 63 Dateien, Gateway-CLI 1/5 separat,
 kein Gesamtlauf, siehe §2); keine Sessions/Worktrees/Dispatches ohne
 Pascals ausdrückliche Freigabe. Worktree .worktrees/pibo-remote-agent
 NICHT anfassen (live Gateway).

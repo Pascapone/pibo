@@ -7,7 +7,7 @@ status: "draft"
 authority: "evidentiary"
 generated:
   by: "muse-code/start-ready-session"
-  at: "2026-09-21T08:11:10Z"
+  at: "2026-09-21T08:17:37Z"
 sources:
   - id: "suite-log"
     resource: "scope:ignored .pibo/planning/beta4-start-ready-20260921/logs/ at tested tree state"
@@ -23,7 +23,7 @@ sources:
 # Build-Gate-Abschluss: 22-Plugin-Komposition und isolierte Prüfung
 
 > Stand: Fix-Commit `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b`
-> mit frischem Build und isolierter Pflichtmatrix daran (357/357 grün
+> mit frischem Build und isolierter Pflichtmatrix daran (358/358 grün
 > in 63 Dateien; Gateway-CLI separat 1/5). KEIN gebündelter Gesamtlauf.
 > Keine Erfolgsbehauptung über das Gemessene hinaus.
 
@@ -54,7 +54,7 @@ Läufe am Fix-Commit-Baum (UTC 21.09., frischer Build; echte Summaries):
 | Lauf | Zeit | Exit | Ergebnis |
 |---|---|---|---|
 | frischer Build | 07:42:25→07:46:55Z | 0 | grün, 27 Tarballs |
-| K06-Trio + Cutover + Lifecycle (5 Dateien) | 07:47:20→07:50:23Z | 0 | 21/21 |
+| K06-Trio + Cutover + Lifecycle-alt (5 Dateien) | 07:47:20→07:50:23Z | 0 | 21/21 |
 | Remote-Agent (10 Dateien) | 07:50:33→07:52:09Z | 0 | 65/65 |
 | Loops + Attachments (16 Dateien) | 07:52:15→07:53:33Z | 0 | 102/102 |
 | Ralph/UI + Composer + Storage (13) | 07:53:39→07:53:51Z | 0 | 54/54 |
@@ -62,14 +62,15 @@ Läufe am Fix-Commit-Baum (UTC 21.09., frischer Build; echte Summaries):
 | `typecheck` (alle 4 Schritte) | 07:55:58→07:56:39Z | 0 | 0 Fehler |
 | Gateway-CLI-Nachprüfung (1 Datei) | 07:56:44→07:58:27Z | 1 | 1/5 |
 | Runtime-Regressionen (3 Dateien) | 08:07:59→08:08:51Z | 0 | 31/31 |
-| Lifecycle gehärtet (Repo-dist, hashgleich) | 08:07:09→08:07:52Z | 0 | 5/5 |
+| Lifecycle Same-DB (FIX2-Module, aktuelle Datei) | 08:14:51→08:15:34Z | 0 | 6/6 |
 
-63 eindeutige Dateien (Liste `09-fix2-matrix-files.txt`, Duplikat-
-und Existenz-geprüft); 357 ausgeführte Tests (Runner-Summaries inkl.
-Subtests). Frühere Angabe „46 Dateien/326“ korrigiert (falsch summiert;
-326 war die Teilsumme ohne Runtime-Regressionen bei ebenfalls falscher
-Dateizahl). Die Lifecycle-Datei zählt einmal; ihre gehärtete Fassung
-(`716847b8`) ist separat 5/5 auf hashgleichem dist verifiziert.
+63 eindeutige Matrix-Dateien (Liste `09-fix2-matrix-files.txt`,
+Duplikat- und Existenz-geprüft) plus separat Gateway-CLI (1 Datei) =
+64 ausgeführte von 507 Dateien; 443 ungeprüft (exakt, keine Schätzung).
+Summe: 357 (fix2-1..8, darin Lifecycle-alt 5/5) − 5 + 6 (aktuelle
+Same-DB-Fassung `lifecycle-8`, FIX2-Module) = 358 grün (Runner-Summaries
+inkl. Subtests; nicht als 358 disjunkte benannte Fälle lesen). Frühere
+Angabe „46 Dateien/326“ korrigiert (falsch summiert).
 
 Frühere belegte Stände: 320/321 am Vor-Commit `9b23ef3b` (Cutover-Lock
 dort gesperrt, Fix erst hier committen); Lock-Repro mit/ohne Injection;
@@ -84,9 +85,10 @@ Rohlogs unverändert erhalten.
 
 ## 2. Ergebnis
 
-- Am Fix-Commit: 357/357 Tests grün (63 Dateien), Build + Typen grün.
-  Cutover-Lücke geschlossen: gepackte Strecke 1/1, Lifecycle 5/5
-  (gehärtet: finally-Cleanup, Stop-Handshake, AggregateError-Nachweis).
+- Am Fix-Commit: 358/358 Tests grün (63 Dateien), Build + Typen grün.
+  Cutover-Lücke geschlossen: gepackte Strecke 1/1, Lifecycle 6/6
+  (Same-DB-Fixtur + Negativkontrolle; Härtung: finally-Cleanup,
+  Stop-Handshake, AggregateError-Nachweis).
 - Separat rot: Gateway-CLI 1/5 (4× ~20-s-Timeout, 1× Pass bei 18,2 s).
 - Buildkette frisch grün: Standard mit 22 Paketen, Candidate-Assembly
   mit 27 Artefakten (22 Plugins + Core/Cutover/Standard/2 Deps).
@@ -121,7 +123,8 @@ Rohlogs unverändert erhalten.
 
 - Cutover-Lock: BEHOBEN — Live-Store als `pibo.data.store` injiziert,
   Manifest deklariert, Async-Disposer wartet `service.stop()` ab und
-  schließt nur den eigenen Store; Regression 5/5 mit Fail-First.
+  schließt nur den eigenen Store; Regression 6/6 (Same-DB-Fixtur mit
+  Negativkontrolle, Fail-First gegen void belegt).
 - TS2322 `composer-send.ts`: BEHOBEN per Owner-Guard + Regression;
   Typen am Fix-Commit Exit 0.
 - `PIBO_TRACE_COMMIT` (`specs/data/storage-maintenance.md`): ECHT
@@ -134,13 +137,14 @@ Rohlogs unverändert erhalten.
 
 ## 5. Doku-Gates und Commits
 
-- Gates (08:11:27→08:11:45Z): `docs:validate` Exit 0,
+- Gates (08:17:55→08:18:14Z): `docs:validate` Exit 0,
   `docs:indexes:check` Exit 0, `docs:log:check` Exit 0,
   `docs:validator:test` 87/87 Exit 0.
 - Code-Checkpoints: `9b23ef3b…` (14 Dateien), Fix-Commit
-  `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b` (5 Dateien) und Test-
-  Härtung `716847b800f168a35209dc9b736ca317a2eeecf2` (1 Datei);
-  kein `git add -A`, kein Amend/Reset.
+  `a6ef1a2f30d375f79d21e152e87a4d47f0f9bd6b` (5 Dateien), Test-
+  Härtung `716847b8…` und Same-DB-Fixtur `26518872…` (je 1 Datei);
+  kein `git add -A`, kein Amend/Reset. Produktionscode seit Fix-
+  Commit unverändert (0 Zeilen in src/scripts/package).
 - Doku-Commit: dieser Commit (docs-only nach Fix-Commit; Baum-
   Identität Fix→Docs unten bestätigt). Er kann BASE sein.
 - Uncommitteter Rest nach Docs-Commit: keiner (bis auf ignorierte
