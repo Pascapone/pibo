@@ -50,3 +50,78 @@ export interface AttachmentPrepareResult {
 	/** Provider echo of the negotiated byte length. */
 	readonly byteLength: number;
 }
+
+// ---------------------------------------------------------------------------
+// Provider seam (single home per I-K07-DECISION-01 §1 "Typen nur in
+// src/attachments/types.ts"): implemented by providers OUTSIDE the browser
+// core (core providers, C providers), consumed by the chat-ui core through a
+// lookup function only. The chat-ui core never imports a provider module.
+// ---------------------------------------------------------------------------
+
+export type K07TileSize = "s" | "m" | "l";
+export type K07TileKind = "note" | "image" | "file" | "custom";
+
+export type K07MessagePart =
+	| { kind: "json"; type: string; json: unknown }
+	| { kind: "resource-ref"; resourceId: string };
+
+export type K07AcceptNotice = {
+	type: string;
+	id: string;
+	receiptId: string;
+};
+
+/**
+ * Implemented schema window. Deliberate subset, no full JSON-Schema-2020-12
+ * claim: type/required/properties/items/enum/minLength/maxLength/minimum/
+ * maximum/const. Anything outside this window is rejected at declaration
+ * time so providers never silently rely on unimplemented checks.
+ */
+export type K07SchemaNode = {
+	type?: "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
+	required?: string[];
+	properties?: Record<string, K07SchemaNode>;
+	items?: K07SchemaNode;
+	enum?: unknown[];
+	minLength?: number;
+	maxLength?: number;
+	minimum?: number;
+	maximum?: number;
+	const?: unknown;
+};
+
+/**
+ * Minimal frozen shape providers serialize. Structural subset of the draft
+ * core's richer FrozenAttachment (which stays in the chat-ui core); providers
+ * must not depend on chat-ui internals.
+ */
+export type K07FrozenAttachment = {
+	readonly id: string;
+	readonly revision: number;
+	readonly type: string;
+	readonly schemaVersion: number;
+	readonly payload: unknown;
+	readonly media?: readonly unknown[];
+};
+
+export type K07AttachmentProvider = {
+	readonly type: string;
+	readonly schemaVersions: readonly number[];
+	readonly schemas: Readonly<Record<number, K07SchemaNode>>;
+	validate(payload: unknown): void;
+	snapshot(source: unknown, opts?: { draftId?: string }): unknown;
+	serializeForMessage(frozen: K07FrozenAttachment): K07MessagePart;
+	renderTile(payload: unknown): { title: string; kind: K07TileKind };
+	fallbackTitle(payload: unknown): string;
+	sizeHint(payload: unknown): { tile: K07TileSize };
+	notifyAccepted?(info: K07AcceptNotice): void;
+};
+
+export type AttachmentProviderScope = {
+	sessionId: string;
+};
+
+export type AttachmentProviderLookup = (
+	type: string,
+	scope: AttachmentProviderScope,
+) => K07AttachmentProvider | undefined;

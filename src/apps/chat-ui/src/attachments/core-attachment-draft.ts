@@ -20,6 +20,12 @@
  * success and to throw without partial effects on failure; multi-tab /
  * multi-process compare-and-swap is explicitly NOT provided (D2).
  *
+ * Media is plural per record/snapshot (several resources per attachment are
+ * normal); legacy single-object media keeps loading via normalization.
+ * Uploads prepared at send freeze are persisted per open transaction and
+ * reused by retries; acceptance drops them. `writerEpoch` names the writing
+ * instance for future multi-tab conflict work (written, v1-ignored).
+ *
  * Transaction rules: a normalized clientTxnId binds EXACTLY one internally
  * held original send snapshot (text plus ordered id/revision/type/schema/
  * JSON/media). Re-freezing the same id with identical send value is idempotent
@@ -60,40 +66,18 @@
  * failures keep their own ATT_STORAGE_FAILED contract).
  */
 
+import {
+	AttachmentDraftError,
+	type AttachmentError,
+	type AttachmentErrorCode,
+} from "../../../../attachments/errors.js";
+
+export { AttachmentDraftError };
+export type { AttachmentError, AttachmentErrorCode };
+
 export type AttachmentId = string & { readonly brand: "AttachmentId" };
 export type AttachmentRevision = number & { readonly brand: "AttachmentRevision" };
 export type ClientTxnId = string & { readonly brand: "ClientTxnId" };
-
-export type AttachmentErrorCode =
-	| "ATT_INVALID_JSON"
-	| "ATT_SCHEMA_MISMATCH"
-	| "ATT_STALE_REVISION"
-	| "ATT_PROVIDER_MISSING"
-	| "ATT_ACCESS_DENIED"
-	| "ATT_NOT_PORTABLE"
-	| "ATT_BYTES_MISSING"
-	| "ATT_STORAGE_FAILED"
-	| "ATT_MATERIALIZE_FAILED"
-	| "ATT_ACCEPTANCE_UNKNOWN"
-	| "ATT_LIMIT_EXCEEDED";
-
-export type AttachmentError = {
-	code: AttachmentErrorCode;
-	message: string;
-	retryable: boolean;
-};
-
-export class AttachmentDraftError extends Error {
-	readonly code: AttachmentErrorCode;
-	readonly retryable: boolean;
-
-	constructor(error: AttachmentError) {
-		super(error.message);
-		this.name = "AttachmentDraftError";
-		this.code = error.code;
-		this.retryable = error.retryable;
-	}
-}
 
 export type AttachmentEnvelope = {
 	formatVersion: 1;
@@ -116,7 +100,7 @@ export type AttachmentDraftRecord = {
 	envelope: AttachmentEnvelope;
 	payload: unknown;
 	uiState?: unknown;
-	media?: AttachmentDraftMedia;
+	media?: AttachmentDraftMedia[];
 	status: "saving" | "ready" | "error";
 	error?: AttachmentError;
 };
@@ -127,7 +111,7 @@ export type AttachmentInput = {
 	schemaVersion: number;
 	payload: unknown;
 	uiState?: unknown;
-	media?: AttachmentDraftMedia;
+	media?: AttachmentDraftMedia | AttachmentDraftMedia[];
 };
 
 export type AttachmentEditableState = {
@@ -147,7 +131,25 @@ export type FrozenAttachment = {
 	type: string;
 	schemaVersion: number;
 	payload: unknown;
-	media?: AttachmentDraftMedia;
+	media?: AttachmentDraftMedia[];
+};
+
+/**
+ * One upload prepared at send freeze. `path` is an OPAQUE provider-scoped
+ * handle, never a trusted filesystem path: only URL-safe relative tokens
+ * (no leading `/`, no traversal, no separators outside `/`) are accepted,
+ * and the core never joins it to a filesystem location.
+ */
+export type K07PreparedUpload = {
+	blobId: string;
+	path: string;
+	bytes: number;
+	mimeType: string;
+};
+
+export type K07AdmissionProof = {
+	fingerprint: string;
+	receiptId: string;
 };
 
 export type AttachmentSendSnapshot = {
@@ -174,6 +176,9 @@ export type CoreAttachmentDraftPersistedState = {
 	records: AttachmentDraftRecord[];
 	openTransactions: Record<string, AttachmentSendSnapshot>;
 	acceptedTransactions: string[];
+	writerEpoch: string;
+	preparedUploads: Record<string, K07PreparedUpload[]>;
+	admissionProofs: Record<string, K07AdmissionProof>;
 };
 
 export type CoreAttachmentDraftStoreOptions = {
@@ -344,6 +349,76 @@ function assertValidMedia(media: AttachmentDraftMedia): void {
 	}
 }
 
+/**
+ * Media is plural in v1 (annotation screenshots/files need several resources).
+ * A single object is accepted as legacy input/storage form and normalized to
+ * a one-entry array, so already stored drafts keep loading unchanged.
+ */
+function normalizeMediaInput(value: unknown): AttachmentDraftMedia[] | undefined {
+	if (value === undefined) return undefined;
+	const entries = Array.isArray(value) ? value : [value];
+	for (const entry of entries) assertValidMedia(entry as AttachmentDraftMedia);
+	return entries.map((entry) => ({ ...(entry as AttachmentDraftMedia) }));
+}
+
+function assertValidPreparedUpload(upload: K07PreparedUpload): K07PreparedUpload {
+	if (!upload || typeof upload !== "object" || Array.isArray(upload)) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Prepared uploads must be objects.",
+			retryable: false,
+		});
+	}
+	if (!isSafePreparedBlobId(upload.blobId) || !nonEmptyString(upload.mimeType)) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Prepared uploads require a URL-safe blobId string and a mimeType string.",
+			retryable: false,
+		});
+	}
+	if (!isSafePreparedPath(upload.path)) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Prepared upload paths must be URL-safe relative tokens without traversal.",
+			retryable: false,
+		});
+	}
+	if (!Number.isInteger(upload.bytes) || upload.bytes < 0) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Prepared upload byte size must be a non-negative integer.",
+			retryable: false,
+		});
+	}
+	return { blobId: upload.blobId, path: upload.path, bytes: upload.bytes, mimeType: upload.mimeType };
+}
+
+function validateStoredPreparedUpload(upload: unknown, txnId: string): K07PreparedUpload {
+	try {
+		return assertValidPreparedUpload(upload as K07PreparedUpload);
+	} catch (error) {
+		throw new Error(`stored prepared uploads for ${txnId} are invalid: ${error instanceof Error ? error.message : "unknown cause"}`);
+	}
+}
+
+function assertValidAdmissionProof(proof: K07AdmissionProof): K07AdmissionProof {
+	if (!proof || typeof proof !== "object" || Array.isArray(proof)) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Admission proofs must be objects.",
+			retryable: false,
+		});
+	}
+	if (!nonEmptyString(proof.fingerprint) || !nonEmptyString(proof.receiptId)) {
+		throw new AttachmentDraftError({
+			code: "ATT_INVALID_JSON",
+			message: "Admission proofs require string fingerprint and receiptId.",
+			retryable: false,
+		});
+	}
+	return { fingerprint: proof.fingerprint, receiptId: proof.receiptId };
+}
+
 function assertValidEnvelopeInput(type: unknown, schemaVersion: unknown): asserts type is string {
 	if (!type || typeof type !== "string") {
 		throw new AttachmentDraftError({
@@ -363,6 +438,18 @@ function assertValidEnvelopeInput(type: unknown, schemaVersion: unknown): assert
 
 function nonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.length > 0;
+}
+
+/** I-K07-REVIEW-01 F1 / I-K07-DECISION-01 §1: ids and paths are JSON- and URL-safe. */
+function isSafePreparedBlobId(value: unknown): value is string {
+	return typeof value === "string" && value.length > 0 && value.length <= 256 && /^[^\s/?#\\]+$/.test(value);
+}
+
+function isSafePreparedPath(value: unknown): value is string {
+	if (typeof value !== "string" || value.length === 0 || value.length > 512) return false;
+	if (value.startsWith("/") || value.includes("\\")) return false;
+	const segments = value.split("/");
+	return segments.length > 0 && segments.every((segment) => segment.length > 0 && segment !== "." && segment !== ".." && /^[A-Za-z0-9._-]+$/.test(segment));
 }
 
 function validateStoredRecord(value: unknown, sessionId: string, index: number): AttachmentDraftRecord {
@@ -388,10 +475,11 @@ function validateStoredRecord(value: unknown, sessionId: string, index: number):
 		throw new Error(`${label} has invalid status.`);
 	}
 	if (record.status === "error") throw new Error(`${label} carries an unconfirmed error status.`);
+	let media: AttachmentDraftMedia[] | undefined;
 	try {
 		assertJsonValue(record.payload, `${label} payload`);
 		if (record.uiState !== undefined) assertJsonValue(record.uiState, `${label} UI state`);
-		if (record.media !== undefined) assertValidMedia(record.media);
+		media = normalizeMediaInput(record.media);
 	} catch (error) {
 		throw new Error(error instanceof Error ? error.message : `${label} is invalid.`);
 	}
@@ -408,7 +496,7 @@ function validateStoredRecord(value: unknown, sessionId: string, index: number):
 		},
 		payload: cloneJson(record.payload),
 		...(record.uiState !== undefined ? { uiState: cloneJson(record.uiState) } : {}),
-		...(record.media !== undefined ? { media: { ...record.media } } : {}),
+		...(media !== undefined ? { media } : {}),
 		status: "ready",
 	};
 }
@@ -443,6 +531,7 @@ function validateSnapshotShape(value: unknown): AttachmentSendSnapshot {
 			retryable: false,
 		});
 	}
+	const attachments: FrozenAttachment[] = [];
 	for (const [index, entry] of snapshot.attachments.entries()) {
 		const candidate = entry as Partial<FrozenAttachment> | undefined;
 		if (!candidate || typeof candidate !== "object") {
@@ -474,9 +563,23 @@ function validateSnapshotShape(value: unknown): AttachmentSendSnapshot {
 			});
 		}
 		assertJsonValue(candidate.payload, `Snapshot attachment ${index} payload`);
-		if (candidate.media !== undefined) assertValidMedia(candidate.media);
+		const media = normalizeMediaInput(candidate.media);
+		attachments.push({
+			id: candidate.id as AttachmentId,
+			revision: candidate.revision as AttachmentRevision,
+			type: candidate.type as string,
+			schemaVersion: candidate.schemaVersion as number,
+			payload: cloneJson(candidate.payload),
+			...(media !== undefined ? { media } : {}),
+		});
 	}
-	return snapshot as AttachmentSendSnapshot;
+	return {
+		clientTxnId: snapshot.clientTxnId as ClientTxnId,
+		sessionId: snapshot.sessionId as string,
+		text: snapshot.text as string,
+		frozenAt: snapshot.frozenAt as string,
+		attachments,
+	};
 }
 
 function validateReceiptShape(value: unknown): { clientTxnId: string; accepted: boolean } {
@@ -533,6 +636,8 @@ type DraftStateCandidate = {
 	records: AttachmentDraftRecord[];
 	openTransactions: Map<string, AttachmentSendSnapshot>;
 	acceptedTransactions: Set<string>;
+	preparedUploads: Map<string, K07PreparedUpload[]>;
+	admissionProofs: Map<string, K07AdmissionProof>;
 };
 
 export class CoreAttachmentDraftStore {
@@ -543,6 +648,9 @@ export class CoreAttachmentDraftStore {
 	private records: AttachmentDraftRecord[] = [];
 	private openTransactions = new Map<string, AttachmentSendSnapshot>();
 	private acceptedTransactions = new Set<string>();
+	private preparedUploads = new Map<string, K07PreparedUpload[]>();
+	private admissionProofs = new Map<string, K07AdmissionProof>();
+	private readonly writerEpoch: string;
 	storageError: AttachmentError | undefined;
 
 	constructor(storage: CoreAttachmentDraftStorage, sessionId: string, options?: CoreAttachmentDraftStoreOptions) {
@@ -559,15 +667,20 @@ export class CoreAttachmentDraftStore {
 		this.createId =
 			options?.createId ??
 			(() => `att_${Date.now().toString(36)}_${Math.floor(Math.random() * 0xffffffff).toString(36)}`);
+		this.writerEpoch = `w_${Date.now().toString(36)}_${Math.floor(Math.random() * 0xffffffff).toString(36)}`;
 		try {
 			const loaded = this.load(draftKey(sessionId));
 			this.records = loaded.records;
 			this.openTransactions = loaded.openTransactions;
 			this.acceptedTransactions = loaded.acceptedTransactions;
+			this.preparedUploads = loaded.preparedUploads;
+			this.admissionProofs = loaded.admissionProofs;
 		} catch (error) {
 			this.records = [];
 			this.openTransactions = new Map();
 			this.acceptedTransactions = new Set();
+			this.preparedUploads = new Map();
+			this.admissionProofs = new Map();
 			this.storageError = {
 				code: "ATT_STORAGE_FAILED",
 				message: `Stored attachment drafts could not be loaded: ${error instanceof Error ? error.message : "unknown cause"}`,
@@ -607,7 +720,7 @@ export class CoreAttachmentDraftStore {
 		assertValidEnvelopeInput(input.type, input.schemaVersion);
 		assertJsonValue(input.payload, "Attachment payload");
 		if (input.uiState !== undefined) assertJsonValue(input.uiState, "Attachment UI state");
-		if (input.media !== undefined) assertValidMedia(input.media);
+		const media = normalizeMediaInput(input.media);
 		const timestamp = this.timestamp();
 		const reserved = new Set<string>(this.records.map((record) => record.envelope.id));
 		for (const snapshot of this.openTransactions.values()) {
@@ -647,10 +760,10 @@ export class CoreAttachmentDraftStore {
 			},
 			payload: cloneJson(input.payload),
 			...(input.uiState !== undefined ? { uiState: cloneJson(input.uiState) } : {}),
-			...(input.media !== undefined ? { media: { ...input.media } } : {}),
+			...(media !== undefined ? { media } : {}),
 			status: "ready",
 		};
-		this.commit({ records: [...this.records, record], openTransactions: this.openTransactions, acceptedTransactions: this.acceptedTransactions }, "Attachment draft could not be stored; it is not reload-proof.");
+		this.commit({ records: [...this.records, record], openTransactions: this.openTransactions, acceptedTransactions: this.acceptedTransactions, preparedUploads: this.preparedUploads, admissionProofs: this.admissionProofs }, "Attachment draft could not be stored; it is not reload-proof.");
 		return record.envelope.id;
 	}
 
@@ -706,6 +819,8 @@ export class CoreAttachmentDraftStore {
 				records: this.records.map((entry) => (entry.envelope.id === id ? candidate : entry)),
 				openTransactions: this.openTransactions,
 				acceptedTransactions: this.acceptedTransactions,
+				preparedUploads: this.preparedUploads,
+				admissionProofs: this.admissionProofs,
 			},
 			"Attachment draft change could not be stored.",
 		);
@@ -718,6 +833,8 @@ export class CoreAttachmentDraftStore {
 				records: this.records.filter((candidate) => candidate.envelope.id !== id),
 				openTransactions: this.openTransactions,
 				acceptedTransactions: this.acceptedTransactions,
+				preparedUploads: this.preparedUploads,
+				admissionProofs: this.admissionProofs,
 			},
 			"Attachment removal could not be stored.",
 		);
@@ -753,7 +870,7 @@ export class CoreAttachmentDraftStore {
 			type: record.envelope.type,
 			schemaVersion: record.envelope.schemaVersion,
 			payload: cloneJson(record.payload),
-			...(record.media !== undefined ? { media: { ...record.media } } : {}),
+			...(record.media !== undefined ? { media: record.media.map((entry) => ({ ...entry })) } : {}),
 		}));
 		const sendValue = canonicalSendValue(text, attachments);
 		const bound = this.openTransactions.get(txn);
@@ -775,7 +892,7 @@ export class CoreAttachmentDraftStore {
 		const openTransactions = new Map(this.openTransactions);
 		openTransactions.set(txn, snapshot);
 		this.commit(
-			{ records: this.records, openTransactions, acceptedTransactions: this.acceptedTransactions },
+			{ records: this.records, openTransactions, acceptedTransactions: this.acceptedTransactions, preparedUploads: this.preparedUploads, admissionProofs: this.admissionProofs },
 			"Send snapshot could not be stored; the transaction was not bound.",
 		);
 		return cloneJson(snapshot);
@@ -834,8 +951,12 @@ export class CoreAttachmentDraftStore {
 		openTransactions.delete(checkedReceipt.clientTxnId);
 		const acceptedTransactions = new Set(this.acceptedTransactions);
 		acceptedTransactions.add(checkedReceipt.clientTxnId);
+		const preparedUploads = new Map(this.preparedUploads);
+		preparedUploads.delete(checkedReceipt.clientTxnId);
+		const admissionProofs = new Map(this.admissionProofs);
+		admissionProofs.delete(checkedReceipt.clientTxnId);
 		this.commit(
-			{ records: remaining, openTransactions, acceptedTransactions },
+			{ records: remaining, openTransactions, acceptedTransactions, preparedUploads, admissionProofs },
 			"Acceptance could not be stored; nothing was consumed.",
 		);
 		return { consumed, duplicate: false };
@@ -844,7 +965,7 @@ export class CoreAttachmentDraftStore {
 	private load(key: string): DraftStateCandidate {
 		const raw = this.storage.readText(key);
 		if (raw === null) {
-			return { records: [], openTransactions: new Map(), acceptedTransactions: new Set() };
+			return { records: [], openTransactions: new Map(), acceptedTransactions: new Set(), preparedUploads: new Map(), admissionProofs: new Map() };
 		}
 		let parsed: unknown;
 		try {
@@ -857,6 +978,8 @@ export class CoreAttachmentDraftStore {
 				records: this.validateRecordArray(parsed),
 				openTransactions: new Map(),
 				acceptedTransactions: new Set(),
+				preparedUploads: new Map(),
+				admissionProofs: new Map(),
 			};
 		}
 		if (typeof parsed !== "object" || parsed === null) throw new Error("unsupported stored draft format.");
@@ -905,7 +1028,32 @@ export class CoreAttachmentDraftStore {
 			}
 			acceptedTransactions.add(entry);
 		}
-		return { records, openTransactions, acceptedTransactions };
+		const preparedUploads = new Map<string, K07PreparedUpload[]>();
+		if (state.preparedUploads !== undefined) {
+			if (typeof state.preparedUploads !== "object" || state.preparedUploads === null || Array.isArray(state.preparedUploads)) {
+				throw new Error("stored prepared uploads are invalid.");
+			}
+			for (const [txnId, uploads] of Object.entries(state.preparedUploads)) {
+				if (!openTransactions.has(txnId)) throw new Error(`stored prepared uploads reference unknown transaction ${txnId}.`);
+				if (!Array.isArray(uploads)) throw new Error(`stored prepared uploads for ${txnId} are invalid.`);
+				preparedUploads.set(txnId, uploads.map((upload) => validateStoredPreparedUpload(upload, txnId)));
+			}
+		}
+		const admissionProofs = new Map<string, K07AdmissionProof>();
+		if (state.admissionProofs !== undefined) {
+			if (typeof state.admissionProofs !== "object" || state.admissionProofs === null || Array.isArray(state.admissionProofs)) {
+				throw new Error("stored admission proofs are invalid.");
+			}
+			for (const [txnId, proof] of Object.entries(state.admissionProofs)) {
+				if (!openTransactions.has(txnId)) throw new Error(`stored admission proof references unknown transaction ${txnId}.`);
+				try {
+					admissionProofs.set(txnId, assertValidAdmissionProof(proof as K07AdmissionProof));
+				} catch (error) {
+					throw new Error(`stored admission proof for ${txnId} is invalid: ${error instanceof Error ? error.message : "unknown cause"}`);
+				}
+			}
+		}
+		return { records, openTransactions, acceptedTransactions, preparedUploads, admissionProofs };
 	}
 
 	private validateRecordArray(entries: unknown[]): AttachmentDraftRecord[] {
@@ -938,6 +1086,9 @@ export class CoreAttachmentDraftStore {
 				records: candidate.records,
 				openTransactions: Object.fromEntries(candidate.openTransactions),
 				acceptedTransactions: [...candidate.acceptedTransactions],
+				writerEpoch: this.writerEpoch,
+				preparedUploads: Object.fromEntries(candidate.preparedUploads),
+				admissionProofs: Object.fromEntries(candidate.admissionProofs),
 			} satisfies CoreAttachmentDraftPersistedState,
 			"Draft state",
 		);
@@ -951,6 +1102,73 @@ export class CoreAttachmentDraftStore {
 		this.records = candidate.records;
 		this.openTransactions = candidate.openTransactions;
 		this.acceptedTransactions = candidate.acceptedTransactions;
+		this.preparedUploads = candidate.preparedUploads;
+		this.admissionProofs = candidate.admissionProofs;
 		this.storageError = undefined;
+	}
+
+	getPreparedUploads(clientTxnId: string): K07PreparedUpload[] {
+		const txn = normalizeDraftClientTxnId(clientTxnId);
+		return cloneJson(this.preparedUploads.get(txn) ?? []);
+	}
+
+	/**
+	 * Records uploads prepared at send freeze so retries reuse the same
+	 * frozen content and prepared resources instead of re-uploading. The
+	 * transaction must be open; entries are validated and persisted with the
+	 * same candidate→write→publish rule. Removed automatically on acceptance.
+	 */
+	setPreparedUploads(clientTxnId: string, uploads: K07PreparedUpload[]): void {
+		const txn = normalizeDraftClientTxnId(clientTxnId);
+		if (!this.openTransactions.has(txn)) {
+			throw new AttachmentDraftError({
+				code: "ATT_ACCEPTANCE_UNKNOWN",
+				message: "Prepared uploads require an open transaction.",
+				retryable: false,
+			});
+		}
+		if (!Array.isArray(uploads)) {
+			throw new AttachmentDraftError({
+				code: "ATT_INVALID_JSON",
+				message: "Prepared uploads must be an array.",
+				retryable: false,
+			});
+		}
+		const checked = uploads.map((upload) => assertValidPreparedUpload(upload));
+		const preparedUploads = new Map(this.preparedUploads);
+		preparedUploads.set(txn, checked);
+		this.commit(
+			{ records: this.records, openTransactions: this.openTransactions, acceptedTransactions: this.acceptedTransactions, preparedUploads, admissionProofs: this.admissionProofs },
+			"Prepared uploads could not be stored.",
+		);
+	}
+
+	getAdmissionProof(clientTxnId: string): K07AdmissionProof | undefined {
+		const txn = normalizeDraftClientTxnId(clientTxnId);
+		const proof = this.admissionProofs.get(txn);
+		return proof ? { ...proof } : undefined;
+	}
+
+	/**
+	 * Records the admission fingerprint echoed by the send POST so reload
+	 * recovery can demand exact acceptance identity instead of weak binding.
+	 * Requires an open transaction; dropped automatically on acceptance.
+	 */
+	setAdmissionProof(clientTxnId: string, proof: K07AdmissionProof): void {
+		const txn = normalizeDraftClientTxnId(clientTxnId);
+		if (!this.openTransactions.has(txn)) {
+			throw new AttachmentDraftError({
+				code: "ATT_ACCEPTANCE_UNKNOWN",
+				message: "Admission proofs require an open transaction.",
+				retryable: false,
+			});
+		}
+		const checked = assertValidAdmissionProof(proof);
+		const admissionProofs = new Map(this.admissionProofs);
+		admissionProofs.set(txn, checked);
+		this.commit(
+			{ records: this.records, openTransactions: this.openTransactions, acceptedTransactions: this.acceptedTransactions, preparedUploads: this.preparedUploads, admissionProofs },
+			"Admission proof could not be stored.",
+		);
 	}
 }
