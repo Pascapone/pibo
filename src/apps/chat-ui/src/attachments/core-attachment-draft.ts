@@ -201,6 +201,33 @@ export type CoreAttachmentDraftStoreOptions = {
 	createId?: () => string;
 };
 
+/** Data-only synchronous transitions for transaction-local storage adapters.
+ * Network work and provider hooks must finish before constructing a command. */
+export type CoreAttachmentDraftCommand =
+	| { kind: "add"; input: AttachmentInput }
+	| { kind: "update"; id: AttachmentId; expectedRevision: number; next: AttachmentEditableState }
+	| { kind: "remove"; id: AttachmentId }
+	| { kind: "freeze"; clientTxnId: string; text: string }
+	| { kind: "accept"; snapshot: AttachmentSendSnapshot; receipt: AttachmentAcceptanceReceipt }
+	| { kind: "prepare"; snapshot: AttachmentSendSnapshot; body: unknown }
+	| { kind: "uploads"; clientTxnId: string; uploads: K07PreparedUpload[] }
+	| { kind: "legacyProof"; clientTxnId: string; proof: K07AdmissionProof };
+
+export type CoreAttachmentDraftCommandResult<C extends CoreAttachmentDraftCommand> =
+	C extends { kind: "add" } ? AttachmentId
+	: C extends { kind: "freeze" } ? AttachmentSendSnapshot
+	: C extends { kind: "accept" } ? AttachmentAcceptanceResult
+	: C extends { kind: "prepare" } ? AttachmentPreparedSubmission
+	: void;
+
+export type CoreAttachmentDraftView = {
+	records: AttachmentDraftRecord[];
+	openSnapshots: AttachmentSendSnapshot[];
+	acceptedTransactions: string[];
+	preparedUploads: Record<string, K07PreparedUpload[]>;
+	preparedSubmissions: Record<string, AttachmentPreparedSubmission>;
+};
+
 export const CORE_ATTACHMENT_DRAFT_STATE_VERSION = 1;
 export const CORE_ATTACHMENT_DRAFT_STORAGE_PREFIX = "pibo.chat.coreAttachments.draft.";
 export const CORE_ATTACHMENT_CLIENT_TXN_ID_MAX = 160;
@@ -647,7 +674,38 @@ export class CoreAttachmentDraftStore {
 		return record ? cloneJson(record) : undefined;
 	}
 
+	/** Detached read view; never exposes the engine held by a transaction. */
+	view(): CoreAttachmentDraftView {
+		return cloneJson({
+			records: this.records,
+			openSnapshots: [...this.openTransactions.values()],
+			acceptedTransactions: [...this.acceptedTransactions],
+			preparedUploads: Object.fromEntries(this.preparedUploads),
+			preparedSubmissions: Object.fromEntries(this.preparedSubmissions),
+		});
+	}
+
+	executeCommand<C extends CoreAttachmentDraftCommand>(command: C): CoreAttachmentDraftCommandResult<C>;
+	executeCommand(command: CoreAttachmentDraftCommand): CoreAttachmentDraftCommandResult<CoreAttachmentDraftCommand> {
+		if (!command || typeof command !== "object" || Array.isArray(command)) throw invalidJson("Draft command must be an object.");
+		switch (command.kind) {
+			case "add": return this.addSync(command.input);
+			case "update": return this.updateSync(command.id, command.expectedRevision, command.next);
+			case "remove": return this.removeSync(command.id);
+			case "freeze": return this.freezeForSend(command.clientTxnId, command.text);
+			case "accept": return this.applyAcceptance(command.snapshot, command.receipt);
+			case "prepare": return this.prepareSubmission(command.snapshot, command.body);
+			case "uploads": return this.setPreparedUploads(command.clientTxnId, command.uploads);
+			case "legacyProof": return this.setAdmissionProof(command.clientTxnId, command.proof);
+			default: throw invalidJson("Unknown attachment draft command.");
+		}
+	}
+
 	async add(input: AttachmentInput): Promise<AttachmentId> {
+		return this.addSync(input);
+	}
+
+	private addSync(input: AttachmentInput): AttachmentId {
 		if (!input || typeof input !== "object" || Array.isArray(input)) {
 			throw new AttachmentDraftError({
 				code: "ATT_INVALID_JSON",
@@ -713,6 +771,10 @@ export class CoreAttachmentDraftStore {
 	}
 
 	async update(id: AttachmentId, expectedRevision: number, next: AttachmentEditableState): Promise<void> {
+		this.updateSync(id, expectedRevision, next);
+	}
+
+	private updateSync(id: AttachmentId, expectedRevision: number, next: AttachmentEditableState): void {
 		const record = this.records.find((candidate) => candidate.envelope.id === id);
 		if (!record || record.envelope.revision !== expectedRevision) {
 			throw new AttachmentDraftError({
@@ -772,6 +834,10 @@ export class CoreAttachmentDraftStore {
 	}
 
 	async remove(id: AttachmentId): Promise<void> {
+		this.removeSync(id);
+	}
+
+	private removeSync(id: AttachmentId): void {
 		if (!this.records.some((candidate) => candidate.envelope.id === id)) return;
 		this.commit(
 			{

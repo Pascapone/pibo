@@ -1,17 +1,14 @@
 /**
- * K07 v1 draft persistence (D1-G1, productive vertical).
+ * Private browser-local attachment persistence (not yet Composer-wired).
  *
- * Split by seam shape: draft JSON keeps the existing synchronous text seam
- * (browser: localStorage) because the abgenommene draft core is sync; draft
- * BYTES live in durable browser-local blob storage (IndexedDB) behind a small
- * async seam. JSON references blobs by id only — never base64 in JSON or uiState.
- * Upload staging (`CHAT_UPLOAD_DIR`) stays a controlled legacy reader and is
- * used at send time through the existing upload endpoint; no new server
- * draft semantics in v1.
+ * Shared browser-local byte storage and compatibility seams. Transactional
+ * draft JSON shares IndexedDB with bytes; the synchronous text adapter is
+ * legacy-only. JSON references bytes by id, never base64 or model paths.
+ * Production Composer integration and headful acceptance are separate work.
  *
  * Scope (I-K07-04): everything is namespaced by the existing login identity
- * (`NavigationData.identity.userId`); legacy un-namespaced entries are read
- * controlled (stored drafts preserved, no silent rewrite); identity change
+ * (`NavigationData.identity.userId`); unowned legacy entries require explicit
+ * custody recovery (no automatic fallback or silent rewrite); identity change
  * hides foreign data fail-closed; explicit clear APIs, no auto-wipe.
  * Deletion is holder-aware (I-K07-05): live drafts, open snapshots, and the
  * reserved copy-holder kind keep blobs alive; removals delete only unheld
@@ -24,12 +21,18 @@
 
 import { AttachmentDraftError } from "../../../../attachments/errors.js";
 import type { AttachmentDraftMedia, CoreAttachmentDraftStorage } from "./core-attachment-draft";
-
-export const ATTACHMENT_BLOB_DB_NAME = "pibo-attachments-v1";
-export const ATTACHMENT_BLOB_DB_VERSION = 2;
-export const ATTACHMENT_BLOB_STORE_NAME = "draft-blobs";
-export const ATTACHMENT_BLOB_INDEX_NAME = "by-owner-session-draft";
-export const ATTACHMENT_COPY_STORE_NAME = "copy-buffers";
+import { readCoreAttachmentDraft } from "./core-attachment-transitions";
+import {
+	ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_BLOB_INDEX_NAME, ATTACHMENT_COPY_STORE_NAME,
+	ATTACHMENT_BLOB_OWNER_INDEX, ATTACHMENT_DRAFT_STORE_NAME, ATTACHMENT_DRAFT_OWNER_INDEX,
+	checkAttachmentDraftRow, nextAttachmentRevision, type AttachmentDraftRow,
+	openAttachmentDatabase, attachmentIdbRequest as requestToPromise,
+	attachmentIdbTransaction, type IndexedDbFactory,
+} from "./core-attachment-database";
+export {
+	ATTACHMENT_BLOB_DB_NAME, ATTACHMENT_BLOB_DB_VERSION, ATTACHMENT_BLOB_STORE_NAME,
+	ATTACHMENT_BLOB_INDEX_NAME, ATTACHMENT_COPY_STORE_NAME, type IndexedDbFactory,
+} from "./core-attachment-database";
 export const ATTACHMENT_BLOB_MAX_BYTES = 15 * 1024 * 1024;
 
 export type DraftBlobRecord = {
@@ -70,10 +73,6 @@ export type AttachmentCopyBuffer = {
 	stage(entry: { copyId: string; sourceSessionId: string; sourceDraftId: string; sourceRevision: number; payload: unknown; media: AttachmentDraftMedia[] }): Promise<void>;
 	load(): Promise<CopyBufferEntry | undefined>;
 	clear(): Promise<void>;
-};
-
-export type IndexedDbFactory = {
-	open(name: string, version: number): IDBOpenDBRequest;
 };
 
 export type BlobHolderKind = "draft" | "snapshot" | "copy";
@@ -121,7 +120,33 @@ export function collectBlobHolders(input: {
 	return { held, holders };
 }
 
-/** Deletes only blobs without holders; reports deleted and kept ids. */
+/** Authoritative holder scan, inside the SAME transaction as deletion. Invalid
+ * sibling entries fail closed rather than turning unreadable references into GC. */
+export async function readStoredBlobHolders(drafts: IDBObjectStore, copies: IDBObjectStore, ownerUserId: string): Promise<Set<string>> {
+	const held = new Set<string>();
+	const rows = await requestToPromise(drafts.index(ATTACHMENT_DRAFT_OWNER_INDEX).getAll(ownerUserId)) as AttachmentDraftRow[];
+	for (const row of rows) {
+		checkAttachmentDraftRow(row, ownerUserId, row.sessionId);
+		const view = readCoreAttachmentDraft(row.rawText, row.sessionId);
+		const holders = collectBlobHolders({
+			drafts: view.records.map((record) => ({ draftId: record.envelope.id, media: record.media })),
+			openSnapshots: view.openSnapshots,
+		});
+		for (const id of holders.held) held.add(id);
+	}
+	const copy = await requestToPromise(copies.get(ownerUserId)) as CopyBufferEntry | undefined;
+	if (copy) {
+		if (copy.ownerUserId !== ownerUserId || !Array.isArray(copy.media)
+			|| copy.media.some((media) => !media || typeof media.draftResourceId !== "string" || !media.draftResourceId)) {
+			throw storageFailed("Stored copy buffer holders could not be read.");
+		}
+		for (const id of mediaBlobIds(copy.media)) held.add(id);
+	}
+	return held;
+}
+
+/** The supplied set is an advisory fast path; the durable store also checks
+ * transaction-current holders. A missing/foreign/held row is never 'deleted'. */
 export async function deleteUnheldBlobs(
 	store: AttachmentBlobStore,
 	blobIds: string[],
@@ -134,16 +159,15 @@ export async function deleteUnheldBlobs(
 			keptHeld.push(blobId);
 			continue;
 		}
-		await store.deleteBlob(blobId);
-		deleted.push(blobId);
+		if (await store.deleteBlob(blobId)) deleted.push(blobId);
 	}
 	return { deleted, keptHeld };
 }
 
 /**
  * Owner-scoped browser JSON-state adapter for the sync draft seam. New writes
- * use `owner:key`; reads fall back to the legacy un-namespaced key so already
- * stored drafts keep loading (no silent rewrite, no move).
+ * use the historical scoped key only. Unowned text requires explicit IndexedDB
+ * custody/adoption; opening this adapter never exposes an unowned fallback.
  */
 export function createLocalStorageDraftTextStorage(ownerUserId: string): CoreAttachmentDraftStorage & { readonly ownerUserId: string; clearOwnerText(): void } {
 	if (!ownerUserId) throw storageFailed("Draft text storage requires an owner user id.");
@@ -156,9 +180,7 @@ export function createLocalStorageDraftTextStorage(ownerUserId: string): CoreAtt
 		ownerUserId,
 		readText(key: string): string | null {
 			try {
-				const scoped = storageOf().getItem(namespaced(key));
-				if (scoped !== null) return scoped;
-				return storageOf().getItem(key);
+				return storageOf().getItem(namespaced(key));
 			} catch {
 				throw storageFailed("Draft text could not be read.");
 			}
@@ -201,40 +223,6 @@ function createBlobId(): string {
 	return `blob_${random}`;
 }
 
-function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
-	return new Promise<T>((resolve, reject) => {
-		request.onsuccess = () => resolve(request.result);
-		request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
-	});
-}
-
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-	return new Promise<void>((resolve, reject) => {
-		transaction.oncomplete = () => resolve();
-		transaction.onerror = () => reject(transaction.error ?? new Error("IndexedDB transaction failed."));
-		transaction.onabort = () => reject(transaction.error ?? new Error("IndexedDB transaction aborted."));
-	});
-}
-
-async function openBlobDatabase(factory: IndexedDbFactory): Promise<IDBDatabase> {
-	const request = factory.open(ATTACHMENT_BLOB_DB_NAME, ATTACHMENT_BLOB_DB_VERSION);
-	request.onupgradeneeded = () => {
-		const db = request.result;
-		if (!db.objectStoreNames.contains(ATTACHMENT_BLOB_STORE_NAME)) {
-			const store = db.createObjectStore(ATTACHMENT_BLOB_STORE_NAME, { keyPath: "blobId" });
-			store.createIndex(ATTACHMENT_BLOB_INDEX_NAME, ["ownerUserId", "sessionId", "draftId"], { unique: false });
-		}
-		if (!db.objectStoreNames.contains(ATTACHMENT_COPY_STORE_NAME)) {
-			db.createObjectStore(ATTACHMENT_COPY_STORE_NAME, { keyPath: "ownerUserId" });
-		}
-	};
-	try {
-		return await requestToPromise(request as unknown as IDBRequest<IDBDatabase>);
-	} catch {
-		throw storageFailed("Draft blob storage could not be opened.");
-	}
-}
-
 function toArrayBuffer(data: Uint8Array): ArrayBuffer {
 	return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
 }
@@ -258,27 +246,26 @@ function assertBlobInput(input: { sessionId: string; draftId: string; mimeType: 
 /**
  * Real IndexedDB blob store + copy buffer, owner-scoped. `factory` is
  * `indexedDB` in the browser and an injected fake in Node tests (no new
- * dependency; real IDB is proven headful).
+ * dependency). Model tests do not establish real-browser transaction behavior.
+ * clearOwner resets active drafts/bytes/copy only: custody text backups and
+ * legacy localStorage remain. It is NOT an account/browser-erasure API and
+ * must not be used on logout; close() hides the active connection instead.
  */
-export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserId: string): Promise<{ blobs: AttachmentBlobStore; copy: AttachmentCopyBuffer; clearOwner(): Promise<void> }> {
+export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserId: string, databaseName?: string): Promise<{ blobs: AttachmentBlobStore; copy: AttachmentCopyBuffer; close(): void; clearOwner(): Promise<void> }> {
 	if (!ownerUserId) throw storageFailed("Draft blob storage requires an owner user id.");
 	if (!factory || typeof factory.open !== "function") throw storageFailed("Draft blob storage factory is unavailable.");
-	const db = await openBlobDatabase(factory);
-	const withStores = async <T>(storeNames: string[], mode: IDBTransactionMode, run: (stores: IDBObjectStore[]) => Promise<T>): Promise<T> => {
-		const transaction = db.transaction(storeNames, mode);
-		try {
-			const result = await run(storeNames.map((name) => transaction.objectStore(name)));
-			await transactionDone(transaction);
-			return result;
-		} catch (error) {
-			try {
-				transaction.abort();
-			} catch {
-				/* abort is best-effort after failure */
-			}
-			if (error instanceof AttachmentDraftError) throw error;
-			throw storageFailed("Draft blob storage operation failed.");
-		}
+	const db = await openAttachmentDatabase(factory, databaseName);
+	let closed = false;
+	const close = () => { closed = true; db.close(); };
+	const active = () => {
+		if (closed) throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "Attachment byte storage is closed for this login.", retryable: false });
+	};
+	db.addEventListener("versionchange", close);
+	const withStores = async <T>(names: string[], mode: IDBTransactionMode, run: (stores: IDBObjectStore[]) => Promise<T>): Promise<T> => {
+		active();
+		const result = await attachmentIdbTransaction(db, names, mode, run);
+		active(); // retain an in-flight old-owner commit, but hide its result after logout
+		return result;
 	};
 	const blobs: AttachmentBlobStore = {
 		ownerUserId,
@@ -296,7 +283,13 @@ export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserI
 				data: toArrayBuffer(input.data),
 			};
 			await withStores([ATTACHMENT_BLOB_STORE_NAME], "readwrite", async ([store]) => {
-				await requestToPromise(store.put(record));
+				try { await requestToPromise(store.add(record)); }
+				catch (error) {
+					if (error instanceof DOMException && error.name === "ConstraintError") {
+						throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Blob ids are immutable and cannot be replaced.", retryable: false });
+					}
+					throw error;
+				}
 			});
 			return { blobId, bytes: record.size };
 		},
@@ -308,9 +301,10 @@ export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserI
 			});
 		},
 		deleteBlob: async (blobId) => {
-			return withStores([ATTACHMENT_BLOB_STORE_NAME], "readwrite", async ([store]) => {
+			return withStores([ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_DRAFT_STORE_NAME, ATTACHMENT_COPY_STORE_NAME], "readwrite", async ([store, drafts, copies]) => {
 				const found = await requestToPromise(store.get(blobId) as IDBRequest<StoredDraftBlob | undefined>);
 				if (!found || found.ownerUserId !== ownerUserId) return false;
+				if ((await readStoredBlobHolders(drafts, copies, ownerUserId)).has(blobId)) return false;
 				await requestToPromise(store.delete(blobId));
 				return true;
 			});
@@ -362,10 +356,16 @@ export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserI
 	return {
 		blobs,
 		copy,
+		close,
+		// Preserve recovery text and custody; reset active data with no CAS ABA.
 		clearOwner: async () => {
-			await withStores([ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_COPY_STORE_NAME], "readwrite", async ([blobStore, copyStore]) => {
-				const index = blobStore.index(ATTACHMENT_BLOB_INDEX_NAME);
-				const rows = await requestToPromise(index.getAll(IDBKeyRange.bound([ownerUserId, "", ""], [ownerUserId, "￿", "￿"])) as IDBRequest<StoredDraftBlob[]>);
+			await withStores([ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_COPY_STORE_NAME, ATTACHMENT_DRAFT_STORE_NAME], "readwrite", async ([blobStore, copyStore, draftStore]) => {
+				const drafts = await requestToPromise(draftStore.index(ATTACHMENT_DRAFT_OWNER_INDEX).getAll(ownerUserId)) as AttachmentDraftRow[];
+				for (const row of drafts) {
+					checkAttachmentDraftRow(row, ownerUserId, row.sessionId);
+					await requestToPromise(draftStore.put({ ...row, revision: nextAttachmentRevision(row.revision), rawText: null, updatedAt: new Date().toISOString() }));
+				}
+				const rows = await requestToPromise(blobStore.index(ATTACHMENT_BLOB_OWNER_INDEX).getAll(ownerUserId)) as StoredDraftBlob[];
 				for (const row of rows) {
 					if (row.ownerUserId === ownerUserId) await requestToPromise(blobStore.delete(row.blobId));
 				}
@@ -409,6 +409,7 @@ export function createMemoryAttachmentStores(ownerUserId: string): { blobs: Atta
 			putBlob: async (input) => {
 				assertBlobInput(input);
 				const blobId = input.blobId ?? createBlobId();
+				if (blobs.has(blobId)) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Blob ids are immutable and cannot be replaced.", retryable: false });
 				blobs.set(blobId, {
 					blobId, ownerUserId, sessionId: input.sessionId, draftId: input.draftId,
 					mimeType: input.mimeType, size: input.data.byteLength,
@@ -419,7 +420,7 @@ export function createMemoryAttachmentStores(ownerUserId: string): { blobs: Atta
 			getBlob: async (blobId) => {
 				const found = blobs.get(blobId);
 				if (!found || found.ownerUserId !== ownerUserId) return undefined;
-				return { mimeType: found.mimeType, data: new Uint8Array(found.data) };
+				return { mimeType: found.mimeType, data: new Uint8Array(found.data.slice(0)) };
 			},
 			deleteBlob: async (blobId) => {
 				const found = blobs.get(blobId);
@@ -443,9 +444,9 @@ export function createMemoryAttachmentStores(ownerUserId: string): { blobs: Atta
 				if (!entry.copyId || !entry.sourceSessionId || !entry.sourceDraftId) {
 					throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Copy entries require copy, session, and draft ids.", retryable: false });
 				}
-				copyEntry = { ownerUserId, copyId: entry.copyId, stagedAt: new Date().toISOString(), sourceSessionId: entry.sourceSessionId, sourceDraftId: entry.sourceDraftId, sourceRevision: entry.sourceRevision, payload: entry.payload, media: entry.media };
+				copyEntry = structuredClone({ ownerUserId, copyId: entry.copyId, stagedAt: new Date().toISOString(), sourceSessionId: entry.sourceSessionId, sourceDraftId: entry.sourceDraftId, sourceRevision: entry.sourceRevision, payload: entry.payload, media: entry.media });
 			},
-			load: async () => copyEntry,
+			load: async () => copyEntry ? structuredClone(copyEntry) : undefined,
 			clear: async () => {
 				copyEntry = undefined;
 			},
