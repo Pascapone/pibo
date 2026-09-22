@@ -9,23 +9,61 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T17:55:23Z"
+  at: "2026-09-22T14:28:55Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
-    title: "upstream/dev refresh source and named-test evidence"
+    title: "Historical upstream/dev refresh source and named-test evidence"
+  - id: "content-binding-source-and-tests"
+    resource: "scope:direct-controller checkpoint 08830dfc08e2029746f06bad8337c5f321870399"
+    title: "Opt-in content binding, local prepared submissions and focused tests"
 implementation:
   state: "current"
-  baseline_commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  baseline_commit: "08830dfc08e2029746f06bad8337c5f321870399"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "performed in owned Docker after authoring; see implementation report"
-  build_typecheck_package_execution: "performed in owned Docker after authoring; see implementation report"
+  focused_test_execution: "47 focused binding/draft/store tests and 5 selected HTTP tests passed; other named-test evidence remains historical"
+  build_typecheck_package_execution: "browser-safe binding/draft/receipt target typecheck and 22-plugin artifact build passed on test-only ESM emit; backend target and root compiler evidence remain resource-blocked; installation user-skipped"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "800bb6ec5dd0b13b64c6333719ac1a88239d1462"
+  commit: "08830dfc08e2029746f06bad8337c5f321870399"
   requirements:
+    - id: "WEB-COMPOSER-CONTENT-007"
+      status: "implemented"
+      sources:
+        - path: "src/shared/message-content-binding.ts"
+          symbol: "createMessageContentBinding"
+        - path: "src/data/message-command-store.ts"
+          symbol: "MessageCommandStore"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "sendChatMessage"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-draft.ts"
+          symbol: "CoreAttachmentDraftStore"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-receipts.ts"
+          symbol: "reconcileAcceptance"
+      tests:
+        - path: "test/message-content-binding.test.mjs"
+          name: "content binding has a canonical JSON/UTF-8 vector matching native SHA-256"
+        - path: "test/message-command-content-binding.test.mjs"
+          name: "accepted request binding is atomic, server-derived and durable across duplicates and worker restart"
+        - path: "test/message-command-content-binding.test.mjs"
+          name: "same transaction rejects changed raw content, resource refs, delivery, final text and binding downgrade"
+        - path: "test/message-command-content-binding.test.mjs"
+          name: "receipt binding survives model failure, interrupted execution and loss of the optional event projection"
+        - path: "test/chat-ui-attachment-submission.test.mjs"
+          name: "prepared wire body is persisted before send, immutable across reload and storage-failure atomic"
+        - path: "test/chat-ui-attachment-submission.test.mjs"
+          name: "a matched receipt ID or echoed fingerprint cannot consume missing or different local content"
+        - path: "test/web-channel.test.mjs"
+          name: "content-bound durable HTTP admission captures the original body before mutable augmenters"
+        - path: "test/web-channel.test.mjs"
+          name: "content-bound durable HTTP admission rejects invalid identity without upgrading old receipts"
+      failures:
+        - "Missing/mismatched content proof cannot consume through the K07 reconciliation seam; failed or interrupted model execution does not undo a proven admission."
+        - "The digest is content identity, not provider/schema/resource authorization or proof that an arbitrary extension field was processed."
+        - "Current Composer/provider/media wiring and multi-tab storage CAS are not completed by this seam."
+      confidence: "high"
     - id: "WEB-COMPOSER-ADMISSION-006"
       status: "implemented"
       sources:
@@ -266,7 +304,7 @@ Per-Session composer state, queue/steer delivery, slash/local actions, bounded u
 
 ## Scope
 
-This specification describes implemented behavior at upstream/dev refresh traceability commit `39090b8850758293e69380a52bb7498d7c955bc2`. Its package parent is accepted base `ba3c2d6611ce8d234f887135af605837333bf751`; the stale brief baseline is not authority.
+The content-binding and durable duplicate-admission changes are anchored at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
 
 ### In scope
 
@@ -322,8 +360,20 @@ Authenticated `GET /api/chat/message-receipts/:id` returns one receipt after Ses
 
 The [runtime capacity contract](/specs/runtime/capacity-and-scheduling.md) owns normal/Steering count, byte and oldest-wait limits, database-wide claim limits, Room rotation, cold starts, provider reservations and control capacity. These implemented guards do not alone establish the integrated capacity SLOs in the [performance plan](/plans/pibo-performance-and-scalability.md).
 
+A durable duplicate receipt remains authoritative when the optional accepted-event projection has been removed. The duplicate response may then omit `event`; it must not append accepted history again or repeat augmentation commit callbacks.
+
 Schema v10 introduced durable commands; schema v11 also persists dispatch rotation. Rollback must preserve accepted commands: keep a compatible dispatcher until work is terminal or explicitly reconciled. A v10-only binary cannot open the current schema; dropping command data or lowering `user_version` is not a safe rollback.
 
+
+### Requirement: WEB-COMPOSER-CONTENT-007
+
+An optional `contentBindingVersion: 1` on `POST /api/chat/message` MUST require `admissionVersion: 2`, an explicit Pibo Session and a normalized, nonempty `clientTxnId`. Invalid versions/identities fail with 400. The server captures the JSON wire body before mutable/asynchronous message augmenters. The storage worker derives the shared canonical SHA-256 from that body, its resolved Session and normalized delivery; it MUST NOT accept a client-provided hash as authority. All submitted extension inputs participate without a feature-specific allowlist.
+
+Opted-in commands store `pibo-content-v1:<request SHA-256>:<effective command SHA-256>` in the existing opaque fingerprint column. The suffix still binds materialized text, Room, Session, delivery and the content proof. This uses the existing atomic command insertion and adds no table, schema migration, sidecar, envelope payload duplication or receipt file read. POST and both GET receipt surfaces expose only the optional `contentBinding: {version: 1, sha256}`. Unknown/legacy stored formats have no proof. Existing unflagged fingerprints remain byte-identical. Bound↔unbound retries and changed bodies/delivery/materialization conflict with 409; there is no proofless downgrade or silent upgrade.
+
+The private K07 draft seam's `prepareSubmission` checks the held original snapshot and persists the exact body and independently computed proof **before** a POST. A transaction cannot replace that body, delivery or prepared upload metadata. Write failures publish no new RAM state; reload validates body↔snapshot↔proof consistency. Old stored drafts remain readable without invented proof. `reconcileAcceptance` consumes only matching frozen revisions after a matching server proof and supported receipt-row shape; a receipt ID or POST-echoed fingerprint alone cannot consume. Missing/mismatched proof, rejected/unknown shapes or lookup failures preserve the draft. Every supported durable state, including `failed` and `interrupted`, proves admission when bound; model failure, cancellation or ambiguous execution never authorize an automatic new send. Already-consumed local duplicates consume/notify nothing and are honestly marked weak when no fresh proof is retained.
+
+**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. K07 materialization/admission and productive provider/media/Composer wiring remain separate work, as does multi-tab persistence CAS. The per-instance/reload proof checks do not prevent an unrelated stale tab from overwriting shared storage.
 
 ### Requirement: WEB-COMPOSER-DRAFTS-001
 
@@ -466,6 +516,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 - Evidence gap: No headful microphone permission, recording, keyboard, file picker/drop, image dialog, or speech validation.
 - Evidence gap: No external media provider path executed.
+- K07 content-bound admission is an opt-in API plus draft/receipt seam, not the completed attachment cutover. Provider-aware mutation/freeze, bytes/GC/copy/auth, server materialization and active-provider validation, multi-tab CAS and Composer/UI integration remain open.
 
 ## Reconciled stale claims
 
@@ -477,15 +528,15 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 ## Verification and traceability
 
-- Source and named-test locators resolve to regular files at upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`.
-- Imported or re-exported symbols use their canonical upstream/dev refresh definition files in traceability.
-- Source inspection was performed for every requirement; five package requirements remain source-only exactly where no named test exists.
-- Focused tests, the OKF validator suite, typecheck, build, package, diff, link/navigation, and archive-byte checks were run only after authoring and are reported outside this committed package.
+- Content-binding source checkpoint: `08830dfc08e2029746f06bad8337c5f321870399`. The focused batch passed 47 binding/draft/store tests and five selected HTTP tests, including existing admission/barrier/queue behavior; it did not run the entire Web suite.
+- Browser-safe binding/draft/receipt strict target typecheck passed. A separate backend target import graph exhausted a 384 MiB heap (exit 134); no backend or root typecheck pass is claimed. Fresh file-at-a-time ESM emit was behavioral-test input, not a release compiler pass; 22 plugin artifacts rebuilt successfully.
+- Commands, outputs, failures and source/verification boundaries are preserved in the [bounded evidence collection](/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json). Counts from separate batches overlap.
+- Remaining source/named-test and Docker/typecheck/package claims belong to the historical `39090b8850758293e69380a52bb7498d7c955bc2` authoring package; they are not rerun claims for the current candidate. Candidate installation acceptance is explicitly user-skipped, not passed.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.
 - External provider, gateway restart/deployment, Pibo2, and real same-origin code-server acceptance was not performed.
 - Confidence measures trace quality, not execution of an unclaimed evidence class.
 
-Package verification commands:
+Historical package verification command (not rerun for this change):
 
 - `cd /root/code/pibo-okf-docs && node --test test/chat-ui-composer-send.test.mjs test/chat-ui-pending-message-delivery.test.mjs test/chat-ui-upload-attachments.test.mjs test/chat-ui-download-files.test.mjs test/chat-transcription-web.test.mjs test/chat-speech-web.test.mjs test/loop-session-goal-command.test.mjs`
 

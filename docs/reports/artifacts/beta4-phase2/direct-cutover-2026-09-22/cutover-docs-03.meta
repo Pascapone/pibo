@@ -1,0 +1,16 @@
+started=2026-09-22T14:39:06Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\;\ status=0\;\ for\ script\ in\ docs:indexes:write\ docs:validate\ docs:validate:okf\ docs:validate:migration\ docs:indexes:check\ docs:log:check\ docs:validator:test\;\ do\ printf\ \"\\n===\ %s\ ===\\n\"\ \"\$script\"\;\ npm\ run\ \"\$script\"\;\ code=\$\?\;\ printf\ \"===\ %s\ exit=%s\ ===\\n\"\ \"\$script\"\ \"\$code\"\;\ if\ \[\ \"\$code\"\ -ne\ 0\ \]\;\ then\ status=1\;\ fi\;\ done\;\ exit\ \"\$status\"
+source=08830dfc08e2029746f06bad8337c5f321870399
+ M docs/log.md
+ M docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json
+ M docs/specs/web/composer-delivery-files-and-media.md
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-content-binding-backend-types-01.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-content-binding-backend-types-01.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-content-binding-focused-01.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-content-binding-focused-01.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-content-binding-focused-02.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-content-binding-focused-02.meta
+56e02c3823444630fc29f5e6a0a71d93efdf4f357d493d08f2aafaecc9e52f16  -
+exit=0
+ended=2026-09-22T14:40:19Z

@@ -1,10 +1,11 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T13:13:33.523340+00:00",
+  "capturedAt": "2026-09-22T14:55:07.396303+00:00",
   "implementationCommits": [
     "09fed1a7e20f106e35c24a65090289e45d821d43",
     "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
-    "3b86d389cbf5f47a65d11d57a87478929c8d9d57"
+    "3b86d389cbf5f47a65d11d57a87478929c8d9d57",
+    "08830dfc08e2029746f06bad8337c5f321870399"
   ],
   "scope": "Direct-controller source/function changes; not full V4 completion",
   "provenanceNotes": [
@@ -19,7 +20,9 @@
     "releaseCompilerBuild": "File-at-a-time ESM emit is behavioral-test input only; declarations/release compiler acceptance are not implied.",
     "candidateInstallation": "Explicitly user-skipped, not passed.",
     "productionDeployment": "Not authorized and not performed.",
-    "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open."
+    "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open.",
+    "backendContentBindingTypecheck": "Targeted backend imports exhausted384MiB V8 heap (exit134); only browser-safe helper/draft/receipt typechecks passed for this slice.",
+    "productiveK07": "Content proof binds canonical submitted JSON, not provider/resource handling or model outcome. Existing Composer wiring, bytes/copy/auth/GC, materialization and multi-tab CAS remain open."
   },
   "pathSubstitutions": {
     "$WORKTREE": "isolated beta4/full-i-20260922 implementation worktree",
@@ -213,6 +216,114 @@
           "file": "cutover-docs-02.meta",
           "sha256": "acbcedf912e55b8a99e49dd051f08ab17a3153309a111a109d0793453a13cb05",
           "originalHostSha256": "848ae5bd71a9998e4effe724bffea11a14e0a88ad1a75583cbb5a08ea08424af"
+        }
+      ]
+    },
+    {
+      "id": "cutover-content-binding-focused-01",
+      "purpose": "Initial content binding: browser-safe helper/draft/receipt typecheck,22 plugins,47 focused and5 HTTP tests",
+      "exit": 0,
+      "passedTests": 52,
+      "sourceHeadAtStart": "79661828d304ee5403e9f49ff754e487d94ca67d",
+      "started": "2026-09-22T14:04:16Z",
+      "ended": "2026-09-22T14:11:03Z",
+      "files": [
+        {
+          "file": "cutover-content-binding-focused-01.log",
+          "sha256": "2fc029889ce13ba575e23fe1c526f1213ab44f1cfe048256934920bc2f1fd670",
+          "originalHostSha256": "e00cbcc45b9dd10c5de9335cb8d5cfcc2bc8c8231ebccd971b4fe16f078492f1"
+        },
+        {
+          "file": "cutover-content-binding-focused-01.meta",
+          "sha256": "37a72dfc4fc2d1b018850a38de7691f07cc8cd85a0922720f373f1301e9a1466",
+          "originalHostSha256": "a52e52309e21b6919c714215fc3fba8bfd8a8828776deb781a7e3b71fdc10383"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft",
+          "pass": 47,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 5,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-content-binding-backend-types-01",
+      "purpose": "Backend target import graph exceeded384MiB V8 heap; not passed; no guard change or larger-heap retry",
+      "exit": 134,
+      "passedTests": null,
+      "sourceHeadAtStart": "79661828d304ee5403e9f49ff754e487d94ca67d",
+      "started": "2026-09-22T14:15:45Z",
+      "ended": "2026-09-22T14:16:25Z",
+      "files": [
+        {
+          "file": "cutover-content-binding-backend-types-01.log",
+          "sha256": "09867cd9f5eb35abaee5bdf3d0145993ad5ce8331b0723977ca7532983588d51",
+          "originalHostSha256": "09867cd9f5eb35abaee5bdf3d0145993ad5ce8331b0723977ca7532983588d51"
+        },
+        {
+          "file": "cutover-content-binding-backend-types-01.meta",
+          "sha256": "6a4c027f8b29934246504b0c65c0d9e5c08af365f3b571315de31f9ec3e6cc09",
+          "originalHostSha256": "52c62acd270accd9fc09d9a5dfbf7ae0b4ab58c53b6ed0f8b2393ce1cfebb699"
+        }
+      ]
+    },
+    {
+      "id": "cutover-content-binding-focused-02",
+      "purpose": "Final hardened content binding: browser-safe helper/draft/receipt typecheck,22 plugins,47 focused and5 HTTP tests",
+      "exit": 0,
+      "passedTests": 52,
+      "sourceHeadAtStart": "79661828d304ee5403e9f49ff754e487d94ca67d",
+      "started": "2026-09-22T14:18:14Z",
+      "ended": "2026-09-22T14:23:42Z",
+      "files": [
+        {
+          "file": "cutover-content-binding-focused-02.log",
+          "sha256": "12d89f59168a28f14c48b8334235fc612dd3c88754b72b37834243578051d294",
+          "originalHostSha256": "c4c38f152cfe260ca04aa6bb0fed308074656de1ccaff2aac4f2267047a88f5f"
+        },
+        {
+          "file": "cutover-content-binding-focused-02.meta",
+          "sha256": "be112ce2e4aa59549fb0aaad31781ee7e0a5621779fcb2348e0393488b3c1c1a",
+          "originalHostSha256": "27740940644f2db7c2a4ca5fd5e25b83e5bc9480029a3fe5c56bc199b06d95b1"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft",
+          "pass": 47,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 5,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-docs-03",
+      "purpose": "Content-binding documentation: strict/core/migration validation, indexes/log and87 documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "08830dfc08e2029746f06bad8337c5f321870399",
+      "started": "2026-09-22T14:39:06Z",
+      "ended": "2026-09-22T14:40:19Z",
+      "files": [
+        {
+          "file": "cutover-docs-03.log",
+          "sha256": "03c9dd09fddd2aa65bbaffb918d3b2857a2c4310cf8abd9500806f84f08cdf52",
+          "originalHostSha256": "03c9dd09fddd2aa65bbaffb918d3b2857a2c4310cf8abd9500806f84f08cdf52"
+        },
+        {
+          "file": "cutover-docs-03.meta",
+          "sha256": "69652b07398905c2d8a304b012b39f2126904d9e9a69750bdc30ad617f3fc08a",
+          "originalHostSha256": "04400c35e7f5a47a5e6b9647a42046167c1938ee0300eb6e05dbf665fe4edd86"
         }
       ]
     }

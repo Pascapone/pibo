@@ -1,0 +1,19 @@
+started=2026-09-22T14:15:45Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ NodeNext\ --types\ node\ --esModuleInterop\ src/data/message-command-store.ts\ src/data/async-chat-storage.ts\ src/data/chat-storage-worker.ts
+source=79661828d304ee5403e9f49ff754e487d94ca67d
+ M src/apps/chat-ui/src/attachments/core-attachment-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-receipts.ts
+ M src/apps/chat/chat-request-normalizers.ts
+ M src/apps/chat/web-app.ts
+ M src/data/async-chat-storage.ts
+ M src/data/chat-storage-worker.ts
+ M src/data/message-command-store.ts
+ M test/web-channel.test.mjs
+?? src/shared/message-content-binding.ts
+?? test/chat-ui-attachment-submission.test.mjs
+?? test/message-command-content-binding.test.mjs
+?? test/message-content-binding.test.mjs
+97a78eeb8eda38b3e362c034b194ecc887530ee0204359f439bf290b9d783cac  -
+exit=134
+ended=2026-09-22T14:16:25Z

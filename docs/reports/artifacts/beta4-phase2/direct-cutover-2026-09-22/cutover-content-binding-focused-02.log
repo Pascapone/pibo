@@ -1,0 +1,77 @@
+This is a focused batch, not a full suite or installation test.
+Targeted browser-safe content-binding/draft/receipt typecheck passed (not backend/root typecheck)
+{"method":"TypeScript.transpileModule, file-at-a-time (ESM)","emitted":573,"typechecked":false,"releaseBuild":false}
+Built 22 Pibo 4 plugin package artifacts in $WORKTREE/dist/pibo4-artifacts
+✔ prepared wire body is persisted before send, immutable across reload and storage-failure atomic (777.699743ms)
+✔ a matched receipt ID or echoed fingerprint cannot consume missing or different local content (294.992308ms)
+✔ all admitted command states consume matching revisions once, independently of model outcome (468.598864ms)
+✔ submission must contain the bound snapshot and corrupted persisted proofs fail closed (294.598197ms)
+✔ core draft add persists reload-proof snapshots with exact revisions (364.967693ms)
+✔ open transactions bind exactly one original snapshot per id (338.757783ms)
+✔ acceptance persists atomically and survives reload (296.014168ms)
+✔ caller snapshots are validated against the bound original (327.255853ms)
+✔ transaction ids match the server normalizer (789.057061ms)
+✔ envelopes are validated and storage keeps the last good state (318.205683ms)
+✔ attachment ids stay unique across generation and load (354.692822ms)
+✔ failed mutations keep state and recover through retry (340.419922ms)
+✔ draft sessions stay isolated and media metadata survives reload; byte resolvability deferred to RV-02/05/07 (349.26838ms)
+✔ writers reject values the loader would refuse (459.159786ms)
+✔ null, malformed and cyclic inputs fail controlled without state damage (434.441966ms)
+✔ failed freeze stores nothing and heals into a normal transaction (469.428161ms)
+✔ uiState-only edits keep the frozen transaction idempotent (289.113476ms)
+✔ reissued ids survive stale duplicate receipts (298.843598ms)
+✔ payload updates keep stored uiState across reload (311.50859ms)
+✔ revision exhaustion preserves persisted drafts, open transactions and UI-only edits (299.402831ms)
+✔ accepted request binding is atomic, server-derived and durable across duplicates and worker restart (763.503912ms)
+✔ same transaction rejects changed raw content, resource refs, delivery, final text and binding downgrade (301.342945ms)
+✔ unflagged fingerprints and old receipts remain exact legacy values, never silently upgraded (480.738683ms)
+✔ receipt binding survives model failure, interrupted execution and loss of the optional event projection (266.7931ms)
+✔ capacity rejection leaves no accepted binding and unchanged retry can subsequently succeed (538.588176ms)
+✔ malformed or foreign captured request identity never creates a receipt (247.674181ms)
+✔ durable commands commit with admission, deduplicate and reject changed payloads (291.927629ms)
+✔ unstarted claims recover with a higher fence and session FIFO survives equal timestamps (42.789727ms)
+✔ overload rolls back acceptance and a retry keeps its transaction identity (556.274494ms)
+✔ steering bypasses an active normal turn but never becomes a queued turn (25.696598ms)
+✔ process death preserves committed commands and fences uncertain dispatch (659.996715ms)
+✔ independent dispatcher processes claim one committed command only once (161.81293ms)
+✔ room rotation and database-wide slots preserve control capacity across dispatch owners (112.503006ms)
+✔ byte and wait-age limits reject new work while preserving duplicate receipts and steering (56.897768ms)
+✔ clear queue fences unstarted claims and preserves dispatched receipt ownership (37.843798ms)
+✔ receipt polling retains an older active turn after a long stream of terminal steering receipts (267.849213ms)
+✔ lease recovery monotonically honors every terminal output with a deterministic persistence barrier (99.319562ms)
+✔ bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors (263.983265ms)
+✔ one malformed reconciliation candidate cannot prevent an unrelated terminal repair (34.123525ms)
+✔ admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available (278.962222ms)
+✔ durable queue health separates dispatchable backlog from FIFO degradation using bounded metadata (25.352993ms)
+✔ health summaries remain operationally bounded across large terminal history (61.025383ms)
+✔ FIFO predecessor checks use the state-and-stream covering index instead of scanning terminal history (19.330674ms)
+✔ content binding has a canonical JSON/UTF-8 vector matching native SHA-256 (2.295737ms)
+✔ wire capture is independent and binds all extensions, frozen revisions and resource references (2.794035ms)
+✔ unsupported protocols, targets, delivery values and malformed proofs fail closed (2.555145ms)
+✔ content binding stays browser-safe and has no server or plugin registry dependencies (86.970119ms)
+ℹ tests 47
+ℹ suites 0
+ℹ pass 47
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14332.290558
+✔ content-bound durable HTTP admission captures the original body before mutable augmenters (495.564365ms)
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+✔ content-bound durable HTTP admission rejects invalid identity without upgrading old receipts (488.424686ms)
+✔ versioned durable admission acknowledges before cold runtime dispatch and preserves its receipt (493.668064ms)
+✔ Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts (465.05988ms)
+✔ clear_queue cancels undispatched durable receipts without cancelling an initializing message (531.80828ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 61988.031975

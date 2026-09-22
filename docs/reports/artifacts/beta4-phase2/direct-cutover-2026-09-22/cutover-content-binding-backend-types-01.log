@@ -1,0 +1,19 @@
+This is a focused batch, not a full suite or installation test.
+
+<--- Last few GCs --->
+
+[1309280:0x37c3a000]    30053 ms: Mark-Compact (reduce) 381.2 (387.3) -> 377.7 (382.1) MB, pooled: 0 MB, 115.58 / 0.00 ms  (+ 0.0 ms in 2 steps since start of marking, biggest step 0.0 ms, walltime since start of marking 117 ms) (average mu = 0.389, curre
+FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0x931db0  [node]
+ 2: 0x75968e node::OOMErrorHandler(char const*, v8::OOMDetails const&) [node]
+ 3: 0xc70d60  [node]
+ 4: 0xc70e4f  [node]
+ 5: 0xf14725  [node]
+ 6: 0xf14752  [node]
+ 7: 0xf14a4a  [node]
+ 8: 0xf2574a  [node]
+ 9: 0xf29af0  [node]
+10: 0x19c77d1  [node]
+.pibo/planning/beta4-full-completion-20260922T101802Z/run-focused.sh: line 23: 1309280 Aborted                 (core dumped) "$@"

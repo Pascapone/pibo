@@ -1,0 +1,19 @@
+started=2026-09-22T14:04:16Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --types\ node\ --esModuleInterop\ src/shared/message-content-binding.ts\ src/apps/chat-ui/src/attachments/core-attachment-draft.ts\ src/apps/chat-ui/src/attachments/core-attachment-receipts.ts\;\ echo\ \"Targeted\ content-binding/draft/receipt\ typecheck\ passed\ \(not\ root\ typecheck\)\"\;\ node\ $RUN/transpile-for-tests.mjs\;\ node\ scripts/build-pibo4-artifacts.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ test/message-content-binding.test.mjs\ test/message-command-content-binding.test.mjs\ test/message-command-store.test.mjs\ test/chat-ui-attachment-submission.test.mjs\ test/chat-ui-core-attachment-pilot.test.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ --test-name-pattern=\"\^\(content-bound\ durable\ HTTP\|versioned\ durable\ admission\|Chat\ Web\ reports\ interrupted\ FIFO\|clear_queue\ cancels\)\"\ test/web-channel.test.mjs
+source=79661828d304ee5403e9f49ff754e487d94ca67d
+ M src/apps/chat-ui/src/attachments/core-attachment-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-receipts.ts
+ M src/apps/chat/chat-request-normalizers.ts
+ M src/apps/chat/web-app.ts
+ M src/data/async-chat-storage.ts
+ M src/data/chat-storage-worker.ts
+ M src/data/message-command-store.ts
+ M test/web-channel.test.mjs
+?? src/shared/message-content-binding.ts
+?? test/chat-ui-attachment-submission.test.mjs
+?? test/message-command-content-binding.test.mjs
+?? test/message-content-binding.test.mjs
+fd453d715ddfd2e79df6e0d6b25cdb988c7198ab7f8d13e0fd1b459d2b2371f9  -
+exit=0
+ended=2026-09-22T14:11:03Z
