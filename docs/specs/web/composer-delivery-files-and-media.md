@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-22T14:28:55Z"
+  at: "2026-09-22T16:51:14Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -17,18 +17,52 @@ sources:
   - id: "content-binding-source-and-tests"
     resource: "scope:direct-controller checkpoint 08830dfc08e2029746f06bad8337c5f321870399"
     title: "Opt-in content binding, local prepared submissions and focused tests"
+  - id: "provider-admission-source-and-tests"
+    resource: "scope:direct-controller checkpoint 72d60f5b720034abd2cc0d394d719736fccdc8ab"
+    title: "Pinned typed JSON admission and structured product history"
 implementation:
   state: "current"
-  baseline_commit: "08830dfc08e2029746f06bad8337c5f321870399"
+  baseline_commit: "72d60f5b720034abd2cc0d394d719736fccdc8ab"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "47 focused binding/draft/store tests and 5 selected HTTP tests passed; other named-test evidence remains historical"
-  build_typecheck_package_execution: "browser-safe binding/draft/receipt target typecheck and 22-plugin artifact build passed on test-only ESM emit; backend target and root compiler evidence remain resource-blocked; installation user-skipped"
+  focused_test_execution: "98 focused provider/history/binding/draft/store tests and 7 selected HTTP tests passed; counts overlap earlier batches and other named-test evidence remains historical"
+  build_typecheck_package_execution: "protocol/provider/draft target typecheck and 22-plugin artifact build passed on test-only ESM emit; broader backend target and root compiler evidence remain resource-blocked; installation user-skipped"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "08830dfc08e2029746f06bad8337c5f321870399"
+  commit: "72d60f5b720034abd2cc0d394d719736fccdc8ab"
   requirements:
+    - id: "WEB-COMPOSER-ATTACHMENTS-008"
+      status: "implemented"
+      sources:
+        - path: "src/attachments/message.ts"
+          symbol: "materializeAttachmentMessage"
+        - path: "src/attachments/server-providers.ts"
+          symbol: "acquireAttachmentProviders"
+        - path: "src/attachments/provider-pins.ts"
+          symbol: "attachmentProviderPin"
+        - path: "src/apps/chat-ui/src/plugins/browser-host.tsx"
+          symbol: "BrowserPluginHost"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "sendChatMessage"
+      tests:
+        - path: "test/attachment-message.test.mjs"
+          name: "attachment selection, revision, declaration and registry ownership must all agree"
+        - path: "test/attachment-message.test.mjs"
+          name: "provider shutdown drains admitted work and short-lived scopes do not accumulate"
+        - path: "test/attachment-message.test.mjs"
+          name: "provider v1 validation and serialization reject asynchronous results without unhandled rejection"
+        - path: "test/attachment-message.test.mjs"
+          name: "Core attachment admission materializes validated JSON without a plugin or a ten-attachment cap"
+        - path: "test/web-channel.test.mjs"
+          name: "K07 HTTP admission validates scoped providers and stores materialized frozen data without starting a runtime"
+        - path: "test/web-channel.test.mjs"
+          name: "K07 HTTP admission rejects unowned media and authority fields while Core JSON needs no plugin service"
+      failures:
+        - "Wrong owner, missing selection, artifact drift and ambiguous registration fail closed; plugins cannot replace Core builtins."
+        - "Media has no productive authority resolver in this checkpoint and is rejected; legacy paths cannot bypass typed resource bindings."
+        - "Composer sending, rich history rendering and headful acceptance are not established by API and module tests."
+      confidence: "high"
     - id: "WEB-COMPOSER-CONTENT-007"
       status: "implemented"
       sources:
@@ -304,7 +338,7 @@ Per-Session composer state, queue/steer delivery, slash/local actions, bounded u
 
 ## Scope
 
-The content-binding and durable duplicate-admission changes are anchored at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
+Provider-pinned typed JSON admission is anchored at `72d60f5b720034abd2cc0d394d719736fccdc8ab`, following content binding at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
 
 ### In scope
 
@@ -350,7 +384,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 An explicit `admissionVersion: 2` on the message route commits a durable command, receipt and accepted product event atomically before returning HTTP 202. The response contains `receipt` and `statusPath`. Unversioned callers retain the legacy response and dispatch contract; unsupported versions return 400. The browser uses version 2. Its accepted user history already carries the Pibo input identity, so a reload can resolve the receipt before any runtime output. Admission preserves existing runtime status.
 
-The room/actor/client transaction key retains its scope. For version 2 it binds the target Session, effective message content and delivery mode. An unchanged retry returns the same receipt; conflicting reuse or a key already accepted under the legacy contract returns 409. Command payloads are bounded to 1 MiB, with reference-backed durable storage. Compact receipts have no time-based expiry and remain independent of optional trace/telemetry retention for the lifetime of this database. This does not promise identity across database replacement or restore to a state before acceptance.
+The room/actor/client transaction key retains its scope. For version 2 it binds the target Session, effective message content and delivery mode. An unchanged retry returns the same receipt; conflicting reuse or a key already accepted under the legacy contract returns 409. Command materialized text plus any structured attachment snapshot are bounded to 1 MiB, with reference-backed durable storage. Compact receipts have no time-based expiry and remain independent of optional trace/telemetry retention for the lifetime of this database. This does not promise identity across database replacement or restore to a state before acceptance.
 
 The startup dispatcher uses durable fenced claims, at most twelve local outstanding dispatches, including the reserved Steering allowance, and 30-second renewable leases. Normal commands remain FIFO per Session; Steering keeps its separate delivery mode and bypasses an active normal turn. Runtime outputs advance receipt state through `accepted`, `waiting_slot`, `initializing`, `session_queue`, `running` and `completed`/`failed`. Expired unstarted claims can be reclaimed. Lease recovery first rechecks persisted `message_finished`, `session_error`, and `message_steered` evidence and monotonically settles the matching receipt; only potentially dispatched claims without unambiguous terminal evidence become `interrupted`. Startup repeats this repair in bounded batches without appending output. Ambiguous work is never replayed. Unstarted normal successors behind a still-interrupted predecessor are explicitly failed as not dispatched, in bounded batches, rather than remaining silently accepted. This is not an exactly-once guarantee for provider/tool effects.
 
@@ -369,11 +403,25 @@ Schema v10 introduced durable commands; schema v11 also persists dispatch rotati
 
 An optional `contentBindingVersion: 1` on `POST /api/chat/message` MUST require `admissionVersion: 2`, an explicit Pibo Session and a normalized, nonempty `clientTxnId`. Invalid versions/identities fail with 400. The server captures the JSON wire body before mutable/asynchronous message augmenters. The storage worker derives the shared canonical SHA-256 from that body, its resolved Session and normalized delivery; it MUST NOT accept a client-provided hash as authority. All submitted extension inputs participate without a feature-specific allowlist.
 
-Opted-in commands store `pibo-content-v1:<request SHA-256>:<effective command SHA-256>` in the existing opaque fingerprint column. The suffix still binds materialized text, Room, Session, delivery and the content proof. This uses the existing atomic command insertion and adds no table, schema migration, sidecar, envelope payload duplication or receipt file read. POST and both GET receipt surfaces expose only the optional `contentBinding: {version: 1, sha256}`. Unknown/legacy stored formats have no proof. Existing unflagged fingerprints remain byte-identical. Bound↔unbound retries and changed bodies/delivery/materialization conflict with 409; there is no proofless downgrade or silent upgrade.
+Opted-in commands store `pibo-content-v1:<request SHA-256>:<effective command SHA-256>` in the existing opaque fingerprint column. The suffix still binds materialized text, Room, Session, delivery and the content proof; typed attachment commands additionally bind their structured snapshot hash and byte count. The content-proof mechanism uses the existing atomic command insertion and adds no table, schema migration, proof sidecar, duplicate request envelope or receipt file read. The separately owned product-history snapshot below is user content, not receipt proof storage. POST and both GET receipt surfaces expose only the optional `contentBinding: {version: 1, sha256}`. Unknown/legacy stored formats have no proof. Existing unflagged fingerprints remain byte-identical. Bound↔unbound retries and changed bodies/delivery/materialization conflict with 409; there is no proofless downgrade or silent upgrade.
 
 The private K07 draft seam's `prepareSubmission` checks the held original snapshot and persists the exact body and independently computed proof **before** a POST. A transaction cannot replace that body, delivery or prepared upload metadata. Write failures publish no new RAM state; reload validates body↔snapshot↔proof consistency. Old stored drafts remain readable without invented proof. `reconcileAcceptance` consumes only matching frozen revisions after a matching server proof and supported receipt-row shape; a receipt ID or POST-echoed fingerprint alone cannot consume. Missing/mismatched proof, rejected/unknown shapes or lookup failures preserve the draft. Every supported durable state, including `failed` and `interrupted`, proves admission when bound; model failure, cancellation or ambiguous execution never authorize an automatic new send. Already-consumed local duplicates consume/notify nothing and are honestly marked weak when no fresh proof is retained.
 
-**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. K07 materialization/admission and productive provider/media/Composer wiring remain separate work, as does multi-tab persistence CAS. The per-instance/reload proof checks do not prevent an unrelated stale tab from overwriting shared storage.
+**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. Typed JSON materialization/admission is implemented below; productive media/Composer wiring and multi-tab persistence CAS remain separate work. The per-instance/reload proof checks do not prevent an unrelated stale tab from overwriting shared storage.
+
+### Requirement: WEB-COMPOSER-ATTACHMENTS-008
+
+`attachmentVersion: 1` opts into typed records and requires durable admission v2 plus content binding v1. Ordered records carry `id`, positive safe-integer `revision` and `schemaVersion`, `type`, JSON `payload`, and optional plural media descriptors. Provider pins carry `type`, `pluginId`, `contributionId`, artifact `revision` and `contentHash`; resource bindings associate one `draftResourceId` with one opaque `preparedUploadId`. Extra authority fields, ambiguous identities and nonempty legacy `fileAttachmentPaths` fail closed. Without this flag, legacy extension inputs keep their previous interpretation. The legacy ten-upload-file limit is not a total K07 attachment limit.
+
+For plugin types, the server MUST reconcile the Session-effective contribution, requested artifact pin, live installation, registration owner and executable identity through the existing PluginHost index. Both declared contribution and resource registrations are supported, but exactly one matching registration is required. Current-plan reads use the live generation or pure preview without starting a runtime; historical delivery evidence is not selection authority. Core builtins require no plugin service and cannot be replaced by plugin registrations. Browser lookup and ownership pins are bound to the same Session-effective artifact selection.
+
+Short-lived child scopes retain providers through admission, block ordinary removal and drain during host shutdown. Successful children retire their parent cleanup entry; failed children remain barriers. Selection is rechecked after asynchronous augmentation and before storage admission, not through a new cross-service profile/SQLite CAS.
+
+Schema validation and synchronous v1 validation/serialization run on detached values. Promises are rejected rather than silently accepted as successful validation. Provider results are matching JSON parts or refs to Core-resolved resources, never roles, tools or admission identities. Canonical JSON is materialized as ordinary user content. Mutable augmentation cannot overwrite Core authority fields. This boundary is not a plugin sandbox or an exactly-once external-effects guarantee.
+
+Structured snapshots and their byte/refcount ownership belong to [product history](/specs/data/product-store-history-and-read-models.md). Durable admission is independent of model outcome; the existing receipt proof remains readable after provider removal or missing snapshot files. It proves past admission, not present byte availability.
+
+**Current limit:** there is no production media resolver or staged-upload issuer in this checkpoint. Typed media fails with `ATT_BYTES_MISSING`; providers never receive trusted filesystem paths. Actual Composer preparation/retry, secured bytes, copy holders, preview/GC, rich history rendering, auth/logout and multi-tab integration remain open. API/module coverage is not headful acceptance.
 
 ### Requirement: WEB-COMPOSER-DRAFTS-001
 
@@ -516,7 +564,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 - Evidence gap: No headful microphone permission, recording, keyboard, file picker/drop, image dialog, or speech validation.
 - Evidence gap: No external media provider path executed.
-- K07 content-bound admission is an opt-in API plus draft/receipt seam, not the completed attachment cutover. Provider-aware mutation/freeze, bytes/GC/copy/auth, server materialization and active-provider validation, multi-tab CAS and Composer/UI integration remain open.
+- K07 content-bound typed JSON admission and pinned provider validation are implemented, with a private draft/receipt seam. Productive provider-aware Composer mutation/freeze, media authority, bytes/GC/copy/auth, multi-tab CAS and rich UI/history integration remain open; this is not the completed attachment cutover.
 
 ## Reconciled stale claims
 
@@ -528,8 +576,9 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 ## Verification and traceability
 
-- Content-binding source checkpoint: `08830dfc08e2029746f06bad8337c5f321870399`. The focused batch passed 47 binding/draft/store tests and five selected HTTP tests, including existing admission/barrier/queue behavior; it did not run the entire Web suite.
-- Browser-safe binding/draft/receipt strict target typecheck passed. A separate backend target import graph exhausted a 384 MiB heap (exit 134); no backend or root typecheck pass is claimed. Fresh file-at-a-time ESM emit was behavioral-test input, not a release compiler pass; 22 plugin artifacts rebuilt successfully.
+- Provider-admission source checkpoint: `72d60f5b720034abd2cc0d394d719736fccdc8ab`, following the unchanged JSON-helper extraction `4578810ee33172d3dba9cbcfc454bdf51062cf77`. `cutover-k07-admission-focused-04` passed 98 focused tests and seven selected HTTP tests. Earlier content-binding batches passed 47 plus five; coverage overlaps and is not a unique-test sum. The entire Web suite was not run.
+- The protocol/provider/draft strict target typecheck passed. Earlier browser-safe binding checks also passed; a broader backend target import graph exhausted a 384 MiB heap (exit 134), and no broader backend or root typecheck pass is claimed. The fresh 577-file ESM emit was behavioral-test input, not a release compiler pass; 22 plugin artifacts rebuilt successfully.
+- Preserved failed attempts exposed an initial media TypeScript inference error, double JSON serialization, typed-error transport loss and an HTTP fixture attempting to mutate a frozen plan. All were corrected before the final bounded pass; failures are not hidden or reclassified as passes.
 - Commands, outputs, failures and source/verification boundaries are preserved in the [bounded evidence collection](/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json). Counts from separate batches overlap.
 - Remaining source/named-test and Docker/typecheck/package claims belong to the historical `39090b8850758293e69380a52bb7498d7c955bc2` authoring package; they are not rerun claims for the current candidate. Candidate installation acceptance is explicitly user-skipped, not passed.
 - Headful visual/focus/keyboard/pointer/responsive/PWA/iframe/annotation/settings/VS Code acceptance was not performed.

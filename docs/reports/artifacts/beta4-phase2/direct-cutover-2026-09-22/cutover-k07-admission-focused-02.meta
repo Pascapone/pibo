@@ -1,0 +1,27 @@
+started=2026-09-22T16:12:10Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --types\ node\ --esModuleInterop\ src/attachments/message.ts\ src/attachments/server-providers.ts\ src/attachments/provider-pins.ts\ src/apps/chat-ui/src/attachments/core-attachment-draft.ts\;\ echo\ \"Targeted\ attachment\ protocol/provider/draft\ typecheck\ passed\ \(not\ web-app/backend/root\ graph\)\"\;\ node\ $RUN/transpile-for-tests.mjs\;\ node\ scripts/build-pibo4-artifacts.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/attachment-message.test.mjs\ test/attachment-message-storage.test.mjs\ test/attachment-provider-registry.test.mjs\ test/plugin-system-host.test.mjs\ test/plugin-system-browser.test.mjs\ test/chat-ui-core-attachment-pilot.test.mjs\ test/chat-ui-attachment-submission.test.mjs\ test/message-content-binding.test.mjs\ test/message-command-content-binding.test.mjs\ test/message-command-store.test.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ --test-name-pattern=\"\^\(K07\ HTTP\|content-bound\ durable\ HTTP\|versioned\ durable\ admission\|Chat\ Web\ reports\ interrupted\ FIFO\|clear_queue\ cancels\)\"\ test/web-channel.test.mjs
+source=acad0405c238f1232f6f59a4a25ed9641307007e
+ M src/apps/chat-ui/src/attachments/core-attachment-draft.ts
+ M src/apps/chat-ui/src/plugins/browser-host.tsx
+ M src/apps/chat/chat-request-normalizers.ts
+ M src/apps/chat/data/session-query-service.ts
+ M src/apps/chat/web-app.ts
+ M src/attachments/core-providers.ts
+ M src/attachments/types.ts
+ M src/data/chat-storage-worker.ts
+ M src/data/ingest-service.ts
+ M src/data/message-command-store.ts
+ M src/plugins/scope.ts
+ M test/plugin-system-browser.test.mjs
+ M test/web-channel.test.mjs
+?? src/attachments/json.ts
+?? src/attachments/message.ts
+?? src/attachments/provider-pins.ts
+?? src/attachments/server-providers.ts
+?? test/attachment-message-storage.test.mjs
+?? test/attachment-message.test.mjs
+?? test/helpers/attachment-fixture.mjs
+218962dd79c4dcadb8baa1790013ac49b706504704b35d1a34042092cc71e7eb  -
+exit=1
+ended=2026-09-22T16:17:14Z

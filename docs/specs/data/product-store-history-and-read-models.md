@@ -6,19 +6,45 @@ tags: ["data", "product-store", "history"]
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-08T18:00:00Z"
+  by: "openai/codex"
+  at: "2026-09-22T16:51:14Z"
 sources:
-  - resource: "scope:Current implementation and tests at traceability.commit"
+  - resource: "scope:Current source at traceability.commit; structured attachment history verified by cutover-k07-admission-focused-04"
+  - resource: "scope:Historical schema/history authoring checkpoints e5dada192a650482d7783540854090943fc5454c and d30e0250fdce4017920c7f9c41c1e2067124d23b; earlier Docker/full-typecheck evidence is not current candidate acceptance"
 implementation:
   state: "current"
-  baseline_commit: "e5dada192a650482d7783540854090943fc5454c"
-  source_evidence: "performed"
-  test_execution: "focused schema, session-store, and delegated-observation tests passed in isolated Docker; broader 66-test selection passed 65 and hit one environment-only systemd isolation failure"
-  build_and_typecheck_execution: "clean full typecheck passed"
+  baseline_commit: "72d60f5b720034abd2cc0d394d719736fccdc8ab"
+  source_evidence: "performed for structured attachment history and schema version; other named evidence retains its historical scope"
+  test_execution: "98 focused attachment/provider/history/binding tests and 7 selected HTTP tests passed; not a full data or Web suite"
+  build_and_typecheck_execution: "protocol/provider/draft target typecheck and 22 plugin artifacts passed; broader backend/root compilation remains resource-blocked; installation user-skipped"
 traceability:
-  commit: "e5dada192a650482d7783540854090943fc5454c"
+  commit: "72d60f5b720034abd2cc0d394d719736fccdc8ab"
   requirements:
+    - id: "WP02-DATA-STORE-006"
+      status: "implemented"
+      sources:
+        - path: "src/data/chat-storage-worker.ts"
+          symbol: "execute"
+        - path: "src/data/ingest-service.ts"
+          symbol: "ChatDataIngestService.ingestUserMessageAccepted"
+        - path: "src/data/message-command-store.ts"
+          symbol: "MessageCommandStore"
+        - path: "src/apps/chat/data/session-query-service.ts"
+          symbol: "ChatSessionQueryService.deleteSessions"
+      tests:
+        - path: "test/attachment-message-storage.test.mjs"
+          name: "structured attachment history survives restart and optional event loss without receipt file reads"
+        - path: "test/attachment-message-storage.test.mjs"
+          name: "attachment snapshot references are acquired once per message and released by product-history deletion"
+        - path: "test/attachment-message-storage.test.mjs"
+          name: "structured snapshot bytes participate in existing per-command and session admission budgets"
+        - path: "test/attachment-message-storage.test.mjs"
+          name: "canonical attachment snapshots deduplicate key-order variants and never turn raw paths into resources"
+      failures:
+        - "Optional event retention and provider availability do not own structured product history or receipt identity."
+        - "Raw paths are not media authority; this JSON-only checkpoint rejects media without an authorized resource."
+        - "Prepared file publication precedes the database transaction; no global staged-file garbage collection is claimed."
+      confidence: "high"
     - id: "WP02-DATA-STORE-001"
       status: "implemented"
       sources:
@@ -212,11 +238,11 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 # Current behavior
 
-- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=9`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Schema version 9 also installs the Session-owned `session_agent_observation_auto_cursors` table defined by SPC-DATA-002; that shared physical migration does not transfer semantic ownership to this specification. Payload deduplication uses SHA-256, content type, and retention class as one indexed semantic identity, while different metadata variants retain isolated rows and files. Opening a supported legacy schema transactionally repairs retired required partition columns and migrates the former SHA-only payload uniqueness without rewriting existing payload files; future schemas fail before mutation.
+- Persistence and models: `PIBO_DATA_SCHEMA_VERSION=15`; rooms; payloads; event log; chat messages; observations; session stats; app read state; navigation; indexer offsets; migration import map; durable render high-water, output-part, and tool-invocation counters; external payload root with SHA-256 metadata, refcounting, and gzip/identity encoding. Schema version 9 introduced the Session-owned `session_agent_observation_auto_cursors` table defined by SPC-DATA-002; that shared physical migration does not transfer semantic ownership to this specification. Payload deduplication uses SHA-256, content type, and retention class as one indexed semantic identity, while different metadata variants retain isolated rows and files. Opening a supported legacy schema transactionally repairs retired required partition columns and migrates the former SHA-only payload uniqueness without rewriting existing payload files; future schemas fail before mutation.
 - Routes and protocols: No HTTP route is owned; Chat query services are consumed by Web routes.
 - State transitions: User acceptance and output ingestion append idempotent event facts, then project normalized messages and observations. Client transaction IDs deduplicate retries; repeated text without a transaction ID remains distinct. Equivalent output aliases canonicalize to one versioned fingerprint, while versionless persisted fingerprints are compared with the exact legacy algorithm. Later assistant finals within a turn receive a new output-part identity, and queued versus completed execution results have distinct phase identities with legacy final-key lookup compatibility. Conflicting reuse remains a permanent collision. Canonical render sequence, output-part index, and tool-invocation ordinal survive restart and clock rollback. Read cursors advance monotonically, and an idle started turn without a terminal projects an explicit bounded incomplete-integrity marker rather than a false running state.
 - Failure and security: Bounded payload reads verify size and SHA-256. Deferred payload authorization requires exact bounded session/tool/event evidence and fails closed on ambiguity or SQL cap overflow. Missing or corrupt external payload content falls back to the durable preview where the history service supports it.
-- Compatibility: Legacy Pi binding columns are backfilled and old-writer Pi updates are synchronized by migration triggers. Live deltas are excluded from durable timeline facts by default. Projections are rebuildable and do not replace event_log facts.
+- Compatibility: Legacy Pi binding columns are backfilled and old-writer Pi updates are synchronized by migration triggers. Live deltas are excluded from durable timeline facts by default. Read projections do not replace durable facts; the structured attachment snapshot owned by a product message is itself durable user content and cannot be rebuilt from an optional accepted-event marker.
 - Product-data boundary: App Context identifies one authenticated product data space; it is not a tenant or per-user datastore boundary.
 - Workflow-store boundary: Fresh product storage does not create retired container storage. Upgrade migration removes old catalog tables from `pibo.sqlite` after transferring catalog facts to `pibo-workflows.sqlite`; catalog-only upgrades do not require retired container storage. Canonical Sessions and history remain in `pibo.sqlite`.
 
@@ -224,7 +250,7 @@ This specification describes implemented behavior at the traceability commit. Pl
 
 ## Requirement: WP02-DATA-STORE-001
 
-The specification SHALL define schema version 9, install the Session-owned automatic observation cursor table without claiming its semantics, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
+The specification SHALL identify the current shared schema version 15, retain the Session-owned automatic observation cursor table introduced by version 9 without claiming its semantics, repair supported legacy physical tables transactionally, migrate SHA-only payload identity without rewriting existing payload files, reject unsupported future versions without mutation, and assign only the listed non-Session, non-telemetry, non-Workflow product tables to this owner.
 
 ## Requirement: WP02-DATA-STORE-002
 
@@ -241,6 +267,18 @@ History, timeline, room, session, event-command, and read-state services SHALL q
 ## Requirement: WP02-DATA-STORE-005
 
 Deferred tool payload access SHALL fail closed unless one complete, exact, bounded lifecycle proves session and tool ownership.
+
+## Requirement: WP02-DATA-STORE-006
+
+Typed attachment admission SHALL retain one canonical structured snapshot as product user history, independently of optional event projections and provider availability. The worker derives `{formatVersion: 1, attachments, providerPins, resources}` from captured request data, not mutable extension metadata. At this checkpoint resources are empty: binary media authority is not implemented and unsupported media fails closed.
+
+Canonical UTF-8 JSON bytes use the existing PayloadStore with content type `application/json` and retention class `chat_attachment`. The product message's `attributes.attachmentSnapshotRef` owns one logical reference. Message insertion, reference acquisition and durable command insertion share the existing transaction; a duplicate receipt does not acquire another reference. Optional events carry bounded version/count markers, not a duplicate snapshot envelope. The plain-text command claim format is unchanged.
+
+The command fingerprint additionally binds the snapshot SHA-256 and byte count. Admission charges materialized text plus structured snapshot bytes against the existing per-command and queue byte budgets; snapshot storage is not an uncharged sidecar. Existing unflagged fingerprints remain exact legacy values. Equal snapshots may share a physical payload while each owning message retains a separate logical reference and byte charge. No table or schema migration is added for this representation.
+
+Session history deletion releases the message-owned snapshot reference through the existing refcount mechanism and removes a released file after the transaction. PayloadStore still publishes prepared files before SQL commitment; staged/orphan-file collection is not added here. Receipt queries never read snapshot files: a content-bound receipt proves admission, not current availability or integrity of external bytes.
+
+The [Composer/admission contract](/specs/web/composer-delivery-files-and-media.md) owns the opt-in HTTP envelope, provider selection and local receipt reconciliation. This store contract does not establish media grants, rich history rendering, clone/fork transport, copy-buffer integration or full K07 completion.
 
 # Interfaces and ownership
 
@@ -296,11 +334,14 @@ The compact `execution_result` reproduction is source-derived: `RoutedSession.en
 - Non-current claim excluded: describe ChatNavigationQueryService as a complete native navigation implementation; its source marks it reserved and current call sites compose navigation elsewhere.
 - Non-current claim excluded: claim product store code authenticates payload reads; route authentication belongs to Web/security owners.
 - Current limit or evidence gap: No focused corruption test was found for bounded payload SHA/length validation and durable-preview fallback.
-- Current evidence boundary: Completed scoped manual editor acceptance used ordinary Session history and Workflow-owned execution facts; it does not move either authority into this store.
+- Historical evidence boundary: Completed scoped manual editor acceptance used ordinary Session history and Workflow-owned execution facts; it does not move either authority into this store or establish the current candidate's attachment UI acceptance.
+- Typed JSON attachment snapshots have transaction/refcount coverage; productive media authority, authenticated retrieval, copy/preview/GC and rich history/fork integration are not covered by this slice.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `d30e0250fdce4017920c7f9c41c1e2067124d23b`. The full typecheck and focused schema, session-store, restart, query, and debug-CLI tests passed in isolated Docker. A broader 66-test selection passed 65 tests; the remaining real yielded-Bash timeout test could not access systemd isolation inside the worker and is unrelated to the schema or observation changes. This specification does not claim a complete root suite, Pibo2, browser, real-provider, or deployment evidence for this candidate.
+Current traceability is bound to `72d60f5b720034abd2cc0d394d719736fccdc8ab`. The attachment slice passed 98 focused tests and seven selected HTTP tests, including canonical JSON storage, byte accounting, duplicate/restart behavior, optional-event loss and snapshot reference release. The protocol/provider/draft compiler target passed, followed by a 577-file test-only behavioral emit and 22 plugin artifacts. This did not typecheck the full storage/web-app graph; the earlier broader backend target exhausted its 384 MiB heap, and root compilation remains unpassed.
+
+The older full-typecheck and isolated Docker schema/session/query/debug evidence belongs to the `e5dada192a650482d7783540854090943fc5454c` / `d30e0250fdce4017920c7f9c41c1e2067124d23b` authoring history. Its broader 66-test selection passed 65 and hit one systemd-environment failure. Those are historical claims, not reruns for this candidate. The [bounded evidence collection](/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json) preserves current commands, failures and overlapping test groups. Installation is explicitly user-skipped. No full root/data suite, headful browser, real-provider, deployment or data migration acceptance is claimed.
 
 # Related concepts
 

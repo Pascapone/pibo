@@ -1,0 +1,9 @@
+This is a focused batch, not a full suite or installation test.
+src/attachments/message.ts(63,108): error TS18046: 'media' is of type 'unknown'.
+src/attachments/message.ts(82,94): error TS18046: 'item' is of type 'unknown'.
+src/attachments/message.ts(83,35): error TS18046: 'item' is of type 'unknown'.
+src/attachments/message.ts(83,93): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'AttachmentMessageMedia'.
+src/attachments/message.ts(85,37): error TS18046: 'item' is of type 'unknown'.
+src/attachments/message.ts(85,83): error TS18046: 'item' is of type 'unknown'.
+src/attachments/message.ts(85,119): error TS18046: 'item' is of type 'unknown'.
+src/attachments/message.ts(86,18): error TS18046: 'item' is of type 'unknown'.

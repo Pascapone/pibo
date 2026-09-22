@@ -1,0 +1,166 @@
+This is a focused batch, not a full suite or installation test.
+Targeted attachment protocol/provider/draft typecheck passed (not web-app/backend/root graph)
+{"method":"TypeScript.transpileModule, file-at-a-time (ESM)","emitted":577,"typechecked":false,"releaseBuild":false}
+Built 22 Pibo 4 plugin package artifacts in $WORKTREE/dist/pibo4-artifacts
+✖ structured attachment history survives restart and optional event loss without receipt file reads (273.300601ms)
+✔ attachment snapshot references are acquired once per message and released by product-history deletion (268.179483ms)
+✔ structured snapshot bytes participate in existing per-command and session admission budgets (483.004302ms)
+✖ canonical attachment snapshots deduplicate key-order variants and never turn raw paths into resources (271.958249ms)
+✔ Core attachment admission materializes validated JSON without a plugin or a ten-attachment cap (2.650108ms)
+✔ attachment admission pins resource registrations through the existing owner scope (4.343529ms)
+✔ attachment admission pins contribution registrations through the existing owner scope (0.81519ms)
+✔ attachment selection, revision, declaration and registry ownership must all agree (2.32357ms)
+✔ provider shutdown drains admitted work and short-lived scopes do not accumulate (5.151478ms)
+✔ child scope retirement preserves LIFO, once-only disposal and failed-child barriers (0.326871ms)
+✔ attachment wire versions and envelopes fail closed without changing legacy extension semantics (0.461063ms)
+✔ provider validation and serialization cannot mutate frozen input or promote authority fields (1.131407ms)
+✔ plural media requires Core-resolved references and frozen metadata, never plugin paths (1.385466ms)
+✔ Core provider snapshots are schema-valid or fail; image/file serialization needs media (0.444841ms)
+✔ attachment providers use the existing backend resource projection and owning scope (3.508683ms)
+✔ duplicate resource registration rolls back only the new provider owner (0.876843ms)
+✔ provider client binds its scope and rejects mismatched lookup identities (0.513377ms)
+✔ provider schema declarations fail closed on unsupported, cyclic and malformed rules (0.448201ms)
+✔ provider instances are executable objects, not restricted to JSON object prototypes (0.163907ms)
+✔ schema literals compare JSON structurally and string bounds count Unicode code points (0.318313ms)
+✔ prepared wire body is persisted before send, immutable across reload and storage-failure atomic (804.94049ms)
+✔ a matched receipt ID or echoed fingerprint cannot consume missing or different local content (308.125456ms)
+✔ all admitted command states consume matching revisions once, independently of model outcome (296.320258ms)
+✔ submission must contain the bound snapshot and corrupted persisted proofs fail closed (304.389311ms)
+✔ core draft add persists reload-proof snapshots with exact revisions (290.81489ms)
+✔ open transactions bind exactly one original snapshot per id (280.083687ms)
+✔ acceptance persists atomically and survives reload (282.200137ms)
+✔ caller snapshots are validated against the bound original (304.727227ms)
+✔ transaction ids match the server normalizer (562.066689ms)
+✔ envelopes are validated and storage keeps the last good state (286.023254ms)
+✔ attachment ids stay unique across generation and load (283.582349ms)
+✔ failed mutations keep state and recover through retry (277.166579ms)
+✔ draft sessions stay isolated and media metadata survives reload; byte resolvability deferred to RV-02/05/07 (284.035863ms)
+✔ writers reject values the loader would refuse (294.994774ms)
+✔ null, malformed and cyclic inputs fail controlled without state damage (344.416125ms)
+✔ failed freeze stores nothing and heals into a normal transaction (277.845614ms)
+✔ uiState-only edits keep the frozen transaction idempotent (285.336712ms)
+✔ reissued ids survive stale duplicate receipts (284.173805ms)
+✔ payload updates keep stored uiState across reload (276.401628ms)
+✔ revision exhaustion preserves persisted drafts, open transactions and UI-only edits (285.111726ms)
+✔ accepted request binding is atomic, server-derived and durable across duplicates and worker restart (515.429669ms)
+✔ same transaction rejects changed raw content, resource refs, delivery, final text and binding downgrade (271.340848ms)
+✔ unflagged fingerprints and old receipts remain exact legacy values, never silently upgraded (500.165838ms)
+✔ receipt binding survives model failure, interrupted execution and loss of the optional event projection (273.186481ms)
+✔ capacity rejection leaves no accepted binding and unchanged retry can subsequently succeed (585.861998ms)
+✔ malformed or foreign captured request identity never creates a receipt (254.69012ms)
+✔ durable commands commit with admission, deduplicate and reject changed payloads (287.964954ms)
+✔ unstarted claims recover with a higher fence and session FIFO survives equal timestamps (38.880675ms)
+✔ overload rolls back acceptance and a retry keeps its transaction identity (539.621612ms)
+✔ steering bypasses an active normal turn but never becomes a queued turn (28.338704ms)
+✔ process death preserves committed commands and fences uncertain dispatch (750.322862ms)
+✔ independent dispatcher processes claim one committed command only once (157.443314ms)
+✔ room rotation and database-wide slots preserve control capacity across dispatch owners (118.135943ms)
+✔ byte and wait-age limits reject new work while preserving duplicate receipts and steering (56.789534ms)
+✔ clear queue fences unstarted claims and preserves dispatched receipt ownership (38.129411ms)
+✔ receipt polling retains an older active turn after a long stream of terminal steering receipts (263.120465ms)
+✔ lease recovery monotonically honors every terminal output with a deterministic persistence barrier (87.344827ms)
+✔ bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors (270.279958ms)
+✔ one malformed reconciliation candidate cannot prevent an unrelated terminal repair (25.328177ms)
+✔ admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available (267.813364ms)
+✔ durable queue health separates dispatchable backlog from FIFO degradation using bounded metadata (23.458845ms)
+✔ health summaries remain operationally bounded across large terminal history (54.702152ms)
+✔ FIFO predecessor checks use the state-and-stream covering index instead of scanning terminal history (20.538726ms)
+✔ content binding has a canonical JSON/UTF-8 vector matching native SHA-256 (1.826739ms)
+✔ wire capture is independent and binds all extensions, frozen revisions and resource references (2.962878ms)
+✔ unsupported protocols, targets, delivery values and malformed proofs fail closed (0.832946ms)
+✔ content binding stays browser-safe and has no server or plugin registry dependencies (77.517511ms)
+✔ tabs require a session and effective pinned view, not just installation (1.292783ms)
+✔ same view deduplicates only within session; state and subview are retained (0.771956ms)
+✔ multiple instance identities, close neighbor, and schema mismatch preserve saved state (0.232429ms)
+✔ A→B→A / reload persists active tab, settings subview, independent state and layout (0.697208ms)
+✔ late A autosave stays A while B is selected; serialized edits are not lost (0.531652ms)
+✔ out-of-order reloads and a late reload crossing local edits cannot replace newer Session state (0.412816ms)
+✔ two-browser CAS conflict preserves losing local state and never overwrites server (0.293235ms)
+✔ failed-save and in-flight Session controllers survive bounded cache pruning (0.556653ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ plugin Refresh waits for leave guards and tabset saves, and blocks on failure (4.888652ms)
+✔ cross-session server responses and attempted tab movement are rejected (0.348893ms)
+✔ deep links encode the owning session, tab and subview (0.336727ms)
+✔ configuration URL fixes app/agent/session target independently from tab ownership (0.118602ms)
+✔ host imports only effective pinned browser modules and injects shared React/SDK (0.464008ms)
+✔ attachment browser provider is declaration-bound, session-bound and disposed with its owner (0.648473ms)
+✔ browser attachment registration rejects undeclared, mismatched and reserved providers (0.738501ms)
+✔ attachment browser freeze exposes pinned ownership while Core remains available without plugins (0.296386ms)
+✔ attachment registration is rolled back when a later browser setup step fails (0.166641ms)
+✔ AP11 Web Annotations history stays readable when its terminal renderer is missing (3.947384ms)
+✔ uninstall planning keeps its confirmation UI mounted until a catalog-changing action (38.033298ms)
+✔ setup failure rolls back renderers, hooks and views (0.521585ms)
+✔ undeclared executable browser registrations fail without affecting other owners (0.145949ms)
+✔ late module resolution after dispose never mounts executable contributions (0.111003ms)
+✔ ordered input transforms retain provenance and exact session (0.381899ms)
+✔ input rejection, timeout and cancellation do not send fallback text (6.054376ms)
+✔ session request cannot escape plugin API namespace (0.213981ms)
+✔ catalog strips all server source paths, secrets and service objects (0.175958ms)
+✔ asset serving uses immutable revision and denies traversal/symlink/backend escapes (5.354006ms)
+✔ session plan route checks access and never reads another session (0.930964ms)
+✔ build evidence reads only saved nodes, never synthesizes current catalog nodes (0.116637ms)
+ℹ tests 96
+ℹ suites 0
+ℹ pass 94
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17573.574546
+
+✖ failing tests:
+
+test at test/attachment-message-storage.test.mjs:24:1
+✖ structured attachment history survives restart and optional event loss without receipt file reads (273.300601ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + undefined
+  - [
+  -   {
+  -     id: 'att',
+  -     payload: {
+  -       text: 'frozen note'
+  -     },
+  -     revision: 1,
+  -     schemaVersion: 1,
+  -     type: 'pibo.core/note'
+  -   }
+  - ]
+
+      at TestContext.<anonymous> (file://$WORKTREE/test/attachment-message-storage.test.mjs:30:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: [ { id: 'att', revision: 1, type: 'pibo.core/note', schemaVersion: 1, payload: [Object] } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/attachment-message-storage.test.mjs:71:1
+✖ canonical attachment snapshots deduplicate key-order variants and never turn raw paths into resources (271.958249ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    Comparison {
+  +   code: 'storage_operation_failed'
+  -   code: 'ATT_BYTES_MISSING'
+    }
+
+      at async TestContext.<anonymous> (file://$WORKTREE/test/attachment-message-storage.test.mjs:77:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: Storage operation failed; reconcile the transaction ID before retrying.
+        at Worker.<anonymous> (file://$WORKTREE/dist/data/bounded-worker-client.js:115:50)
+        at Worker.emit (node:events:514:28)
+        at MessagePort.<anonymous> (node:internal/worker:350:14)
+        at [nodejs.internal.kHybridDispatch] (node:internal/event_target:848:20)
+        at MessagePort.<anonymous> (node:internal/per_context/messageport:23:28),
+    expected: { code: 'ATT_BYTES_MISSING' },
+    operator: 'rejects',
+    diff: 'simple'
+  }

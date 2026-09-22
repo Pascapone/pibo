@@ -1,0 +1,19 @@
+started=2026-09-22T16:59:34Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\;\ status=0\;\ for\ script\ in\ docs:indexes:write\ docs:validate\ docs:validate:okf\ docs:validate:migration\ docs:indexes:check\ docs:log:check\ docs:validator:test\;\ do\ echo\ \"===\ \$script\ ===\"\;\ npm\ run\ --silent\ \"\$script\"\;\ code=\$\?\;\ echo\ \"script_exit=\$script:\$code\"\;\ if\ \[\ \"\$code\"\ -ne\ 0\ \]\;\ then\ status=1\;\ fi\;\ done\;\ exit\ \"\$status\"
+source=72d60f5b720034abd2cc0d394d719736fccdc8ab
+ M docs/log.md
+ M docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json
+ M docs/specs/data/product-store-history-and-read-models.md
+ M docs/specs/web/composer-delivery-files-and-media.md
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-01.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-01.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-02.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-02.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-03.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-03.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-04.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-admission-focused-04.meta
+0d586071caf740a57e753b3a3861c9e3b83c49f6e9f81b5c4478bfa459378be8  -
+exit=0
+ended=2026-09-22T17:01:17Z

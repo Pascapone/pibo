@@ -1,11 +1,13 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T14:55:07.396303+00:00",
+  "capturedAt": "2026-09-22T17:19:08.956933+00:00",
   "implementationCommits": [
     "09fed1a7e20f106e35c24a65090289e45d821d43",
     "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
     "3b86d389cbf5f47a65d11d57a87478929c8d9d57",
-    "08830dfc08e2029746f06bad8337c5f321870399"
+    "08830dfc08e2029746f06bad8337c5f321870399",
+    "4578810ee33172d3dba9cbcfc454bdf51062cf77",
+    "72d60f5b720034abd2cc0d394d719736fccdc8ab"
   ],
   "scope": "Direct-controller source/function changes; not full V4 completion",
   "provenanceNotes": [
@@ -13,7 +15,8 @@
     "Runs were executed on recorded base HEAD plus working changes subsequently committed; metadata records status and tracked-diff digest, not a complete snapshot hash of untracked files.",
     "The captured emitter is the final test-only helper used for the observation batch; earlier attempts and intermediate passes are not all reproduced here.",
     "Batch counts overlap and must not be added as a unique-test total.",
-    "No test, resource guard, or phase approval was fabricated or weakened."
+    "No test, resource guard, or phase approval was fabricated or weakened.",
+    "New provider-admission log copies additionally trim trailing horizontal whitespace on failed-assertion pretty-print lines for Git whitespace hygiene; affected file records report the line count. Original host bytes and their SHA-256 provenance remain unchanged."
   ],
   "checksNotClaimed": {
     "rootTypecheck": "Earlier guarded full compiler attempts were resource-blocked; no whole-project typecheck pass for this candidate.",
@@ -21,8 +24,8 @@
     "candidateInstallation": "Explicitly user-skipped, not passed.",
     "productionDeployment": "Not authorized and not performed.",
     "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open.",
-    "backendContentBindingTypecheck": "Targeted backend imports exhausted384MiB V8 heap (exit134); only browser-safe helper/draft/receipt typechecks passed for this slice.",
-    "productiveK07": "Content proof binds canonical submitted JSON, not provider/resource handling or model outcome. Existing Composer wiring, bytes/copy/auth/GC, materialization and multi-tab CAS remain open."
+    "backendContentBindingTypecheck": "Earlier broader backend import graph exhausted384MiB V8 heap (exit134); protocol/provider/draft targets passed, not the full storage/web-app/root graph.",
+    "productiveK07": "Typed JSON provider-pinned admission and canonical history are implemented; actual Composer/freeze/retry, authoritative binary resources, copy/auth/GC, rich history and multi-tab CAS remain open. Module/HTTP checks are not headful or full-product acceptance."
   },
   "pathSubstitutions": {
     "$WORKTREE": "isolated beta4/full-i-20260922 implementation worktree",
@@ -324,6 +327,151 @@
           "file": "cutover-docs-03.meta",
           "sha256": "69652b07398905c2d8a304b012b39f2126904d9e9a69750bdc30ad617f3fc08a",
           "originalHostSha256": "04400c35e7f5a47a5e6b9647a42046167c1938ee0300eb6e05dbf665fe4edd86"
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-admission-focused-01",
+      "purpose": "Initial protocol target rejected unknown media elements; corrected type definition; no emit/artifact/tests ran",
+      "exit": 2,
+      "passedTests": null,
+      "sourceHeadAtStart": "acad0405c238f1232f6f59a4a25ed9641307007e",
+      "started": "2026-09-22T15:48:53Z",
+      "ended": "2026-09-22T15:49:16Z",
+      "files": [
+        {
+          "file": "cutover-k07-admission-focused-01.log",
+          "sha256": "b80e2d6502e5eefcc9abc47b76b225a1897f0c8fc1076b4a2ab2a7595890d16f",
+          "originalHostSha256": "b80e2d6502e5eefcc9abc47b76b225a1897f0c8fc1076b4a2ab2a7595890d16f"
+        },
+        {
+          "file": "cutover-k07-admission-focused-01.meta",
+          "sha256": "1549b7061e216644e3b84df5359aba310c6541168049d7b04f6e2cd8689e366e",
+          "originalHostSha256": "5e48415097395ca93bd8dafacfaf100cca8a860793018de371a82f297aeecf18"
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-admission-focused-02",
+      "purpose": "Targeted check,577-file emit,22 artifacts passed; two focused failures exposed JSON double serialization and typed worker-error transport; HTTP not reached",
+      "exit": 1,
+      "passedTests": 94,
+      "sourceHeadAtStart": "acad0405c238f1232f6f59a4a25ed9641307007e",
+      "started": "2026-09-22T16:12:10Z",
+      "ended": "2026-09-22T16:17:14Z",
+      "files": [
+        {
+          "file": "cutover-k07-admission-focused-02.log",
+          "sha256": "2d2508366953e66b24d1e373db48dbc348ba84f5a897e01c23c1eb14a0307c48",
+          "originalHostSha256": "8bc4afa9d17a1e6a2715b32fc0dbad24d971dc61b633a39ab7dad5e17bdff511",
+          "trailingHorizontalWhitespaceLinesNormalized": 4
+        },
+        {
+          "file": "cutover-k07-admission-focused-02.meta",
+          "sha256": "e4de2b1f3477b6fa500c590b56a2d47b00686a1a63a55c0aede9c510a53b15a9",
+          "originalHostSha256": "22efd8526a0d99a0db973366b9eb20e074c166cac128947972e49152f9addb2e"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 94,
+          "fail": 2
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-admission-focused-03",
+      "purpose": "Targeted check,577-file emit,22 artifacts and96 focused tests passed; HTTP fixture tried to mutate a frozen effective plan; corrected fixture, not weakened admission",
+      "exit": 1,
+      "passedTests": 102,
+      "sourceHeadAtStart": "acad0405c238f1232f6f59a4a25ed9641307007e",
+      "started": "2026-09-22T16:31:26Z",
+      "ended": "2026-09-22T16:37:20Z",
+      "files": [
+        {
+          "file": "cutover-k07-admission-focused-03.log",
+          "sha256": "9577f4798356806f5578d28c22704800aef4ffaddad33da8d606e93111cf5879",
+          "originalHostSha256": "dd917faffdfc79affb8b7c334b7fc1cba38288445c4f44db96732d538694244a",
+          "trailingHorizontalWhitespaceLinesNormalized": 2
+        },
+        {
+          "file": "cutover-k07-admission-focused-03.meta",
+          "sha256": "77171f780c3ba47ce4be40f37ece3eef41dc2e0a55b7da04ab666cf234486722",
+          "originalHostSha256": "ef6354838618b9efed2c84dce994211c7c1439640c0a6555c4c5348d546f51f9"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 96,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 6,
+          "fail": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-admission-focused-04",
+      "purpose": "Final provider-pinned JSON admission: targeted protocol/provider/draft typecheck,577-file behavioral emit,22 plugins,98 focused and7 selected HTTP passes",
+      "exit": 0,
+      "passedTests": 105,
+      "sourceHeadAtStart": "acad0405c238f1232f6f59a4a25ed9641307007e",
+      "started": "2026-09-22T16:42:32Z",
+      "ended": "2026-09-22T16:48:12Z",
+      "files": [
+        {
+          "file": "cutover-k07-admission-focused-04.log",
+          "sha256": "8944456fb753d2834044f2e88201adecf8ba017b0ed9a58557a259b83c6f41e9",
+          "originalHostSha256": "f6873e007d5bd16198d9976298459052ab233c6f629008d94162f589d9b42987"
+        },
+        {
+          "file": "cutover-k07-admission-focused-04.meta",
+          "sha256": "48e6ef46ca6bada4707f7558e3235f20d567f590a0367e8be05df0bfbd2781d5",
+          "originalHostSha256": "62833ee89c64144ba8278df7f2d2de05d953f967ea576b449857324964271f32"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 98,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 7,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-docs-04",
+      "purpose": "Provider-admission/history documentation: strict/core/migration validation, indexes/log and87 documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "72d60f5b720034abd2cc0d394d719736fccdc8ab",
+      "started": "2026-09-22T16:59:34Z",
+      "ended": "2026-09-22T17:01:17Z",
+      "files": [
+        {
+          "file": "cutover-docs-04.log",
+          "sha256": "7b814bc30ee811f60bfb4b8e83bca96a4f0fc0acf99a58d35fa5bf9c198790a7",
+          "originalHostSha256": "7b814bc30ee811f60bfb4b8e83bca96a4f0fc0acf99a58d35fa5bf9c198790a7"
+        },
+        {
+          "file": "cutover-docs-04.meta",
+          "sha256": "d5e7eb6d41243e6cb6971d4d08b9fc53661118a61a83a90b82386268baffd6e7",
+          "originalHostSha256": "b620efe652504ca96d832a425273d8c690e3fabd18812d36b394aa6b256ce485"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "documentation validators/tests",
+          "pass": 87,
+          "fail": 0
         }
       ]
     }
