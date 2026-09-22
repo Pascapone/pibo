@@ -1,0 +1,146 @@
+This is a focused batch, not a full suite or installation test.
+harness_sha256 validate.mjs 93051abb2881cc2787121c71122c82456b3a0ea78619e24036972f28974c165c
+harness_sha256 server.mjs 031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe
+harness_sha256 index.html ed1a1c3a06f6c5a4d8d6b6569758c85e337de560726b77938bf5b330e333de6c
+harness_sha256 browser-shell.sh 5f05b8c8e237ad26908885b23b77ecb38ea104799808af034cd1250e544c9f9e
+harness_sha256 bundle.js 3562a973a8845c7c7342c42347651a99e8e51e604e77a3aa9653c8a2791f2331
+browser-use open http://127.0.0.1:45091/
+url: http://127.0.0.1:45091/
+
+browser-use wait selector button
+selector: button
+found: True
+
+browser-use state
+viewport: 1265x1277
+page: 1265x1277
+scroll: (0, 0)
+K07 owned persistence fixtures
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[22]<button />
+	Run persistence fixtures
+Ready. No application database will be opened.
+
+browser-use state
+viewport: 1265x1277
+page: 1265x1277
+scroll: (0, 0)
+K07 owned persistence fixtures
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[22]<button />
+	Run persistence fixtures
+Ready. No application database will be opened.
+
+browser-use click 111 155
+clicked_coordinate: {'x': 111, 'y': 155}
+
+{
+  "kind": "real-browser-persistence-modules-only",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "pass": 10,
+  "fail": 0,
+  "results": [
+    {
+      "name": "cas-scope-capture",
+      "pass": true
+    },
+    {
+      "name": "atomic-bytes-and-immutable-owner",
+      "pass": true
+    },
+    {
+      "name": "frozen-holders-and-consumption",
+      "pass": true
+    },
+    {
+      "name": "clear-tombstone-no-aba",
+      "pass": true
+    },
+    {
+      "name": "explicit-legacy-custody-race",
+      "pass": true
+    },
+    {
+      "name": "corrupt-text-preserved",
+      "pass": true
+    },
+    {
+      "name": "injected-write-abort-not-real-quota",
+      "pass": true
+    },
+    {
+      "name": "additive-v2-upgrade",
+      "pass": true
+    },
+    {
+      "name": "blocked-upgrade-is-not-late-success",
+      "pass": true
+    },
+    {
+      "name": "two-real-tabs-one-cas-winner",
+      "pass": true
+    }
+  ]
+}
+browser-use state
+viewport: 1265x1277
+page: 1265x1277
+scroll: (0, 0)
+Persistence fixtures PASS
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[22]<button disabled=true />
+	Run persistence fixtures
+{
+  "kind": "real-browser-persistence-modules-only",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+  "pass": 10,
+  "fail": 0,
+  "results": [
+    {
+      "name": "cas-scope-capture",
+      "pass": true
+    },
+    {
+      "name": "atomic-bytes-and-immutable-owner",
+      "pass": true
+    },
+    {
+      "name": "frozen-holders-and-consumption",
+      "pass": true
+    },
+    {
+      "name": "clear-tombstone-no-aba",
+      "pass": true
+    },
+    {
+      "name": "explicit-legacy-custody-race",
+      "pass": true
+    },
+    {
+      "name": "corrupt-text-preserved",
+      "pass": true
+    },
+    {
+      "name": "injected-write-abort-not-real-quota",
+      "pass": true
+    },
+    {
+      "name": "additive-v2-upgrade",
+      "pass": true
+    },
+    {
+      "name": "blocked-upgrade-is-not-late-success",
+      "pass": true
+    },
+    {
+      "name": "two-real-tabs-one-cas-winner",
+      "pass": true
+    }
+  ]
+}
+
+browser-use screenshot $RUN/browser-persistence/cutover-k07-browser-headful-02.png
+saved: $RUN/browser-persistence/cutover-k07-browser-headful-02.png
+size: 80706
+
+PASS: ten real-browser module cases, including separate-tab CAS; no application/authentication/Composer acceptance.

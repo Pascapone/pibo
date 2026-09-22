@@ -1,0 +1,8 @@
+{
+  "pid": 26756,
+  "headlessFlag": false,
+  "userDataDirArgs": [
+    "--user-data-dir=$OPERATOR_HOME/tools/browser-use/home/auth-pool/pibo-chat/slot-001"
+  ],
+  "executable": "/opt/google/chrome/chrome"
+}

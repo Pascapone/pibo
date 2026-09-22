@@ -1,0 +1,36 @@
+This is a focused batch, not a full suite or installation test.
+Narrow browser persistence and fixture types passed; not app/root.
+✔ prepared wire body is persisted before send, immutable across reload and storage-failure atomic (367.963107ms)
+✔ a matched receipt ID or echoed fingerprint cannot consume missing or different local content (247.701608ms)
+✔ all admitted command states consume matching revisions once, independently of model outcome (242.702175ms)
+✔ submission must contain the bound snapshot and corrupted persisted proofs fail closed (267.480426ms)
+✔ synchronous commands preserve public Promise rejection and add/update/remove behavior (419.604301ms)
+✔ transaction-local transitions capture the engine serializer and never replace corrupt text (323.762851ms)
+✔ detached read views preserve frozen retry bodies and consume only frozen revisions (321.945275ms)
+✔ memory byte seam is immutable and detached without claiming IndexedDB durability (328.839508ms)
+✔ legacy synchronous adapter never falls back to unowned content on login (304.103927ms)
+✔ core draft add persists reload-proof snapshots with exact revisions (232.889515ms)
+✔ open transactions bind exactly one original snapshot per id (312.651364ms)
+✔ acceptance persists atomically and survives reload (312.543042ms)
+✔ caller snapshots are validated against the bound original (245.181492ms)
+✔ transaction ids match the server normalizer (510.840477ms)
+✔ envelopes are validated and storage keeps the last good state (251.194291ms)
+✔ attachment ids stay unique across generation and load (285.243335ms)
+✔ failed mutations keep state and recover through retry (215.589192ms)
+✔ draft sessions stay isolated and media metadata survives reload; byte resolvability deferred to RV-02/05/07 (234.111437ms)
+✔ writers reject values the loader would refuse (255.993883ms)
+✔ null, malformed and cyclic inputs fail controlled without state damage (333.460799ms)
+✔ failed freeze stores nothing and heals into a normal transaction (253.176331ms)
+✔ uiState-only edits keep the frozen transaction idempotent (262.338908ms)
+✔ reissued ids survive stale duplicate receipts (264.265333ms)
+✔ payload updates keep stored uiState across reload (269.448286ms)
+✔ revision exhaustion preserves persisted drafts, open transactions and UI-only edits (276.326646ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7464.235893
+Owned real-browser fixture bundle emitted (not Chat application build).

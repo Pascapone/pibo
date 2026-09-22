@@ -1,0 +1,15 @@
+started=2026-09-22T20:54:03Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\;\ node\ $RUN/browser-persistence/validate.mjs\ cutover-k07-browser-headful-02
+source=7f138111a283e7c81fdfab47448bd906ab7117e5
+ M src/apps/chat-ui/src/attachments/core-attachment-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-persistence.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-database.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-transitions.ts
+?? test/chat-ui-attachment-transitions.test.mjs
+?? test/fixtures/attachments/
+40ed234e42c2499005ac52db4485d75abf0404a074402c02702f5c5e30a3bdf6  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-database.ts": "6d32e83e782ada4146d60a6a3ae1711b261b6e62f8d3ea2d84fc8553ade84f38", "src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts": "62f89644e006c490920fbd790f34ecec5869bd0805f9b0baf3290aa6c5219820", "src/apps/chat-ui/src/attachments/core-attachment-transitions.ts": "0f545623351a3e6d1535d174e49c74fb12cd8118080c892c5a7852a42c46f253", "test/chat-ui-attachment-transitions.test.mjs": "14648820993f6d51c95d1dee98cca002c7435cfde1de3aedebd64b928fc9ccda", "test/fixtures/attachments/browser-persistence-lab.ts": "8f5b28ed0bac668976079446ca747a2721d263575ace1013579dba03f7d226c8"}
+exit=0
+ended=2026-09-22T20:55:22Z

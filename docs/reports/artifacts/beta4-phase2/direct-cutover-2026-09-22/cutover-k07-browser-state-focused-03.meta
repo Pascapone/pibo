@@ -1,0 +1,15 @@
+started=2026-09-22T21:03:42Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --types\ node\ --esModuleInterop\ src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts\ test/fixtures/attachments/browser-persistence-lab.ts\;\ printf\ \"Narrow\ browser\ persistence\ and\ fixture\ types\ passed\;\ not\ app/root.\\n\"\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/chat-ui-attachment-transitions.test.mjs\ test/chat-ui-core-attachment-pilot.test.mjs\ test/chat-ui-attachment-submission.test.mjs\;\ node\ --input-type=module\ --eval\ \'import\ \{build\}\ from\ \"esbuild\"\;\ await\ build\(\{entryPoints:\[\"test/fixtures/attachments/browser-persistence-lab.ts\"\]\,bundle:true\,platform:\"browser\"\,format:\"esm\"\,outfile:\"$RUN/browser-persistence/bundle.js\"\,sourcemap:\"external\"\}\)\;\ console.log\(\"Owned\ real-browser\ fixture\ bundle\ emitted\ \(not\ Chat\ application\ build\).\"\)\;\'
+source=7f138111a283e7c81fdfab47448bd906ab7117e5
+ M src/apps/chat-ui/src/attachments/core-attachment-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-persistence.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-database.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-transitions.ts
+?? test/chat-ui-attachment-transitions.test.mjs
+?? test/fixtures/attachments/
+1ab189ab5405b0150f0e6513862014927e2c6730a5fc22db431f520b2b9090de  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-database.ts": "f641f09f675b5bbf656d019c43557d120a7a0583801bb926f578677d9baef85b", "src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts": "83d80274741462846f77f5a76142d17f5d37ca9252b68506024cfe2d0ce48653", "src/apps/chat-ui/src/attachments/core-attachment-transitions.ts": "0f545623351a3e6d1535d174e49c74fb12cd8118080c892c5a7852a42c46f253", "test/chat-ui-attachment-transitions.test.mjs": "14648820993f6d51c95d1dee98cca002c7435cfde1de3aedebd64b928fc9ccda", "test/fixtures/attachments/browser-persistence-lab.ts": "3eaebb114ac715314b6c0ea8601a792729b27c84538f0f87f7412f7ab9b17929"}
+exit=0
+ended=2026-09-22T21:03:55Z

@@ -1,0 +1,35 @@
+{
+  "targetId": "C4D88D2EE4666F490E9EF3DDAE09B2C3",
+  "url": "http://127.0.0.1:45091/",
+  "console": [
+    {
+      "type": "log",
+      "args": [
+        "Removing",
+        0,
+        "browser-use highlight elements"
+      ]
+    }
+  ],
+  "exceptions": [],
+  "network": [
+    {
+      "url": "http://127.0.0.1:45091/bundle.js",
+      "status": 200,
+      "mimeType": "text/javascript"
+    }
+  ],
+  "document": {
+    "url": "http://127.0.0.1:45091/",
+    "origin": "http://127.0.0.1:45091",
+    "ready": "complete",
+    "scripts": [
+      "http://127.0.0.1:45091/bundle.js"
+    ]
+  },
+  "bundle": {
+    "status": 200,
+    "bytes": 91581,
+    "sha256": "3562a973a8845c7c7342c42347651a99e8e51e604e77a3aa9653c8a2791f2331"
+  }
+}

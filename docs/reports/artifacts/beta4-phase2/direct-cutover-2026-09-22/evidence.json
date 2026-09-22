@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T19:47:32.483063+00:00",
+  "capturedAt": "2026-09-22T21:37:40.361925+00:00",
   "implementationCommits": [
     "09fed1a7e20f106e35c24a65090289e45d821d43",
     "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
@@ -8,7 +8,8 @@
     "08830dfc08e2029746f06bad8337c5f321870399",
     "4578810ee33172d3dba9cbcfc454bdf51062cf77",
     "72d60f5b720034abd2cc0d394d719736fccdc8ab",
-    "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
+    "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b",
+    "7b64d34b378f713932ab4841e19d5ed240178a09"
   ],
   "scope": "Direct-controller source/function changes; not full V4 completion",
   "provenanceNotes": [
@@ -18,7 +19,8 @@
     "Batch counts overlap and must not be added as a unique-test total.",
     "No test, resource guard, or phase approval was fabricated or weakened.",
     "New provider-admission log copies additionally trim trailing horizontal whitespace on failed-assertion pretty-print lines for Git whitespace hygiene; affected file records report the line count. Original host bytes and their SHA-256 provenance remain unchanged.",
-    "Media-focused05 and subsequent records additionally capture untracked-file SHA-256 values. Older tracked-diff hashes alone do not cover untracked source. Media logs preserve failed startup/semantic assertion attempts; normalized copies retain original-host and copied hashes, with per-file whitespace normalization counts."
+    "Media-focused05 and subsequent records additionally capture untracked-file SHA-256 values. Older tracked-diff hashes alone do not cover untracked source. Media logs preserve failed startup/semantic assertion attempts; normalized copies retain original-host and copied hashes, with per-file whitespace normalization counts.",
+    "Browser foundation records distinguish pure/module checks, real headed native-IDB module cases and product acceptance. Final served bundle and screenshots are byte-identical artifacts; harness/log/technical text copies are path-redacted with original-host and copied hashes. Earlier failed infrastructure run and intermediate WIP passes are preserved, not added as unique coverage."
   ],
   "checksNotClaimed": {
     "rootTypecheck": "Earlier guarded full compiler attempts were resource-blocked; no whole-project typecheck pass for this candidate.",
@@ -27,13 +29,16 @@
     "productionDeployment": "Not authorized and not performed.",
     "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open.",
     "backendContentBindingTypecheck": "Earlier broader backend import graph exhausted384MiB V8 heap (exit134). Narrow resource-store/payload/protocol/provider/draft targets now pass; not full worker/web-app/root compilation.",
-    "productiveK07": "Typed JSON/media admission, scoped binary grants, fake-auth HTTP upload/read and canonical history are implemented. Actual Composer/freeze/retry, browser copy/fork/auth, chunks/GC, rich UI/history and multi-tab CAS remain open. No headful, real-login, native-tool or full-product acceptance.",
-    "mediaDurabilityAndMigration": "Schema16 uses disposable fixtures only; no valuable/live migration. No directory-fsync/power-loss, whole-system retention, streaming/load or payload-root relocation acceptance."
+    "productiveK07": "Typed JSON/media admission, scoped grants/history and private transactional browser draft/receipt/CAS repositories are implemented. Native-IDB real-tab module behavior is verified. Actual Composer/provider/freeze/retry, independent copy/fork/auth, chunks/GC and rich UI/history remain open; no real App login, native-tool or full-product acceptance.",
+    "mediaDurabilityAndMigration": "Schema16 uses disposable fixtures only; no valuable/live migration. No directory-fsync/power-loss, whole-system retention, streaming/load or payload-root relocation acceptance.",
+    "browserFoundation": "Headed Chrome/module CAS is not integrated Composer UI, real App auth/logout, actual quota exhaustion, physical/power-loss durability, independent-copy CAS or valuable-data migration. Only disposable uniquely named fixture DBs were used; copied profile state was not treated as empty."
   },
   "pathSubstitutions": {
     "$WORKTREE": "isolated beta4/full-i-20260922 implementation worktree",
     "$RUN": "host-owned full-completion control/evidence directory",
-    "$REPOSITORY": "original repository checkout"
+    "$REPOSITORY": "original repository checkout",
+    "$OPERATOR_HOME": "existing operator Pibo Home, used only by supported browser tooling",
+    "$OWNED_PREVIEW": "disposable module Preview control home"
   },
   "batches": [
     {
@@ -723,6 +728,299 @@
         }
       ],
       "untrackedFileHashesRecorded": true
+    },
+    {
+      "id": "cutover-k07-browser-state-focused-01",
+      "purpose": "Earlier WIP: narrow browser persistence types and 25 pure/transition/memory tests; no native IndexedDB runtime evidence",
+      "exit": 0,
+      "passedTests": 25,
+      "sourceHeadAtStart": "7f138111a283e7c81fdfab47448bd906ab7117e5",
+      "started": "2026-09-22T20:32:13Z",
+      "ended": "2026-09-22T20:32:27Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-k07-browser-state-focused-01.log",
+          "sha256": "c182d92aa84b8091b70472d84ba070963dbfca690de4d51419896b8a49f54883",
+          "originalHostSha256": "c182d92aa84b8091b70472d84ba070963dbfca690de4d51419896b8a49f54883"
+        },
+        {
+          "file": "cutover-k07-browser-state-focused-01.meta",
+          "sha256": "d5ae9f2b47b0ed0767a553b60c04931c06a851b0c290c2260d0751ec4a4889bd",
+          "originalHostSha256": "8b38cad494acf91f50b17cf7c5c6a64d8b7b033e734108fb05e0fef942fcddd9",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "pure transition/memory/core/submission tests",
+          "pass": 25,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-browser-state-focused-02",
+      "purpose": "Earlier WIP: narrow persistence/fixture types, 25 pure/module tests and owned browser fixture bundle; no full Chat application build",
+      "exit": 0,
+      "passedTests": 25,
+      "sourceHeadAtStart": "7f138111a283e7c81fdfab47448bd906ab7117e5",
+      "started": "2026-09-22T20:40:45Z",
+      "ended": "2026-09-22T20:40:57Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-k07-browser-state-focused-02.log",
+          "sha256": "31baf362fc3d6270ad2089e21ef54cd788b42c2da2127f715234133809a7e249",
+          "originalHostSha256": "31baf362fc3d6270ad2089e21ef54cd788b42c2da2127f715234133809a7e249"
+        },
+        {
+          "file": "cutover-k07-browser-state-focused-02.meta",
+          "sha256": "0cfea288c91d5ec9a7635cc4b4aaa9030efa502bfb1cab10f9f350c4c16cad42",
+          "originalHostSha256": "d0ace7e22128fdeba87af9983b9f9750f06f749ab77a3ae4f80103b2973035f8",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "pure transition/memory/core/submission tests",
+          "pass": 25,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-browser-state-focused-03",
+      "purpose": "Final browser foundation: narrow persistence/fixture types, 25 pure/module tests and owned browser fixture bundle; not application/root compilation",
+      "exit": 0,
+      "passedTests": 25,
+      "sourceHeadAtStart": "7f138111a283e7c81fdfab47448bd906ab7117e5",
+      "started": "2026-09-22T21:03:42Z",
+      "ended": "2026-09-22T21:03:55Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-k07-browser-state-focused-03.log",
+          "sha256": "4f1c4012f2a0ee52517def313b0fbc42615e6362a31078e5adefb114b531cfe0",
+          "originalHostSha256": "4f1c4012f2a0ee52517def313b0fbc42615e6362a31078e5adefb114b531cfe0"
+        },
+        {
+          "file": "cutover-k07-browser-state-focused-03.meta",
+          "sha256": "4419f50486be2eb69eb39059e852eff3635b089f7d6136083d0e85c6057d3bab",
+          "originalHostSha256": "99a3414173b1aa33c254814605db70b5e5a2ac4832a161112b02b4fd1b08bc50",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "pure transition/memory/core/submission tests",
+          "pass": 25,
+          "fail": 0
+        }
+      ],
+      "verifiedSourceCheckpoint": "7b64d34b378f713932ab4841e19d5ed240178a09",
+      "sourceEquivalence": "Controller verified tracked-diff and all five untracked source/test hashes against both final runs immediately before staging source7b64d34b. Extracted add/update/remove method bodies checked byte-identical."
+    },
+    {
+      "id": "cutover-k07-browser-headful-01",
+      "purpose": "Infrastructure failure: Browser Use rejected fresh element index, fixture timed out before any module case ran",
+      "exit": 1,
+      "passedTests": 0,
+      "sourceHeadAtStart": "7f138111a283e7c81fdfab47448bd906ab7117e5",
+      "started": "2026-09-22T20:50:00Z",
+      "ended": "2026-09-22T20:51:49Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-k07-browser-headful-01.log",
+          "sha256": "968b5a0d3589a17ff09e4b16541faa8c7173ced324567eabebd3d416f0014f47",
+          "originalHostSha256": "fe29ee6ab618436961634958e23b70173585581826a94f9bb07824ccbcbb7c5b",
+          "trailingHorizontalWhitespaceLinesNormalized": 4
+        },
+        {
+          "file": "cutover-k07-browser-headful-01.meta",
+          "sha256": "5e4568dd8be16cd4bf78215ba0ffadf0b87b7e33e455b223a1003350d3e32c99",
+          "originalHostSha256": "6d54b3b4300a677a20cdbc83de8350ad8e7bdb4a933931984b8c56f1f3d1ae51",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-01-technical.json",
+          "sha256": "0bc23f2ca01401f8452376b39b74b68c615da0764689c64fa4d472b00d316b86",
+          "originalHostSha256": "0bc23f2ca01401f8452376b39b74b68c615da0764689c64fa4d472b00d316b86"
+        }
+      ],
+      "executedModuleCases": 0,
+      "failureClass": "Browser Use element-index handling; no module result"
+    },
+    {
+      "id": "cutover-k07-browser-headful-02",
+      "purpose": "Earlier WIP: 10 real headed Chrome/native-IndexedDB module cases including separate-tab CAS; before final legacy recovery/close hardening",
+      "exit": 0,
+      "passedTests": 10,
+      "sourceHeadAtStart": "7f138111a283e7c81fdfab47448bd906ab7117e5",
+      "started": "2026-09-22T20:54:03Z",
+      "ended": "2026-09-22T20:55:22Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-k07-browser-headful-02.log",
+          "sha256": "0746b39d62e8a8f059fec274e41e1adac2e9546f919ee64bdd58d28859a98a27",
+          "originalHostSha256": "84e0c1ef77b56e8335de4f7c403d2813e0accffa0ab2416f390ae93b730b13db",
+          "trailingHorizontalWhitespaceLinesNormalized": 7
+        },
+        {
+          "file": "cutover-k07-browser-headful-02.meta",
+          "sha256": "d48e1902749d8c7de9c7d84c77f8f0bee5328915b534596460ddedd75681999b",
+          "originalHostSha256": "adcd70a0836b1aad2bdd9120b7d13a925a606cab6cc54c8f46a1706e06f354f3",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-02-technical.json",
+          "sha256": "ea80cb2bf5cca3ef557131ad3d666991971c4a3b73ac581ea25e8f9d14757393",
+          "originalHostSha256": "ea80cb2bf5cca3ef557131ad3d666991971c4a3b73ac581ea25e8f9d14757393"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-02.json",
+          "sha256": "49200d360bb0c87048b866c0d39c10252f82bac908c1b936f22a806b3a2931c1",
+          "originalHostSha256": "49200d360bb0c87048b866c0d39c10252f82bac908c1b936f22a806b3a2931c1"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-02.png",
+          "sha256": "02a038a907510b4eff3c8f8eb451ea163589362ad45a8d42a227218ce5250966",
+          "originalHostSha256": "02a038a907510b4eff3c8f8eb451ea163589362ad45a8d42a227218ce5250966",
+          "byteIdentical": true
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "headed native IndexedDB modules, including separate real browser tabs",
+          "pass": 10,
+          "fail": 0
+        }
+      ],
+      "servedBundleSha256": "3562a973a8845c7c7342c42347651a99e8e51e604e77a3aa9653c8a2791f2331",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36"
+    },
+    {
+      "id": "cutover-k07-browser-headful-03",
+      "purpose": "Final browser foundation: 15 real headed Chrome/native-IndexedDB module cases, Browser Use coordinate interaction, separate-tab CAS and CDP bundle/network/exception evidence; not App auth or product UI acceptance",
+      "exit": 0,
+      "passedTests": 15,
+      "sourceHeadAtStart": "7f138111a283e7c81fdfab47448bd906ab7117e5",
+      "started": "2026-09-22T21:06:38Z",
+      "ended": "2026-09-22T21:07:57Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-k07-browser-headful-03.log",
+          "sha256": "d0d505cdb4dcc7fa9ebeb03727ae7cbf5f825c14d38fde77be85e1f981b8b7b6",
+          "originalHostSha256": "7a66a30666db1a26d3c43eeb3aa2257876212c6c9b1ad0b4a1a27ee68d8c9a34",
+          "trailingHorizontalWhitespaceLinesNormalized": 7
+        },
+        {
+          "file": "cutover-k07-browser-headful-03.meta",
+          "sha256": "fb2636ec5be86a5f154353f1d08ce681e390977cc7dfeca57b2d89b67569289b",
+          "originalHostSha256": "9f81b745fa40d626e825d5d3132bdcc966990efb5f842e8543c3f6299e173406",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03-technical.json",
+          "sha256": "e468a3c1b6e804b76dda2b8624e317f2f04b72955a2fb5cf751dda32fa5cb0c4",
+          "originalHostSha256": "e468a3c1b6e804b76dda2b8624e317f2f04b72955a2fb5cf751dda32fa5cb0c4"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03.json",
+          "sha256": "9fdea1685255ab96f7c8544eb95481b77a098a6b7ff45e7aafe63ae8edab344a",
+          "originalHostSha256": "9fdea1685255ab96f7c8544eb95481b77a098a6b7ff45e7aafe63ae8edab344a"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03.png",
+          "sha256": "81ef99382fc9c4046f47e19f6940034dbf5a32ffb642ab6e73b1241d6453aa6f",
+          "originalHostSha256": "81ef99382fc9c4046f47e19f6940034dbf5a32ffb642ab6e73b1241d6453aa6f",
+          "byteIdentical": true
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03-harness/validate.mjs",
+          "sha256": "7079b1ec306e1a9af7ba11b0994d4c295e0a61e87689874875cc342164538e1c",
+          "originalHostSha256": "7079b1ec306e1a9af7ba11b0994d4c295e0a61e87689874875cc342164538e1c"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03-harness/server.mjs",
+          "sha256": "031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe",
+          "originalHostSha256": "031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03-harness/index.html",
+          "sha256": "ed1a1c3a06f6c5a4d8d6b6569758c85e337de560726b77938bf5b330e333de6c",
+          "originalHostSha256": "ed1a1c3a06f6c5a4d8d6b6569758c85e337de560726b77938bf5b330e333de6c"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03-harness/browser-shell.sh",
+          "sha256": "21ea87641204cca43e6d27f9e4501800c9a71128909da15b18a8d3a09f2c7160",
+          "originalHostSha256": "5f05b8c8e237ad26908885b23b77ecb38ea104799808af034cd1250e544c9f9e"
+        },
+        {
+          "file": "browser/cutover-k07-browser-headful-03-harness/bundle.js",
+          "sha256": "5fc3002754f444815a0795e12cd81ac6f35e2f1d92f0f99caa5ffb6351826446",
+          "originalHostSha256": "5fc3002754f444815a0795e12cd81ac6f35e2f1d92f0f99caa5ffb6351826446",
+          "byteIdentical": true
+        },
+        {
+          "file": "browser/headed-evidence.json",
+          "sha256": "11883a4b5c11cf18a57d517e22b55e05d71ad288cba1b875b8212dce1d875efc",
+          "originalHostSha256": "f172a87e69ed0143b38b67a5039d1b14347e2700cb2f0fd1e75c247512cf713b"
+        },
+        {
+          "file": "browser/cleanup.log",
+          "sha256": "693c2786265eea11de730c7fbe4e7fb33ac984e8b693be7de74b5a6f7b6c0466",
+          "originalHostSha256": "622bbf50e7a729613b11bb3b83ed63b3b1bb82c283f41f22fdb6b9df0eeb01db"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "headed native IndexedDB modules, including separate real browser tabs",
+          "pass": 15,
+          "fail": 0
+        }
+      ],
+      "servedBundleSha256": "5fc3002754f444815a0795e12cd81ac6f35e2f1d92f0f99caa5ffb6351826446",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+      "harnessScope": "Exact recorded final harness inputs; path-redacted copies except byte-identical served bundle. Earlier harness hashes are logged, but earlier complete harness bytes were not retained.",
+      "screenshotScope": "Captured fixture screenshot, not product UI visual acceptance; inline image inspection unavailable in controller tool.",
+      "fixtureIsolation": "Static loopback module lab; uniquely named owned pibo-k07-fixture-* databases only; no application/default database opened or upgraded. Browser lease profile was a stateful clone, not a clean profile or evidence of real App authentication.",
+      "cleanup": "Supported CLI released owned slot and closed only its Browser Use session; isolated Preview registration removed after auto-stop. No manual process kill, delete-profile, live gateway/config change or deployment.",
+      "verifiedSourceCheckpoint": "7b64d34b378f713932ab4841e19d5ed240178a09",
+      "sourceEquivalence": "Controller verified tracked-diff and all five untracked source/test hashes against both final runs immediately before staging source7b64d34b. Extracted add/update/remove method bodies checked byte-identical."
+    },
+    {
+      "id": "cutover-docs-06",
+      "purpose": "Browser-foundation canonical documentation: strict/core/migration/index/log validation and 87 documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "7b64d34b378f713932ab4841e19d5ed240178a09",
+      "started": "2026-09-22T21:35:34Z",
+      "ended": "2026-09-22T21:37:00Z",
+      "untrackedFileHashesRecorded": true,
+      "files": [
+        {
+          "file": "cutover-docs-06.log",
+          "sha256": "7d4707b73aa3cdf680b638c3e10891569dd2bc71e7b65b5023aad073e6e5f65b",
+          "originalHostSha256": "7d4707b73aa3cdf680b638c3e10891569dd2bc71e7b65b5023aad073e6e5f65b"
+        },
+        {
+          "file": "cutover-docs-06.meta",
+          "sha256": "d937f483aa4ab63a0e9745c6f3d285489cf2714239e83cd48b9c4a35e0dace23",
+          "originalHostSha256": "d11c166ad80567859c8639c003c5bd9d47d95a11687693e673bf73d80d074cb8",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "documentation validators/tests",
+          "pass": 87,
+          "fail": 0
+        }
+      ]
     }
   ]
 }

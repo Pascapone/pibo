@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-22T19:37:33Z"
+  at: "2026-09-22T21:27:01Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -23,18 +23,49 @@ sources:
   - id: "media-authority-source-and-tests"
     resource: "scope:direct-controller checkpoint 8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
     title: "Scoped durable media preparation, retrieval and atomic admission ownership"
+  - id: "browser-draft-source-and-tests"
+    resource: "scope:direct-controller checkpoint 7b64d34b378f713932ab4841e19d5ed240178a09"
+    title: "Private transactional browser drafts, explicit legacy custody and real-browser module verification"
 implementation:
   state: "current"
-  baseline_commit: "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
+  baseline_commit: "7b64d34b378f713932ab4841e19d5ed240178a09"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "164 focused module/provider/storage/draft tests and 11 selected HTTP tests passed; counts overlap earlier batches and other named-test evidence remains historical"
-  build_typecheck_package_execution: "narrow resource-store/payload/protocol/provider/draft type graph and 22-plugin artifacts passed on test-only ESM emit; full worker/web-app/root compilation remains unpassed; installation user-skipped"
-  visual_provider_gateway_pibo2_execution: "unperformed"
+  focused_test_execution: "Browser foundation: 25 pure/module tests and 15 headed native-IndexedDB module cases passed; earlier media checkpoint: 164 module and 11 HTTP tests. Batches overlap and are not unique-coverage totals."
+  build_typecheck_package_execution: "Narrow browser persistence/fixture types and owned browser fixture bundle passed; earlier media types, behavioral emit and 22 artifacts remain scoped to their checkpoint. No full application/root compiler or installation pass."
+  visual_provider_gateway_pibo2_execution: "Headed Browser Use/CDP module fixture only, including separate-tab CAS; no Chat UI, real App authentication, provider, gateway or Pibo2 acceptance."
 traceability:
-  commit: "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
+  commit: "7b64d34b378f713932ab4841e19d5ed240178a09"
   requirements:
+    - id: "WEB-COMPOSER-STORAGE-010"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-database.ts"
+          symbol: "openAttachmentDatabase"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts"
+          symbol: "openIndexedAttachmentDraft"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-transitions.ts"
+          symbol: "transitionCoreAttachmentDraft"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-persistence.ts"
+          symbol: "openAttachmentStores"
+      tests:
+        - path: "test/chat-ui-attachment-transitions.test.mjs"
+          name: "synchronous commands preserve public Promise rejection and add/update/remove behavior"
+        - path: "test/chat-ui-attachment-transitions.test.mjs"
+          name: "legacy synchronous adapter never falls back to unowned content on login"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "two-real-tabs-one-cas-winner"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "same-owner-custody-and-text-restore-cas"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "closed-byte-facade-hides-pending-read"
+      failures:
+        - "Stale entry revisions fail without overwriting newer state; aborted writes publish no successful result; corrupt source and retained backup text are not replaced."
+        - "Legacy custody is explicit and globally first-wins for one source key, not proof of original authorship or an automatic login fallback."
+        - "Closing a facade hides pending results without erasing the old owner's data; clearOwner is active-state reset, not logout or account erasure."
+        - "Private native-IndexedDB module evidence does not establish Composer wiring, independent-copy CAS, actual quota exhaustion, real App auth or full-product acceptance."
+      confidence: "high"
     - id: "WEB-COMPOSER-RESOURCES-009"
       status: "implemented"
       sources:
@@ -371,7 +402,7 @@ Per-Session composer state, queue/steer delivery, slash/local actions, bounded u
 
 ## Scope
 
-Scoped binary-resource admission is anchored at `8cefa246f0f7e7a4bb921e98b4349eddfd330e0b`, following provider-pinned JSON admission at `72d60f5b720034abd2cc0d394d719736fccdc8ab` and content binding at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
+Private transactional browser-draft persistence is anchored at `7b64d34b378f713932ab4841e19d5ed240178a09`. Scoped binary-resource admission is anchored at `8cefa246f0f7e7a4bb921e98b4349eddfd330e0b`, following provider-pinned JSON admission at `72d60f5b720034abd2cc0d394d719736fccdc8ab` and content binding at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
 
 ### In scope
 
@@ -440,7 +471,7 @@ Opted-in commands store `pibo-content-v1:<request SHA-256>:<effective command SH
 
 The private K07 draft seam's `prepareSubmission` checks the held original snapshot and persists the exact body and independently computed proof **before** a POST. A transaction cannot replace that body, delivery or prepared upload metadata. Write failures publish no new RAM state; reload validates body↔snapshot↔proof consistency. Old stored drafts remain readable without invented proof. `reconcileAcceptance` consumes only matching frozen revisions after a matching server proof and supported receipt-row shape; a receipt ID or POST-echoed fingerprint alone cannot consume. Missing/mismatched proof, rejected/unknown shapes or lookup failures preserve the draft. Every supported durable state, including `failed` and `interrupted`, proves admission when bound; model failure, cancellation or ambiguous execution never authorize an automatic new send. Already-consumed local duplicates consume/notify nothing and are honestly marked weak when no fresh proof is retained.
 
-**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. Typed JSON and authorized media admission are implemented below; actual Composer wiring and multi-tab persistence CAS remain separate work. The per-instance/reload proof checks do not prevent an unrelated stale tab from overwriting shared storage.
+**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. Typed JSON and authorized media admission are implemented below. The standalone synchronous engine's per-instance/reload checks do not prevent an unrelated stale tab from overwriting shared storage; the separate private IndexedDB facade below adds entry CAS. Actual Composer wiring remains separate work.
 
 ### Requirement: WEB-COMPOSER-ATTACHMENTS-008
 
@@ -467,6 +498,20 @@ The whole HTTP body remains limited to 4 MiB. The separate stored-resource limit
 Fresh message admission verifies bound media bytes in the worker before its transaction and rechecks ownership during promotion. Preparation and discard use the existing bounded storage worker; its 500 ms queue/execution limit and 10 s startup budget are unchanged. Admission tests explicitly wait for worker readiness, while a deterministic cold-start test verifies that startup does not extend an RPC deadline. A matching receipt still proves admission, not present media availability or successful model execution. Worker duplicate admission and receipt lookup do not re-read media bodies; a fresh HTTP materialization may fail on a missing file, so receipt lookup remains the reconciliation path.
 
 The [product-store contract](/specs/data/product-store-history-and-read-models.md) owns grant/refcount/schema and deletion semantics. Actual Composer freeze/preparation/retry, browser copy holders, fork transport, rich history rendering, auth/logout and multi-tab integration remain open. Fake-auth API fixtures and direct byte checks are not real-login, native-tool execution or headful acceptance.
+
+### Requirement: WEB-COMPOSER-STORAGE-010
+
+The private browser attachment repository uses `pibo-attachments-v1` database version 3. Its additive schema keeps `draft-blobs` and `copy-buffers`, adds `draft-states`, `legacy-claims` and `legacy-text-backups`, and adds owner indexes. Draft rows are keyed by `[ownerUserId, sessionId]`, where `sessionId` is a **Pibo Session**, not an authentication-session identifier. Browser owner isolation is distinct from shared server App Context access.
+
+`openIndexedAttachmentDraft` captures plain-data commands and new byte arrays before waiting. Each mutation reads the current row, compares its expected safe-integer storage revision, runs the existing engine/serializer on a transaction-local scratch store, and commits the row plus associated byte changes in one IndexedDB transaction. `writerEpoch` is diagnostic; the row revision supplies CAS. A stale caller receives `ATT_STALE_REVISION` rather than overwriting newer state. No arbitrary provider or network await occurs inside that transaction; asynchronous provider work must precede a data-only command. The existing public `add`, `update` and `remove` APIs retain Promise rejection behavior despite the new private synchronous dispatcher.
+
+New byte acquisition is atomic with a new draft record and MUST match its owner, Pibo Session, draft identity, MIME and size. Blob IDs are immutable: a collision cannot replace another row. Add/freeze checks byte availability. Frozen snapshots retain their byte holders after edits/removal; consume/release deletes only bytes no longer held by persisted owner drafts, open snapshots or the existing copy buffer. Admission reconciliation does not require local bytes still to exist. The unchanged per-blob limit is 15 MiB, not a new total attachment or storage quota. This does not yet implement independent copy bytes or copy-buffer CAS.
+
+Success is returned only after transaction completion. Abort/error becomes `ATT_STORAGE_FAILED` unless a more specific attachment error applies; a blocked upgrade fails without later silently upgrading after the caller abandoned it. Version changes close the connection. Explicit `close()` prevents subsequent reads/writes and hides pending old-owner results even when an already-started transaction committed. It does not erase data. `clearOwner()` explicitly clears active drafts/bytes/copy, retaining draft tombstones with advanced revisions to prevent stale absent-state writes. It retains legacy custody, exact text backups and original localStorage: it is neither logout nor account/browser erasure.
+
+There is no automatic unowned-localStorage fallback. `adoptLegacy` requires explicit custody confirmation, an absent entry and a globally first-wins claim for the legacy source key. The claim contains metadata, while exact original text is backed up under `[ownerUserId, sourceKey]` and round-trip checked atomically with the draft row. Foreign claimants are denied before reading that legacy content. The original localStorage string remains unchanged, and custody never invents proof of original authorship. Backup reads recheck owner, Pibo Session, key and a digest of the exact retained string. `restoreLegacyText` uses CAS and permits only an absent or explicitly cleared draft. It restores metadata/proofs, not deleted binary bytes; a later freeze still fails when required bytes are absent. A new login for the same owner may reopen the same Pibo Session. Copying into a different Pibo Session is not legacy restoration.
+
+**Evidence boundary:** the private facade is not yet the productive Composer owner. Fifteen headed Chrome/native-IndexedDB module cases include a separate-tab CAS race, disposable version-2 upgrade, blocked upgrade, injected write abort, custody/recovery races, corrupt-state preservation and close guards. Injected abort is not actual quota exhaustion. Only uniquely named owned fixture databases were opened; no application/default database or valuable copied data was upgraded. This does not establish real App authentication, integrated logout, Composer editing/sending, independent copy/fork, retention/GC or product UI acceptance.
 
 ### Requirement: WEB-COMPOSER-DRAFTS-001
 
@@ -612,7 +657,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 - Evidence gap: No headful microphone permission, recording, keyboard, file picker/drop, image dialog, or speech validation.
 - Evidence gap: No external media provider path executed.
-- K07 typed JSON/media admission, pinned provider validation and scoped durable media routes are implemented, with a private draft/receipt seam. Actual provider-aware Composer mutation/freeze/send, chunks/GC/copy/fork/auth, multi-tab CAS and rich UI/history integration remain open; this is not the completed attachment cutover.
+- K07 typed JSON/media admission, pinned provider validation, scoped durable media routes and private draft/receipt/CAS repositories are implemented. Actual provider-aware Composer mutation/freeze/send, chunks/GC/independent-copy/fork/auth and rich UI/history integration remain open. Module-level real-tab CAS is not integrated Composer acceptance or the completed attachment cutover.
 
 ## Reconciled stale claims
 
@@ -624,6 +669,8 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 ## Verification and traceability
 
+- Browser-foundation source checkpoint: `7b64d34b378f713932ab4841e19d5ed240178a09`. `cutover-k07-browser-state-focused-03` passed narrow persistence/fixture types and 25 pure/module tests, then built the owned browser fixture. `cutover-k07-browser-headful-03` passed 15 native-IndexedDB cases through headed Chrome 153, Browser Use interaction and CDP evidence, including a separate-tab CAS race. The served bundle hash matched the fixture build; console/network/exception results, exact harness and screenshot are retained. Tracked-diff and all five untracked source/test hashes matched both final runs immediately before the source commit. Extracted add/update/remove bodies were separately checked unchanged.
+- Earlier browser-focused batches passed the same 25-test group and are not added as unique coverage. Headful attempt 01 failed in Browser Use element-index handling before any module case ran; attempt 02 passed ten cases on earlier source. Both remain evidence, not final-source acceptance. No full application compiler, real App login, physical quota exhaustion, product UI, valuable-data migration or installation acceptance follows from these module checks.
 - Media-authority source checkpoint: `8cefa246f0f7e7a4bb921e98b4349eddfd330e0b`. `cutover-k07-media-admission-focused-06` passed 164 focused module/provider/storage/draft tests and eleven selected HTTP tests, with no failures/skips. Narrow resource-store/payload/protocol/provider/draft types passed, followed by a 581-file behavioral emit and 22 plugin artifacts. This is not full worker/web-app/root compilation, release packaging, installation or productive Composer acceptance.
 - Media attempts 02–04 remain failed evidence: an obsolete model-path assertion, cold-worker HTTP queue deadlines, and two module-fixture startup deadlines. Fixture readiness was made explicit without increasing limits or removing behavioral assertions. A new deterministic test retains default cold-start queue rejection; the no-HTTP startup-dispatch test still makes no HTTP request. Run 05 passed 105 plus eleven tests on prior emitted source; it did not rebuild artifacts.
 - Earlier provider-admission source checkpoint: `72d60f5b720034abd2cc0d394d719736fccdc8ab`, following the unchanged JSON-helper extraction `4578810ee33172d3dba9cbcfc454bdf51062cf77`. `cutover-k07-admission-focused-04` passed 98 focused tests and seven selected HTTP tests. Earlier content-binding batches passed 47 plus five; coverage overlaps and is not a unique-test sum. The entire Web suite was not run.

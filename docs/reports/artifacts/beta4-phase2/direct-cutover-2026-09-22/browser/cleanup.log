@@ -1,0 +1,48 @@
+2026-09-22T21:28:23Z
+pibo tools browser-use lease release pibo-chat-slot-001 (holder verified; no delete-profile)
+Released pibo-chat-slot-001
+PIBO_HOME=$OWNED_PREVIEW_HOME pibo preview remove pv-f93d74010f5c541bc5 --json (already auto-stopped)
+{
+  "removed": true,
+  "preview": {
+    "id": "pv-f93d74010f5c541bc5",
+    "piboSessionId": "ps_7437ab18-1ea8-4747-aa58-e6ef50024cd7",
+    "label": "K07 owned persistence modules",
+    "targetHost": "127.0.0.1",
+    "targetPort": 45091,
+    "workspace": "$RUN/browser-persistence",
+    "managementMode": "managed",
+    "proxyMode": "standard",
+    "serverState": "stopped",
+    "serverStartedAt": "2026-09-22T20:47:46.189Z",
+    "serverStopAt": "2026-09-22T21:17:46.189Z",
+    "serverStoppedAt": "2026-09-22T21:28:24.283Z",
+    "createdAt": "2026-09-22T20:47:46.167Z",
+    "expiresAt": "2026-09-22T21:47:46.167Z",
+    "closedAt": "2026-09-22T21:28:24.283Z"
+  }
+}
+[
+  {
+    "id": "pibo-chat-slot-001",
+    "app": "pibo-chat",
+    "holder": "beta4-k07-owned-module-fixtures",
+    "sessionName": "pibo-auth-pibo-chat-slot-001",
+    "userDataDir": "$OPERATOR_HOME/tools/browser-use/home/auth-pool/pibo-chat/slot-001",
+    "profileName": "PIBo",
+    "status": "released",
+    "browserPoolLeaseId": "browser-use:pibo-auth-pibo-chat-slot-001",
+    "browserPoolWorkerId": "local",
+    "browserPoolId": "default",
+    "browserPoolRootDir": "$OPERATOR_HOME/tools/browser-use/home/pibo-browser-pool",
+    "createdAt": "2026-09-22T20:32:52.312Z",
+    "updatedAt": "2026-09-22T21:28:23.582Z",
+    "expiresAt": "2026-09-23T04:32:52.312Z",
+    "expired": false,
+    "processAlive": true
+  }
+]
+2026-09-22T21:28:24Z
+browser-use close (only pibo-auth-pibo-chat-slot-001; no --all, no manual process kill)
+No active browser session
+2026-09-22T21:29:30Z

@@ -1,0 +1,34 @@
+This is a focused batch, not a full suite or installation test.
+harness_sha256 validate.mjs d34938dc0211479c94f5dee32f481df58d7cb494a23860e0f4b516d349d5b229
+harness_sha256 server.mjs 031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe
+harness_sha256 index.html ed1a1c3a06f6c5a4d8d6b6569758c85e337de560726b77938bf5b330e333de6c
+harness_sha256 browser-shell.sh 5f05b8c8e237ad26908885b23b77ecb38ea104799808af034cd1250e544c9f9e
+harness_sha256 bundle.js 3562a973a8845c7c7342c42347651a99e8e51e604e77a3aa9653c8a2791f2331
+browser-use open http://127.0.0.1:45091/
+url: http://127.0.0.1:45091/
+
+browser-use wait selector button
+selector: button
+found: True
+
+browser-use state
+viewport: 1265x1277
+page: 1265x1277
+scroll: (0, 0)
+K07 owned persistence fixtures
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[2]<button />
+	Run persistence fixtures
+Ready. No application database will be opened.
+
+browser-use click 2
+error: Element index 2 not found - page may have changed
+
+file://$RUN/browser-persistence/validate.mjs:39
+ if(!result)throw new Error('Module fixture timed out');
+                  ^
+
+Error: Module fixture timed out
+    at file://$RUN/browser-persistence/validate.mjs:39:19
+
+Node.js v24.21.0
