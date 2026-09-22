@@ -88,7 +88,7 @@ const ADD_RELOAD_SNAPSHOT_SCENARIO = PRELUDE + `
 	const reloaded = new CoreAttachmentDraftStore(storage, "ps_d1", { now: () => fixedNow, createId: createIdSequence("att_d1_reload") });
 	assert.equal(reloaded.storageError, undefined);
 	assert.deepEqual(reloaded.list(), store.list());
-	assert.deepEqual(reloaded.get(imageId).media, { draftResourceId: "upl_d1_1", mimeType: "image/png", bytes: 12345 });
+	assert.deepEqual(reloaded.get(imageId).media, [{ draftResourceId: "upl_d1_1", mimeType: "image/png", bytes: 12345 }]);
 
 	const stale = await rejectsWithCode(reloaded.update(noteId, 999, { payload: {} }), "ATT_STALE_REVISION");
 	assert.match(stale.message, /revision 1, not 999/);
@@ -448,9 +448,9 @@ const SESSION_MEDIA_METADATA_SCENARIO = PRELUDE + `
 	await storeA.remove("att_missing_is_fine");
 	assert.deepEqual(storeA.list().map((record) => record.envelope.id), [secondA]);
 	const reloadedA = new CoreAttachmentDraftStore(storage, "ps_a");
-	assert.deepEqual(reloadedA.get(secondA).media, { draftResourceId: "upl_media_1", mimeType: "image/jpeg", bytes: 4242 });
+	assert.deepEqual(reloadedA.get(secondA).media, [{ draftResourceId: "upl_media_1", mimeType: "image/jpeg", bytes: 4242 }]);
 	assert.deepEqual(reloadedA.get(secondA).payload, { title: "media" });
-	assert.deepEqual(Object.keys(reloadedA.get(secondA).media).sort(), ["bytes", "draftResourceId", "mimeType"]);
+	assert.deepEqual(reloadedA.get(secondA).media.map((entry) => Object.keys(entry).sort()), [["bytes", "draftResourceId", "mimeType"]]);
 
 	const corruptEntries = new Map([["pibo.chat.coreAttachments.draft.ps_corrupt", "{not json"]]);
 	const corruptStorage = {
@@ -708,6 +708,71 @@ const UISTATE_KEEP_SCENARIO = PRELUDE + `
 	assert.equal(reloaded.get(idA).envelope.revision, 2);
 	assert.deepEqual(reloaded.get(idA).payload, { v: 2 });
 	assert.deepEqual(reloaded.get(idA).uiState, { tab: "details", scroll: 42 });
+`;
+
+const MEDIA_PLURAL_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	const store = new CoreAttachmentDraftStore(storage, "ps_m", { now: () => "2026-09-22T12:00:00.000Z", createId: createIdSequence("att_m") });
+	const id = await store.add({
+		sessionId: "ps_m", type: "pibo.web-annotations/note", schemaVersion: 1, payload: { note: "shot" },
+		media: [
+			{ draftResourceId: "blob shot 1", mimeType: "image/png", bytes: 10 },
+			{ draftResourceId: "blob file 2", mimeType: "application/pdf", bytes: 20 },
+		],
+	});
+	assert.deepEqual(store.get(id).media.map((entry) => entry.draftResourceId), ["blob shot 1", "blob file 2"]);
+	const frozen = store.freezeForSend("txn_m_1", "send");
+	assert.deepEqual(frozen.attachments[0].media.map((entry) => entry.draftResourceId), ["blob shot 1", "blob file 2"]);
+	const reloaded = new CoreAttachmentDraftStore(storage, "ps_m");
+	assert.deepEqual(reloaded.get(id).media.map((entry) => entry.draftResourceId), ["blob shot 1", "blob file 2"]);
+	assert.deepEqual(reloaded.freezeForSend("txn_m_1", "send"), frozen);
+
+	const legacyEntries = new Map([["pibo.chat.coreAttachments.draft.ps_legacy_media", JSON.stringify([{ envelope: { formatVersion: 1, id: "att_lm", sessionId: "ps_legacy_media", type: "pibo.core/image", schemaVersion: 1, revision: 1, createdAt: "a", updatedAt: "a" }, payload: {}, media: { draftResourceId: "upl_old", mimeType: "image/png", bytes: 5 }, status: "ready" }])]]);
+	const legacyStorage = {
+		entries: legacyEntries,
+		readText: (key) => (legacyEntries.has(key) ? legacyEntries.get(key) : null),
+		writeText: (key, value) => { legacyEntries.set(key, value); },
+		removeText: (key) => { legacyEntries.delete(key); },
+	};
+	const legacy = new CoreAttachmentDraftStore(legacyStorage, "ps_legacy_media");
+	assert.equal(legacy.storageError, undefined);
+	assert.deepEqual(legacy.get("att_lm").media, [{ draftResourceId: "upl_old", mimeType: "image/png", bytes: 5 }]);
+	await rejectsWithCode(legacy.add({ sessionId: "ps_legacy_media", type: "t", schemaVersion: 1, payload: {}, media: [{ draftResourceId: "", mimeType: "image/png", bytes: 1 }] }), "ATT_BYTES_MISSING");
+`;
+
+const PREPARED_PROOFS_SCENARIO = PRELUDE + `
+	const storage = createMemoryStorage();
+	const store = new CoreAttachmentDraftStore(storage, "ps_p", { now: () => "2026-09-22T12:01:00.000Z", createId: createIdSequence("att_p") });
+	const id = await store.add({ sessionId: "ps_p", type: "pibo.core/note", schemaVersion: 1, payload: { v: 1 } });
+	const snapshot = store.freezeForSend("txn_p_1", "send");
+	assert.deepEqual(store.getPreparedUploads("txn_p_1"), []);
+	assert.equal(store.getAdmissionProof("txn_p_1"), undefined);
+	throwsWithCode(() => store.setPreparedUploads("txn_unknown", []), "ATT_ACCEPTANCE_UNKNOWN");
+	throwsWithCode(() => store.setAdmissionProof("txn_unknown", { fingerprint: "f", receiptId: "r" }), "ATT_ACCEPTANCE_UNKNOWN");
+
+	store.setPreparedUploads("txn_p_1", [{ blobId: "blob_1", path: "uploads/a.png", bytes: 10, mimeType: "image/png" }]);
+	store.setAdmissionProof("txn_p_1", { fingerprint: "fp_1", receiptId: "rcpt_1" });
+	assert.deepEqual(store.getPreparedUploads("txn_p_1"), [{ blobId: "blob_1", path: "uploads/a.png", bytes: 10, mimeType: "image/png" }]);
+	assert.deepEqual(store.getAdmissionProof("txn_p_1"), { fingerprint: "fp_1", receiptId: "rcpt_1" });
+	const raw = JSON.parse(storage.entries.get("pibo.chat.coreAttachments.draft.ps_p"));
+	assert.equal(typeof raw.writerEpoch, "string");
+	assert.ok(raw.writerEpoch.length > 0);
+	const reloaded = new CoreAttachmentDraftStore(storage, "ps_p");
+	assert.deepEqual(reloaded.getPreparedUploads("txn_p_1"), [{ blobId: "blob_1", path: "uploads/a.png", bytes: 10, mimeType: "image/png" }]);
+	assert.deepEqual(reloaded.getAdmissionProof("txn_p_1"), { fingerprint: "fp_1", receiptId: "rcpt_1" });
+	throwsWithCode(() => reloaded.setPreparedUploads("txn_p_1", [{ blobId: "", path: "x", bytes: 1, mimeType: "image/png" }]), "ATT_INVALID_JSON");
+	throwsWithCode(() => reloaded.setPreparedUploads("txn_p_1", [{ blobId: "blob_2", path: "../evil.png", bytes: 1, mimeType: "image/png" }]), "ATT_INVALID_JSON");
+	throwsWithCode(() => reloaded.setPreparedUploads("txn_p_1", [{ blobId: "blob_2", path: "/abs/evil.png", bytes: 1, mimeType: "image/png" }]), "ATT_INVALID_JSON");
+	throwsWithCode(() => reloaded.setPreparedUploads("txn_p_1", [{ blobId: "blob_2", path: "a\\b.png", bytes: 1, mimeType: "image/png" }]), "ATT_INVALID_JSON");
+	throwsWithCode(() => reloaded.setPreparedUploads("txn_p_1", [{ blobId: "blob 2", path: "ok.png", bytes: 1, mimeType: "image/png" }]), "ATT_INVALID_JSON");
+
+	const applied = reloaded.applyAcceptance(snapshot, { clientTxnId: "txn_p_1", accepted: true });
+	assert.deepEqual(applied, { consumed: [id], duplicate: false });
+	assert.deepEqual(reloaded.getPreparedUploads("txn_p_1"), []);
+	assert.equal(reloaded.getAdmissionProof("txn_p_1"), undefined);
+	const afterReload = new CoreAttachmentDraftStore(storage, "ps_p");
+	assert.deepEqual(afterReload.getPreparedUploads("txn_p_1"), []);
+	assert.equal(afterReload.getAdmissionProof("txn_p_1"), undefined);
 `;
 
 async function runScenario(script) {
