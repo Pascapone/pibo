@@ -9,8 +9,8 @@
  * (`resource:` + `attachment-provider`); B2 looks the entries up via
  * CapabilityProjection.map("attachment-provider").
  */
-export const ATTACHMENT_PROVIDER_RESOURCE_KIND =
-	"resource:attachment-provider" as const;
+export const ATTACHMENT_PROVIDER_KIND = "attachment-provider" as const;
+export const ATTACHMENT_PROVIDER_RESOURCE_KIND = `resource:${ATTACHMENT_PROVIDER_KIND}` as const;
 
 /**
  * Opaque provider identifier inside the attachment-provider resource.

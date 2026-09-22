@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PluginHost } from "../plugins/host.js";
+import { ATTACHMENT_PROVIDER_KIND, type K07AttachmentProvider } from "../attachments/types.js";
 import { CapabilityProjection } from "../plugins/capability-projection.js";
 import type {
 	ContextFileProfile,
@@ -211,6 +212,7 @@ export class PiboCapabilityHost {
 	private readonly channels = this.projection.map<PiboChannel>("channel", (value) => value as PiboChannel);
 	private readonly authServices = this.projection.map<PiboAuthService>("auth-service", (value) => value as PiboAuthService);
 	private readonly transcriptionProviders = this.projection.map<PiboTranscriptionProvider>("transcription-provider", (value) => value as PiboTranscriptionProvider);
+	private readonly attachmentProviders = this.projection.map<K07AttachmentProvider>(ATTACHMENT_PROVIDER_KIND, (value) => value as K07AttachmentProvider);
 	private readonly speechProviders = this.projection.map<PiboSpeechProvider>("speech-provider", (value) => value as PiboSpeechProvider);
 	private readonly pendingSpeechStarts = new Map<string, PendingSpeechStart>();
 	private readonly speechSessions = new Map<string, ActiveSpeechSession>();
@@ -238,6 +240,9 @@ export class PiboCapabilityHost {
 	}
 
 	getPluginHost(): PluginHost { return this.projection.host; }
+
+	/** Live projection: provider removal follows its owning plugin scope, with no second registry. */
+	getAttachmentProvider(type: string): K07AttachmentProvider | undefined { return this.attachmentProviders.get(type); }
 
 	private syncProjectedAgentRuntimes(): void {
 		const entries = this.projection.host.contributions.list<{ installation: { revision: string }; contribution: { kind: string }; value: unknown }>("contribution")

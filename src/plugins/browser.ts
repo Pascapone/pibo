@@ -1,5 +1,6 @@
 import type * as React from "react";
 import type * as sdk from "./sdk.js";
+import type { K07AttachmentProvider } from "../attachments/types.js";
 import type { PluginHookDescriptor, PluginHookResult } from "./contributions.js";
 import type {
 	PluginArtifactEnvelope,
@@ -44,6 +45,8 @@ export type PluginBrowserSetup = {
 	piboSessionId: string;
 	registerRenderer: (id: PluginQualifiedId, schemaVersion: number, component: React.ComponentType<PluginRendererProps>) => void;
 	registerHook: (hook: PluginComposerHook) => void;
+	/** id is an effective attachment-provider contribution; its name must equal provider.type. */
+	registerAttachmentProvider: (id: PluginQualifiedId, provider: K07AttachmentProvider) => void;
 	registerShell: (id: PluginQualifiedId, component: React.ComponentType<{ children: React.ReactNode; piboSessionId: string }>) => void;
 };
 

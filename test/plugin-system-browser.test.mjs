@@ -13,6 +13,7 @@ const { pluginConfigurationPath } = await tsImport("../src/apps/chat-ui/src/plug
 const { recordedBuildNodes } = await tsImport("../src/apps/chat-ui/src/plugins/build-context-view.tsx", import.meta.url);
 const { PluginManagement } = await tsImport("../src/apps/chat-ui/src/plugins/plugin-management.tsx", import.meta.url);
 import { pluginBrowserRoute, pluginBrowserCatalog, handlePluginBrowserRoute } from '../dist/apps/chat/plugin-browser-routes.js';
+import { coreNoteProvider } from '../dist/attachments/core-providers.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -99,6 +100,42 @@ test('configuration URL fixes app/agent/session target independently from tab ow
 test('host imports only effective pinned browser modules and injects shared React/SDK',async()=>{
  const f=fixture();let calls=0;let shared;const host=new BrowserPluginHost(f.plan,f.catalog,async()=>{calls++;return {setup:(ctx)=>{shared=ctx;},Notes:()=>null}});await host.start();assert.equal(calls,1);assert.equal(typeof shared.React.useState,'function');assert.equal(shared.sdk.PLUGIN_SDK_VERSION,'1.0.0');assert.equal(host.views.size,1);await host.dispose();assert.equal(host.views.size,0);
  const disabled=new BrowserPluginHost({...f.plan,contributions:[]},f.catalog,async()=>{throw Error('must not import')});await disabled.start();assert.equal(disabled.errors.size,0);
+});
+function attachmentFixture() {
+ const f=fixture();
+ const provider={...coreNoteProvider,type:'example.notes/note'};
+ const contribution={id:'attachment',kind:'attachment-provider',name:provider.type,scope:'app',required:false,defaultEnabled:true,schemaVersion:1,context:{kind:'none',reason:'Attachment provider'}};
+ const entry={...f.entry,id:'example.notes/attachment',contribution};
+ f.installation.manifest.contributions.push(contribution);f.plan.contributions.push(entry);f.catalog=pluginBrowserCatalog([f.installation],1);
+ return {...f,provider,attachmentEntry:entry};
+}
+test('attachment browser provider is declaration-bound, session-bound and disposed with its owner',async()=>{
+ const f=attachmentFixture();let setup;
+ const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({Notes:()=>null,setup(ctx){setup=ctx;ctx.registerAttachmentProvider(f.attachmentEntry.id,f.provider);}}));
+ await host.start();assert.equal(host.errors.size,0);
+ assert.equal(setup.sdk.ATTACHMENT_PROVIDER_RESOURCE_KIND,'resource:attachment-provider');
+ assert.equal(host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_A'}),f.provider);
+ assert.equal(host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_B'}),undefined);
+ await host.dispose();assert.equal(host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_A'}),undefined);
+ assert.throws(()=>setup.registerAttachmentProvider(f.attachmentEntry.id,f.provider),/disposed|closed/i);
+});
+test('browser attachment registration rejects undeclared, mismatched and reserved providers',async()=>{
+ for(const variant of ['undeclared','kind','name','reserved','invalid-schema','duplicate']) {
+  const f=attachmentFixture();
+  if(variant==='kind')f.attachmentEntry.contribution.kind='view';
+  if(variant==='name')f.attachmentEntry.contribution.name='not-the-type';
+  if(variant==='reserved'){f.provider.type='pibo.core/note';f.attachmentEntry.contribution.name=f.provider.type;}
+  if(variant==='invalid-schema')f.provider.schemas={1:{additionalProperties:false}};
+  const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({Notes:()=>null,setup(ctx){
+   ctx.registerAttachmentProvider(variant==='undeclared'?'example.notes/unknown':f.attachmentEntry.id,f.provider);
+   if(variant==='duplicate')ctx.registerAttachmentProvider(f.attachmentEntry.id,f.provider);
+  }}));
+  await host.start();assert.ok(host.errors.has('example.notes'),variant);assert.equal(host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_A'}),undefined,variant);await host.dispose();
+ }
+});
+test('attachment registration is rolled back when a later browser setup step fails',async()=>{
+ const f=attachmentFixture();const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({Notes:()=>null,setup(ctx){ctx.registerAttachmentProvider(f.attachmentEntry.id,f.provider);throw Error('later setup failed');}}));
+ await host.start();assert.match(host.errors.get('example.notes'),/later setup failed/);assert.equal(host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_A'}),undefined);await host.dispose();
 });
 test('AP11 Web Annotations history stays readable when its terminal renderer is missing',()=>{
  const envelope={schemaVersion:1,pluginId:'pibo.web-annotations',contributionId:'pibo.web-annotations/terminal',dataSchemaVersion:1,objectId:'ann_ap11',eventId:'evt_ap11',fallback:'Annotation ann_ap11: Retained review note'};

@@ -5,6 +5,8 @@ import * as sdk from "../../../../plugins/sdk";
 import type { EffectivePluginPlan, PluginArtifactEnvelope, PluginBrowserCatalog, PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginHookDescriptor, PluginHookResult, PluginJsonValue, PluginQualifiedId, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
 export type { PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
 import { pluginRequest } from "./session-tab-controller";
+import { assertValidAttachmentProvider } from "../../../../attachments/providers";
+import type { AttachmentProviderLookup, K07AttachmentProvider } from "../../../../attachments/types";
 
 export type BrowserModuleLoader = (url: string) => Promise<PluginBrowserModule>;
 const importModule: BrowserModuleLoader = (url) => import(/* @vite-ignore */ url);
@@ -12,6 +14,9 @@ export class BrowserPluginHost {
 	readonly views = new Map<PluginQualifiedId, React.ComponentType<PluginViewProps>>();
 	readonly renderers = new Map<PluginQualifiedId, { schemaVersion: number; component: React.ComponentType<PluginRendererProps> }>();
 	readonly hooks: PluginComposerHook[] = [];
+	private readonly attachmentProviders = new Map<string, K07AttachmentProvider>();
+	readonly lookupAttachmentProvider: AttachmentProviderLookup = (type, scope) =>
+		!this.disposed && scope.sessionId === this.plan.piboSessionId ? this.attachmentProviders.get(type) : undefined;
 	readonly errors = new Map<string, string>();
 	shell?: React.ComponentType<{ children: React.ReactNode; piboSessionId: string }>;
 	private scopes: sdk.PluginScope[] = [];
@@ -25,7 +30,9 @@ export class BrowserPluginHost {
 			const scope = new sdk.PluginScope(plugin.pluginId, this.plan.piboSessionId); this.scopes.push(scope);
 			const assertContribution = (id: PluginQualifiedId) => {
 				scope.assertOpen();
-				if (!effective.some((entry) => entry.id === id)) throw new Error(`Undeclared or disabled browser contribution: ${id}`);
+				const entry = effective.find((entry) => entry.id === id);
+				if (!entry) throw new Error(`Undeclared or disabled browser contribution: ${id}`);
+				return entry;
 			};
 			try {
 				Object.assign(globalThis, { __PIBO_BROWSER_PLUGIN_BRIDGE__: Object.freeze({ React, ReactDOM, ReactQuery }) });
@@ -36,6 +43,16 @@ export class BrowserPluginHost {
 					registerRenderer: (id, schemaVersion, component) => { assertContribution(id); if (this.renderers.has(id)) throw new Error(`Duplicate renderer ${id}`); this.renderers.set(id, { schemaVersion, component }); scope.defer(() => { this.renderers.delete(id); }); },
 					registerHook: (hook) => { assertContribution(hook.descriptor.id); if (this.hooks.some((item) => item.descriptor.id === hook.descriptor.id)) throw new Error("Duplicate input hook"); this.hooks.push(hook); scope.defer(() => { const i = this.hooks.indexOf(hook); if (i >= 0) this.hooks.splice(i, 1); }); },
 					registerShell: (id, component) => { assertContribution(id); if (this.shell) throw new Error("Multiple effective shell providers; select one in the plan"); this.shell = component; scope.defer(() => { if (this.shell === component) this.shell = undefined; }); },
+					registerAttachmentProvider: (id, provider) => {
+						const entry = assertContribution(id);
+						assertValidAttachmentProvider(provider);
+						if (entry.contribution.kind !== sdk.ATTACHMENT_PROVIDER_KIND || entry.contribution.name !== provider.type) throw new Error(`Attachment provider does not match its declared contribution: ${id}`);
+						const type = provider.type;
+						if (type.startsWith("pibo.core/")) throw new Error("Core attachment types cannot be replaced by plugins");
+						if (this.attachmentProviders.has(type)) throw new Error(`Duplicate attachment provider ${type}`);
+						this.attachmentProviders.set(type, provider);
+						scope.defer(() => { if (this.attachmentProviders.get(type) === provider) this.attachmentProviders.delete(type); });
+					},
 				});
 				if (disposer) scope.defer(disposer);
 				scope.assertOpen();
