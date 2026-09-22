@@ -45,8 +45,9 @@ const OPENAI_GPT_56_CONTEXT_WINDOW = 1_050_000;
 const OPENAI_CODEX_GPT_56_CONTEXT_WINDOW = 272_000;
 const GPT_56_MAX_TOKENS = 128_000;
 
-const OPENAI_CODEX_GPT_6_ASTRA_CONTEXT_WINDOW = 272_000;
+const OPENAI_CODEX_GPT_6_CONTEXT_WINDOW = 272_000;
 const GPT_6_ASTRA_MAX_TOKENS = 128_000;
+const GPT_6_VARIANT_MAX_TOKENS = 272_000;
 
 export const OPENAI_GPT_56_MODELS: readonly OpenAiGpt56ModelSpec[] = [
 	{
@@ -76,6 +77,11 @@ export const OPENAI_CODEX_GPT_6_ASTRA_MODEL = {
 	name: "GPT-6-Astra",
 	cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
 } as const;
+
+export const OPENAI_CODEX_GPT_6_VARIANT_MODELS = [
+	{ id: "gpt-6-sol", name: "GPT-6-Sol", baseModelId: "gpt-5.6-sol" },
+	{ id: "gpt-6-luna", name: "GPT-6-Luna", baseModelId: "gpt-5.6-luna" },
+] as const;
 
 // Codex serves the Reserve quota alias from the Luna-class model, so Reserve borrows Luna's metadata.
 export const OPENAI_CODEX_RESERVE_MODEL = { id: "gpt-reserve", name: "Luna Reserve" } as const;
@@ -126,6 +132,19 @@ export function buildOpenAiCodexSupplementalModels(
 	const reserveBase = models.find((model) => model.id === OPENAI_CODEX_RESERVE_BASE_MODEL_ID);
 	if (reserveBase && !models.some((model) => model.id === OPENAI_CODEX_RESERVE_MODEL.id)) {
 		models.push({ ...cloneModel(reserveBase), ...OPENAI_CODEX_RESERVE_MODEL });
+	}
+	for (const variant of OPENAI_CODEX_GPT_6_VARIANT_MODELS) {
+		if (models.some((model) => model.id === variant.id)) continue;
+		const base = models.find((model) => model.id === variant.baseModelId);
+		if (base) {
+			models.push({
+				...cloneModel(base),
+				id: variant.id,
+				name: variant.name,
+				contextWindow: OPENAI_CODEX_GPT_6_CONTEXT_WINDOW,
+				maxTokens: GPT_6_VARIANT_MAX_TOKENS,
+			});
+		}
 	}
 	if (models.some((model) => model.id === OPENAI_CODEX_GPT_6_ASTRA_MODEL.id)) return models;
 	return [...models, openAiCodexAstraModelToRegistryModel()];
@@ -270,7 +289,7 @@ function openAiCodexAstraModelToRegistryModel(): Model<any> {
 		},
 		cost: { ...OPENAI_CODEX_GPT_6_ASTRA_MODEL.cost, cacheWrite: 0 },
 		// Codex uses 272k by default and advertises 872k only as an optional maximum override.
-		contextWindow: OPENAI_CODEX_GPT_6_ASTRA_CONTEXT_WINDOW,
+		contextWindow: OPENAI_CODEX_GPT_6_CONTEXT_WINDOW,
 		maxTokens: GPT_6_ASTRA_MAX_TOKENS,
 	};
 }

@@ -7,6 +7,7 @@ import {
 	OPENAI_BASE_URL,
 	OPENAI_CODEX_BASE_URL,
 	OPENAI_CODEX_GPT_6_ASTRA_MODEL,
+	OPENAI_CODEX_GPT_6_VARIANT_MODELS,
 	OPENAI_CODEX_PROVIDER_ID,
 	OPENAI_CODEX_RESERVE_MODEL,
 	OPENAI_CODEX_RESPONSES_API,
@@ -74,7 +75,7 @@ test("OpenAI supplemental model registration leaves native provider auth ownersh
 
 	assert.equal(result.registered, true);
 	assert.equal(result.providers, 2);
-	assert.equal(result.added, (OPENAI_GPT_56_MODELS.length * 2) + 2);
+	assert.equal(result.added, (OPENAI_GPT_56_MODELS.length * 2) + 4);
 	assert.equal(fake.registrations.length, 2);
 
 	const openAi = fake.registrations.find((registration) => registration.name === OPENAI_PROVIDER_ID);
@@ -94,6 +95,10 @@ test("OpenAI supplemental model registration leaves native provider auth ownersh
 	assert.equal(codex.config.oauth, undefined);
 	assert.equal(codex.config.models.some((model) => model.provider === OPENAI_PROVIDER_ID), false);
 	assert.equal(codex.config.models.some((model) => model.id === OPENAI_CODEX_GPT_6_ASTRA_MODEL.id), true);
+	assert.deepEqual(
+		OPENAI_CODEX_GPT_6_VARIANT_MODELS.map((expected) => codex.config.models.find((model) => model.id === expected.id)?.name),
+		OPENAI_CODEX_GPT_6_VARIANT_MODELS.map((expected) => expected.name),
+	);
 });
 
 test("supplemental model registration preserves native Codex OAuth in ModelRuntime", async () => {
@@ -107,6 +112,8 @@ test("supplemental model registration preserves native Codex OAuth in ModelRunti
 	assert.equal(typeof registeredProvider?.auth.oauth?.login, "function");
 	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-5.6-sol"));
 	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-6-astra"));
+	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-6-sol"));
+	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, "gpt-6-luna"));
 	assert.ok(modelRuntime.getModel(OPENAI_CODEX_PROVIDER_ID, OPENAI_CODEX_RESERVE_MODEL.id));
 });
 
@@ -187,6 +194,29 @@ test("ChatGPT Subscription models preserve built-ins and add GPT-5.6 variants", 
 	}
 });
 
+test("GPT-6 Sol and Luna are ChatGPT Subscription models with a 272k token limit", () => {
+	const models = buildOpenAiCodexSupplementalModels([baseCodexModel]);
+	const apiModels = buildOpenAiGpt56Models([baseOpenAiModel]);
+
+	for (const expected of OPENAI_CODEX_GPT_6_VARIANT_MODELS) {
+		const model = models.find((candidate) => candidate.id === expected.id);
+		const base = models.find((candidate) => candidate.id === expected.baseModelId);
+		assert.ok(model);
+		assert.ok(base);
+		assert.equal(model.name, expected.name);
+		assert.equal(model.provider, OPENAI_CODEX_PROVIDER_ID);
+		assert.equal(model.api, OPENAI_CODEX_RESPONSES_API);
+		assert.equal(model.baseUrl, OPENAI_CODEX_BASE_URL);
+		assert.equal(model.reasoning, true);
+		assert.deepEqual(model.thinkingLevelMap, base.thinkingLevelMap);
+		assert.deepEqual(model.input, base.input);
+		assert.deepEqual(model.cost, base.cost);
+		assert.equal(model.contextWindow, 272000);
+		assert.equal(model.maxTokens, 272000);
+		assert.equal(apiModels.some((candidate) => candidate.id === expected.id), false);
+	}
+});
+
 test("GPT-6 Astra uses Codex CLI metadata and the ChatGPT subscription endpoint", () => {
 	const model = buildOpenAiCodexSupplementalModels([baseCodexModel]).find((candidate) => candidate.id === "gpt-6-astra");
 
@@ -234,9 +264,21 @@ test("supplemental registration does not override upstream built-in models with 
 		name: "Upstream GPT-6 Astra",
 		contextWindow: 777777,
 	};
+	const upstreamCodexGpt6Sol = {
+		...baseCodexModel,
+		id: "gpt-6-sol",
+		name: "Upstream GPT-6 Sol",
+		contextWindow: 888888,
+		maxTokens: 222222,
+	};
 
 	const openAiModels = buildOpenAiGpt56Models([baseOpenAiModel, upstreamOpenAiSol]);
-	const codexModels = buildOpenAiCodexSupplementalModels([baseCodexModel, upstreamCodexSol, upstreamCodexAstra]);
+	const codexModels = buildOpenAiCodexSupplementalModels([
+		baseCodexModel,
+		upstreamCodexSol,
+		upstreamCodexAstra,
+		upstreamCodexGpt6Sol,
+	]);
 
 	assert.equal(openAiModels.find((model) => model.id === "gpt-5.6-sol")?.name, "Upstream GPT-5.6 Sol");
 	assert.equal(openAiModels.find((model) => model.id === "gpt-5.6-sol")?.contextWindow, 123456);
@@ -244,6 +286,9 @@ test("supplemental registration does not override upstream built-in models with 
 	assert.equal(codexModels.find((model) => model.id === "gpt-5.6-sol")?.contextWindow, 654321);
 	assert.equal(codexModels.find((model) => model.id === "gpt-6-astra")?.name, "Upstream GPT-6 Astra");
 	assert.equal(codexModels.find((model) => model.id === "gpt-6-astra")?.contextWindow, 777777);
+	assert.equal(codexModels.find((model) => model.id === "gpt-6-sol")?.name, "Upstream GPT-6 Sol");
+	assert.equal(codexModels.find((model) => model.id === "gpt-6-sol")?.contextWindow, 888888);
+	assert.equal(codexModels.find((model) => model.id === "gpt-6-sol")?.maxTokens, 222222);
 });
 
 test("supplemental model lookup restricts GPT-6 Astra to ChatGPT Subscription", () => {
