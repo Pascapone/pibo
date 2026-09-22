@@ -345,6 +345,10 @@ export { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 import type { PluginManager } from "../../plugins/manager.js";
 import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { catalogPluginServices, PIBO_CHAT_EXTENSION_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboChatExtensionService, type PluginSessionPlanReader } from "../../plugins/product-services.js";
+import { getCoreAttachmentProvider } from "../../attachments/core-providers.js";
+import { readAttachmentMessage, materializeAttachmentMessage } from "../../attachments/message.js";
+import { acquireAttachmentProviders, type AttachmentProviderLease } from "../../attachments/server-providers.js";
+import { AttachmentDraftError, isAttachmentErrorCode } from "../../attachments/errors.js";
 import { handlePluginManagementRoute, pluginManagementRoute, pluginManagementRouteRequiresSameOrigin } from "./plugin-management-routes.js";
 import { handlePluginBrowserRoute, pluginBrowserRoute } from "./plugin-browser-routes.js";
 
@@ -4448,7 +4452,9 @@ async function sendChatMessage(input: {
 	defaultProfile: string;
 	body: ChatMessageBody;
 	forcedRoomId?: string;
+	pluginSessionPlan?: PluginSessionPlanReader;
 }): Promise<Response> {
+	let attachmentLease: AttachmentProviderLease | undefined;
 	try {
 	const startedAt = performance.now();
 	const timings: string[] = [];
@@ -4459,7 +4465,8 @@ async function sendChatMessage(input: {
 	const durable = input.body.admissionVersion === 2;
 	if (input.body.admissionVersion !== undefined && !durable) throw new PiboWebHttpError("Unsupported message admission version",400);
 	if (durable && !input.state.asyncStorage) throw new PiboWebHttpError("Durable admission requires file-backed storage",503);
-	const text = normalizeMessageText(input.body.text);
+	const attachmentMessage = readAttachmentMessage(input.body);
+	const text = attachmentMessage?.attachments.length && typeof input.body.text === "string" ? input.body.text : normalizeMessageText(input.body.text);
 	const delivery = normalizeMessageDelivery(input.body.delivery);
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
 	const requestedRoomId = input.forcedRoomId ?? (typeof input.body.roomId === "string" ? input.body.roomId : undefined);
@@ -4488,6 +4495,16 @@ async function sendChatMessage(input: {
 	const duplicate = clientTxnId && !input.state.asyncStorage ? input.state.eventCommands.findByClientTxn(room.id, actorId, clientTxnId) : undefined;
 	timings.push(`chat_lookup;dur=${(performance.now() - lookupStartedAt).toFixed(2)}`);
 	if (duplicate) return timedResponse({ duplicate: true, event: duplicate });
+	const needsAttachmentPlan = attachmentMessage?.attachments.some((attachment) => !getCoreAttachmentProvider(attachment.type));
+	const readAttachmentPlan = needsAttachmentPlan ? input.pluginSessionPlan ?? input.context.channelContext.getService?.<PluginSessionPlanReader>(PLUGIN_SESSION_PLAN_SERVICE) : undefined;
+	if (attachmentMessage) {
+		attachmentLease = await acquireAttachmentProviders({
+			host: input.context.channelContext.getService?.<import("../../plugins/host.js").PluginHost>(PLUGIN_HOST_SERVICE),
+			plan: (await readAttachmentPlan?.(selectedSession.id, "current"))?.plan,
+			sessionId: selectedSession.id, transactionId: clientTxnId!,
+			types: attachmentMessage.attachments.map((attachment) => attachment.type), pins: attachmentMessage.pins,
+		});
+	}
 	const chatExtensions = input.context.channelContext.getService?.<PiboChatExtensionService>(PIBO_CHAT_EXTENSION_SERVICE);
 	const messageAugmentation = chatExtensions
 		? await chatExtensions.prepareMessage({ piboSessionId: selectedSession.id, messageText: text, body: input.body as unknown as PiboJsonObject })
@@ -4496,6 +4513,12 @@ async function sendChatMessage(input: {
 		messageText: messageAugmentation.messageText,
 		attachmentPaths: input.body.fileAttachmentPaths,
 	});
+	const materializedAttachments = attachmentMessage ? materializeAttachmentMessage({ message: attachmentMessage, sessionId: selectedSession.id, lookup: attachmentLease!.lookup }) : undefined;
+	const messageText = materializedAttachments?.modelContext ? `${materializedAttachments.modelContext}\n\n${fileAttachmentContext.messageText}` : fileAttachmentContext.messageText;
+	if (attachmentMessage && Object.keys(messageAugmentation.payload ?? {}).some((key) => ["type", "piboSessionId", "roomId", "text", "delivery", "clientTxnId", "attachmentVersion", "attachmentCount", "attachmentSnapshotRef", "attachments", "attachmentProviderPins", "attachmentResources", "attachmentParts", "fileAttachmentPaths", "fileAttachments", "fileAttachmentContext"].includes(key))) {
+		throw new AttachmentDraftError({ code: "ATT_MATERIALIZE_FAILED", message: "Message augmentation conflicts with Core attachment admission fields.", retryable: false });
+	}
+	attachmentLease?.assertCurrent((await readAttachmentPlan?.(selectedSession.id, "current"))?.plan);
 	const appendStartedAt = performance.now();
 	const appendInput: ChatEventAppendInput = {
 		roomId: room.id,
@@ -4509,9 +4532,10 @@ async function sendChatMessage(input: {
 			type: "user.message.accepted",
 			piboSessionId: selectedSession.id,
 			roomId: room.id,
-			text: fileAttachmentContext.messageText,
+			text: messageText,
 			delivery,
 			...(messageAugmentation.payload ?? {}),
+			...(attachmentMessage ? { attachmentVersion: 1, attachmentCount: attachmentMessage.attachments.length } : {}),
 			...(fileAttachmentContext.attachments.length ? {
 				fileAttachmentPaths: fileAttachmentContext.paths,
 				fileAttachments: fileAttachmentContext.attachments,
@@ -4521,7 +4545,7 @@ async function sendChatMessage(input: {
 		},
 	};
 	const messageId = clientTxnId ?? randomUUID();
-	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, fileAttachmentContext.messageText, durable ? { eventId:messageId,delivery,...(requestBody ? { requestBody } : {}) } : undefined) : undefined;
+	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, messageText, durable ? { eventId:messageId,delivery,...(requestBody ? { requestBody } : {}) } : undefined) : undefined;
 	if (admission && !admission.created) return timedResponse({ duplicate: true, ...(admission.event ? { event: admission.event } : {}), ...(admission.receipt ? {receipt:admission.receipt,admissionVersion:2,statusPath:`${CHAT_WEB_API_PREFIX}/message-receipts/${admission.receipt.id}`} : {}) }, durable ? 202 : 200);
 	const accepted = admission?.event ?? input.state.eventCommands.appendEvent(appendInput);
 	timings.push(`chat_append;dur=${(performance.now() - appendStartedAt).toFixed(2)}`);
@@ -4531,7 +4555,7 @@ async function sendChatMessage(input: {
 			session: selectedSession,
 			roomId: room.id,
 			actorId,
-			text: fileAttachmentContext.messageText,
+			text: messageText,
 			clientTxnId,
 			legacyEvent: accepted,
 		});
@@ -4553,7 +4577,7 @@ async function sendChatMessage(input: {
 			type: "message",
 			piboSessionId: selectedSession.id,
 			id: messageId,
-			text: fileAttachmentContext.messageText,
+			text: messageText,
 			delivery,
 			source: "user",
 		});
@@ -4589,6 +4613,7 @@ async function sendChatMessage(input: {
 	return timedResponse({ output, event: accepted });
 	} catch (error) {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+		if (isAttachmentErrorCode(code) && error instanceof Error) return responseJson({ error: error.message, code, retryable: "retryable" in error && error.retryable === true }, { status: code === "ATT_STALE_REVISION" || code === "ATT_PROVIDER_MISSING" ? 409 : code === "ATT_ACCESS_DENIED" ? 403 : code === "ATT_BYTES_MISSING" ? 404 : 400 });
 		if (code === "command_conflict") return responseJson({ error:"Transaction conflicts with an existing message.",code }, { status:409 });
 		if (code === "command_invalid_content_binding") return responseJson({ error:"Invalid content-bound message submission.",code }, { status:400 });
 		if (code === "command_too_large") return responseJson({ error:"Message exceeds the durable command limit.",code }, { status:413 });
@@ -4601,6 +4626,8 @@ async function sendChatMessage(input: {
 		if (code === "room_read_only") throw new PiboWebHttpError("Archived rooms are read-only", 403);
 		if (code.startsWith("storage_")) return responseJson({ error: "Storage unavailable; retry with the same client transaction ID.", code, acceptanceUnknown: code === "storage_unknown" || code === "storage_operation_failed" }, { status: 503, headers: { "retry-after": "1" } });
 		throw error;
+	} finally {
+		await attachmentLease?.release();
 	}
 }
 
@@ -5969,6 +5996,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 					defaultProfile,
 					body,
 					forcedRoomId: roomResource.roomId,
+					pluginSessionPlan: options.pluginSessionPlan,
 				});
 			}
 
@@ -6691,7 +6719,7 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				requireSameOriginJsonRequest(request);
 				const webSession = await requireSession(request, context);
 				const body = await readJsonBody<ChatMessageBody>(request);
-				return sendChatMessage({ state, context, webSession, defaultProfile, body });
+				return sendChatMessage({ state, context, webSession, defaultProfile, body, pluginSessionPlan: options.pluginSessionPlan });
 			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/provider-auth` && request.method === "GET") {

@@ -136,10 +136,13 @@ export class ChatSessionQueryService {
 		const events = this.store.db.prepare(`SELECT stream_id, payload_ref FROM event_log WHERE session_id IN (${placeholders}) AND payload_ref IS NOT NULL`).all(...piboSessionIds) as Array<{ stream_id: number; payload_ref: string }>;
 		const eventPayloads = new Map(events.map((row) => [row.stream_id, row.payload_ref]));
 		for (const row of events) add(row.payload_ref, `event:${row.stream_id}`);
-		const messages = this.store.db.prepare(`SELECT id, source_stream_id, content_payload_ref FROM chat_messages WHERE session_id IN (${placeholders}) AND content_payload_ref IS NOT NULL`).all(...piboSessionIds) as Array<{ id: string; source_stream_id: number | null; content_payload_ref: string }>;
+		const messages = this.store.db.prepare(`SELECT id, source_stream_id, content_payload_ref, json_extract(attributes_json, '$.attachmentSnapshotRef') AS attachment_snapshot_ref FROM chat_messages WHERE session_id IN (${placeholders}) AND (content_payload_ref IS NOT NULL OR json_type(attributes_json, '$.attachmentSnapshotRef')='text')`).all(...piboSessionIds) as Array<{ id: string; source_stream_id: number | null; content_payload_ref: string | null; attachment_snapshot_ref: unknown }>;
 		for (const row of messages) {
 			const linked = row.source_stream_id !== null && eventPayloads.get(row.source_stream_id) === row.content_payload_ref;
 			add(row.content_payload_ref, linked ? `event:${row.source_stream_id}` : `message:${row.id}`);
+			// The message is the sole logical owner; optional event pointers do not
+			// own another reference or control attachment retention.
+			if (typeof row.attachment_snapshot_ref === "string") add(row.attachment_snapshot_ref, `message-attachments:${row.id}`);
 		}
 		const observations = this.store.db.prepare(`SELECT id, event_stream_id, payload_ref FROM observations WHERE session_id IN (${placeholders}) AND payload_ref IS NOT NULL`).all(...piboSessionIds) as Array<{ id: string; event_stream_id: number | null; payload_ref: string }>;
 		for (const row of observations) {

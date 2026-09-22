@@ -192,6 +192,20 @@ export function validateAgainstSchema(schema: K07SchemaNode, payload: unknown, l
 	}
 }
 
+/** V1 provider callbacks are synchronous. Never accept an unobserved validation Promise. */
+export function requireSynchronousProviderResult<T>(value: T, operation: string): T {
+	const invalid = () => new AttachmentDraftError({ code: "ATT_MATERIALIZE_FAILED", message: `Attachment provider ${operation} must be synchronous.`, retryable: false });
+	let then: unknown;
+	try { then = value !== null && (typeof value === "object" || typeof value === "function") ? (value as { then?: unknown }).then : undefined; }
+	catch { throw invalid(); }
+	if (typeof then === "function") {
+		// Rejected unsupported callbacks must not become unhandled rejections.
+		void Promise.resolve(value).catch(() => undefined);
+		throw invalid();
+	}
+	return value;
+}
+
 export type ProviderRegistryClient = {
 	require(type: string): K07AttachmentProvider;
 	validatePayload(type: string, schemaVersion: number, payload: unknown): void;
@@ -236,7 +250,7 @@ export function createProviderRegistryClient(lookup: AttachmentProviderLookup, s
 			}
 			assertValidSchemaDeclaration(declared, `schema ${type}@${schemaVersion}`);
 			validateAgainstSchema(declared, payload, `payload ${type}@${schemaVersion}`);
-			provider.validate(payload);
+			requireSynchronousProviderResult(provider.validate(payload), "validation");
 		},
 	};
 }

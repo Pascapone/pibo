@@ -106,7 +106,7 @@ function attachmentFixture() {
  const provider={...coreNoteProvider,type:'example.notes/note'};
  const contribution={id:'attachment',kind:'attachment-provider',name:provider.type,scope:'app',required:false,defaultEnabled:true,schemaVersion:1,context:{kind:'none',reason:'Attachment provider'}};
  const entry={...f.entry,id:'example.notes/attachment',contribution};
- f.installation.manifest.contributions.push(contribution);f.plan.contributions.push(entry);f.catalog=pluginBrowserCatalog([f.installation],1);
+ f.installation.manifest.contributions.push(contribution);f.plan.contributions.push(entry);f.plan.plugins.push({pluginId:f.installation.pluginId,revision:f.installation.revision,version:f.installation.version,contentHash:f.installation.contentHash});f.catalog=pluginBrowserCatalog([f.installation],1);
  return {...f,provider,attachmentEntry:entry};
 }
 test('attachment browser provider is declaration-bound, session-bound and disposed with its owner',async()=>{
@@ -120,18 +120,32 @@ test('attachment browser provider is declaration-bound, session-bound and dispos
  assert.throws(()=>setup.registerAttachmentProvider(f.attachmentEntry.id,f.provider),/disposed|closed/i);
 });
 test('browser attachment registration rejects undeclared, mismatched and reserved providers',async()=>{
- for(const variant of ['undeclared','kind','name','reserved','invalid-schema','duplicate']) {
+ for(const variant of ['undeclared','kind','name','reserved','invalid-schema','duplicate','artifact-hash']) {
   const f=attachmentFixture();
   if(variant==='kind')f.attachmentEntry.contribution.kind='view';
   if(variant==='name')f.attachmentEntry.contribution.name='not-the-type';
   if(variant==='reserved'){f.provider.type='pibo.core/note';f.attachmentEntry.contribution.name=f.provider.type;}
   if(variant==='invalid-schema')f.provider.schemas={1:{additionalProperties:false}};
+  if(variant==='artifact-hash')f.catalog.plugins[0].contentHash='wrong-artifact';
   const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({Notes:()=>null,setup(ctx){
    ctx.registerAttachmentProvider(variant==='undeclared'?'example.notes/unknown':f.attachmentEntry.id,f.provider);
    if(variant==='duplicate')ctx.registerAttachmentProvider(f.attachmentEntry.id,f.provider);
   }}));
-  await host.start();assert.ok(host.errors.has('example.notes'),variant);assert.equal(host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_A'}),undefined,variant);await host.dispose();
+  await host.start();assert.ok(host.errors.has('example.notes'),variant);
+  const visible=host.lookupAttachmentProvider(f.provider.type,{sessionId:'ps_A'});
+  if(variant==='reserved'){assert.equal(visible.type,coreNoteProvider.type);assert.notEqual(visible,f.provider,'failed plugin cannot replace the Core builtin');}else assert.equal(visible,undefined,variant);
+  await host.dispose();
  }
+});
+test('attachment browser freeze exposes pinned ownership while Core remains available without plugins',async()=>{
+ const f=attachmentFixture();const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({Notes:()=>null,setup(ctx){ctx.registerAttachmentProvider(f.attachmentEntry.id,f.provider);}}));
+ await host.start();const scope={sessionId:'ps_A'};
+ assert.equal(host.lookupAttachmentProvider(coreNoteProvider.type,scope).type,coreNoteProvider.type);
+ assert.equal(host.getAttachmentProviderPin(coreNoteProvider.type,scope),undefined);
+ assert.deepEqual(host.getAttachmentProviderPin(f.provider.type,scope),{type:f.provider.type,pluginId:f.installation.pluginId,contributionId:f.attachmentEntry.id,revision:f.installation.revision,contentHash:f.installation.contentHash});
+ assert.throws(()=>host.getAttachmentProviderPin(f.provider.type,{sessionId:'ps_B'}));
+ await host.dispose();assert.throws(()=>host.getAttachmentProviderPin(f.provider.type,scope));
+ const core=new BrowserPluginHost({...f.plan,plugins:[],contributions:[]},{...f.catalog,plugins:[]});await core.start();assert.equal(core.lookupAttachmentProvider(coreNoteProvider.type,scope).type,coreNoteProvider.type);await core.dispose();
 });
 test('attachment registration is rolled back when a later browser setup step fails',async()=>{
  const f=attachmentFixture();const host=new BrowserPluginHost(f.plan,f.catalog,async()=>({Notes:()=>null,setup(ctx){ctx.registerAttachmentProvider(f.attachmentEntry.id,f.provider);throw Error('later setup failed');}}));

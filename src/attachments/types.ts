@@ -117,6 +117,15 @@ export type K07AttachmentProvider = {
 	notifyAccepted?(info: K07AcceptNotice): void;
 };
 
+/** Frozen ownership of one plugin provider; Core builtin types need no plugin pin. */
+export type AttachmentProviderPin = {
+	type: string;
+	pluginId: string;
+	contributionId: string;
+	revision: string;
+	contentHash: string;
+};
+
 export type AttachmentProviderScope = {
 	sessionId: string;
 };

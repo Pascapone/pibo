@@ -26,7 +26,9 @@ import { authorizeAgentRuntimeHistoryProof } from "../dist/agent-runtime/history
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
 import { createMessageContentBinding } from "../dist/shared/message-content-binding.js";
-import { PIBO_CHAT_EXTENSION_SERVICE, PiboChatExtensionRegistry } from "../dist/plugins/product-services.js";
+import { PIBO_CHAT_EXTENSION_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, PiboChatExtensionRegistry } from "../dist/plugins/product-services.js";
+import { attachmentProviderPin } from "../dist/attachments/provider-pins.js";
+import { attachmentFixture, attachmentPlan, attachmentBody } from "./helpers/attachment-fixture.mjs";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
 const emptyAgentPluginSelection = { schemaVersion: 1, plugins: [] };
@@ -8995,6 +8997,69 @@ test("content-bound durable HTTP admission rejects invalid identity without upgr
 		assert.equal((await old.json()).receipt.contentBinding, undefined);
 		assert.equal((await send(legacy)).status, 202);
 		assert.equal((await send(input)).status, 409, "old receipt must never be upgraded into a new proof");
+	} finally { unblock(); await host.channel.stop?.(); }
+});
+
+test("K07 HTTP admission validates scoped providers and stores materialized frozen data without starting a runtime", async () => {
+	const f = await attachmentFixture();
+	let unblock; const blocked = new Promise(resolve => { unblock = resolve; });
+	const reads = []; let disabled = false; const extensions = new PiboChatExtensionRegistry();
+	extensions.registerMessageAugmenter(({ messageText, body }) => { if (body.attachmentVersion) body.attachments[0].payload.text = "mutated extension input"; return { messageText }; });
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), getService(id) {
+		if (id === PLUGIN_HOST_SERVICE) return f.host;
+		if (id === PIBO_CHAT_EXTENSION_SERVICE) return extensions;
+		if (id === PLUGIN_SESSION_PLAN_SERVICE) return async (sessionId, kind) => { reads.push(kind); return { plan: attachmentPlan(f.host, sessionId, !disabled) }; };
+	}, async emit(event) { await blocked; return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, text: event.text, queuedMessages: 1 }; } });
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+	try {
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		const body = attachmentBody({ piboSessionId: session.id, text: "", clientTxnId: "k07-provider", attachmentProviderPins: [attachmentProviderPin(attachmentPlan(f.host, session.id), session.id, f.provider.type)] }); body.attachments[0].type = f.provider.type;
+		const expected = createMessageContentBinding({ sessionId: session.id, delivery: "queue", body });
+		const accepted = await send(body); assert.equal(accepted.status, 202); const first = await accepted.json();
+		assert.deepEqual(first.receipt.contentBinding, expected);
+		assert.equal(first.event.payload.attachmentCount, 1); assert.equal(first.event.payload.attachments, undefined, "optional event projection does not duplicate the structured snapshot"); assert.match(first.event.payload.text, /frozen note/); assert.doesNotMatch(first.event.payload.text, /mutated extension/);
+		const history = new PiboDataStore(host.dataStorePath, { readOnly: true, payloadRootDir: host.dataPayloadRootDir });
+		let snapshotRef;
+		try {
+			const message = history.messages.listMessages(session.id).find(entry => entry.role === "user"); snapshotRef = message.attributes.attachmentSnapshotRef;
+			assert.equal(typeof snapshotRef, "string"); const snapshot = history.payloads.readPayloadJsonBounded(snapshotRef, 1024 * 1024);
+			assert.equal(snapshot.attachments[0].payload.text, "frozen note"); assert.deepEqual(snapshot.providerPins, body.attachmentProviderPins);
+			const metadata = history.payloads.getPayload(snapshotRef); assert.equal(metadata.refCount, 1);
+			const command = history.db.prepare("SELECT payload_bytes FROM message_commands WHERE id=?").get(first.receipt.id);
+			assert.equal(command.payload_bytes, Buffer.byteLength(first.event.payload.text) + metadata.byteSize, "structured history must not bypass the admission byte ledger");
+		} finally { history.close(); }
+		const duplicate = await send(body); assert.equal(duplicate.status, 202); assert.equal((await duplicate.json()).receipt.id, first.receipt.id);
+		const changed = structuredClone(body); changed.attachments[0].payload.text = "other note"; assert.equal((await send(changed)).status, 409);
+		const malformed = structuredClone(body); malformed.clientTxnId = "k07-bad-schema"; malformed.attachments[0].payload.text = 4;
+		const invalid = await send(malformed); assert.equal(invalid.status, 400); assert.equal((await invalid.json()).code, "ATT_SCHEMA_MISMATCH");
+		disabled = true; const unavailable = await send({ ...body, clientTxnId: "k07-disabled" }); assert.equal(unavailable.status, 409); assert.equal((await unavailable.json()).code, "ATT_PROVIDER_MISSING");
+		assert.ok(reads.length >= 2); assert.ok(reads.every(kind => kind === "current"));
+		await waitForCondition(() => host.emitted.length === 1, "K07 accepted message did not reach the existing dispatcher");
+		assert.equal(host.emitted[0].type, "message"); assert.equal(host.emitted[0].source, "user"); assert.match(host.emitted[0].text, /frozen note/);
+		const db = new DatabaseSync(host.dataStorePath); try { assert.equal(db.prepare("SELECT count(*) n FROM message_commands").get().n, 1); } finally { db.close(); }
+		await f.host.remove("fixture.attachments");
+		const receipt = await (await fetch(`${host.baseURL}/api/chat/message-receipts/${first.receipt.id}`, { headers })).json(); assert.deepEqual(receipt.receipt.contentBinding, expected, "provider removal must not erase admission/history proof");
+		const retained = new PiboDataStore(host.dataStorePath, { readOnly: true, payloadRootDir: host.dataPayloadRootDir });
+		try { assert.equal(retained.payloads.getPayload(snapshotRef).refCount, 1, "duplicates do not acquire another snapshot reference"); assert.equal(retained.payloads.readPayloadJsonBounded(snapshotRef, 1024 * 1024).attachments[0].payload.text, "frozen note"); } finally { retained.close(); }
+	} finally { unblock(); await host.channel.stop?.(); await f.host.stop(); }
+});
+
+test("K07 HTTP admission rejects unowned media and authority fields while Core JSON needs no plugin service", async () => {
+	let unblock; const blocked = new Promise(resolve => { unblock = resolve; });
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), async emit(event) { await blocked; return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, text: event.text, queuedMessages: 1 }; } });
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body) });
+	try {
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json(); const body = attachmentBody({ piboSessionId: session.id, text: "", clientTxnId: "k07-core" });
+		const image = structuredClone(body); image.clientTxnId = "k07-image"; image.attachments[0].type = "pibo.core/image"; image.attachments[0].payload = { alt: "image" }; image.attachments[0].media = [{ draftResourceId: "blob", mimeType: "image/png", bytes: 4 }]; image.attachmentResources = [{ draftResourceId: "blob", preparedUploadId: "/untrusted/path" }];
+		const missing = await send(image); assert.equal(missing.status, 404); assert.equal((await missing.json()).code, "ATT_BYTES_MISSING");
+		for (const patch of [{ role: "system" }, { piboSessionId: "ps_foreign" }, { path: "/untrusted/path" }]) {
+			const forged = structuredClone(body); Object.assign(forged.attachments[0], patch); assert.equal((await send(forged)).status, 400);
+		}
+		for (const patch of [{ attachmentVersion: 2 }, { contentBindingVersion: undefined }, { clientTxnId: undefined }, { fileAttachmentPaths: ["/legacy/unbound/path"] }]) assert.equal((await send({ ...body, ...patch })).status, 400);
+		const accepted = await send(body); assert.equal(accepted.status, 202); assert.match((await accepted.json()).event.payload.text, /frozen note/);
+		const db = new DatabaseSync(host.dataStorePath); try { assert.equal(db.prepare("SELECT count(*) n FROM message_commands").get().n, 1); } finally { db.close(); }
 	} finally { unblock(); await host.channel.stop?.(); }
 });
 

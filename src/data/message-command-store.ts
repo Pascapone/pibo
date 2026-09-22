@@ -12,6 +12,8 @@ export type MessageReceipt = {
 type MessageCommandContent = {
 	sessionId: string; roomId: string; text: string; delivery: "queue" | "steer";
 	contentBinding?: MessageContentBinding;
+	/** Structured user history is charged with the command, not hidden in a sidecar. */
+	attachmentSnapshot?: { sha256: string; bytes: number };
 };
 const CONTENT_FINGERPRINT_PREFIX = "pibo-content-v1:";
 export type MessageCommandClaim = MessageReceipt & { token: number; text: string; delivery: "queue" | "steer" };
@@ -101,7 +103,8 @@ const terminalEvidenceSql = `(SELECT CASE
 export class MessageCommandStore {
 	constructor(private readonly store: PiboDataStore) {}
 	fingerprint(input: MessageCommandContent): string {
-		if (Buffer.byteLength(input.text) > 1024 * 1024) throw domainError("command_too_large", "Message exceeds the durable command byte limit.");
+		if (input.attachmentSnapshot !== undefined && (!input.attachmentSnapshot || typeof input.attachmentSnapshot !== "object" || !isMessageContentBinding(input.contentBinding) || !isMessageContentBinding({ version: 1, sha256: input.attachmentSnapshot.sha256 }) || !Number.isSafeInteger(input.attachmentSnapshot.bytes) || input.attachmentSnapshot.bytes < 1)) throw domainError("command_invalid_content_binding", "Invalid attachment snapshot identity.");
+		if (Buffer.byteLength(input.text) + (input.attachmentSnapshot?.bytes ?? 0) > 1024 * 1024) throw domainError("command_too_large", "Message and attachment snapshot exceed the durable command byte limit.");
 		if (input.contentBinding !== undefined && !isMessageContentBinding(input.contentBinding)) {
 			throw domainError("command_invalid_content_binding", "Invalid admission content binding.");
 		}
@@ -114,6 +117,7 @@ export class MessageCommandStore {
 	prepare(input: MessageCommandContent) {
 		return {
 			fingerprint: this.fingerprint(input),
+			chargedBytes: Buffer.byteLength(input.text) + (input.attachmentSnapshot?.bytes ?? 0),
 			payload: this.store.payloads.preparePayload({ value: input.text, contentType: "text/plain", retentionClass: "message_command" }),
 		};
 	}
@@ -154,17 +158,19 @@ export class MessageCommandStore {
 		const blocker=this.store.db.prepare("SELECT id,created_at FROM message_commands WHERE session_id=? AND state='interrupted' AND stream_id<? ORDER BY stream_id LIMIT 1").get(sessionId,beforeStreamId) as {id:string;created_at:number}|undefined;
 		if(blocker)throw domainError("command_reconciliation_required","A previous interrupted message requires operator review before this session can accept more messages.",{retryable:false,scope:"session",blockingCommandId:blocker.id,blockedSince:blocker.created_at,oldestWaitAgeMs:Math.max(0,Date.now()-blocker.created_at),nextAction:`pibo debug message-queue inspect --session ${sessionId}`});
 	}
-	insert(input: { key: string; fingerprint: string; payload: PreparedPayload; sessionId: string; roomId: string; eventId: string; streamId: number; delivery: "queue" | "steer" }): MessageReceipt {
+	insert(input: { key: string; fingerprint: string; payload: PreparedPayload; chargedBytes?: number; sessionId: string; roomId: string; eventId: string; streamId: number; delivery: "queue" | "steer" }): MessageReceipt {
 		const prior = this.find(input.key, input.fingerprint);
 		if (prior) return prior;
 		this.assertAdmissionUnblocked(input.sessionId,input.delivery,input.streamId);
+		const chargedBytes = input.chargedBytes ?? input.payload.byteSize;
+		if (!Number.isSafeInteger(chargedBytes) || chargedBytes < input.payload.byteSize || chargedBytes > 1024 * 1024) throw domainError("command_too_large", "Invalid durable command byte charge.");
 		const limit = MESSAGE_COMMAND_LIMITS[input.delivery];
 		const rows = this.store.db.prepare(`SELECT c.session_id,c.room_id,c.payload_bytes,c.created_at,c.state,
 		 NOT EXISTS(SELECT 1 FROM message_commands p WHERE p.session_id=c.session_id AND p.state='interrupted' AND p.stream_id<c.stream_id) dispatchable
 		 FROM message_commands c WHERE c.state IN (${active}) AND c.delivery=? LIMIT ?`).all(input.delivery,limit.count+1) as Array<Pick<Row,"session_id"|"room_id"|"payload_bytes"|"created_at"|"state">&{dispatchable:number}>;
 		const now = Date.now();
 		const exceeds = (scope: typeof rows, count: number, bytes: number, ageMs: number) => scope.length >= count
-			|| scope.reduce((n,r)=>n+r.payload_bytes,input.payload.byteSize)>bytes
+			|| scope.reduce((n,r)=>n+r.payload_bytes,chargedBytes)>bytes
 			|| scope.some(r=>r.dispatchable===1 && (r.state === "accepted" || r.state === "waiting_slot") && now-r.created_at>=ageMs);
 		if (exceeds(rows,limit.count,limit.bytes,limit.ageMs)
 			|| exceeds(rows.filter(r=>r.room_id===input.roomId),limit.roomCount,limit.roomBytes,limit.roomAgeMs)
@@ -173,7 +179,7 @@ export class MessageCommandStore {
 		}
 		const id = `cmd_${randomUUID()}`;
 		const payload = this.store.payloads.commitPreparedPayload(input.payload);
-		this.store.db.prepare(`INSERT INTO message_commands (id,request_key,fingerprint,session_id,room_id,event_id,stream_id,payload_ref,payload_bytes,delivery,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'accepted',?,?)`).run(id,input.key,input.fingerprint,input.sessionId,input.roomId,input.eventId,input.streamId,payload.id,payload.byteSize,input.delivery,now,now);
+		this.store.db.prepare(`INSERT INTO message_commands (id,request_key,fingerprint,session_id,room_id,event_id,stream_id,payload_ref,payload_bytes,delivery,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'accepted',?,?)`).run(id,input.key,input.fingerprint,input.sessionId,input.roomId,input.eventId,input.streamId,payload.id,chargedBytes,input.delivery,now,now);
 		return this.get(id)!;
 	}
 	private terminalizeBlockedSuccessors(now: number, limit=100): number {

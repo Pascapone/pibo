@@ -6,7 +6,10 @@ import type { EffectivePluginPlan, PluginArtifactEnvelope, PluginBrowserCatalog,
 export type { PluginBrowserModule, PluginBrowserSetup, PluginComposerHook, PluginRendererProps, PluginViewProps } from "../../../../plugins/sdk";
 import { pluginRequest } from "./session-tab-controller";
 import { assertValidAttachmentProvider } from "../../../../attachments/providers";
-import type { AttachmentProviderLookup, K07AttachmentProvider } from "../../../../attachments/types";
+import type { AttachmentProviderLookup, AttachmentProviderPin, K07AttachmentProvider } from "../../../../attachments/types";
+import { getCoreAttachmentProvider } from "../../../../attachments/core-providers";
+import { attachmentProviderPin } from "../../../../attachments/provider-pins";
+import { AttachmentDraftError } from "../../../../attachments/errors";
 
 export type BrowserModuleLoader = (url: string) => Promise<PluginBrowserModule>;
 const importModule: BrowserModuleLoader = (url) => import(/* @vite-ignore */ url);
@@ -16,7 +19,11 @@ export class BrowserPluginHost {
 	readonly hooks: PluginComposerHook[] = [];
 	private readonly attachmentProviders = new Map<string, K07AttachmentProvider>();
 	readonly lookupAttachmentProvider: AttachmentProviderLookup = (type, scope) =>
-		!this.disposed && scope.sessionId === this.plan.piboSessionId ? this.attachmentProviders.get(type) : undefined;
+		!this.disposed && !!this.plan.piboSessionId && scope.sessionId === this.plan.piboSessionId ? getCoreAttachmentProvider(type) ?? this.attachmentProviders.get(type) : undefined;
+	getAttachmentProviderPin(type: string, scope: { sessionId: string }): AttachmentProviderPin | undefined {
+		if (!this.lookupAttachmentProvider(type, scope)) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: `Attachment provider is unavailable for this session: ${type}`, retryable: false });
+		return getCoreAttachmentProvider(type) ? undefined : attachmentProviderPin(this.plan, scope.sessionId, type);
+	}
 	readonly errors = new Map<string, string>();
 	shell?: React.ComponentType<{ children: React.ReactNode; piboSessionId: string }>;
 	private scopes: sdk.PluginScope[] = [];
@@ -49,6 +56,8 @@ export class BrowserPluginHost {
 						if (entry.contribution.kind !== sdk.ATTACHMENT_PROVIDER_KIND || entry.contribution.name !== provider.type) throw new Error(`Attachment provider does not match its declared contribution: ${id}`);
 						const type = provider.type;
 						if (type.startsWith("pibo.core/")) throw new Error("Core attachment types cannot be replaced by plugins");
+						const pin = attachmentProviderPin(this.plan, this.plan.piboSessionId!, type);
+						if (pin.pluginId !== plugin.pluginId || pin.revision !== plugin.revision || pin.contentHash !== plugin.contentHash || pin.contributionId !== id) throw new Error("Attachment provider catalog differs from the selected artifact");
 						if (this.attachmentProviders.has(type)) throw new Error(`Duplicate attachment provider ${type}`);
 						this.attachmentProviders.set(type, provider);
 						scope.defer(() => { if (this.attachmentProviders.get(type) === provider) this.attachmentProviders.delete(type); });

@@ -20,6 +20,8 @@ export type UserMessageAcceptedIngestInput = {
 		createdAt?: string;
 	};
 	preparedPayload?: PreparedPayload;
+	/** One canonical structured snapshot owned by product history, not receipts/events. */
+	preparedAttachmentPayload?: PreparedPayload;
 };
 
 export type UserMessageAcceptedIngestResult = {
@@ -128,6 +130,7 @@ export class ChatDataIngestService {
 				return { streamId: event.streamId, messageId: existingAfterEvent.id, duplicate: true };
 			}
 
+			const attachmentSnapshotRef = input.preparedAttachmentPayload ? this.store.payloads.commitPreparedPayload(input.preparedAttachmentPayload).id : undefined;
 			this.store.messages.insertMessage({
 				id: messageId,
 				sessionId: input.session.id,
@@ -145,6 +148,7 @@ export class ChatDataIngestService {
 				attributes: compactObject({
 					clientTxnId: input.clientTxnId,
 					inlineText: payloadRef ? undefined : input.text,
+					attachmentSnapshotRef,
 				}) as PiboJsonObject,
 			});
 

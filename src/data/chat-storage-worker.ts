@@ -1,5 +1,8 @@
 import { MessageCommandStore, type MessageCommandState } from "./message-command-store.js";
 import { parentPort, workerData } from "node:worker_threads";
+import { createHash } from "node:crypto";
+import { attachmentJson, readAttachmentMessage, type AttachmentHistorySnapshot } from "../attachments/message.js";
+import { AttachmentDraftError } from "../attachments/errors.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../apps/chat/data/session-query-service.js";
 import { isPiboRoomArchived } from "../apps/chat/types/rooms.js";
@@ -78,7 +81,14 @@ function execute(command: ChatStorageCommand): unknown {
 				throw Object.assign(new Error("Content binding requires the admitted transaction identity."), { code: "command_invalid_content_binding" });
 			}
 			const contentBinding = requestBody === undefined ? undefined : createMessageContentBinding({ sessionId: command.session.id, delivery: command.durableCommand!.delivery, body: requestBody });
-			const commandInput = command.durableCommand ? { sessionId:command.session.id,roomId:room.id,text:command.text,delivery:command.durableCommand.delivery,...(contentBinding ? { contentBinding } : {}) } : undefined;
+			const attachments = requestBody ? readAttachmentMessage(requestBody) : undefined;
+			// The structured snapshot comes from captured input, not mutable extension
+			// payloads. Media requires the resource authority, never a caller's path.
+			if (attachments?.resources.length) throw new AttachmentDraftError({ code: "ATT_BYTES_MISSING", message: "Attachment media requires an authorized durable resource.", retryable: false });
+			const snapshot: AttachmentHistorySnapshot | undefined = attachments?.attachments.length ? { formatVersion: 1, attachments: attachments.attachments, providerPins: attachments.pins, resources: [] } : undefined;
+			const snapshotText = snapshot ? attachmentJson(snapshot) : undefined;
+			const snapshotIdentity = snapshotText === undefined ? undefined : { sha256: createHash("sha256").update(snapshotText).digest("hex"), bytes: Buffer.byteLength(snapshotText) };
+			const commandInput = command.durableCommand ? { sessionId:command.session.id,roomId:room.id,text:command.text,delivery:command.durableCommand.delivery,...(contentBinding ? { contentBinding } : {}), ...(snapshotIdentity ? { attachmentSnapshot: snapshotIdentity } : {}) } : undefined;
 			const receipt = key && commandInput ? messageCommands.find(key,messageCommands.fingerprint(commandInput)) : undefined;
 			const existing = key ? store.eventLog.findByIdempotencyKey(key) : undefined;
 			// A durable receipt, not optional trace retention, owns idempotency.
@@ -89,6 +99,7 @@ function execute(command: ChatStorageCommand): unknown {
 			const preparedCommand = commandInput ? messageCommands.prepare(commandInput) : undefined;
 			const createdAt = command.input.createdAt ?? new Date().toISOString();
 			const preparedPayload = ingest.prepareUserMessagePayload(command.text, createdAt);
+			const preparedAttachmentPayload = snapshotText === undefined ? undefined : store.payloads.preparePayload({ value: Buffer.from(snapshotText), contentType: "application/json", retentionClass: "chat_attachment", createdAt });
 			return store.transaction(() => {
 				const concurrentReceipt = key && preparedCommand ? messageCommands.find(key, preparedCommand.fingerprint) : undefined;
 				if (concurrentReceipt) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!), created: false, receipt: concurrentReceipt };
@@ -101,7 +112,7 @@ function execute(command: ChatStorageCommand): unknown {
 				if(command.durableCommand)messageCommands.assertAdmissionUnblocked(command.session.id,command.durableCommand.delivery);
 				const event = commands.appendEvent({ ...command.input, createdAt });
 				sessions.upsertSession(command.session, command.durableCommand ? sessions.getSession(command.session.id)?.status ?? "idle" : "idle", command.session.updatedAt, { preserveRuntimeBinding: true });
-				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, eventId: command.durableCommand?.eventId, legacyEvent: event, preparedPayload });
+				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, eventId: command.durableCommand?.eventId, legacyEvent: event, preparedPayload, preparedAttachmentPayload });
 				const receipt = preparedCommand && command.durableCommand ? messageCommands.insert({ key:key ?? `chat:command:${command.durableCommand.eventId}`, ...preparedCommand,sessionId:command.session.id,roomId:room.id,eventId:command.durableCommand.eventId,streamId:event.streamId,delivery:command.durableCommand.delivery }) : undefined;
 				return { event, created: true, receipt };
 			});
@@ -154,7 +165,7 @@ function attempt(request: Request) {
 			return;
 		}
 		const domainCode = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-		if (domainCode === "room_not_found" || domainCode === "room_read_only" || (domainCode.startsWith("storage_") || domainCode.startsWith("command_")) || domainCode === "pibo_output_identity_collision") {
+		if (error instanceof AttachmentDraftError || domainCode === "room_not_found" || domainCode === "room_read_only" || (domainCode.startsWith("storage_") || domainCode.startsWith("command_")) || domainCode === "pibo_output_identity_collision") {
 			const source=error as Record<string,unknown>;
 			const details=Object.fromEntries(["retryable","scope","blockingCommandId","blockedSince","oldestWaitAgeMs","nextAction"].flatMap(key=>source[key]===undefined?[]:[[key,source[key]]]));
 			respond(request, { error: { code: domainCode, message, ...(Object.keys(details).length?{details}:{}) } });

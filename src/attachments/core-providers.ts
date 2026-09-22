@@ -1,5 +1,5 @@
 /**
- * K07 v1 core attachment providers (D1-G1, productive vertical).
+ * K07 v1 Core attachment domain providers; Core admission owns media authority.
  *
  * Lives OUTSIDE the browser core per I-K07-DECISION-01 §1 (the chat-ui core
  * never imports this module; providers reach it only through the lookup
@@ -12,6 +12,7 @@
  */
 
 import { AttachmentDraftError } from "./errors.js";
+import { validateAgainstSchema } from "./providers.js";
 import type {
 	K07AttachmentProvider,
 	K07FrozenAttachment,
@@ -89,6 +90,11 @@ function jsonPart(frozen: K07FrozenAttachment): K07MessagePart {
 	};
 }
 
+function mediaPart(frozen: K07FrozenAttachment): K07MessagePart {
+	if (!frozen.media?.length) throw new AttachmentDraftError({ code: "ATT_BYTES_MISSING", message: "Image and file attachments require secured media bytes.", retryable: false });
+	return jsonPart(frozen);
+}
+
 function noteTileTitle(payload: unknown): string {
 	const record = (typeof payload === "object" && payload !== null ? payload : {}) as { title?: unknown; text?: unknown };
 	return typeof record.title === "string" && record.title ? record.title : notePayloadText(record).slice(0, 80);
@@ -111,15 +117,15 @@ export const coreNoteProvider: K07AttachmentProvider = {
 	schemaVersions: [1],
 	schemas: { 1: NOTE_SCHEMA_V1 },
 	validate(payload: unknown): void {
-		if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-			throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Note payload must be an object.", retryable: false });
-		}
+		validateAgainstSchema(NOTE_SCHEMA_V1, payload, "note payload");
 		if (notePayloadText(payload as { title?: unknown; text?: unknown }).trim().length === 0) {
 			throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Note payload needs non-blank text.", retryable: false });
 		}
 	},
 	snapshot(source: unknown): unknown {
-		return snapshotNote(source);
+		const payload = snapshotNote(source);
+		coreNoteProvider.validate(payload);
+		return payload;
 	},
 	serializeForMessage(frozen: K07FrozenAttachment): K07MessagePart {
 		return jsonPart(frozen);
@@ -140,17 +146,17 @@ export const coreImageProvider: K07AttachmentProvider = {
 	schemaVersions: [1],
 	schemas: { 1: IMAGE_SCHEMA_V1 },
 	validate(payload: unknown): void {
-		if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-			throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Image payload must be an object.", retryable: false });
-		}
+		validateAgainstSchema(IMAGE_SCHEMA_V1, payload, "image payload");
 	},
 	snapshot(source: unknown): unknown {
 		const fields = snapshotMediaFields(source, "Image");
 		const record = source as Record<string, unknown>;
-		return { ...fields, alt: typeof record.alt === "string" ? record.alt : "" };
+		const payload = { ...fields, alt: typeof record.alt === "string" ? record.alt : "" };
+		coreImageProvider.validate(payload);
+		return payload;
 	},
 	serializeForMessage(frozen: K07FrozenAttachment): K07MessagePart {
-		return jsonPart(frozen);
+		return mediaPart(frozen);
 	},
 	renderTile(payload: unknown): { title: string; kind: "image" } {
 		return { title: imageTileTitle(payload), kind: "image" };
@@ -168,22 +174,22 @@ export const coreFileProvider: K07AttachmentProvider = {
 	schemaVersions: [1],
 	schemas: { 1: FILE_SCHEMA_V1 },
 	validate(payload: unknown): void {
-		if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
-			throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "File payload must be an object.", retryable: false });
-		}
+		validateAgainstSchema(FILE_SCHEMA_V1, payload, "file payload");
 	},
 	snapshot(source: unknown): unknown {
 		const fields = snapshotMediaFields(source, "File");
 		const record = source as Record<string, unknown>;
-		return {
+		const payload = {
 			...fields,
 			name: typeof record.name === "string" ? record.name : "",
 			...(typeof record.mimeType === "string" ? { mimeType: record.mimeType } : {}),
 			...(typeof record.bytes === "number" ? { bytes: record.bytes } : {}),
 		};
+		coreFileProvider.validate(payload);
+		return payload;
 	},
 	serializeForMessage(frozen: K07FrozenAttachment): K07MessagePart {
-		return jsonPart(frozen);
+		return mediaPart(frozen);
 	},
 	renderTile(payload: unknown): { title: string; kind: "file" } {
 		return { title: fileTileTitle(payload), kind: "file" };
@@ -197,3 +203,8 @@ export const coreFileProvider: K07AttachmentProvider = {
 };
 
 export const CORE_PROVIDERS: K07AttachmentProvider[] = [coreNoteProvider, coreImageProvider, coreFileProvider];
+
+/** Core-owned builtins, not a fallback for a missing plugin registration. */
+export function getCoreAttachmentProvider(type: string): K07AttachmentProvider | undefined {
+	return CORE_PROVIDERS.find((provider) => provider.type === type);
+}

@@ -7,6 +7,7 @@ export class PluginScope {
 	private readonly disposers: PluginDisposer[] = [];
 	private disposal?: Promise<void>;
 	private readonly children = new Set<PluginScope>();
+	private onDisposed?: () => void;
 	private state: "open" | "disposing" | "disposed" | "failed" = "open";
 
 	constructor(readonly pluginId: string, readonly instanceId: string = pluginId) {
@@ -33,7 +34,12 @@ export class PluginScope {
 		this.assertOpen();
 		const child = new PluginScope(this.pluginId, `${this.instanceId}/${instanceId}`);
 		this.children.add(child);
-		this.defer(() => child.dispose());
+		const disposeChild = this.defer(() => child.dispose());
+		child.onDisposed = () => {
+			this.children.delete(child);
+			const index = this.disposers.indexOf(disposeChild);
+			if (index >= 0) this.disposers.splice(index, 1);
+		};
 		return child;
 	}
 
@@ -62,6 +68,9 @@ export class PluginScope {
 			}
 			this.state = errors.length ? "failed" : "disposed";
 			if (errors.length) throw new AggregateError(errors, `Plugin scope ${this.instanceId} cleanup failed`);
+			const onDisposed = this.onDisposed;
+			this.onDisposed = undefined;
+			onDisposed?.();
 		});
 		return this.disposal;
 	}
