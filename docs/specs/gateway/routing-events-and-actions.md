@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-05T12:20:39Z"
+  at: "2026-09-22T12:41:15Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "9ce53817fec5919c00e130dd794c391c497882a1"
+  commit: "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb"
   requirements:
     - id: "WP02-GW-ROUTE-001"
       status: "implemented"
@@ -136,7 +136,7 @@ traceability:
       sources:
         - path: "src/core/provider-recovery.ts"
           symbol: "isPiboProviderFallbackError"
-        - path: "src/core/provider-recovery.ts"
+        - path: "src/agent-runtimes/pi/retryable.ts"
           symbol: "isRetryablePiboProviderError"
         - path: "src/core/provider-recovery.ts"
           symbol: "resolvePiboProviderRecoverySettings"
@@ -257,12 +257,12 @@ Related ownership boundaries:
 - Non-current claim excluded: use BuiltinPiboExecutionAction as the exhaustive runtime action registry.
 - Non-current claim excluded: say kill cancels yielded runs; only kill_all includes them.
 - Non-current claim excluded: assign slash-command parsing/rendering or native history to this spec.
-- Non-current claim excluded: cite src/core/routed-session.ts as primary generic routing authority; it is a deprecated Pi compatibility re-export.
+- Non-current claim excluded: cite `src/core/routed-session.ts` as generic routing authority; that Pi compatibility re-export has been removed. Generic orchestration remains in `src/agent-runtime/routed-session.ts`, while Pi-native routing lives in `src/agent-runtimes/pi/routed-session.ts`.
 - Current limit or evidence gap: Approval/user-input single-use behavior lacks a focused requirement-named test in the canonical GW-001 test set; the closest integration test is Web action forwarding.
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `9ce53817fec5919c00e130dd794c391c497882a1`. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
+Source symbols and named tests are bound to commit `a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb`. The Pi-specific retry classifier now lives with the Pi adapter; Core retains fallback eligibility, retry settings, delay and cancellation. Requirement confidence measures trace quality; it does not claim that an external, browser, real-provider, or Pibo2 check ran.
 
 Package verification commands:
 

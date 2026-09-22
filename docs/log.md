@@ -1,5 +1,9 @@
 # Pibo documentation update log
 
+## 2026-09-22
+
+- **Direct V4 implementation: Pi ownership and attachment registration**: removed the obsolete Core/Pi forwarding modules and runtime TUI entry, kept prompt persistence/recovery scheduling in Core, and moved Pi compaction/classification into the adapter. Core CLI discovery no longer loads the gateway graph. Added ownership-scoped backend/browser attachment-provider registration through the existing public plugin mechanisms; productive Composer/media/admission/receipt wiring is still open. Updated [runtime controls](/specs/runtime/provider-model-controls.md), [routing ownership](/specs/gateway/routing-events-and-actions.md), and the [public plugin contract](/specs/product/plugin-profile-catalog.md) to code checkpoints `09fed1a7` and `a1ccc8d9`, pushed on the isolated integration branch. Focused batches passed 70/70 and 55/55 (overlapping coverage, not a combined unique-test count); 22 plugin artifacts built and the targeted neutral/SDK typecheck passed. Fresh file-at-a-time behavioral emit is not a root typecheck or release compiler pass. The installation test is explicitly user-skipped, not green. No full-cutover completion, production deployment, data migration or publication is claimed.
+
 ## 2026-09-21
 
 - **Reviewed wave-one packages integrated for candidate validation**: combined the A1/B1/C1/D1 branches in a separate integration worktree, added the attachment revision-exhaustion guard with a fail-first regression, and connected both transcription defaults to the reviewed owner-bound credentials. Registered the two package-local pilot READMEs as exact host-owned documentation exceptions; no validator rule was relaxed. Shared component and installation acceptance results are recorded separately from the original per-worker evidence.

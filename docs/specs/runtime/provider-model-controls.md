@@ -7,11 +7,11 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-01T20:42:35Z"
+  at: "2026-09-22T12:41:15Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "39090b8850758293e69380a52bb7498d7c955bc2"
+  commit: "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb"
   requirements:
     - id: "RUN-CTRL-001"
       status: "implemented"
@@ -63,6 +63,8 @@ traceability:
       status: "implemented"
       sources:
         - path: "src/core/provider-recovery.ts"
+          symbol: "isPiboProviderFallbackError"
+        - path: "src/agent-runtimes/pi/retryable.ts"
           symbol: "isRetryablePiboProviderError"
         - path: "src/core/session-router.ts"
           symbol: "PiboSessionRouter"
@@ -145,6 +147,8 @@ Implemented public contracts:
 - `selectRequestedFastMode`
 - `isRetryablePiboProviderError`
 
+Core owns prompt-file parsing and persistence in `src/core/compaction-prompt.ts`, and recovery scheduling in `src/core/provider-recovery.ts`. Pi-native completion, compaction hooks and assistant-error classification live in `src/agent-runtimes/pi/compaction-extension.ts` and `retryable.ts`. Importing the two Core modules does not load Pi implementations; `test/core-runtime-ownership.test.mjs` checks their transitive bundle inputs. The former Core runtime forwarders and `runPiboTui` entrypoint are removed; the root `createPiboRuntime` and `inspectPiboProfile` exports still address the Pi adapter.
+
 Related ownership boundaries:
 
 - `SPC-SEC-001`: product authentication, credential storage policy, and access control.
@@ -167,7 +171,7 @@ Related ownership boundaries:
 
 # Verification and traceability
 
-Source symbols and named tests are bound to commit `39090b8850758293e69380a52bb7498d7c955bc2`. Requirement confidence measures trace quality, not whether a command ran.
+Source symbols and named tests are bound to commit `a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb`. Requirement confidence measures trace quality, not whether a command ran. The September 22 ownership change was checked by focused recovery/compaction and import-boundary tests; it is not a new full-suite, root typecheck or installation acceptance claim.
 
 Package verification commands:
 

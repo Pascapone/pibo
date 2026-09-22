@@ -6,12 +6,12 @@ tags: ["product", "plugins", "profiles", "packages"]
 status: "stable"
 authority: "normative"
 generated:
-  by: "openai-codex/gpt-6"
-  at: "2026-09-15T21:05:00Z"
+  by: "openai/codex"
+  at: "2026-09-22T12:41:15Z"
 sources:
   - resource: "scope:Current implementation and tests at traceability.commit"
 traceability:
-  commit: "c6e3943096bd45158393d59519b525b4365679c7"
+  commit: "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb"
   requirements:
     - id: "PROD-REG-001"
       status: "implemented"
@@ -67,11 +67,19 @@ traceability:
           symbol: "preparePluginSdkResolution"
         - path: "src/plugins/browser.ts"
           symbol: "PluginBrowserSetup"
+        - path: "src/attachments/providers.ts"
+          symbol: "createProviderRegistryClient"
+        - path: "src/apps/chat-ui/src/plugins/browser-host.tsx"
+          symbol: "BrowserPluginHost"
       tests:
         - path: "test/plugin-system-public-runtime.test.mjs"
           name: "an out-of-repository package compiles and runs using only public plugin subpaths"
         - path: "test/plugin-system-backend-loader.test.mjs"
           name: "installed backend resolves the public SDK and shares the actual host ownership scope"
+        - path: "test/attachment-provider-registry.test.mjs"
+          name: "attachment providers use the existing backend resource projection and owning scope"
+        - path: "test/plugin-system-browser.test.mjs"
+          name: "attachment browser provider is declaration-bound, session-bound and disposed with its owner"
       failures:
         - "Unsupported SDK versions, unresolved entrypoints, invalid exports, or private imports keep the package inactive."
       confidence: "high"
@@ -241,6 +249,14 @@ Public package boundaries:
 
 The capability host owns registration truth. `PluginManager` owns durable package lifecycle. `PluginHost` owns dependency planning and generation activation. Profiles own their saved package selection; they do not own package installation state.
 
+## Attachment provider registration
+
+The public SDK exports the neutral `K07AttachmentProvider` types, `ATTACHMENT_PROVIDER_KIND` (`attachment-provider`) and `ATTACHMENT_PROVIDER_RESOURCE_KIND` (`resource:attachment-provider`). Backend providers register through the existing `registerResource` API; `PiboCapabilityHost.getAttachmentProvider(type)` reads the existing live capability projection. Removal follows the plugin owner scope; there is no second registration authority.
+
+Browser modules use `registerAttachmentProvider(contributionId, provider)`. The contribution must be effective at the pinned plugin revision, have kind `attachment-provider`, and declare `name === provider.type`. Providers cannot replace `pibo.core/*` types. Duplicate, undeclared, malformed or mismatched registrations fail setup and roll back that scope. The browser lookup is bound to the host's Pibo Session, returns nothing for a foreign Session or disposed host, and removes registrations on disposal or setup failure.
+
+The shared provider client revalidates the live declaration in O(schema size) per lookup and checks both the supported schema version and provider validation. Its deliberately limited schema window rejects unknown keywords, invalid bounds and cyclic declarations; object literals compare structurally and string lengths count Unicode code points. This is a registration/validation contract, not a claim that the Composer, durable media, upload/admission or receipt reconciliation already use these new providers.
+
 # Failure and security behavior
 
 - Inspection does not import package code.
@@ -258,9 +274,9 @@ The capability host owns registration truth. `PluginManager` owns durable packag
 
 # Verification and traceability
 
-Source symbols and named tests are bound through commit `c6e3943096bd45158393d59519b525b4365679c7`, including the test-profile visibility correction and the packaged 21-plugin Standard composition.
+Source symbols and named tests are bound through commit `a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb`. The current Standard inventory contains the deliberate 22-plugin selection. On September 22, the provider-seam and Core/Pi changes passed a focused 55/55 behavioral batch and a targeted neutral-module/public-SDK typecheck. A preceding focused batch passed 70/70 and rebuilt 22 plugin artifacts. Behavioral tests used fresh file-at-a-time TypeScript ESM emit, not a root typecheck or release-compiler pass. Installation testing is explicitly user-skipped; no new installed-candidate or production acceptance is claimed.
 
-Focused verification included:
+The following verification is historical evidence at `c6e3943096bd45158393d59519b525b4365679c7`, not a rerun for the current source:
 
 - TypeScript compilation and Pibo 4 artifact construction.
 - The serial F08 source, manifest, runtime, browser, and parity set: 105 tests passed, 0 failed.
