@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { writePiCredential, deletePiCredential } from "../dist/agent-runtimes/pi/credentials.js";
+import { createOpenAiChatGptTranscriptionProvider } from "../dist/transcription/openai-chatgpt.js";
 import { createOpenAiTranscriptionProvider } from "../dist/transcription/openai.js";
 
 const audio = { audio: { bytes: new Uint8Array([1, 2, 3]), filename: "test.webm", mimeType: "audio/webm" } };
@@ -50,6 +51,35 @@ test("integrated API consumer obtains only its fixed provider credentials from t
   assert.equal(await provider.isConfigured(), false);
   await assert.rejects(provider.transcribe(audio), (error) => error.code === "not_configured");
   assert.equal(requests.length, 1, "unrelated credentials must never be used as fallback");
+  assert.equal(attempts(), 0);
+});
+
+test("integrated OAuth consumer binds only its provider, logout is not_configured without fallback", async (t) => {
+  const attempts = await isolatedOwner(t);
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
+  const token = `${encode({ alg: "none" })}.${encode({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-owner-oauth" } })}.sig`;
+  await writePiCredential("openai-codex", { type: "oauth", access: token, refresh: "synthetic-refresh", expires: Date.now() + 3600_000, accountId: "acct-owner-oauth" });
+  await writePiCredential("anthropic", { type: "api_key", key: "integration-unrelated-key" });
+  const requests = [];
+  // No getAuth option: the integrated default (owner binding) is under test.
+  const provider = createOpenAiChatGptTranscriptionProvider({
+    fetch: async (url, init) => {
+      requests.push({ url: String(url), headers: { ...init.headers } });
+      return new Response(JSON.stringify({ text: "local transcript" }), { status: 200 });
+    },
+  });
+  assert.equal(await provider.isConfigured(), true);
+  assert.equal((await provider.transcribe(audio)).text, "local transcript");
+  assert.equal(requests.length, 1);
+  const [scheme, presented] = requests[0].headers.Authorization.split(" ");
+  assert.equal(scheme, "Bearer");
+  assert.equal(presented, token);
+  assert.equal(requests[0].headers["ChatGPT-Account-Id"], "acct-owner-oauth");
+  assert.equal(attempts(), 0);
+  await deletePiCredential("openai-codex");
+  assert.equal(await provider.isConfigured(), false);
+  await assert.rejects(provider.transcribe(audio), (error) => error.code === "not_configured");
+  assert.equal(requests.length, 1, "unrelated providers must never be used as fallback after logout");
   assert.equal(attempts(), 0);
 });
 
