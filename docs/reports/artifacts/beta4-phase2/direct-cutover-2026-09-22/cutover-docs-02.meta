@@ -1,0 +1,12 @@
+started=2026-09-22T13:10:09Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\;\ status=0\;\ for\ script\ in\ docs:indexes:write\ docs:validate\ docs:validate:okf\ docs:validate:migration\ docs:indexes:check\ docs:log:check\ docs:validator:test\;\ do\ printf\ \"\\n===\ %s\ ===\\n\"\ \"\$script\"\;\ npm\ run\ \"\$script\"\;\ code=\$\?\;\ printf\ \"===\ %s\ exit=%s\ ===\\n\"\ \"\$script\"\ \"\$code\"\;\ if\ \[\ \"\$code\"\ -ne\ 0\ \]\;\ then\ status=1\;\ fi\;\ done\;\ exit\ \"\$status\"
+source=3b86d389cbf5f47a65d11d57a87478929c8d9d57
+ M GLOSSARY.md
+ M docs/log.md
+ M docs/specs/orchestration/subagents.md
+ M docs/specs/resources/remote-agent-plugin-contract.md
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/
+3c60b7aae9f5f9653e764ee4ac9856a9727f122cf4b12225adfeb80fe051f893  -
+exit=0
+ended=2026-09-22T13:11:06Z

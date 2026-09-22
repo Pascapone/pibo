@@ -1,0 +1,12 @@
+started=2026-09-22T12:01:41Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ $RUN/transpile-for-tests.mjs\ \&\&\ node\ scripts/build-pibo4-artifacts.mjs\ \&\&\ node\ --test\ --test-concurrency=1\ test/core-cli-discovery-lazy.test.mjs\ test/mcp-agent-context.test.mjs\ test/codex-browser-interface.test.mjs\ test/plugin-system-context-build.test.mjs\ test/loop-ralph-parity.test.mjs\ test/chat-ui-loop-area.test.mjs\ test/chat-ui-core-attachment-pilot.test.mjs
+source=4b94fc6405af99950901634250090227e03a74df
+ M src/agent-runtimes/pi/adapter.ts
+ M src/agent-runtimes/pi/runtime.ts
+ M src/core/executable-cli.ts
+ M src/index.ts
+?? test/core-cli-discovery-lazy.test.mjs
+bfdfcf7d7d382b93f4098cc28e9e2bd8ff62a46c67bb9a54c6b7587973116ce5  -
+exit=0
+ended=2026-09-22T12:10:33Z

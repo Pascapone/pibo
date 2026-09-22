@@ -1,0 +1,19 @@
+started=2026-09-22T12:51:02Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ NodeNext\ --types\ node\ --esModuleInterop\ src/agent-runtime/observations/\*.ts\;\ echo\ \"Observation-engine\ targeted\ typecheck\ passed\ \(not\ root\ typecheck\)\"\;\ node\ $RUN/transpile-for-tests.mjs\;\ node\ scripts/build-pibo4-artifacts.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ test/observation-engine-boundary.test.mjs\ test/plugin-system-core-orchestration-boundary.test.mjs\ test/subagents.test.mjs\ test/subagent-observation-restart.test.mjs\ test/debug-agents.test.mjs\ test/remote-agent-modules.test.mjs\ test/remote-agent-history.test.mjs
+source=732c22b09103061874a53d70859c1b6463a4628a
+ M src/debug/agents.ts
+ M src/index.ts
+ M src/remote-agent/modules/observe.ts
+ M src/subagents/controller.ts
+ D src/subagents/observation-query.ts
+ D src/subagents/observation-text-regex.ts
+ D src/subagents/observations.ts
+ M src/subagents/tool.ts
+ M test/plugin-system-core-orchestration-boundary.test.mjs
+ M test/subagents.test.mjs
+?? src/agent-runtime/observations/
+?? test/observation-engine-boundary.test.mjs
+f6ce2f276a4e089c2457ad92ddaf06e9cc87431e94e4300f872c72a1a68da78c  -
+exit=0
+ended=2026-09-22T12:56:37Z

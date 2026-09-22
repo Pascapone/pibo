@@ -1,0 +1,106 @@
+This is a focused batch, not a full suite or installation test.
+{"method":"TypeScript.transpileModule, file-at-a-time","emitted":569,"typechecked":false,"releaseBuild":false}
+Built 22 Pibo 4 plugin package artifacts in $WORKTREE/dist/pibo4-artifacts
+✔ core draft add persists reload-proof snapshots with exact revisions (1039.485145ms)
+✔ open transactions bind exactly one original snapshot per id (476.369268ms)
+✔ acceptance persists atomically and survives reload (540.87457ms)
+✔ caller snapshots are validated against the bound original (493.287037ms)
+✔ transaction ids match the server normalizer (849.526102ms)
+✔ envelopes are validated and storage keeps the last good state (450.283463ms)
+✔ attachment ids stay unique across generation and load (484.244385ms)
+✔ failed mutations keep state and recover through retry (492.436733ms)
+✔ draft sessions stay isolated and media metadata survives reload; byte resolvability deferred to RV-02/05/07 (515.325466ms)
+✔ writers reject values the loader would refuse (501.517761ms)
+✔ null, malformed and cyclic inputs fail controlled without state damage (623.010093ms)
+✔ failed freeze stores nothing and heals into a normal transaction (487.782924ms)
+✔ uiState-only edits keep the frozen transaction idempotent (493.235477ms)
+✔ reissued ids survive stale duplicate receipts (504.422218ms)
+✔ payload updates keep stored uiState across reload (391.14271ms)
+✔ revision exhaustion preserves persisted drafts, open transactions and UI-only edits (257.416771ms)
+✔ Loop UI displays active Goal time without wall-clock or paused-time totals (5.316861ms)
+✔ new Loop UI defaults to same-session goal mode and exposes legacy Ralph mode (1024.525435ms)
+✔ Loop UI renders recursive model usage and reported cost (618.22634ms)
+✔ Loop UI draft shows uncached after Ralph-to-Goal switch while legacy Goals remain total (611.624767ms)
+✔ Loop detail header exposes an accessible copyable loop ID (618.649429ms)
+✔ new Loop jobs default to a writable room and exclude archived room options (601.987514ms)
+✔ Codex browser interface is delivered by its ordinary installed plugin (3797.841991ms)
+✔ Codex-compatible labels and structured schemas dispatch to one controller (1.834295ms)
+✔ Browser Use controller binds command session and managed pool lease to the Pibo session (4.249068ms)
+✔ Browser Use controller reuses an active auth lease held by the same Pibo session (2.322484ms)
+✔ node_repl.js preserves state, reaches the bound browser bridge, resets, and omits host capabilities (56.91561ms)
+✔ core CLI --help loads no gateway or product state (27.427489ms)
+✔ core CLI --version loads no gateway or product state (25.176617ms)
+✔ core CLI gateway:web --help loads no gateway or product state (23.921688ms)
+✔ Loop runs do not schedule a timeout by default (342.770799ms)
+[loop] job ralph_a1fc6447-9e5b-4ccd-8137-c4337c63d7eb failed LoopRunTimeoutError: Loop run timed out
+    at file://$WORKTREE/dist/loops/service.js:778:44 {
+  abortFailed: false
+}
+✔ Loop aborts the session before completing an explicitly timed-out run (37.444792ms)
+[loop] job ralph_9d25897c-c22f-4ca2-a665-a4582260aaf1 failed LoopRunTimeoutError: Loop run timed out; session abort failed: abort unavailable
+    at file://$WORKTREE/dist/loops/service.js:778:102
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at runNextTicks (node:internal/process/task_queues:69:3)
+    at process.processTimers (node:internal/timers:615:9) {
+  abortFailed: true
+}
+✔ Loop disables the job when a timed-out session cannot be aborted (38.951219ms)
+[loop] job ralph_36a1a7fb-0eb9-4541-b462-d6106814447c failed Error: Unknown profile "unity-agent". Available profiles: base
+    at TestContext.<anonymous> (file://$WORKTREE/test/loop-ralph-parity.test.mjs:157:133)
+    at Test.runInAsyncScope (node:async_hooks:227:14)
+    at Test.run (node:internal/test_runner/test:1402:25)
+    at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+    at Test.postRun (node:internal/test_runner/test:1542:19)
+    at Test.run (node:internal/test_runner/test:1467:12)
+    at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+✔ Loop disables jobs after an unknown profile failure instead of looping (28.976436ms)
+✔ Loop service preserves promise-complete and max-iteration stop behavior through conditions (26.256938ms)
+✔ Loop service releases browser leases after ok run completion (26.457936ms)
+✔ Loop service releases browser leases on promise-complete terminal outcome (27.356844ms)
+✔ Loop service releases browser leases on max-iteration terminal outcome (28.623299ms)
+✔ Loop stop request disables future runs and still cleans up after the active run (27.0764ms)
+✔ Loop resource cleanup failure marks run and job metadata dirty (28.665641ms)
+✔ Loop resource cleanup preserves retained worker metadata without browser leases (28.626733ms)
+✔ Loop cancel request aborts the active session and releases browser leases (26.56489ms)
+✔ Loop cancel request marks resources dirty when abort cannot be sent (28.216788ms)
+[loop] job ralph_44c3f329-ceed-4a74-ad96-112382937720 failed LoopRunTimeoutError: Loop run timed out
+    at file://$WORKTREE/dist/loops/service.js:778:44
+    at runNextTicks (node:internal/process/task_queues:65:5)
+    at process.processTimers (node:internal/timers:615:9) {
+  abortFailed: false
+}
+✔ Loop timeout path still releases browser leases (37.29294ms)
+✔ Loop prompt text cannot disable hard resource cleanup policy (27.026659ms)
+✔ Loop service passes runtime overrides to created sessions (27.812713ms)
+✔ Loop store persists stop policies, state, and run facts (1.597855ms)
+✔ Loop stop evaluation cannot clear an existing run reservation (0.825762ms)
+✔ Loop max-iterations counts completed run attempts regardless of outcome (0.776664ms)
+✔ Loop interrupted-run recovery marks possible browser resources dirty (1.05042ms)
+✔ Loop store persists and clears runtime overrides (0.812756ms)
+✔ Loop store persists app-global job and run resource metadata (1.181019ms)
+✔ Loop resource metadata validation rejects unsupported values (0.851274ms)
+✔ Loop stop evaluator composes any, all, and stateful custom conditions (0.306162ms)
+✔ Loop stop evaluator resolves legacy pibo.ralph.* condition types (0.165763ms)
+✔ Loop promise-complete condition requires marker on its own line (0.104842ms)
+✔ Loop max-iterations stop condition counts failed after-run outcomes (0.099149ms)
+✔ Loop goal-status condition stops terminal goals and continues otherwise (0.43323ms)
+✔ built-in Loop job templates keep Ralph-mode PRD coverage with loop stop types (0.273677ms)
+✔ non-PRD objective template uses max-iteration stop policy (0.057939ms)
+✔ capability host exposes registered loop stop conditions under loop and legacy Ralph names (0.946489ms)
+✔ MCP descriptions update the winning config source (9.898804ms)
+✔ MCP description updates do not create a config for an unknown server (1.307672ms)
+✔ MCP description updates preserve registry-owned read-only metadata (1.932768ms)
+✔ MCP server catalog reads local config metadata without connecting to servers (1.192839ms)
+✔ MCP agent context is generated only for selected described servers (2.792871ms)
+✔ runtime profile inspection includes selected MCP context (3951.356041ms)
+✔ plugin-selected Build Context preview and Pi profile inspection never create runtime, MCP, factories or executable extensions (2.157523ms)
+✔ actual plugin-selected build preserves context, progressive-skill and provider evidence without inventing a wire prompt (56.485804ms)
+✔ actual capture rejects cross-session and cross-generation resources (40.095266ms)
+ℹ tests 70
+ℹ suites 0
+ℹ pass 70
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 164882.394659

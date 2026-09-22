@@ -1,0 +1,42 @@
+// Bounded, file-at-a-time TypeScript emit for focused behavioral tests.
+// This is explicitly NOT a typecheck or a release compiler pass.
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import ts from '$WORKTREE/node_modules/typescript/lib/typescript.js';
+const cwd = process.cwd();
+const root = path.join(cwd, 'src');
+const out = path.join(cwd, 'dist');
+const excluded = ['apps/chat-ui/', 'apps/context-files-ui/', 'apps/chat-vscode/'];
+const config = ts.readConfigFile(path.join(cwd, 'tsconfig.json'), ts.sys.readFile);
+if (config.error) throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, '\n'));
+const { options, errors } = ts.convertCompilerOptionsFromJson(config.config.compilerOptions, cwd);
+if (errors.length) throw new Error(errors.map(x => ts.flattenDiagnosticMessageText(x.messageText, '\n')).join('\n'));
+let count = 0;
+async function walk(dir) {
+  for (const ent of await fs.readdir(dir, { withFileTypes: true })) {
+    const filename = path.join(dir, ent.name);
+    const relative = path.relative(root, filename).split(path.sep).join('/');
+    if (excluded.some(prefix => `${relative}/`.startsWith(prefix))) continue;
+    if (ent.isDirectory()) { await walk(filename); continue; }
+    if (!ent.isFile() || !relative.endsWith('.ts') || relative.endsWith('.d.ts')) continue;
+    const result = ts.transpileModule(await fs.readFile(filename, 'utf8'), {
+      fileName: filename,
+      compilerOptions: { ...options, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler, declaration: false, sourceMap: false },
+      reportDiagnostics: true,
+    });
+    const diagnostics = result.diagnostics?.filter(d => d.category === ts.DiagnosticCategory.Error) ?? [];
+    if (diagnostics.length) throw new Error(`${relative}: ${diagnostics.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')).join('\n')}`);
+    const output = path.join(out, relative.replace(/\.ts$/, '.js'));
+    await fs.mkdir(path.dirname(output), { recursive: true });
+    await fs.writeFile(output, result.outputText);
+    count++;
+  }
+}
+await walk(root);
+// Remove only the known retired outputs from this worktree's own dist.
+if (await fs.realpath(out) !== out) throw new Error('Refusing to prune a redirected dist directory');
+for (const name of ['core/runtime', 'core/routed-session', 'subagents/observations', 'subagents/observation-query', 'subagents/observation-text-regex']) {
+  if (await fs.stat(path.join(root, `${name}.ts`)).then(() => true, () => false)) continue;
+  for (const suffix of ['.js', '.js.map', '.d.ts']) await fs.rm(path.join(out, `${name}${suffix}`), { force: true });
+}
+console.log(JSON.stringify({ method: 'TypeScript.transpileModule, file-at-a-time (ESM)', emitted: count, typechecked: false, releaseBuild: false }));

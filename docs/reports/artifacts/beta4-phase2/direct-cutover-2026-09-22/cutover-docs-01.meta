@@ -1,0 +1,11 @@
+started=2026-09-22T12:43:15Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\;\ status=0\;\ for\ script\ in\ docs:indexes:write\ docs:validate\ docs:validate:okf\ docs:validate:migration\ docs:indexes:check\ docs:log:check\ docs:validator:test\;\ do\ printf\ \"\\n===\ %s\ ===\\n\"\ \"\$script\"\;\ npm\ run\ \"\$script\"\;\ code=\$\?\;\ printf\ \"===\ %s\ exit=%s\ ===\\n\"\ \"\$script\"\ \"\$code\"\;\ if\ \[\ \"\$code\"\ -ne\ 0\ \]\;\ then\ status=1\;\ fi\;\ done\;\ exit\ \"\$status\"
+source=a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb
+ M docs/log.md
+ M docs/specs/gateway/routing-events-and-actions.md
+ M docs/specs/product/plugin-profile-catalog.md
+ M docs/specs/runtime/provider-model-controls.md
+c7eca63ebf014e129ab41173d161bdc9adb3d351e7dd3b35a5c697868db02272  -
+exit=0
+ended=2026-09-22T12:44:18Z

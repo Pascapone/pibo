@@ -1,0 +1,12 @@
+started=2026-09-22T11:54:41Z
+cwd=$WORKTREE
+command=node --max-old-space-size=512 scripts/build-pibo4-artifacts.mjs
+source=4b94fc6405af99950901634250090227e03a74df
+ M src/agent-runtimes/pi/adapter.ts
+ M src/agent-runtimes/pi/runtime.ts
+ M src/core/executable-cli.ts
+ M src/index.ts
+?? test/core-cli-discovery-lazy.test.mjs
+bfdfcf7d7d382b93f4098cc28e9e2bd8ff62a46c67bb9a54c6b7587973116ce5  -
+exit=1
+ended=2026-09-22T11:54:45Z

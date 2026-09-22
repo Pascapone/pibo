@@ -9,20 +9,20 @@ tags:
 status: stable
 authority: normative
 generated:
-  by: openai-codex/gpt-5.6-sol
-  at: '2026-09-05T19:25:00Z'
+  by: openai/codex
+  at: '2026-09-22T13:01:57Z'
 sources:
 - resource: scope:Current implementation and tests at traceability.commit
   title: Committed implementation and test evidence for SPC-ORCH-002
 implementation:
   state: current
-  baseline_commit: d30e0250fdce4017920c7f9c41c1e2067124d23b
+  baseline_commit: 3b86d389cbf5f47a65d11d57a87478929c8d9d57
   package: WP-04-ORCHESTRATION
   source_evidence: performed
-  focused_test_execution: performed in Docker after authoring; see implementation report
-  build_and_typecheck_execution: performed in Docker after authoring; see implementation report
+  focused_test_execution: 66 focused tests and 3 remote source-policy characterizations passed on fresh behavioral emit
+  build_and_typecheck_execution: targeted observation-engine typecheck and 22-plugin artifact build passed; no root typecheck or installation acceptance
 traceability:
-  commit: d30e0250fdce4017920c7f9c41c1e2067124d23b
+  commit: 3b86d389cbf5f47a65d11d57a87478929c8d9d57
   requirements:
   - id: ORCH-SUB-001
     status: implemented
@@ -37,7 +37,7 @@ traceability:
     - path: test/subagents.test.mjs
       name: run start prepares selected delegated input before admission and persists the prepared arguments
     failures:
-    - Direct send invocation fails before child creation; arguments are normalized before admission/persistence.
+    - Invalid send arguments fail before child creation; direct sends wait for the reply and optional Run Control preserves normalized arguments before admission/persistence.
     confidence: high
   - id: ORCH-SUB-002
     status: implemented
@@ -48,12 +48,10 @@ traceability:
       symbol: normalizePiboAgentSessionName
     - path: src/core/session-router.ts
       symbol: DEFAULT_SUBAGENT_MAX_DEPTH
-    - path: src/core/session-router.ts
+    - path: src/subagents/controller.ts
       symbol: MAX_SUBAGENT_THREAD_KEY_BYTES
-    - path: src/core/session-router.ts
-      symbol: PiboSessionRouter.resolveSubagentSession
-      owner: PiboSessionRouter
-      member: resolveSubagentSession
+    - path: src/subagents/controller.ts
+      symbol: createPiboDelegationController
     tests:
     - path: test/subagents.test.mjs
       name: agents controller requires bounded Unicode names and updates reused titles
@@ -73,9 +71,9 @@ traceability:
       symbol: resolvePiboSubagentRuntimeSelections
     - path: src/core/session-router.ts
       symbol: PiboSessionRouter
-    - path: src/subagents/observation-query.ts
+    - path: src/agent-runtime/observations/observation-query.ts
       symbol: preparePiboAgentObservationQuery
-    - path: src/subagents/observation-query.ts
+    - path: src/agent-runtime/observations/observation-query.ts
       symbol: selectPiboAgentObservationPage
     - path: src/debug/agents.ts
       symbol: runDebugAgentsCli
@@ -93,11 +91,11 @@ traceability:
   - id: ORCH-SUB-004
     status: implemented
     sources:
-    - path: src/subagents/observations.ts
+    - path: src/agent-runtime/observations/observations.ts
       symbol: PIBO_AGENT_OBSERVATION_DEFAULT_LIMIT
-    - path: src/subagents/observations.ts
+    - path: src/agent-runtime/observations/observations.ts
       symbol: PIBO_AGENT_OBSERVATION_MAX_LIMIT
-    - path: src/subagents/observations.ts
+    - path: src/agent-runtime/observations/observations.ts
       symbol: normalizePiboAgentObservationLimit
     - path: src/core/session-router.ts
       symbol: PiboSessionRouter
@@ -118,19 +116,19 @@ traceability:
   - id: ORCH-SUB-005
     status: implemented
     sources:
-    - path: src/subagents/tool.ts
+    - path: src/agent-runtime/observations/types.ts
       symbol: PiboAgentObserveInput
     - path: src/subagents/tool.ts
       symbol: createAgentToolDefinitions
     - path: src/subagents/context.ts
       symbol: getDelegatedAgentContextFile
-    - path: src/subagents/observation-query.ts
+    - path: src/agent-runtime/observations/observation-query.ts
       symbol: preparePiboAgentObservationQuery
-    - path: src/subagents/observation-query.ts
+    - path: src/agent-runtime/observations/observation-query.ts
       symbol: selectPiboAgentObservationPage
-    - path: src/subagents/observation-text-regex.ts
+    - path: src/agent-runtime/observations/observation-text-regex.ts
       symbol: preparePiboAgentObservationTextRegex
-    - path: src/subagents/observation-text-regex.ts
+    - path: src/agent-runtime/observations/observation-text-regex.ts
       symbol: matchPiboAgentObservationTextRegex
     - path: src/debug/agents.ts
       symbol: runDebugAgentsCli
@@ -165,14 +163,12 @@ traceability:
   - id: ORCH-SUB-006
     status: implemented
     sources:
-    - path: src/subagents/tool.ts
+    - path: src/agent-runtime/observations/types.ts
       symbol: PiboAgentObserveInput
-    - path: src/subagents/observation-query.ts
+    - path: src/agent-runtime/observations/observation-query.ts
       symbol: piboAgentObservationCursorScopeKey
-    - path: src/core/session-router.ts
-      symbol: PiboSessionRouter.observeManagedAgents
-      owner: PiboSessionRouter
-      member: observeManagedAgents
+    - path: src/subagents/controller.ts
+      symbol: createPiboDelegationController
     - path: src/sessions/store.ts
       symbol: PiboSessionStore.advanceAgentObservationAutoCursor
     - path: src/sessions/pibo-data-store.ts
@@ -199,13 +195,13 @@ Delegation needs durable child identity and exact request control. A parent must
 
 ## Goal
 
-The registered agent tools define yielded-only sends, bounded observation, independent child runtime binding, and exact cancellation/kill ownership.
+The registered agent tools define direct sends with optional yielded Run Control, bounded observation, independent child runtime binding, and exact cancellation/kill ownership.
 
 ## Authority and ownership
 
 - **Stable concept:** `SPC-ORCH-002`
 - **Target path:** `docs/specs/orchestration/subagents.md`
-- **Authority:** Current source and test evidence at `d30e0250fdce4017920c7f9c41c1e2067124d23b`.
+- **Authority:** Current source and test evidence at `3b86d389cbf5f47a65d11d57a87478929c8d9d57`.
 - **Normative owner:** This document owns the public surfaces and behavior listed below. Generic reliability schemas, product/session topology, gateway authorization, runtime adapters, resource policy, and Web rendering remain owned by their linked specifications.
 - **Evidence rule:** Source and named-test locators are exact references to regular Git blobs at the committed implementation candidate. They identify evidence; they do not imply that real CLI, process, provider, browser, Windows, host-pressure, restart, or Pibo2 paths were executed.
 
@@ -220,7 +216,7 @@ The registered agent tools define yielded-only sends, bounded observation, indep
 
 ### Commands Api
 
-send is yielded-only and throws on direct execution; list/observe/kill are direct management tools. A required trimmed sessionName is limited to 40 Unicode code points; threadKey is trimmed, generated when omitted, and limited to 512 UTF-8 bytes.
+A direct send waits for the delegated reply. When Run Control is selected, `pibo_run_start` may wrap the same send for asynchronous lifecycle control. List/observe/kill remain direct management tools. A required trimmed sessionName is limited to 40 Unicode code points; threadKey is trimmed, generated when omitted, and limited to 512 UTF-8 bytes.
 
 ### State Lifetime
 
@@ -234,7 +230,7 @@ Observe caps the requested limit at 200, filters at most 50 exact IDs/keys, and 
 
 #### Shared observation core
 
-The normalized observation contract and query policy own source-independent filtering, matching, bounding, visibility, ordering, pagination, and truncation semantics. Live and persisted adapters supply normalized observations and translate only source-specific identity, cursor, and lifetime differences instead of reimplementing those semantics.
+The normalized observation contract and query policy under `src/agent-runtime/observations/` own source-independent filtering, matching, bounding, visibility, ordering, pagination, truncation and model formatting. Delegation, Remote Agent and debug consume this shared engine; the engine imports neither delegation controllers/tools nor harness implementations. Delegation lifecycle and transport-specific cursor state remain with their respective consumers. Live and persisted adapters supply normalized observations and translate only source-specific identity, cursor, and lifetime differences instead of reimplementing those semantics.
 
 When shared observation behavior grows, every adapter MUST inherit the new semantics through the common policy wherever its source can represent the required data. Any adapter-specific divergence requires an explicit documented source-lifetime or durability constraint and corresponding acceptance coverage.
 
@@ -293,13 +289,13 @@ Legacy per-subagent factories remain exported but outside current runtime assemb
 
 ### Requirement: ORCH-SUB-001
 
-Delegated sends MUST execute only as the pibo_agents_send_message target of pibo_run_start; management list, observe, and kill remain direct tools.
+`pibo_agents_send_message` MUST support direct delegated execution and MAY be targeted by `pibo_run_start` when Run Control is available. The direct call MUST await the delegated reply. Management list, observe, and kill remain direct tools.
 
 **Confidence:** `high`. **Current evidence:** source inspection and named-test source inspection at the committed implementation candidate; execution status is recorded in the implementation report.
 
 #### Current behavior and limits
 
-Direct send invocation fails before child creation; arguments are normalized before admission/persistence.
+Invalid arguments fail before child creation. Direct sends use an independent request ID; Run Control sends retain the yielded request identity and normalize arguments before admission/persistence.
 
 #### Acceptance evidence
 
@@ -327,8 +323,8 @@ Invalid/cancelled requests create no child; only direct children of the controll
   - `src/subagents/tool.ts:31` — `PIBO_AGENT_SESSION_NAME_MAX_LENGTH` (constant)
   - `src/subagents/tool.ts:184` — `normalizePiboAgentSessionName` (exported_symbol)
   - `src/core/session-router.ts:170` — `DEFAULT_SUBAGENT_MAX_DEPTH` (constant)
-  - `src/core/session-router.ts:171` — `MAX_SUBAGENT_THREAD_KEY_BYTES` (constant)
-  - `src/core/session-router.ts:2652` — `PiboSessionRouter.resolveSubagentSession` (method)
+  - `src/subagents/controller.ts` — `MAX_SUBAGENT_THREAD_KEY_BYTES` (constant)
+  - `src/subagents/controller.ts` — `createPiboDelegationController` (exported_symbol)
 - Exact named tests:
   - `test/subagents.test.mjs:1267` — “agents controller requires bounded Unicode names and updates reused titles”
   - `test/subagents.test.mjs:1312` — “named sends reuse and upgrade existing legacy child sessions”
@@ -370,9 +366,9 @@ Cross-parent child access is rejected; targeted abort rejection/non-settlement i
 #### Acceptance evidence
 
 - Exact source evidence:
-  - `src/subagents/observations.ts:11` — `PIBO_AGENT_OBSERVATION_DEFAULT_LIMIT` (constant)
-  - `src/subagents/observations.ts:12` — `PIBO_AGENT_OBSERVATION_MAX_LIMIT` (constant)
-  - `src/subagents/observations.ts:230` — `normalizePiboAgentObservationLimit` (exported_symbol)
+  - `src/agent-runtime/observations/observations.ts` — `PIBO_AGENT_OBSERVATION_DEFAULT_LIMIT` (constant)
+  - `src/agent-runtime/observations/observations.ts` — `PIBO_AGENT_OBSERVATION_MAX_LIMIT` (constant)
+  - `src/agent-runtime/observations/observations.ts` — `normalizePiboAgentObservationLimit` (exported_symbol)
   - `src/core/session-router.ts:545` — `PiboSessionRouter` (type_or_class)
 - Exact named tests:
   - `test/subagents.test.mjs:1408` — “agents controller lists, filters observations, kills owned children, and does not reuse killed threads”
@@ -394,13 +390,13 @@ Inline Rust regex flags such as `(?i)`, `(?m)`, and `(?s)` change case, line-anc
 #### Acceptance evidence
 
 - Exact source evidence:
-  - `src/subagents/tool.ts:93` — `PiboAgentObserveInput` (type_or_class)
-  - `src/subagents/tool.ts:264` — `createAgentToolDefinitions` (exported_symbol)
+  - `src/agent-runtime/observations/types.ts` — `PiboAgentObserveInput` (type_or_class)
+  - `src/subagents/tool.ts` — `createAgentToolDefinitions` (exported_symbol)
   - `src/subagents/context.ts:6` — `getDelegatedAgentContextFile` (exported_symbol)
-  - `src/subagents/observation-query.ts:73` — `preparePiboAgentObservationQuery` (exported_symbol)
-  - `src/subagents/observation-query.ts:157` — `selectPiboAgentObservationPage` (exported_symbol)
-  - `src/subagents/observation-text-regex.ts:86` — `preparePiboAgentObservationTextRegex` (exported_symbol)
-  - `src/subagents/observation-text-regex.ts:100` — `matchPiboAgentObservationTextRegex` (exported_symbol)
+  - `src/agent-runtime/observations/observation-query.ts` — `preparePiboAgentObservationQuery` (exported_symbol)
+  - `src/agent-runtime/observations/observation-query.ts` — `selectPiboAgentObservationPage` (exported_symbol)
+  - `src/agent-runtime/observations/observation-text-regex.ts` — `preparePiboAgentObservationTextRegex` (exported_symbol)
+  - `src/agent-runtime/observations/observation-text-regex.ts` — `matchPiboAgentObservationTextRegex` (exported_symbol)
   - `src/debug/agents.ts:64` — `runDebugAgentsCli` (exported_symbol)
 - Exact named tests:
   - `test/subagents.test.mjs:182` — “delegated agents expose four stable shared tools and reject duplicate exact names”
@@ -428,9 +424,9 @@ Automatic cursors are isolated for diagnostic filters, including text, regex, id
 #### Acceptance evidence
 
 - Exact source evidence:
-  - `src/subagents/tool.ts:93` — `PiboAgentObserveInput` (type_or_class)
-  - `src/subagents/observation-query.ts:52` — `piboAgentObservationCursorScopeKey` (exported_symbol)
-  - `src/core/session-router.ts:2377` — `PiboSessionRouter.observeManagedAgents` (method)
+  - `src/agent-runtime/observations/types.ts` — `PiboAgentObserveInput` (type_or_class)
+  - `src/agent-runtime/observations/observation-query.ts` — `piboAgentObservationCursorScopeKey` (exported_symbol)
+  - `src/subagents/controller.ts` — `createPiboDelegationController` (exported_symbol)
   - `src/sessions/store.ts:13` — `PIBO_AGENT_OBSERVATION_AUTO_CURSOR_MAX_SCOPES` (constant)
   - `src/sessions/store.ts:241` — `PiboSessionStore.advanceAgentObservationAutoCursor` (method)
   - `src/sessions/pibo-data-store.ts:255` — `PiboDataSessionStore.advanceAgentObservationAutoCursor` (method)
@@ -453,7 +449,8 @@ Automatic cursors are isolated for diagnostic filters, including text, regex, id
 
 ## Verification boundary
 
-- Source/test baseline: `d30e0250fdce4017920c7f9c41c1e2067124d23b`.
-- Focused Docker execution covers the Observe schema, runtime context, live query, persisted query, regex validation, and debug CLI paths; exact commands and results belong in the candidate handoff.
+- Source/test baseline: `3b86d389cbf5f47a65d11d57a87478929c8d9d57`.
+- The ownership move preserved all five extracted algorithm/type bodies, changing only imports and module ownership. A targeted engine typecheck, 22-plugin artifact rebuild, 66 focused behavior tests and three separate Remote source-policy characterizations passed. Behavioral emit was file-at-a-time TypeScript ESM, not a root typecheck or release compiler pass.
+- Earlier Docker claims refer to the historical `d30e0250fdce4017920c7f9c41c1e2067124d23b` authoring baseline, not the current run. Remaining numbered source/test locators above are historical navigation hints; the current committed paths and symbol/test identities are authoritative in frontmatter.
 - Pibo2 acceptance of the exact committed candidate remains an independent pre-PR gate.
 - This document is stable normative documentation of current behavior, not acceptance of future implementation work.

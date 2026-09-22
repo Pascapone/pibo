@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-22T13:13:33.523340+00:00",
+  "implementationCommits": [
+    "09fed1a7e20f106e35c24a65090289e45d821d43",
+    "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
+    "3b86d389cbf5f47a65d11d57a87478929c8d9d57"
+  ],
+  "scope": "Direct-controller source/function changes; not full V4 completion",
+  "provenanceNotes": [
+    "Output and command metadata are path-redacted copies; the shell-serialized command separator at end of each metadata command line is omitted for whitespace hygiene. Original host logs are unchanged and their SHA-256 values are retained.",
+    "Runs were executed on recorded base HEAD plus working changes subsequently committed; metadata records status and tracked-diff digest, not a complete snapshot hash of untracked files.",
+    "The captured emitter is the final test-only helper used for the observation batch; earlier attempts and intermediate passes are not all reproduced here.",
+    "Batch counts overlap and must not be added as a unique-test total.",
+    "No test, resource guard, or phase approval was fabricated or weakened."
+  ],
+  "checksNotClaimed": {
+    "rootTypecheck": "Earlier guarded full compiler attempts were resource-blocked; no whole-project typecheck pass for this candidate.",
+    "releaseCompilerBuild": "File-at-a-time ESM emit is behavioral-test input only; declarations/release compiler acceptance are not implied.",
+    "candidateInstallation": "Explicitly user-skipped, not passed.",
+    "productionDeployment": "Not authorized and not performed.",
+    "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open."
+  },
+  "pathSubstitutions": {
+    "$WORKTREE": "isolated beta4/full-i-20260922 implementation worktree",
+    "$RUN": "host-owned full-completion control/evidence directory",
+    "$REPOSITORY": "original repository checkout"
+  },
+  "batches": [
+    {
+      "id": "cutover-fresh-emit-01",
+      "purpose": "Root noCheck emit failed: heap exhaustion; not a typecheck",
+      "exit": 134,
+      "passedTests": null,
+      "sourceHeadAtStart": "4b94fc6405af99950901634250090227e03a74df",
+      "started": "2026-09-22T11:52:02Z",
+      "ended": "2026-09-22T11:52:51Z",
+      "files": [
+        {
+          "file": "cutover-fresh-emit-01.log",
+          "sha256": "deebe6fa1df460cb040854e42b3c320d6b7087a365aac801d83a4ab325f2c736",
+          "originalHostSha256": "deebe6fa1df460cb040854e42b3c320d6b7087a365aac801d83a4ab325f2c736"
+        },
+        {
+          "file": "cutover-fresh-emit-01.meta",
+          "sha256": "0ba6f10cecbfd93383397897b6f6aeb065c9781f3d25621f31c064a4600d45d1",
+          "originalHostSha256": "51680bf89cf75cfe3a0e7e4ba88c95f71b2c58201fcce0330815e9f5ef2d4490"
+        }
+      ]
+    },
+    {
+      "id": "cutover-artifacts-01",
+      "purpose": "Initial isolated emit used CJS in an ESM package; corrected before subsequent runs",
+      "exit": 1,
+      "passedTests": null,
+      "sourceHeadAtStart": "4b94fc6405af99950901634250090227e03a74df",
+      "started": "2026-09-22T11:54:41Z",
+      "ended": "2026-09-22T11:54:45Z",
+      "files": [
+        {
+          "file": "cutover-artifacts-01.log",
+          "sha256": "2ca538f8a42e67ac63228a63359c5c9de9372294235a1e431021ac1e6445e289",
+          "originalHostSha256": "c926ef1daa37eef5ca4640c549cacbbce0c92b2510784d9f91e97fc76e2b92ee"
+        },
+        {
+          "file": "cutover-artifacts-01.meta",
+          "sha256": "ad7307f0eaab779cfc2da367246c6123cc85e951dc58b35be23aa96bf42694a1",
+          "originalHostSha256": "ee372863b820a59af5f02e62b7d334fd75e77a77a538f3e00ea50bf83fa1fd1e"
+        }
+      ]
+    },
+    {
+      "id": "cutover-boundaries-focused-01",
+      "purpose": "Targeted tsc CLI rejected implicit config; corrected using its required --ignoreConfig",
+      "exit": 1,
+      "passedTests": null,
+      "sourceHeadAtStart": "4b94fc6405af99950901634250090227e03a74df",
+      "started": "2026-09-22T12:25:10Z",
+      "ended": "2026-09-22T12:25:15Z",
+      "files": [
+        {
+          "file": "cutover-boundaries-focused-01.log",
+          "sha256": "fd54056f27336d33843b2beae29eb71382d3aa8fb7fd04f5fdf2a0d9d658a01e",
+          "originalHostSha256": "fd54056f27336d33843b2beae29eb71382d3aa8fb7fd04f5fdf2a0d9d658a01e"
+        },
+        {
+          "file": "cutover-boundaries-focused-01.meta",
+          "sha256": "d3215f65d01946ab18911cbb79f3404f8193e6bc167536ca54276233a30f9c46",
+          "originalHostSha256": "59347f88f249fe767538d083d29a8b18e1aa78f8d5b4b6dfbc1a1c4946e9fc2d"
+        }
+      ]
+    },
+    {
+      "id": "cutover-lp04-focused-01",
+      "purpose": "Initial LP04/discovery/attachment-pilot/loop batch and22 plugin artifacts",
+      "exit": 0,
+      "passedTests": 70,
+      "sourceHeadAtStart": "4b94fc6405af99950901634250090227e03a74df",
+      "started": "2026-09-22T12:01:41Z",
+      "ended": "2026-09-22T12:10:33Z",
+      "files": [
+        {
+          "file": "cutover-lp04-focused-01.log",
+          "sha256": "23e30c322fb421e48bac4c33fd0f444b20665284870cc1bddf068846925463c7",
+          "originalHostSha256": "fd8632f2c38807bb675858593fe75b65e80d2c7d6fad6add72ad9d99eca8349c"
+        },
+        {
+          "file": "cutover-lp04-focused-01.meta",
+          "sha256": "d90e0ea9e7696d3a43adf3e42904981d4fef7012aa63d5a91d1c5095e80d78c3",
+          "originalHostSha256": "9e85fb445b9bd949dc857a6130ae361e86cf47cdfbbc0b636c5218ba426c88ba"
+        }
+      ]
+    },
+    {
+      "id": "cutover-boundaries-focused-03",
+      "purpose": "Core/Pi and attachment registry seams; targeted neutral/public-SDK typecheck",
+      "exit": 0,
+      "passedTests": 55,
+      "sourceHeadAtStart": "4b94fc6405af99950901634250090227e03a74df",
+      "started": "2026-09-22T12:37:47Z",
+      "ended": "2026-09-22T12:38:41Z",
+      "files": [
+        {
+          "file": "cutover-boundaries-focused-03.log",
+          "sha256": "e80ef79b220bb19e2e4bbbe20e5a17154afe6cdc4cd747e9ceac2286161b3a54",
+          "originalHostSha256": "e80ef79b220bb19e2e4bbbe20e5a17154afe6cdc4cd747e9ceac2286161b3a54"
+        },
+        {
+          "file": "cutover-boundaries-focused-03.meta",
+          "sha256": "c2ffae968a5b3dc063ba10a5f631b3b0b9eae59f898bae9d785d498aa2a47d29",
+          "originalHostSha256": "ab5aab58ecfdcdc0aea0bd5285ba2990de6098b0c3bae5f58144fe8e6256ea64"
+        }
+      ]
+    },
+    {
+      "id": "cutover-observations-focused-01",
+      "purpose": "Neutral observation engine/consumers; targeted engine typecheck and22 plugin artifacts",
+      "exit": 0,
+      "passedTests": 66,
+      "sourceHeadAtStart": "732c22b09103061874a53d70859c1b6463a4628a",
+      "started": "2026-09-22T12:51:02Z",
+      "ended": "2026-09-22T12:56:37Z",
+      "files": [
+        {
+          "file": "cutover-observations-focused-01.log",
+          "sha256": "31a8b9c33cfe9f73ccf866f1df0a2b2ec2194caf78e66ee05fcfc8fd72cab770",
+          "originalHostSha256": "7bab9e7a6d02cd0e3f01e58ed9ff3805b42ab7f1fc398475048c4a662face3d1"
+        },
+        {
+          "file": "cutover-observations-focused-01.meta",
+          "sha256": "d2cddc611bcdcd4dab0619879dc61de58f30cf801a43c358394004e4aeaf1c34",
+          "originalHostSha256": "cfe93bf79efa30f5a3b5d5df7f5a5d41bfd4833d65127ad5bd213853ebfd6bee"
+        }
+      ]
+    },
+    {
+      "id": "cutover-observation-parity-01",
+      "purpose": "F1/F3/F7 characterization, not a bug fix or end-to-end auth/load acceptance",
+      "exit": 0,
+      "passedTests": 3,
+      "sourceHeadAtStart": "732c22b09103061874a53d70859c1b6463a4628a",
+      "started": "2026-09-22T12:57:46Z",
+      "ended": "2026-09-22T12:57:52Z",
+      "files": [
+        {
+          "file": "cutover-observation-parity-01.log",
+          "sha256": "a1b624ff9cfbb9fd1d848ceb994b77b41bbe46936bd740d4095e712443d7905b",
+          "originalHostSha256": "a1b624ff9cfbb9fd1d848ceb994b77b41bbe46936bd740d4095e712443d7905b"
+        },
+        {
+          "file": "cutover-observation-parity-01.meta",
+          "sha256": "f122f31e90ce7b80fb8057b7f6632f91294b0e1a169a66e58c7885dd06e56d3c",
+          "originalHostSha256": "b466b06c6d75c04c68c0eebf8fef536aa09b41e24311efb7e397b5f613f17aa6"
+        }
+      ]
+    },
+    {
+      "id": "cutover-docs-01",
+      "purpose": "Strict/core/migration documentation validation, indexes/log, focused doc tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
+      "started": "2026-09-22T12:43:15Z",
+      "ended": "2026-09-22T12:44:18Z",
+      "files": [
+        {
+          "file": "cutover-docs-01.log",
+          "sha256": "77401a98fca65c54424e5cfff9dc6538b5dbc8fb176a67f494b8f8f0e4291519",
+          "originalHostSha256": "77401a98fca65c54424e5cfff9dc6538b5dbc8fb176a67f494b8f8f0e4291519"
+        },
+        {
+          "file": "cutover-docs-01.meta",
+          "sha256": "39cc9f001c00bd4b11206c5af66d6e543437f9ae387e8cf23287c186120ad17c",
+          "originalHostSha256": "85292696f6137028b86e511253e3a7d58e3e6f8c1fb6126ad9c3ff6c8af7a70d"
+        }
+      ]
+    },
+    {
+      "id": "cutover-docs-02",
+      "purpose": "Final observation/delegation docs, glossary and evidence collection: strict/core/migration, indexes/log, focused documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "3b86d389cbf5f47a65d11d57a87478929c8d9d57",
+      "started": "2026-09-22T13:10:09Z",
+      "ended": "2026-09-22T13:11:06Z",
+      "files": [
+        {
+          "file": "cutover-docs-02.log",
+          "sha256": "486484bbbbbb16775e4627ba7bae765dcb1966cc964833ad97e7ba78354a5b88",
+          "originalHostSha256": "486484bbbbbb16775e4627ba7bae765dcb1966cc964833ad97e7ba78354a5b88"
+        },
+        {
+          "file": "cutover-docs-02.meta",
+          "sha256": "acbcedf912e55b8a99e49dd051f08ab17a3153309a111a109d0793453a13cb05",
+          "originalHostSha256": "848ae5bd71a9998e4effe724bffea11a14e0a88ad1a75583cbb5a08ea08424af"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+started=2026-09-22T12:57:46Z
+cwd=$WORKTREE
+command=node --max-old-space-size=384 --test --test-concurrency=1 --test-timeout=30000 test/observation-source-parity.test.mjs
+source=732c22b09103061874a53d70859c1b6463a4628a
+ M src/debug/agents.ts
+ M src/index.ts
+ M src/remote-agent/modules/observe.ts
+ M src/subagents/controller.ts
+ D src/subagents/observation-query.ts
+ D src/subagents/observation-text-regex.ts
+ D src/subagents/observations.ts
+ M src/subagents/tool.ts
+ M test/plugin-system-core-orchestration-boundary.test.mjs
+ M test/subagents.test.mjs
+?? src/agent-runtime/observations/
+?? test/observation-engine-boundary.test.mjs
+?? test/observation-source-parity.test.mjs
+f6ce2f276a4e089c2457ad92ddaf06e9cc87431e94e4300f872c72a1a68da78c  -
+exit=0
+ended=2026-09-22T12:57:52Z

@@ -1,0 +1,20 @@
+This is a focused batch, not a full suite or installation test.
+
+<--- Last few GCs --->
+
+[1215093:0x29b23000]    39880 ms: Mark-Compact (reduce) 509.0 (514.4) -> 508.6 (512.2) MB, pooled: 0 MB, 112.64 / 0.00 ms  (+ 0.4 ms in 17 steps since start of marking, biggest step 0.1 ms, walltime since start of marking 117 ms) (average mu = 0.524, curr[1215093:0x29b23000]    40074 ms: Mark-Compact 509.8 (512.2) -> 509.3 (516.2) MB, pooled: 0 MB, 129.54 / 0.00 ms  (average mu = 0.436, current mu = 0.335) allocation failure; scavenge might not succeed
+
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0x931db0  [node]
+ 2: 0x75968e node::OOMErrorHandler(char const*, v8::OOMDetails const&) [node]
+ 3: 0xc70d60  [node]
+ 4: 0xc70e4f  [node]
+ 5: 0xf14725  [node]
+ 6: 0xf2608c  [node]
+ 7: 0xefb543  [node]
+ 8: 0xed1050  [node]
+ 9: 0x13c8948  [node]
+10: 0x1add9b6  [node]
+.pibo/planning/beta4-full-completion-20260922T101802Z/run-focused.sh: line 23: 1215093 Aborted                 (core dumped) "$@"

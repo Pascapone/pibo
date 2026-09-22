@@ -1,0 +1,13 @@
+This is a focused batch, not a full suite or installation test.
+file://$WORKTREE/dist/plugins/default-packages.js:2
+Object.defineProperty(exports, "__esModule", { value: true });
+                      ^
+
+ReferenceError: exports is not defined in ES module scope
+This file is being treated as an ES module because it has a '.js' file extension and '$WORKTREE/package.json' contains "type": "module". To treat it as a CommonJS script, rename it to use the '.cjs' file extension.
+    at file://$WORKTREE/dist/plugins/default-packages.js:2:23
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async file://$WORKTREE/scripts/build-pibo4-artifacts.mjs:10:18
+
+Node.js v24.21.0

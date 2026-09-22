@@ -1,0 +1,12 @@
+This is a focused batch, not a full suite or installation test.
+✔ remote positional cursors can repeat an old record and miss a late timestamp tie (3.044961ms)
+✔ remote auto-cursors belong to session plus query, not an entitled token (1.055094ms)
+✔ remote output limit does not bound record normalization work (7.224857ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3261.836146

@@ -1,0 +1,47 @@
+started=2026-09-22T12:37:47Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ NodeNext\ --types\ node\,react\ --esModuleInterop\ src/core/compaction-prompt.ts\ src/attachments/providers.ts\ src/attachments/core-providers.ts\ src/plugins/sdk.ts\;\ echo\ \"Targeted\ typecheck\ passed\ \(not\ root\ typecheck\)\"\;\ node\ $RUN/transpile-for-tests.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ test/core-runtime-ownership.test.mjs\ test/core-cli-discovery-lazy.test.mjs\ test/compaction-prompt.test.mjs\ test/provider-recovery.test.mjs\ test/attachment-provider-registry.test.mjs\ test/plugin-system-browser.test.mjs
+source=4b94fc6405af99950901634250090227e03a74df
+ M src/agent-runtimes/pi/adapter.ts
+ M src/agent-runtimes/pi/routed-session.ts
+ M src/agent-runtimes/pi/runtime.ts
+ D src/apps/chat-ui/src/attachments/core-attachment-providers.ts
+ M src/apps/chat-ui/src/plugins/browser-host.tsx
+ M src/attachments/types.ts
+ M src/cli.ts
+ M src/core/capability-host.ts
+ M src/core/compaction-prompt.ts
+ M src/core/executable-cli.ts
+ M src/core/provider-recovery.ts
+ D src/core/routed-session.ts
+ D src/core/runtime.ts
+ M src/index.ts
+ M src/plugins/browser.ts
+ M src/plugins/sdk.ts
+ M test/chat-ui-integration.test.mjs
+ M test/codex-browser-interface.test.mjs
+ M test/fast-mode-http.test.mjs
+ M test/loop-goal-tools.test.mjs
+ M test/loop-turn-provenance.test.mjs
+ M test/mcp-agent-context.test.mjs
+ M test/plugin-system-browser.test.mjs
+ M test/provider-recovery.test.mjs
+ M test/routed-steering.test.mjs
+ M test/runtime-retry-defaults.test.mjs
+ M test/runtime-tool.test.mjs
+ M test/session-actions.test.mjs
+ M test/session-quiescence.test.mjs
+ M test/session-router-store.test.mjs
+ M test/subagents.test.mjs
+ M test/transcript-integrity.test.mjs
+ M test/web-search-lifecycle-adversarial.test.mjs
+ M test/web-search-trace-semantics.test.mjs
+?? src/agent-runtimes/pi/compaction-extension.ts
+?? src/agent-runtimes/pi/retryable.ts
+?? src/attachments/providers.ts
+?? test/attachment-provider-registry.test.mjs
+?? test/core-cli-discovery-lazy.test.mjs
+?? test/core-runtime-ownership.test.mjs
+873d89a57e425db864be7b75dac87c69399603e07e82a75b08d802a44556ed51  -
+exit=0
+ended=2026-09-22T12:38:41Z
