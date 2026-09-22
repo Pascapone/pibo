@@ -3,7 +3,7 @@ import type {
 	PiboAgentObservation,
 	PiboAgentObserveInput,
 	PiboAgentObserveResult,
-} from "./tool.js";
+} from "./types.js";
 import {
 	PIBO_AGENT_OBSERVATION_DEFAULT_EVENT_TYPES,
 	PIBO_AGENT_OBSERVATION_DEFAULT_TOOL_EVENT_TYPES,

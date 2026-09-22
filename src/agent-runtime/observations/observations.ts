@@ -1,4 +1,4 @@
-import type { PiboJsonValue, PiboOutputEvent } from "../core/events.js";
+import type { PiboJsonValue, PiboOutputEvent } from "../../core/events.js";
 
 export type PiboAgentObservationKind = "message" | "thinking" | "tool" | "error" | "lifecycle" | "event";
 export type PiboAgentObservationOrder = "asc" | "desc";

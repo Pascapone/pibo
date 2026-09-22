@@ -2,21 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { Type } from "typebox";
 import { piboStringEnum } from "../tools/schema.js";
 import { definePiboTool, type PiboToolDefinition } from "../tools/contract.js";
-import type { PiboAssistantMessageEvent, PiboJsonValue, PiboMessageProvenance } from "../core/events.js";
+import type { PiboAssistantMessageEvent, PiboMessageProvenance } from "../core/events.js";
 import type { ModelProfile, SubagentProfile } from "../core/profiles.js";
-import type {
-	PiboAgentObservationCursorMode,
-	PiboAgentObservationKind,
-	PiboAgentObservationOrder,
-	PiboAgentObservationToolDetail,
-} from "./observations.js";
-
-export type {
-	PiboAgentObservationCursorMode,
-	PiboAgentObservationKind,
-	PiboAgentObservationOrder,
-	PiboAgentObservationToolDetail,
-} from "./observations.js";
+import type { PiboAgentObserveInput, PiboAgentObserveResult } from "../agent-runtime/observations/types.js";
+import { formatAgentObservationsForModel } from "../agent-runtime/observations/format.js";
 
 export const PIBO_AGENT_TOOL_NAMES = [
 	"pibo_agents_send_message",
@@ -71,53 +60,6 @@ export type PiboAgentSendMessageResult = {
 	eventId: string;
 	finalMessage?: string;
 	reply: PiboAssistantMessageEvent;
-};
-
-export type PiboAgentObservation = {
-	sequence: number;
-	createdAt: string;
-	requestId?: string;
-	agentId: string;
-	name: string;
-	threadKey?: string;
-	eventType: string;
-	kind: PiboAgentObservationKind;
-	role?: string;
-	text?: string;
-	toolName?: string;
-	toolCallId?: string;
-	isError?: boolean;
-	details?: PiboJsonValue;
-};
-
-export type PiboAgentObserveInput = {
-	requestIds?: string[];
-	toolCallIds?: string[];
-	agentIds?: string[];
-	names?: string[];
-	threadKeys?: string[];
-	eventTypes?: string[];
-	kinds?: PiboAgentObservationKind[];
-	roles?: string[];
-	since?: string;
-	until?: string;
-	textContains?: string;
-	textRegex?: string;
-	cursorMode?: PiboAgentObservationCursorMode;
-	afterSequence?: number;
-	order?: PiboAgentObservationOrder;
-	limit?: number;
-	includeTools?: boolean;
-	toolDetail?: PiboAgentObservationToolDetail;
-	includeDetails?: boolean;
-};
-
-export type PiboAgentObserveResult = {
-	filters: PiboAgentObserveInput;
-	observations: PiboAgentObservation[];
-	nextAfterSequence: number;
-	autoCursorSequence?: number;
-	truncated: boolean;
 };
 
 export type PiboAgentKillResult = {
@@ -216,38 +158,6 @@ function preparePiboAgentToolInput(input: unknown): PiboAgentToolInput {
 
 function preparePiboDeprecatedSubagentToolInput(input: unknown): PiboDeprecatedSubagentToolInput {
 	return preparePiboAgentSessionNameInput(input) as PiboDeprecatedSubagentToolInput;
-}
-
-export function formatAgentObservationsForModel(result: PiboAgentObserveResult): string {
-	const includeTools = result.filters.includeTools === true;
-	const toolDetail = result.filters.toolDetail ?? "summary";
-	const cursorMode = result.filters.cursorMode ?? "auto";
-	const lines = [
-		`Agent observations (${result.observations.length}; cursor=${cursorMode}; tools=${includeTools ? toolDetail : "hidden"}; order=${result.filters.order ?? "desc"}; limit=${result.filters.limit ?? 20})`,
-		`afterSequence=${result.filters.afterSequence ?? "initial"}; nextAfterSequence=${result.nextAfterSequence}${result.autoCursorSequence === undefined ? "" : `; autoCursorSequence=${result.autoCursorSequence}`}; truncated=${result.truncated}`,
-	];
-	if (result.observations.length === 0) {
-		lines.push("", cursorMode === "auto"
-			? "No new delegated-agent messages matched since the automatic cursor. Use cursorMode=\"history\" only when you need to reread earlier observations."
-			: "No historical delegated-agent observations matched the filters.");
-		return lines.join("\n");
-	}
-	for (const observation of result.observations) {
-		const scope = [
-			observation.name,
-			observation.threadKey ? `thread=${observation.threadKey}` : undefined,
-			observation.requestId ? `request=${observation.requestId}` : undefined,
-		].filter(Boolean).join("; ");
-		const event = observation.kind === "tool"
-			? `${observation.eventType}${observation.toolName ? ` ${observation.toolName}` : ""}`
-			: observation.eventType;
-		const toolCall = observation.kind === "tool" && observation.toolCallId
-			? `; toolCallId=${observation.toolCallId}`
-			: "";
-		lines.push("", `#${observation.sequence} ${scope} — ${event}${toolCall}${observation.isError ? " [error]" : ""}`);
-		if (observation.text) lines.push(observation.text);
-	}
-	return lines.join("\n");
 }
 
 function normalizeAgentSendMessageResult(

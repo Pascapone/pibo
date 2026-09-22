@@ -22,11 +22,11 @@ import { createPiboDelegationController } from "../dist/subagents/controller.js"
 import {
 	preparePiboAgentObservationQuery,
 	selectPiboAgentObservationPage,
-} from "../dist/subagents/observation-query.js";
+} from "../dist/agent-runtime/observations/observation-query.js";
 import {
 	PIBO_AGENT_TEXT_REGEX_BATCH_MAX_ITEMS,
 	PIBO_AGENT_TEXT_REGEX_BATCH_TARGET_BYTES,
-} from "../dist/subagents/observation-text-regex.js";
+} from "../dist/agent-runtime/observations/observation-text-regex.js";
 import {
 	createAgentToolDefinitions,
 	createSubagentToolDefinitions,
@@ -37,7 +37,7 @@ import {
 import {
 	PIBO_AGENT_OBSERVATION_TOOL_SUMMARY_MAX_BYTES,
 	piboAgentObservationToolSummary,
-} from "../dist/subagents/observations.js";
+} from "../dist/agent-runtime/observations/observations.js";
 
 import { PIBO_SESSION_YIELDED_RUNS_SERVICE } from "../dist/plugins/runtime.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";

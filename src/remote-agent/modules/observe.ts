@@ -3,19 +3,16 @@ import {
 	piboAgentObservationCursorScopeKey,
 	preparePiboAgentObservationQuery,
 	selectPiboAgentObservationPage,
-} from "../../subagents/observation-query.js";
+} from "../../agent-runtime/observations/observation-query.js";
 import {
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
 	piboAgentObservationRole,
 	piboAgentObservationText,
 	type PiboAgentObservationSource,
-} from "../../subagents/observations.js";
-import {
-	formatAgentObservationsForModel,
-	type PiboAgentObservation,
-	type PiboAgentObserveInput,
-} from "../../subagents/tool.js";
+} from "../../agent-runtime/observations/observations.js";
+import { formatAgentObservationsForModel } from "../../agent-runtime/observations/format.js";
+import type { PiboAgentObservation, PiboAgentObserveInput } from "../../agent-runtime/observations/types.js";
 import type { PiboJsonObject } from "../../core/events.js";
 import type { RemoteModuleTool, RemoteToolContext } from "../tool.js";
 import { RemoteAgentError, REMOTE_AGENT_TOOL_NAMES } from "../types.js";

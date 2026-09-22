@@ -8,12 +8,12 @@ import {
 	type PiboAgentObservationKind,
 	type PiboAgentObservationSource,
 	type PiboAgentObservationToolDetail,
-} from "../subagents/observations.js";
+} from "../agent-runtime/observations/observations.js";
 import {
 	preparePiboAgentObservationQuery,
 	selectPiboAgentObservationPage,
-} from "../subagents/observation-query.js";
-import type { PiboAgentObservation, PiboAgentObserveInput } from "../subagents/tool.js";
+} from "../agent-runtime/observations/observation-query.js";
+import type { PiboAgentObservation, PiboAgentObserveInput } from "../agent-runtime/observations/types.js";
 import { createDebugPayloadStore, hydrateDebugEventRow } from "./persisted-payloads.js";
 import { eventAttributes, eventPayload, type DebugEventRow } from "./payloads.js";
 import { openReadOnlyDebugDatabase, withStorePath } from "./sql.js";

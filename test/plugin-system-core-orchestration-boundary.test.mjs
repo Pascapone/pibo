@@ -13,6 +13,8 @@ test("core routing owns conditional delegation and imports no Run implementation
 	for (const forbidden of [
 		'../subagents/observations.js',
 		'../subagents/observation-query.js',
+		'../agent-runtime/observations/observations.js',
+		'../agent-runtime/observations/observation-query.js',
 		'../runs/controller.js',
 		'../runs/tools.js',
 		'../runs/reminders.js',

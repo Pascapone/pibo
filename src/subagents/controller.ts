@@ -13,20 +13,21 @@ import {
 	piboAgentObservationCursorScopeKey,
 	preparePiboAgentObservationQuery,
 	selectPiboAgentObservationPage,
-} from "./observation-query.js";
+} from "../agent-runtime/observations/observation-query.js";
 import {
 	piboAgentObservationDetails,
 	piboAgentObservationKind,
 	piboAgentObservationRole,
 	piboAgentObservationSourceFromEvent,
 	piboAgentObservationText,
-} from "./observations.js";
+} from "../agent-runtime/observations/observations.js";
 import {
 	normalizePiboAgentSessionName,
-	type PiboAgentObservation,
 	type PiboAgentsController,
 	type PiboManagedAgent,
 } from "./tool.js";
+
+import type { PiboAgentObservation } from "../agent-runtime/observations/types.js";
 
 export const PIBO_DELEGATION_SEND_TOOL_NAME = "pibo_agents_send_message";
 

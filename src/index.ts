@@ -308,13 +308,10 @@ export {
 	PIBO_AGENT_SESSION_NAME_MAX_LENGTH,
 	PIBO_AGENT_TOOL_NAMES,
 } from "./subagents/tool.js";
+export type { PiboAgentObservation, PiboAgentObserveInput, PiboAgentObserveResult } from "./agent-runtime/observations/types.js";
+export type { PiboAgentObservationKind, PiboAgentObservationOrder } from "./agent-runtime/observations/observations.js";
 export type {
 	PiboAgentKillResult,
-	PiboAgentObservation,
-	PiboAgentObservationKind,
-	PiboAgentObservationOrder,
-	PiboAgentObserveInput,
-	PiboAgentObserveResult,
 	PiboAgentSendMessageInput,
 	PiboAgentSendMessageResult,
 	PiboAgentStatus,
