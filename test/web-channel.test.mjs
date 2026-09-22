@@ -25,6 +25,8 @@ import { AgentRuntimeBindingMissingError } from "../dist/agent-runtime/errors.js
 import { authorizeAgentRuntimeHistoryProof } from "../dist/agent-runtime/history-authority.js";
 import { assertPrivateWindowsAcl } from "./fixtures/windows-acl.mjs";
 import { createBuiltInCodexHistory } from "./fixtures/built-in-history.mjs";
+import { createMessageContentBinding } from "../dist/shared/message-content-binding.js";
+import { PIBO_CHAT_EXTENSION_SERVICE, PiboChatExtensionRegistry } from "../dist/plugins/product-services.js";
 
 const retiredPartitionField = `${String.fromCharCode(111, 119, 110, 101, 114)}Scope`;
 const emptyAgentPluginSelection = { schemaVersion: 1, plugins: [] };
@@ -239,6 +241,7 @@ async function startWebHostChannel(options = {}) {
 
 	await channel.start({
 		auth: options.auth,
+		...(options.getService ? { getService: options.getService } : {}),
 		emit(event) {
 			emitted.push(event);
 			if (options.emit) return options.emit(event, sessions);
@@ -8936,6 +8939,64 @@ test("manual editor runs target normal Rooms and persist canonical inspection fa
 	} finally { await host.channel.stop?.(); }
 });
 
+
+test("content-bound durable HTTP admission captures the original body before mutable augmenters", async () => {
+	let unblock;
+	const blocked = new Promise(resolve => { unblock = resolve; });
+	let commits = 0;
+	const extensions = new PiboChatExtensionRegistry();
+	extensions.registerMessageAugmenter(({ messageText, body }) => {
+		body.extensionInput = { value: "mutated by augmenter" };
+		return { messageText: messageText + "\n[materialized extension]", commit() { commits++; } };
+	});
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), getService: id => id === PIBO_CHAT_EXTENSION_SERVICE ? extensions : undefined, async emit(event) {
+		await blocked;
+		return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, text: event.text, queuedMessages: 1 };
+	} });
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+	try {
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		const input = { admissionVersion: 2, contentBindingVersion: 1, piboSessionId: session.id, clientTxnId: "content-bound", text: "original", extensionInput: { value: "frozen" }, contentBinding: { version: 1, sha256: "f".repeat(64) } };
+		const expected = createMessageContentBinding({ sessionId: session.id, delivery: "queue", body: input });
+		const accepted = await send(input); assert.equal(accepted.status, 202);
+		const first = await accepted.json(); assert.deepEqual(first.receipt.contentBinding, expected); assert.notDeepEqual(first.receipt.contentBinding, input.contentBinding);
+		assert.equal(commits, 1);
+		const duplicate = await send(input); assert.equal(duplicate.status, 202);
+		assert.deepEqual((await duplicate.json()).receipt.contentBinding, expected); assert.equal(commits, 1);
+		assert.equal((await send({ ...input, extensionInput: { value: "other frozen input" } })).status, 409);
+		const { contentBindingVersion: ignored, ...unbound } = input;
+		assert.equal((await send(unbound)).status, 409, "no proofless downgrade fallback");
+		const found = await (await fetch(`${host.baseURL}/api/chat/message-receipts/${first.receipt.id}`, { headers })).json();
+		assert.deepEqual(found.receipt.contentBinding, expected);
+		const page = await (await fetch(`${host.baseURL}/api/chat/message-receipts?piboSessionId=${session.id}`, { headers })).json();
+		assert.deepEqual(page.receipts.find(row => row.id === first.receipt.id).contentBinding, expected);
+		await waitForCondition(() => host.emitted.length === 1, "bound command was not dispatched");
+		assert.equal(host.emitted[0].text, "original\n[materialized extension]");
+	} finally { unblock(); await host.channel.stop?.(); }
+});
+
+test("content-bound durable HTTP admission rejects invalid identity without upgrading old receipts", async () => {
+	let unblock;
+	const blocked = new Promise(resolve => { unblock = resolve; });
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), async emit(event) { await blocked; return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, text: event.text, queuedMessages: 1 }; } });
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
+	try {
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		const input = { admissionVersion: 2, contentBindingVersion: 1, piboSessionId: session.id, clientTxnId: "invalid-bound", text: "body" };
+		for (const changes of [{ contentBindingVersion: 2 }, { clientTxnId: undefined }, { clientTxnId: " padded " }, { piboSessionId: undefined }, { admissionVersion: undefined }]) {
+			assert.equal((await send({ ...input, ...changes })).status, 400);
+		}
+		const db = new DatabaseSync(host.dataStorePath);
+		try { assert.equal(db.prepare("SELECT count(*) n FROM message_commands").get().n, 0); } finally { db.close(); }
+		const { contentBindingVersion: ignored, ...legacy } = input;
+		const old = await send(legacy); assert.equal(old.status, 202);
+		assert.equal((await old.json()).receipt.contentBinding, undefined);
+		assert.equal((await send(legacy)).status, 202);
+		assert.equal((await send(input)).status, 409, "old receipt must never be upgraded into a new proof");
+	} finally { unblock(); await host.channel.stop?.(); }
+});
 
 test("versioned durable admission acknowledges before cold runtime dispatch and preserves its receipt", async () => {
 	let unblock;

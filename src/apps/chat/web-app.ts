@@ -7,6 +7,7 @@ import { MessageCommandDispatcher } from "./message-command-dispatcher.js";
 import { getPiboHome, piboHomePath } from "../../core/pibo-home.js";
 import { PIBO_RUNTIME_UNASSIGNED_ADAPTER_ID, PIBO_RUNTIME_UNASSIGNED_INSTANCE_ID } from "../../core/runtime-unassigned.js";
 import { AsyncChatStorage } from "../../data/async-chat-storage.js";
+import { captureMessageRequestBody, MESSAGE_CONTENT_BINDING_VERSION } from "../../shared/message-content-binding.js";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
@@ -4463,6 +4464,13 @@ async function sendChatMessage(input: {
 	const clientTxnId = normalizeClientTxnId(input.body.clientTxnId);
 	const requestedRoomId = input.forcedRoomId ?? (typeof input.body.roomId === "string" ? input.body.roomId : undefined);
 	const requestedSessionId = typeof input.body.piboSessionId === "string" ? input.body.piboSessionId : undefined;
+	const wantsContentBinding = input.body.contentBindingVersion !== undefined;
+	if (wantsContentBinding && (input.body.contentBindingVersion !== MESSAGE_CONTENT_BINDING_VERSION || !durable || !clientTxnId || clientTxnId !== input.body.clientTxnId || !requestedSessionId)) {
+		throw new PiboWebHttpError("Content binding requires version 1, durable admission, an explicit session and a normalized client transaction ID", 400);
+	}
+	// Capture BEFORE plugins receive the mutable input body. Only the worker
+	// derives the digest; a client-supplied hash is never admission authority.
+	const requestBody = wantsContentBinding ? captureMessageRequestBody(input.body) : undefined;
 	const resolved = input.state.asyncStorage
 		? await resolveAdmissionSession(input.state.asyncStorage, input.context, input.webSession, input.defaultProfile, requestedSessionId, requestedRoomId)
 		: undefined;
@@ -4513,9 +4521,9 @@ async function sendChatMessage(input: {
 		},
 	};
 	const messageId = clientTxnId ?? randomUUID();
-	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, fileAttachmentContext.messageText, durable ? { eventId:messageId,delivery } : undefined) : undefined;
+	const admission = input.state.asyncStorage ? await input.state.asyncStorage.admit(appendInput, selectedSession, fileAttachmentContext.messageText, durable ? { eventId:messageId,delivery,...(requestBody ? { requestBody } : {}) } : undefined) : undefined;
+	if (admission && !admission.created) return timedResponse({ duplicate: true, ...(admission.event ? { event: admission.event } : {}), ...(admission.receipt ? {receipt:admission.receipt,admissionVersion:2,statusPath:`${CHAT_WEB_API_PREFIX}/message-receipts/${admission.receipt.id}`} : {}) }, durable ? 202 : 200);
 	const accepted = admission?.event ?? input.state.eventCommands.appendEvent(appendInput);
-	if (admission && !admission.created) return timedResponse({ duplicate: true, event: accepted, ...(admission.receipt ? {receipt:admission.receipt,admissionVersion:2,statusPath:`${CHAT_WEB_API_PREFIX}/message-receipts/${admission.receipt.id}`} : {}) }, durable ? 202 : 200);
 	timings.push(`chat_append;dur=${(performance.now() - appendStartedAt).toFixed(2)}`);
 	const ingestStartedAt = performance.now();
 	try {
@@ -4582,6 +4590,7 @@ async function sendChatMessage(input: {
 	} catch (error) {
 		const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
 		if (code === "command_conflict") return responseJson({ error:"Transaction conflicts with an existing message.",code }, { status:409 });
+		if (code === "command_invalid_content_binding") return responseJson({ error:"Invalid content-bound message submission.",code }, { status:400 });
 		if (code === "command_too_large") return responseJson({ error:"Message exceeds the durable command limit.",code }, { status:413 });
 		if (code === "command_reconciliation_required") {
 			const details=error as {retryable?:boolean;scope?:string;blockingCommandId?:string;blockedSince?:number;oldestWaitAgeMs?:number;nextAction?:string};

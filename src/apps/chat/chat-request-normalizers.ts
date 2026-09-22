@@ -115,6 +115,7 @@ export type ChatMessageDelivery = "queue" | "steer";
 
 export type ChatMessageBody = {
 	admissionVersion?: unknown;
+	contentBindingVersion?: unknown;
 	piboSessionId?: unknown;
 	roomId?: unknown;
 	text?: unknown;

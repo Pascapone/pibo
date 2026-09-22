@@ -10,6 +10,7 @@ import { ChatEventCommandService, chatClientTransactionKey } from "../apps/chat/
 import type { ChatEventAppendInput } from "../apps/chat/types/event-store.js";
 import { ChatDataIngestService, type UserMessageAcceptedIngestInput, type OutputEventIngestInput } from "./ingest-service.js";
 import { boundedMessageBytes } from "./bounded-worker-client.js";
+import { createMessageContentBinding, type MessageRequestBody } from "../shared/message-content-binding.js";
 
 export type ChatStorageCommand =
 	| { type: "append"; input: ChatEventAppendInput }
@@ -17,7 +18,7 @@ export type ChatStorageCommand =
 	| { type: "ingestUser"; input: UserMessageAcceptedIngestInput }
 	| { type: "ingestOutput"; input: OutputEventIngestInput }
 	| { type: "resolveRoom"; roomId?: string; required?: boolean }
-	| { type: "admit"; input: ChatEventAppendInput; session: PiboSession; text: string; durableCommand?: { eventId: string; delivery: "queue" | "steer" } }
+	| { type: "admit"; input: ChatEventAppendInput; session: PiboSession; text: string; durableCommand?: { eventId: string; delivery: "queue" | "steer"; requestBody?: MessageRequestBody } }
 	| { type: "cancelPendingCommands"; sessionId: string }
 	| { type: "commandReceipt"; id: string }
 	| { type: "commandReceipts"; sessionId: string }
@@ -72,9 +73,16 @@ function execute(command: ChatStorageCommand): unknown {
 			if (!room) throw Object.assign(new Error("Room not found"), { code: "room_not_found" });
 			if (isPiboRoomArchived(room)) throw Object.assign(new Error("Archived rooms are read-only"), { code: "room_read_only" });
 			const key = command.input.clientTxnId ? chatClientTransactionKey(room.id, command.input.actorId, command.input.clientTxnId) : undefined;
-			const commandInput = command.durableCommand ? { sessionId:command.session.id,roomId:room.id,text:command.text,delivery:command.durableCommand.delivery } : undefined;
+			const requestBody = command.durableCommand?.requestBody;
+			if (requestBody !== undefined && (!key || requestBody.clientTxnId !== command.input.clientTxnId || command.durableCommand!.eventId !== command.input.clientTxnId)) {
+				throw Object.assign(new Error("Content binding requires the admitted transaction identity."), { code: "command_invalid_content_binding" });
+			}
+			const contentBinding = requestBody === undefined ? undefined : createMessageContentBinding({ sessionId: command.session.id, delivery: command.durableCommand!.delivery, body: requestBody });
+			const commandInput = command.durableCommand ? { sessionId:command.session.id,roomId:room.id,text:command.text,delivery:command.durableCommand.delivery,...(contentBinding ? { contentBinding } : {}) } : undefined;
 			const receipt = key && commandInput ? messageCommands.find(key,messageCommands.fingerprint(commandInput)) : undefined;
 			const existing = key ? store.eventLog.findByIdempotencyKey(key) : undefined;
+			// A durable receipt, not optional trace retention, owns idempotency.
+			if (receipt) return { event: existing ? commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!) : undefined, created: false, receipt };
 			if (existing && commandInput && !receipt) throw Object.assign(new Error("Transaction belongs to the legacy admission contract."), { code:"command_conflict" });
 			if (existing) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false, receipt };
 			if(command.durableCommand)messageCommands.assertAdmissionUnblocked(command.session.id,command.durableCommand.delivery);
@@ -82,6 +90,8 @@ function execute(command: ChatStorageCommand): unknown {
 			const createdAt = command.input.createdAt ?? new Date().toISOString();
 			const preparedPayload = ingest.prepareUserMessagePayload(command.text, createdAt);
 			return store.transaction(() => {
+				const concurrentReceipt = key && preparedCommand ? messageCommands.find(key, preparedCommand.fingerprint) : undefined;
+				if (concurrentReceipt) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!), created: false, receipt: concurrentReceipt };
 				const concurrent = key ? store.eventLog.findByIdempotencyKey(key) : undefined;
 				if (concurrent) {
 					const receipt = preparedCommand ? messageCommands.find(key!,preparedCommand.fingerprint) : undefined;

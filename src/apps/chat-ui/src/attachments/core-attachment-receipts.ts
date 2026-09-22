@@ -1,5 +1,5 @@
 /**
- * K07 v1 receipt→acceptance mapping (D1-G1, productive vertical).
+ * K07 receipt→acceptance orchestration seam (Composer wiring remains separate).
  *
  * Binds frozen send transactions to REAL message receipts. Binding rule: the
  * transaction must be open in this store with the identical send value, and a
@@ -10,13 +10,12 @@
  * Duplicate application never notifies twice: notifyAccepted runs only for
  * freshly consumed revisions with their receiptId.
  *
- * Acceptance identity has two strengths. Strong: the admission POST echoed a
- * fingerprint that the receipt carries back (server change, proposal §6/§7);
- * consumption requires equality. Weak (transition until that change lands):
- * sessionId + eventId==clientTxnId match only, honestly labeled
- * `weakBinding: true` in the result. The weak path is safe in practice
- * because the draft store itself refuses same-txn-different-content freezes,
- * but only the fingerprint closes a lost-409 race absolutely.
+ * Consumption requires the server-derived receipt contentBinding to equal
+ * the locally prepared/persisted submission binding. Neither an ID-only
+ * receipt nor a POST-echoed fingerprint proves the frozen request after a
+ * lost409, reload, or another writer reusing a transaction. Old receipts stay
+ * readable but cannot consume through this seam. A local already-consumed
+ * duplicate is harmless and marked weak when no fresh proof is retained.
  *
  * The receipt query seam is injectable: production passes a fetcher over
  * `GET /api/chat/message-receipts?piboSessionId=…` (existing endpoint);
@@ -24,6 +23,7 @@
  */
 
 import { AttachmentDraftError } from "../../../../attachments/errors.js";
+import { sameMessageContentBinding, type MessageContentBinding } from "../../../../shared/message-content-binding.js";
 import type {
 	AttachmentProviderLookup,
 	AttachmentProviderScope,
@@ -43,7 +43,10 @@ export type ReceiptView = {
 	state: string;
 	error?: string;
 	fingerprint?: string;
+	contentBinding?: MessageContentBinding;
 };
+
+const ADMITTED_RECEIPT_STATES = new Set(["accepted", "waiting_slot", "initializing", "session_queue", "running", "completed", "failed", "interrupted"]);
 
 export type ReceiptQuery = {
 	findByClientTxnId(clientTxnId: string): Promise<ReceiptView | undefined>;
@@ -82,11 +85,17 @@ export async function reconcileAcceptance(input: {
 	query: ReceiptQuery;
 	providerScope: AttachmentProviderScope;
 	providerLookup?: AttachmentProviderLookup;
+	/** Retained only for source compatibility; a POST echo never authorizes consumption. */
 	expectedFingerprint?: string;
 }): Promise<ReconciledAcceptance> {
 	const { store, snapshot, query } = input;
 	if (snapshot.sessionId !== store.boundSessionId) {
 		throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "Send snapshots belong to exactly one session.", retryable: false });
+	}
+	const prepared = store.getPreparedSubmission(snapshot.clientTxnId);
+	if (!prepared) {
+		if (store.wasAccepted(snapshot.clientTxnId)) return { consumed: [], duplicate: true, notified: [], weakBinding: true };
+		throw acceptanceUnknown("No locally prepared submission proof exists. An old receipt or POST echo cannot prove this frozen content.");
 	}
 	let receipt: ReceiptView | undefined;
 	try {
@@ -98,13 +107,17 @@ export async function reconcileAcceptance(input: {
 	if (!receipt) {
 		throw acceptanceUnknown("No receipt found for this transaction. Retry unchanged once the send is submitted.");
 	}
-	if (receipt.sessionId !== snapshot.sessionId || receipt.eventId !== snapshot.clientTxnId) {
-		throw acceptanceUnknown("Receipt does not match this transaction and session.");
+	if (receipt.sessionId !== snapshot.sessionId || receipt.eventId !== snapshot.clientTxnId
+		|| typeof receipt.id !== "string" || !receipt.id || !Number.isSafeInteger(receipt.streamId) || receipt.streamId < 1
+		|| !ADMITTED_RECEIPT_STATES.has(receipt.state)) {
+		throw acceptanceUnknown("Receipt does not match this transaction/session or a supported admitted-row shape.");
 	}
-	const weakBinding = input.expectedFingerprint === undefined;
-	if (!weakBinding && receipt.fingerprint !== input.expectedFingerprint) {
-		throw acceptanceUnknown("Receipt fingerprint does not match this send. Retry unchanged.");
+	if (!sameMessageContentBinding(prepared.contentBinding, receipt.contentBinding)) {
+		throw acceptanceUnknown("Receipt has no matching content proof for the locally frozen submission. Keep the draft and retry only its original body.");
 	}
+	const weakBinding = false;
+	// All durable row states prove admission, including failed/cancelled work
+	// and an interrupted execution lease. Outcome must not trigger a new send.
 	const applied = store.applyAcceptance(snapshot, { clientTxnId: snapshot.clientTxnId, accepted: true });
 	if (applied.duplicate || applied.consumed.length === 0) {
 		return { ...applied, receiptId: receipt.id, notified: [], weakBinding };

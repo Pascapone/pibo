@@ -1,12 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { PiboDataStore } from "./pibo-store.js";
 import type { PreparedPayload } from "./payload-store.js";
+import { isMessageContentBinding, type MessageContentBinding } from "../shared/message-content-binding.js";
 
 export type MessageCommandState = "accepted" | "waiting_slot" | "initializing" | "session_queue" | "running" | "completed" | "failed" | "interrupted";
 export type MessageReceipt = {
 	id: string; sessionId: string; roomId: string; eventId: string; streamId: number;
 	state: MessageCommandState; createdAt: number; updatedAt: number; error?: string;
+	contentBinding?: MessageContentBinding;
 };
+type MessageCommandContent = {
+	sessionId: string; roomId: string; text: string; delivery: "queue" | "steer";
+	contentBinding?: MessageContentBinding;
+};
+const CONTENT_FINGERPRINT_PREFIX = "pibo-content-v1:";
 export type MessageCommandClaim = MessageReceipt & { token: number; text: string; delivery: "queue" | "steer" };
 export type MessageCommandTerminalEvidence = { streamId: number; type: "message_finished" | "session_error" | "message_steered"; state: "completed" | "failed" };
 export type DurableMessageQueueHealth = {
@@ -93,11 +100,18 @@ const terminalEvidenceSql = `(SELECT CASE
 /** Durable receipts are independent of optional trace/telemetry retention. Only the storage worker owns this store. */
 export class MessageCommandStore {
 	constructor(private readonly store: PiboDataStore) {}
-	fingerprint(input: { sessionId: string; roomId: string; text: string; delivery: "queue" | "steer" }): string {
+	fingerprint(input: MessageCommandContent): string {
 		if (Buffer.byteLength(input.text) > 1024 * 1024) throw domainError("command_too_large", "Message exceeds the durable command byte limit.");
-		return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+		if (input.contentBinding !== undefined && !isMessageContentBinding(input.contentBinding)) {
+			throw domainError("command_invalid_content_binding", "Invalid admission content binding.");
+		}
+		const digest = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+		// Legacy fingerprints remain byte-identical. The versioned opaque value
+		// stores proof in the SAME atomic row, with no sidecar, schema change or
+		// trace-retention dependency. Its suffix still binds materialized text.
+		return input.contentBinding ? `${CONTENT_FINGERPRINT_PREFIX}${input.contentBinding.sha256}:${digest}` : digest;
 	}
-	prepare(input: { sessionId: string; roomId: string; text: string; delivery: "queue" | "steer" }) {
+	prepare(input: MessageCommandContent) {
 		return {
 			fingerprint: this.fingerprint(input),
 			payload: this.store.payloads.preparePayload({ value: input.text, contentType: "text/plain", retentionClass: "message_command" }),
@@ -281,6 +295,10 @@ export class MessageCommandStore {
 	}
 }
 function receipt(row: Row): MessageReceipt {
-	return { id:row.id,sessionId:row.session_id,roomId:row.room_id,eventId:row.event_id,streamId:row.stream_id,state:row.state,createdAt:row.created_at,updatedAt:row.updated_at,...(row.error?{error:row.error}:{}) };
+	// Only the exact server-written form is evidence. Unknown/legacy formats
+	// remain unproved; never synthesize a binding from a receipt/event ID.
+	const match = row.fingerprint.length === CONTENT_FINGERPRINT_PREFIX.length + 129
+		? /^pibo-content-v1:([0-9a-f]{64}):[0-9a-f]{64}$/.exec(row.fingerprint) : null;
+	return { id:row.id,sessionId:row.session_id,roomId:row.room_id,eventId:row.event_id,streamId:row.stream_id,state:row.state,createdAt:row.created_at,updatedAt:row.updated_at,...(row.error?{error:row.error}:{}),...(match?{contentBinding:{version:1 as const,sha256:match[1]}}:{}) };
 }
 function domainError(code: string, message: string, details:Record<string,unknown>={}): Error { return Object.assign(new Error(message),{code,...details}); }
