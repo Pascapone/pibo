@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { traceProjectionStatus, withLiveSnapshots } from "../dist/apps/chat/chat-trace-helpers.js";
-import { normalizePiEvent } from "../dist/core/routed-session.js";
+import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { messageTurnTimingsFromEvents } from "../dist/shared/trace-event-projection.js";
 import { patchTraceViewWithEvent, patchTraceViewWithEvents } from "../dist/shared/trace-engine.js";
 import { qualifiedToolNodeId } from "../dist/shared/trace-tool-identity.js";

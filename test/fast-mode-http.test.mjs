@@ -9,8 +9,8 @@ import { brotliDecompressSync, gunzipSync, inflateSync, zstdDecompressSync } fro
 import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { createPiboRuntime } from "../dist/core/runtime.js";
-import { RoutedSession } from "../dist/core/routed-session.js";
+import { createPiboRuntime } from "../dist/agent-runtimes/pi/runtime.js";
+import { RoutedSession } from "../dist/agent-runtimes/pi/routed-session.js";
 import { getPiAgentRuntimeCompatibilityHandle, PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import { createWebSearchToolProfile } from "../dist/tools/web-search.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";

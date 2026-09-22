@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { RoutedSession } from "../dist/core/routed-session.js";
+import { RoutedSession } from "../dist/agent-runtimes/pi/routed-session.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import {

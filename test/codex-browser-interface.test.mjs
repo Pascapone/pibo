@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContext } from "../dist/core/profiles.js";
-import { inspectPiboProfile } from "../dist/core/runtime.js";
+import { inspectPiboProfile } from "../dist/agent-runtimes/pi/runtime.js";
 import { PluginHost } from "../dist/plugins/host.js";
 import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";

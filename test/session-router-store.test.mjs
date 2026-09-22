@@ -8,7 +8,7 @@ import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake
 import { PI_AGENT_RUNTIME_DRIVER } from "../dist/agent-runtimes/pi/adapter.js";
 import { PiboSteeringUnavailableError } from "../dist/core/events.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { createPiboRuntime } from "../dist/core/runtime.js";
+import { createPiboRuntime } from "../dist/agent-runtimes/pi/runtime.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";

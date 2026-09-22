@@ -10,7 +10,7 @@ import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-servi
 import { createFakeAgentRuntimeDriver } from "../dist/agent-runtime/testing/fake-adapter.js";
 import { PI_AGENT_RUNTIME_CAPABILITIES } from "../dist/agent-runtimes/pi/adapter.js";
 import { InitialSessionContext, InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { createPiboRuntime, inspectPiboProfile } from "../dist/core/runtime.js";
+import { createPiboRuntime, inspectPiboProfile } from "../dist/agent-runtimes/pi/runtime.js";
 import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { PiboRunExecutionTimeoutError } from "../dist/runs/lifecycle.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";

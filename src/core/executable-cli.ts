@@ -1,8 +1,5 @@
 import { readFileSync } from "node:fs";
-import { ensurePrivatePiboHome } from "./pibo-home.js";
-import { PiboCapabilityHost } from "./capability-host.js";
-import { createRuntimeUnassignedProfile, PIBO_MINIMAL_CORE_PROFILE_NAME } from "./runtime-unassigned.js";
-import { runWebGatewayServer, type WebGatewayAuthMode } from "../gateway/web.js";
+import type { WebGatewayAuthMode } from "../gateway/web.js";
 import type { Pibo4CutoverArtifactBinding } from "../plugins/cutover-contract.js";
 import type { PluginSourceInput } from "../plugins/sources.js";
 
@@ -139,6 +136,13 @@ export async function runPiboCoreCli(argv = process.argv, composition: PiboExecu
 		console.log(gatewayHelp(composition));
 		return;
 	}
+	// Discovery must neither load the gateway graph nor initialize product state.
+	const [{ ensurePrivatePiboHome }, { PiboCapabilityHost }, { createRuntimeUnassignedProfile, PIBO_MINIMAL_CORE_PROFILE_NAME }, { runWebGatewayServer }] = await Promise.all([
+		import("./pibo-home.js"),
+		import("./capability-host.js"),
+		import("./runtime-unassigned.js"),
+		import("../gateway/web.js"),
+	]);
 	ensurePrivatePiboHome();
 	const capabilityHost = PiboCapabilityHost.create();
 	const defaultProfile = composition.defaultProfile ?? PIBO_MINIMAL_CORE_PROFILE_NAME;

@@ -10,10 +10,9 @@ import {
 	savePiboConfig,
 	setPiboConfigValue,
 } from "./config/config.js";
-import type { PiboRuntimeOptions } from "./core/runtime.js";
+import type { PiboRuntimeOptions } from "./agent-runtimes/pi/runtime.js";
 import type { PluginJsonObject } from "./plugins/manifest.js";
 import { pluginRuntimeDeliveryModes } from "./agent-runtime/capabilities.js";
-import { parsePiboThinkingLevel } from "./core/thinking.js";
 import { ensurePrivatePiboHome } from "./core/pibo-home.js";
 
 async function resolveCliProfile(profileName?: string) {
@@ -454,7 +453,7 @@ export async function runPiboCli(argv = process.argv): Promise<void> {
 		.description("Inspect a pibo profile")
 		.addHelpText("after", "\nProfiles include built-in plugin profiles plus active saved Chat custom agents from $PIBO_HOME/chat-agents.sqlite. Archived custom agents are not exposed.\n")
 		.action(async (profile?: string) => {
-			const { inspectPiboProfile } = await import("./core/runtime.js");
+			const { inspectPiboProfile } = await import("./agent-runtimes/pi/runtime.js");
 			const resolved = await resolveCliProfile(profile);
 			try {
 				printJson(await inspectPiboProfile({

@@ -48,11 +48,10 @@ import {
 	PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE,
 	PIBO_PROVIDER_RECOVERY_PROMPT,
 	PiboProviderRecoveryCancelledError,
-	isRetryablePiboAssistantError,
-	isRetryablePiboProviderError,
 	resolvePiboProviderRecoverySettings,
 	waitForPiboProviderRecovery,
 } from "../../core/provider-recovery.js";
+import { isRetryablePiboAssistantError, isRetryablePiboProviderError } from "./retryable.js";
 import { PiAgentRuntimeAuthController } from "./auth.js";
 import { piIntentTracingInstalled, piToolIntentField, splitPiToolIntentArguments } from "./intent-tracing.js";
 import { loadModelCatalog as loadPiModelCatalog } from "./model-catalog.js";

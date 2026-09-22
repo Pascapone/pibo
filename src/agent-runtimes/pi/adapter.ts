@@ -196,7 +196,6 @@ export type PiAgentRuntimeCompatibilityServices = {
 	retryDefaults?: PiboRuntimeRetryDefaults;
 	extensionFactories?: ExtensionFactory[];
 	modelDefaults?: PiboRuntimeOptions["modelDefaults"];
-	contextGuardTuiQueueOrdering?: boolean;
 	initialFastMode?: boolean;
 	providerFallbacksEnabled?: boolean;
 };
@@ -808,7 +807,6 @@ class PiAgentRuntimeAdapter implements AgentRuntimeAdapter {
 				timezone: input.productContext.timezone,
 				getActiveMessage: input.productContext.getActiveMessage as PiboRuntimeSessionContext["getActiveMessage"],
 			},
-			contextGuardTuiQueueOrdering: compatibility?.contextGuardTuiQueueOrdering,
 		});
 		if (input.historyHandoff?.mode === "import") {
 			try {

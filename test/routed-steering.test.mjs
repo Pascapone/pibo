@@ -2,7 +2,7 @@ import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PiboSteeringUnavailableError } from "../dist/core/events.js";
-import { RoutedSession } from "../dist/core/routed-session.js";
+import { RoutedSession } from "../dist/agent-runtimes/pi/routed-session.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 import { PiboCapabilityHost } from "../dist/core/capability-host.js";
 

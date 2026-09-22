@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import { storedPiboEventFromV2Row } from "../dist/apps/chat/data/chat-data-mappers.js";
-import { normalizePiEvent } from "../dist/core/routed-session.js";
+import { normalizePiEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { buildCompactTerminalRows } from "../dist/session-ui/index.js";

@@ -9,8 +9,8 @@ import {
 	registerPiboAssistantContextGuardRecovery,
 } from "../dist/core/context-guard.js";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { RoutedSession } from "../dist/core/routed-session.js";
-import { createPiboRuntime } from "../dist/core/runtime.js";
+import { RoutedSession } from "../dist/agent-runtimes/pi/routed-session.js";
+import { createPiboRuntime } from "../dist/agent-runtimes/pi/runtime.js";
 import { buildTraceViewFromEvents } from "../dist/shared/trace-engine.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 import { PiboCapabilityHost } from "../dist/core/capability-host.js";

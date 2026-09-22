@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
-import { applyPiboRuntimeRetryDefaults } from "../dist/core/runtime.js";
+import { applyPiboRuntimeRetryDefaults } from "../dist/agent-runtimes/pi/runtime.js";
 import {
 	RALPH_RUNTIME_RETRY_DEFAULTS,
 	resolvePiboSessionRetryDefaults,

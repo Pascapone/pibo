@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { inspectPiboProfile } from "../dist/core/runtime.js";
+import { inspectPiboProfile } from "../dist/agent-runtimes/pi/runtime.js";
 import { PiboRuntimeResourceService } from "../dist/agent-runtime/resource-service.js";
 import { mcpAdapterFromPluginPlan } from "../dist/agent-runtime/plugin-plan.js";
 import {

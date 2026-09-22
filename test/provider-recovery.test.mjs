@@ -1,13 +1,13 @@
 import { createTestCapabilityHost } from "./helpers/capability-host.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { completePiboCompactionSummary } from "../dist/core/compaction-prompt.js";
+import { completePiboCompactionSummary } from "../dist/agent-runtimes/pi/compaction-extension.js";
 import {
 	PIBO_PROVIDER_RECOVERY_MESSAGE_TYPE,
 	PiboProviderRecoveryCancelledError,
 	piboProviderRecoveryDelayMs,
 } from "../dist/core/provider-recovery.js";
-import { RoutedSession } from "../dist/core/routed-session.js";
+import { RoutedSession } from "../dist/agent-runtimes/pi/routed-session.js";
 import { classifySessionErrorMessage } from "../dist/core/session-errors.js";
 import { coreCapabilitiesSetup } from "./helpers/capability-fixtures.mjs";
 import { PiboCapabilityHost } from "../dist/core/capability-host.js";

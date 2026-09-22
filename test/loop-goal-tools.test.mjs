@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { InitialSessionContextBuilder } from "../dist/core/profiles.js";
-import { normalizeAssistantUsageEvent } from "../dist/core/routed-session.js";
+import { normalizeAssistantUsageEvent } from "../dist/agent-runtimes/pi/routed-session.js";
 import { PiboSessionRouter } from "../dist/core/session-router.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { goalActiveTimeSeconds, goalBudgetTokens, goalElapsedWallClockSeconds } from "../dist/loops/accounting.js";

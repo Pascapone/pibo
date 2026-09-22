@@ -252,8 +252,8 @@ export type {
 	PiboSubagentInfo,
 } from "./plugins/types.js";
 export { createPiboGatewayToolProfiles } from "./gateway/tool.js";
-export { createPiboRuntime, inspectPiboProfile, runPiboTui } from "./core/runtime.js";
-export type { PiboProfileInspection, PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./core/runtime.js";
+export { createPiboRuntime, inspectPiboProfile } from "./agent-runtimes/pi/runtime.js";
+export type { PiboProfileInspection, PiboRuntimeOptions, PiboRuntimeRetryDefaults } from "./agent-runtimes/pi/runtime.js";
 export { PiboCapabilityHost } from "./core/capability-host.js";
 export type { PiboCapabilityHostOptions } from "./core/capability-host.js";
 export { PiboSessionRouter } from "./core/session-router.js";

@@ -7,7 +7,6 @@ import {
 	createAgentSessionServices,
 	createBashToolDefinition,
 	getAgentDir,
-	InteractiveMode,
 	ModelRegistry,
 	type ModelRuntime,
 	SessionManager,
@@ -38,12 +37,11 @@ import { createWebSearchProviderExtension, isWebSearchProviderTool } from "../..
 import { getMcpAgentContextFile } from "../../mcp/agent-context.js";
 import { createPiboSystemPromptTemplateExtension } from "../../core/system-prompt-template.js";
 import { getActivePiboBasePromptPath } from "../../core/base-prompt.js";
-import { createPiboCompactionPromptExtension } from "../../core/compaction-prompt.js";
+import { createPiboCompactionPromptExtension } from "./compaction-extension.js";
 import {
 	cancelPiboAssistantContextGuardRecovery,
 	createPiboAssistantContextGuardExtension,
 	createPiboAssistantContextGuardRecovery,
-	isPiboAssistantContextGuardRecoveryPending,
 	registerPiboAssistantContextGuardRecovery,
 	type PiboAssistantContextGuardRecovery,
 } from "../../core/context-guard.js";
@@ -121,8 +119,6 @@ export type PiboRuntimeOptions = {
 	activeModel?: ModelProfile;
 	/** Product metadata that is always injected into runtime context. */
 	sessionContext?: PiboRuntimeSessionContext;
-	/** Keep direct-TUI input behind context-guard continuation turns. */
-	contextGuardTuiQueueOrdering?: boolean;
 };
 
 export type PiboRuntimeSessionContext = {
@@ -449,9 +445,6 @@ export async function createPiboRuntime(options: PiboRuntimeOptions = {}): Promi
 		installPiboTranscriptIntegrity(created.session);
 		installValidationOutputCompaction(created.session.agent);
 		registerPiboAssistantContextGuardRecovery(created.session, contextGuardRecovery);
-		if (options.contextGuardTuiQueueOrdering === true) {
-			installPiboContextGuardTuiQueueOrdering(created.session);
-		}
 
 		const resourceLoader = services.resourceLoader;
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
@@ -611,71 +604,4 @@ export async function inspectPiboProfile(options: PiboRuntimeOptions = {}): Prom
 				{ type: "warning", message: "Read-only declared profile preview; dynamic tool factories, MCP and runtime creation were not executed." },
 			],
 		};
-}
-
-function installPiboContextGuardTuiQueueOrdering(session: AgentSessionRuntime["session"]): void {
-	const originalSubscribe = session.subscribe.bind(session);
-	const originalPrompt = session.prompt.bind(session);
-	const originalSteer = session.steer.bind(session);
-
-	session.subscribe = ((listener) => originalSubscribe((event) => {
-		if (
-			event.type === "compaction_end"
-			&& event.result
-			&& isPiboAssistantContextGuardRecoveryPending(session)
-		) {
-			listener({ ...event, willRetry: true });
-			return;
-		}
-		listener(event);
-	})) as typeof session.subscribe;
-
-	session.prompt = async (text, options) => {
-		if (isPiboAssistantContextGuardRecoveryPending(session)) {
-			if (!session.isStreaming) {
-				await session.followUp(text, options?.images);
-				options?.preflightResult?.(true);
-				return;
-			}
-			await originalPrompt(text, { ...options, streamingBehavior: "followUp" });
-			return;
-		}
-		await originalPrompt(text, options);
-	};
-
-	session.steer = async (text, images) => {
-		if (isPiboAssistantContextGuardRecoveryPending(session)) {
-			await session.followUp(text, images);
-			return;
-		}
-		await originalSteer(text, images);
-	};
-
-}
-
-export async function runPiboTui(options: PiboRuntimeOptions = {}): Promise<void> {
-	const profile = options.profile ?? createDefaultPiboProfile();
-	const runtime = await createPiboRuntime({ ...options, profile, contextGuardTuiQueueOrdering: true });
-
-	try {
-		const fatal = runtime.diagnostics.find((diagnostic) => diagnostic.type === "error");
-
-		for (const diagnostic of runtime.diagnostics) {
-			const prefix = diagnostic.type === "warning" ? "Warning" : diagnostic.type === "error" ? "Error" : "Info";
-			console.error(`${prefix}: ${diagnostic.message}`);
-		}
-
-		if (fatal) {
-			process.exitCode = 1;
-			return;
-		}
-
-		const interactiveMode = new InteractiveMode(runtime, {
-			verbose: true,
-			modelFallbackMessage: runtime.modelFallbackMessage,
-		});
-		await interactiveMode.run();
-	} finally {
-		await runtime.dispose();
-	}
 }
