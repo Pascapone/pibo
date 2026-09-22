@@ -1,0 +1,172 @@
+This is a focused batch, not a full suite or installation test.
+Narrow resource-store/payload/protocol/provider/draft type graph passed (not full worker/web-app/root)
+{"method":"TypeScript.transpileModule, file-at-a-time (ESM)","emitted":581,"typechecked":false,"releaseBuild":false}
+Artifact rebuild deferred; prior artifacts are not this candidate build
+✔ worker media admission promotes one grant atomically, retains it on retry, and deletes it with product history (495.209889ms)
+✔ worker rejects corrupt or discarded media without admitting a message or consuming its transaction (259.930198ms)
+✔ structured attachment history survives restart and optional event loss without receipt file reads (476.225862ms)
+✔ attachment snapshot references are acquired once per message and released by product-history deletion (339.573328ms)
+✔ structured snapshot bytes participate in existing per-command and session admission budgets (512.306001ms)
+✔ canonical attachment snapshots deduplicate key-order variants and never turn raw paths into resources (273.845029ms)
+✔ Core attachment admission materializes validated JSON without a plugin or a ten-attachment cap (2.802909ms)
+✔ attachment admission pins resource registrations through the existing owner scope (3.918051ms)
+✔ attachment admission pins contribution registrations through the existing owner scope (0.795233ms)
+✔ attachment selection, revision, declaration and registry ownership must all agree (5.421997ms)
+✔ provider shutdown drains admitted work and short-lived scopes do not accumulate (6.023455ms)
+✔ child scope retirement preserves LIFO, once-only disposal and failed-child barriers (0.346876ms)
+✔ attachment wire versions and envelopes fail closed without changing legacy extension semantics (0.43958ms)
+✔ provider validation and serialization cannot mutate frozen input or promote authority fields (2.078848ms)
+✔ provider v1 validation and serialization reject asynchronous results without unhandled rejection (2.471306ms)
+✔ materialized attachment JSON is canonical across payload object key-order variants (0.417383ms)
+✔ plural media sends Core-resolved paths to the model but never to the provider (0.990558ms)
+✔ Core provider snapshots are schema-valid or fail; image/file serialization needs media (0.329579ms)
+✔ Core media handles bind verified private bytes to Session/transaction/resource and survive restart (35.655599ms)
+✔ changed bytes, MIME or name cannot replace an already prepared identity (28.636295ms)
+✔ foreign Session, transaction, draft id, raw path and mismatched media cannot authorize resources (29.664756ms)
+✔ prepared-file corruption, fake paths and symlinks fail before publishing ownership (26.441732ms)
+✔ full bounded reads detect changed bytes even when immutable metadata and file length match (25.854149ms)
+✔ promotion and message insertion roll back together without acquiring another payload reference (28.598871ms)
+✔ shared bytes retain one reference per grant; duplicate discard is harmless and last discard deletes bytes (28.754773ms)
+✔ history release is transactional, affects only requested Sessions and keeps other grants readable (42.969755ms)
+✔ resource preparation enforces identity and existing blob byte bounds without a total attachment-count rule (49.361707ms)
+✔ payload cleanup cannot unlink a freshly committed owner reusing the same content file (29.563081ms)
+✔ prepared ownership cannot be published after last-reference cleanup removed its file (27.396276ms)
+✔ schema 16 adds grants without modifying schema-15 Session, history or payload content (43.42105ms)
+✔ prepared wire body is persisted before send, immutable across reload and storage-failure atomic (810.125717ms)
+✔ a matched receipt ID or echoed fingerprint cannot consume missing or different local content (293.820346ms)
+✔ all admitted command states consume matching revisions once, independently of model outcome (313.1366ms)
+✔ submission must contain the bound snapshot and corrupted persisted proofs fail closed (315.062985ms)
+✔ chat data ingest writes user messages idempotently (7.934889ms)
+✔ chat data ingest records repeated user messages without client transaction id (5.913193ms)
+✔ chat data ingest externalizes large user message payloads (6.887566ms)
+✔ chat data ingest shadows assistant messages and observations idempotently (10.420804ms)
+✔ chat data ingest round-trips immutable render sequence metadata (6.746969ms)
+✔ chat data ingest preserves post-compaction output and repeated lifecycle events (11.20613ms)
+✔ chat data ingest snapshots tool metrics for each successful compaction segment (8.496655ms)
+✔ chat data ingest records output identity collisions instead of silently dropping them (5.43148ms)
+✔ non-lifecycle output after message_finished does not reopen the persisted session (5.825088ms)
+✔ v2 event mapper preserves assistant and reasoning part identities (1.421814ms)
+✔ chat data ingest keeps progressive tool call argument snapshots (5.304881ms)
+✔ chat data ingest shadows tool output into observations (4.314175ms)
+✔ persisted subagent session fields survive V2 ingest and trace reload (5.447809ms)
+✔ product history reconstructs full routed messages without native transcript data (17.265293ms)
+✔ v2 schema migration is idempotent (24.133859ms)
+✔ v13 unread projection migrates from message fragments to completed turn boundaries (60.940352ms)
+✔ pibo data store rejects future schemas without mutating them (16.378013ms)
+✔ schema migration from v5 installs the exact tool lifecycle index (22.979298ms)
+✔ every schema open keeps the interrupted sequence repair on its bounded partial index (22.354843ms)
+✔ schema v8 migrates payload identity without rewriting existing payload files (45.133501ms)
+✔ schema upgrades preserve post-v5 session history metadata (47.328224ms)
+✔ fresh pibo chat schema omits retired room partition structures (11.413709ms)
+✔ payload store writes, reads, and dedupes payloads (19.819763ms)
+✔ payload deduplication keeps incompatible interpretation metadata isolated (28.882838ms)
+✔ application/json payloads serialize primitive strings as valid JSON (17.759816ms)
+✔ event log append is idempotent by idempotency key (17.306387ms)
+✔ message and observation stores support simple insert and list (26.863041ms)
+✔ v2 schema backfills legacy Pi bindings and keeps old-writer Pi updates synchronized (34.522659ms)
+✔ accepted request binding is atomic, server-derived and durable across duplicates and worker restart (574.960356ms)
+✔ same transaction rejects changed raw content, resource refs, delivery, final text and binding downgrade (328.910221ms)
+✔ unflagged fingerprints and old receipts remain exact legacy values, never silently upgraded (598.61861ms)
+✔ receipt binding survives model failure, interrupted execution and loss of the optional event projection (332.91583ms)
+✔ capacity rejection leaves no accepted binding and unchanged retry can subsequently succeed (635.002676ms)
+✔ malformed or foreign captured request identity never creates a receipt (333.971752ms)
+✔ durable commands commit with admission, deduplicate and reject changed payloads (344.12462ms)
+✔ unstarted claims recover with a higher fence and session FIFO survives equal timestamps (38.746546ms)
+✔ overload rolls back acceptance and a retry keeps its transaction identity (651.874786ms)
+✔ steering bypasses an active normal turn but never becomes a queued turn (27.386827ms)
+✔ process death preserves committed commands and fences uncertain dispatch (767.194373ms)
+✔ independent dispatcher processes claim one committed command only once (151.995291ms)
+✔ room rotation and database-wide slots preserve control capacity across dispatch owners (226.355436ms)
+✔ byte and wait-age limits reject new work while preserving duplicate receipts and steering (81.051393ms)
+✔ clear queue fences unstarted claims and preserves dispatched receipt ownership (56.483214ms)
+✔ receipt polling retains an older active turn after a long stream of terminal steering receipts (1160.412254ms)
+✔ lease recovery monotonically honors every terminal output with a deterministic persistence barrier (476.805662ms)
+✖ bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors (642.427335ms)
+✔ one malformed reconciliation candidate cannot prevent an unrelated terminal repair (103.34097ms)
+✖ admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available (634.274568ms)
+✔ durable queue health separates dispatchable backlog from FIFO degradation using bounded metadata (72.10624ms)
+✔ health summaries remain operationally bounded across large terminal history (84.964786ms)
+✔ FIFO predecessor checks use the state-and-stream covering index instead of scanning terminal history (23.318122ms)
+{
+  "from": "/tmp/p4focus.ALygL3/pibo-data-session-store-9mGoUk/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.ALygL3/pibo-data-session-store-9mGoUk/pibo.sqlite",
+  "inputExists": true,
+  "read": 0,
+  "inserted": 0,
+  "updated": 0,
+  "skipped": 0
+}
+{
+  "from": "/tmp/p4focus.ALygL3/pibo-data-session-store-RrDrnH/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.ALygL3/pibo-data-session-store-RrDrnH/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 2,
+  "updated": 0,
+  "skipped": 0
+}
+{
+  "from": "/tmp/p4focus.ALygL3/pibo-data-session-store-RrDrnH/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.ALygL3/pibo-data-session-store-RrDrnH/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 0,
+  "updated": 0,
+  "skipped": 2
+}
+{
+  "from": "/tmp/p4focus.ALygL3/pibo-data-session-store-RrDrnH/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.ALygL3/pibo-data-session-store-RrDrnH/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 0,
+  "updated": 1,
+  "skipped": 1
+}
+✔ pibo data session store persists structured session fields (34.24406ms)
+✔ pibo data session store persists monotonic agent observation auto cursors (380.690392ms)
+✔ pibo data migrate sessions-to-v2 rejects a non-legacy source before creating the target (5.499333ms)
+✔ pibo data migrate sessions-to-v2 accepts a valid empty legacy source (49.224141ms)
+✔ pibo data migrate sessions-to-v2 is idempotent and refreshes structured room ids (149.298511ms)
+✔ pibo data migration leaves skipped newer runtime bindings unchanged (41.070085ms)
+✔ closing storage forbids creating a lazy reader and waits for failed worker exit (834.625503ms)
+✔ async output ingest returns compaction enrichments to the live event object (561.249817ms)
+✔ slow worker CPU leaves the calling thread responsive and enforces queue counts and bytes (230.354036ms)
+✔ admission bypasses queued background work without changing FIFO within a priority (176.161191ms)
+✔ worker crash and execution deadline release all queued promises with uncertain in-flight state (233.685159ms)
+✔ payload accounting rejects cycles, wide input and oversized UTF-8 strings (11.520315ms)
+✔ large payload compression finishes before the short metadata transaction (21.057977ms)
+✔ chat projections do not overwrite a concurrently advanced runtime binding (76.157146ms)
+✔ atomic worker admissions have one winner, persist after restart and avoid main-thread lock waiting (1906.918055ms)
+✔ room fairness rotates storage admission and reserves control queue space (156.595838ms)
+✔ storage fairness remembers Rooms across drained bursts without delaying control work (95.608065ms)
+✔ payload accounting permits shared acyclic metadata and counts every serialized occurrence (0.34159ms)
+✔ an exited storage worker is replaced instead of disabling durable admission permanently (1969.434109ms)
+ℹ tests 104
+ℹ suites 0
+ℹ pass 102
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23128.815921
+
+✖ failing tests:
+
+test at test/message-command-store.test.mjs:239:1
+✖ bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors (642.427335ms)
+  Error [StorageUnavailableError]: Storage queue deadline elapsed before execution.
+      at Timeout._onTimeout (file://$WORKTREE/dist/data/bounded-worker-client.js:174:32)
+      at listOnTimeout (node:internal/timers:685:17)
+      at process.processTimers (node:internal/timers:618:7) {
+    code: 'storage_deadline'
+  }
+
+test at test/message-command-store.test.mjs:260:1
+✖ admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available (634.274568ms)
+  Error [StorageUnavailableError]: Storage queue deadline elapsed before execution.
+      at Timeout._onTimeout (file://$WORKTREE/dist/data/bounded-worker-client.js:174:32)
+      at listOnTimeout (node:internal/timers:685:17)
+      at process.processTimers (node:internal/timers:618:7) {
+    code: 'storage_deadline'
+  }

@@ -1,0 +1,28 @@
+started=2026-09-22T19:18:18Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ echo\ \"Tests\ only:\ production\ source\ unchanged\ from\ focused-04\ narrow\ types\ and581-file\ behavioral\ emit\;\ no\ current-candidate\ artifact\ rebuild\"\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/attachment-resource-store.test.mjs\ test/attachment-message.test.mjs\ test/data-v2-store.test.mjs\ test/data-v2-ingest-service.test.mjs\ test/pibo-data-session-store.test.mjs\ test/attachment-message-storage.test.mjs\ test/message-command-content-binding.test.mjs\ test/message-command-store.test.mjs\ test/chat-ui-attachment-submission.test.mjs\ test/storage-worker-isolation.test.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ --test-name-pattern=\"\^\(K07\ HTTP\|content-bound\ durable\ HTTP\|versioned\ durable\ admission\|Chat\ Web\ reports\ interrupted\ FIFO\|clear_queue\ cancels\|web\ startup\ dispatches\)\"\ test/web-channel.test.mjs
+source=df76c5372f90dd96f8f42d81af0dfc84266c615a
+ M src/apps/chat/data/session-query-service.ts
+ M src/apps/chat/web-app.ts
+ M src/attachments/message.ts
+ M src/data/async-chat-storage.ts
+ M src/data/chat-storage-worker.ts
+ M src/data/payload-store.ts
+ M src/data/schema.ts
+ M test/attachment-message-storage.test.mjs
+ M test/attachment-message.test.mjs
+ M test/fixtures/storage-worker/controlled-worker.mjs
+ M test/message-command-content-binding.test.mjs
+ M test/message-command-store.test.mjs
+ M test/storage-worker-isolation.test.mjs
+ M test/web-channel.test.mjs
+?? src/apps/chat/attachment-resource-http.ts
+?? src/attachments/resource-schema.ts
+?? src/attachments/resource-store.ts
+?? src/attachments/resources.ts
+?? test/attachment-resource-store.test.mjs
+?? test/helpers/storage-ready.mjs
+8678ffd336f09264c271692aa61237541a500f499871f15dc393182f6cbac888  -
+untracked_files_sha256={"src/apps/chat/attachment-resource-http.ts": "e61ac9ab9a13611d84ec5c12f0657ee15742979d35085c888d4f6d96b55a52bd", "src/attachments/resource-schema.ts": "a311e2f33cb525e7b8db3b772616acaf669ff3ac2c115f8c3e6988613666466f", "src/attachments/resource-store.ts": "a32d03ea49038df0ba52f4ef4ca2868ed1c2e2e59b16a31b3f8c8c3c9e72d89a", "src/attachments/resources.ts": "bf74b3d0f726d1dfcc08b72a40f306ba698006709dc4f8cf4ac08f77bcdd06b9", "test/attachment-resource-store.test.mjs": "d959589f76564acd4868d193b747902397ee65a05d95d14b3662289a6d4f878d", "test/helpers/storage-ready.mjs": "2078f0d3002136643501ccc001b322c36f1952dac3d7d57f232b8bec811a5093"}
+exit=0
+ended=2026-09-22T19:20:13Z

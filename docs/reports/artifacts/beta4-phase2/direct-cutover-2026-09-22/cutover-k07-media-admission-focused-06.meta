@@ -1,0 +1,28 @@
+started=2026-09-22T19:30:32Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --types\ node\ --esModuleInterop\ src/attachments/resource-store.ts\ src/attachments/resources.ts\ src/attachments/resource-schema.ts\ src/attachments/message.ts\ src/attachments/server-providers.ts\ src/apps/chat-ui/src/attachments/core-attachment-draft.ts\;\ echo\ \"Narrow\ resource-store/payload/protocol/provider/draft\ type\ graph\ passed\ \(not\ full\ worker/web-app/root\)\"\;\ node\ $RUN/transpile-for-tests.mjs\;\ node\ scripts/build-pibo4-artifacts.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/attachment-resource-store.test.mjs\ test/attachment-message.test.mjs\ test/data-v2-store.test.mjs\ test/data-v2-ingest-service.test.mjs\ test/pibo-data-session-store.test.mjs\ test/attachment-message-storage.test.mjs\ test/message-command-content-binding.test.mjs\ test/message-command-store.test.mjs\ test/chat-ui-attachment-submission.test.mjs\ test/storage-worker-isolation.test.mjs\ test/attachment-provider-registry.test.mjs\ test/plugin-system-host.test.mjs\ test/plugin-system-browser.test.mjs\ test/chat-ui-core-attachment-pilot.test.mjs\ test/message-content-binding.test.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ --test-name-pattern=\"\^\(K07\ HTTP\|content-bound\ durable\ HTTP\|versioned\ durable\ admission\|Chat\ Web\ reports\ interrupted\ FIFO\|clear_queue\ cancels\|web\ startup\ dispatches\)\"\ test/web-channel.test.mjs
+source=df76c5372f90dd96f8f42d81af0dfc84266c615a
+ M src/apps/chat/data/session-query-service.ts
+ M src/apps/chat/web-app.ts
+ M src/attachments/message.ts
+ M src/data/async-chat-storage.ts
+ M src/data/chat-storage-worker.ts
+ M src/data/payload-store.ts
+ M src/data/schema.ts
+ M test/attachment-message-storage.test.mjs
+ M test/attachment-message.test.mjs
+ M test/fixtures/storage-worker/controlled-worker.mjs
+ M test/message-command-content-binding.test.mjs
+ M test/message-command-store.test.mjs
+ M test/storage-worker-isolation.test.mjs
+ M test/web-channel.test.mjs
+?? src/apps/chat/attachment-resource-http.ts
+?? src/attachments/resource-schema.ts
+?? src/attachments/resource-store.ts
+?? src/attachments/resources.ts
+?? test/attachment-resource-store.test.mjs
+?? test/helpers/storage-ready.mjs
+be420d6fcd065b66dd8ab475834e54920fa376058d6dd2c379ce1a4666a1560d  -
+untracked_files_sha256={"src/apps/chat/attachment-resource-http.ts": "e61ac9ab9a13611d84ec5c12f0657ee15742979d35085c888d4f6d96b55a52bd", "src/attachments/resource-schema.ts": "a311e2f33cb525e7b8db3b772616acaf669ff3ac2c115f8c3e6988613666466f", "src/attachments/resource-store.ts": "cc06a4fb294905a1332ae831dec2209cfd0d152ddfa8828a745b59e0c110452a", "src/attachments/resources.ts": "bf74b3d0f726d1dfcc08b72a40f306ba698006709dc4f8cf4ac08f77bcdd06b9", "test/attachment-resource-store.test.mjs": "cb0c85e78bd07970325b11afb670eddc935d7e6536fe48768bc1bbf069a65367", "test/helpers/storage-ready.mjs": "2078f0d3002136643501ccc001b322c36f1952dac3d7d57f232b8bec811a5093"}
+exit=0
+ended=2026-09-22T19:36:05Z

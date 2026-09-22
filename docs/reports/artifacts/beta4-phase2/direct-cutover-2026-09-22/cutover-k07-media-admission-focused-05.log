@@ -1,0 +1,185 @@
+This is a focused batch, not a full suite or installation test.
+Tests only: production source unchanged from focused-04 narrow types and581-file behavioral emit; no current-candidate artifact rebuild
+✔ worker media admission promotes one grant atomically, retains it on retry, and deletes it with product history (638.646243ms)
+✔ worker rejects corrupt or discarded media without admitting a message or consuming its transaction (318.556946ms)
+✔ structured attachment history survives restart and optional event loss without receipt file reads (600.547314ms)
+✔ attachment snapshot references are acquired once per message and released by product-history deletion (285.243311ms)
+✔ structured snapshot bytes participate in existing per-command and session admission budgets (574.969997ms)
+✔ canonical attachment snapshots deduplicate key-order variants and never turn raw paths into resources (313.839195ms)
+✔ Core attachment admission materializes validated JSON without a plugin or a ten-attachment cap (2.994983ms)
+✔ attachment admission pins resource registrations through the existing owner scope (4.386119ms)
+✔ attachment admission pins contribution registrations through the existing owner scope (0.820673ms)
+✔ attachment selection, revision, declaration and registry ownership must all agree (2.385989ms)
+✔ provider shutdown drains admitted work and short-lived scopes do not accumulate (5.234572ms)
+✔ child scope retirement preserves LIFO, once-only disposal and failed-child barriers (0.37682ms)
+✔ attachment wire versions and envelopes fail closed without changing legacy extension semantics (0.448529ms)
+✔ provider validation and serialization cannot mutate frozen input or promote authority fields (1.23551ms)
+✔ provider v1 validation and serialization reject asynchronous results without unhandled rejection (2.23962ms)
+✔ materialized attachment JSON is canonical across payload object key-order variants (0.418839ms)
+✔ plural media sends Core-resolved paths to the model but never to the provider (0.984008ms)
+✔ Core provider snapshots are schema-valid or fail; image/file serialization needs media (0.304457ms)
+✔ Core media handles bind verified private bytes to Session/transaction/resource and survive restart (41.877758ms)
+✔ changed bytes, MIME or name cannot replace an already prepared identity (30.45844ms)
+✔ foreign Session, transaction, draft id, raw path and mismatched media cannot authorize resources (34.022829ms)
+✔ prepared-file corruption, fake paths and symlinks fail before publishing ownership (23.212537ms)
+✔ full bounded reads detect changed bytes even when immutable metadata and file length match (24.458662ms)
+✔ promotion and message insertion roll back together without acquiring another payload reference (27.444323ms)
+✔ shared bytes retain one reference per grant; duplicate discard is harmless and last discard deletes bytes (28.907585ms)
+✔ history release is transactional, affects only requested Sessions and keeps other grants readable (36.061774ms)
+✔ resource preparation enforces identity and existing blob byte bounds without a total attachment-count rule (52.92438ms)
+✔ payload cleanup cannot unlink a freshly committed owner reusing the same content file (45.284067ms)
+✔ prepared ownership cannot be published after last-reference cleanup removed its file (33.763928ms)
+✔ schema 16 adds grants without modifying schema-15 Session, history or payload content (44.479937ms)
+✔ prepared wire body is persisted before send, immutable across reload and storage-failure atomic (482.823728ms)
+✔ a matched receipt ID or echoed fingerprint cannot consume missing or different local content (313.026754ms)
+✔ all admitted command states consume matching revisions once, independently of model outcome (321.2963ms)
+✔ submission must contain the bound snapshot and corrupted persisted proofs fail closed (311.494747ms)
+✔ chat data ingest writes user messages idempotently (7.978873ms)
+✔ chat data ingest records repeated user messages without client transaction id (6.009531ms)
+✔ chat data ingest externalizes large user message payloads (7.782454ms)
+✔ chat data ingest shadows assistant messages and observations idempotently (12.438114ms)
+✔ chat data ingest round-trips immutable render sequence metadata (7.569494ms)
+✔ chat data ingest preserves post-compaction output and repeated lifecycle events (11.307993ms)
+✔ chat data ingest snapshots tool metrics for each successful compaction segment (8.441825ms)
+✔ chat data ingest records output identity collisions instead of silently dropping them (5.259596ms)
+✔ non-lifecycle output after message_finished does not reopen the persisted session (6.654127ms)
+✔ v2 event mapper preserves assistant and reasoning part identities (1.217943ms)
+✔ chat data ingest keeps progressive tool call argument snapshots (5.21467ms)
+✔ chat data ingest shadows tool output into observations (4.536103ms)
+✔ persisted subagent session fields survive V2 ingest and trace reload (5.764487ms)
+✔ product history reconstructs full routed messages without native transcript data (16.03574ms)
+✔ v2 schema migration is idempotent (19.80991ms)
+✔ v13 unread projection migrates from message fragments to completed turn boundaries (75.2344ms)
+✔ pibo data store rejects future schemas without mutating them (21.350151ms)
+✔ schema migration from v5 installs the exact tool lifecycle index (34.206393ms)
+✔ every schema open keeps the interrupted sequence repair on its bounded partial index (31.661066ms)
+✔ schema v8 migrates payload identity without rewriting existing payload files (56.823782ms)
+✔ schema upgrades preserve post-v5 session history metadata (44.791649ms)
+✔ fresh pibo chat schema omits retired room partition structures (9.925676ms)
+✔ payload store writes, reads, and dedupes payloads (22.808414ms)
+✔ payload deduplication keeps incompatible interpretation metadata isolated (27.86515ms)
+✔ application/json payloads serialize primitive strings as valid JSON (18.947311ms)
+✔ event log append is idempotent by idempotency key (17.857115ms)
+✔ message and observation stores support simple insert and list (30.198668ms)
+✔ v2 schema backfills legacy Pi bindings and keeps old-writer Pi updates synchronized (48.29082ms)
+✔ accepted request binding is atomic, server-derived and durable across duplicates and worker restart (723.446727ms)
+✔ same transaction rejects changed raw content, resource refs, delivery, final text and binding downgrade (416.222474ms)
+✔ unflagged fingerprints and old receipts remain exact legacy values, never silently upgraded (611.380925ms)
+✔ receipt binding survives model failure, interrupted execution and loss of the optional event projection (410.442588ms)
+✔ capacity rejection leaves no accepted binding and unchanged retry can subsequently succeed (645.361098ms)
+✔ malformed or foreign captured request identity never creates a receipt (304.218802ms)
+✔ durable commands commit with admission, deduplicate and reject changed payloads (373.996732ms)
+✔ unstarted claims recover with a higher fence and session FIFO survives equal timestamps (61.738665ms)
+✔ overload rolls back acceptance and a retry keeps its transaction identity (828.288654ms)
+✔ steering bypasses an active normal turn but never becomes a queued turn (43.90919ms)
+✔ process death preserves committed commands and fences uncertain dispatch (926.41732ms)
+✔ independent dispatcher processes claim one committed command only once (216.354399ms)
+✔ room rotation and database-wide slots preserve control capacity across dispatch owners (150.898004ms)
+✔ byte and wait-age limits reject new work while preserving duplicate receipts and steering (70.275179ms)
+✔ clear queue fences unstarted claims and preserves dispatched receipt ownership (53.521463ms)
+✔ receipt polling retains an older active turn after a long stream of terminal steering receipts (354.230143ms)
+✔ lease recovery monotonically honors every terminal output with a deterministic persistence barrier (116.848205ms)
+✔ bounded startup reconciliation settles supported evidence, retains ambiguity, and exposes blocked successors (322.373627ms)
+✔ one malformed reconciliation candidate cannot prevent an unrelated terminal repair (26.348586ms)
+✔ admission behind interrupted FIFO fails atomically while duplicate receipts and unrelated rooms remain available (296.017992ms)
+✔ durable queue health separates dispatchable backlog from FIFO degradation using bounded metadata (27.586822ms)
+✔ health summaries remain operationally bounded across large terminal history (54.994999ms)
+✔ FIFO predecessor checks use the state-and-stream covering index instead of scanning terminal history (21.279236ms)
+{
+  "from": "/tmp/p4focus.K4fZtp/pibo-data-session-store-gkS8U9/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.K4fZtp/pibo-data-session-store-gkS8U9/pibo.sqlite",
+  "inputExists": true,
+  "read": 0,
+  "inserted": 0,
+  "updated": 0,
+  "skipped": 0
+}
+{
+  "from": "/tmp/p4focus.K4fZtp/pibo-data-session-store-fI66AG/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.K4fZtp/pibo-data-session-store-fI66AG/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 2,
+  "updated": 0,
+  "skipped": 0
+}
+{
+  "from": "/tmp/p4focus.K4fZtp/pibo-data-session-store-fI66AG/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.K4fZtp/pibo-data-session-store-fI66AG/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 0,
+  "updated": 0,
+  "skipped": 2
+}
+{
+  "from": "/tmp/p4focus.K4fZtp/pibo-data-session-store-fI66AG/pibo-sessions.sqlite",
+  "to": "/tmp/p4focus.K4fZtp/pibo-data-session-store-fI66AG/pibo.sqlite",
+  "inputExists": true,
+  "read": 2,
+  "inserted": 0,
+  "updated": 1,
+  "skipped": 1
+}
+✔ pibo data session store persists structured session fields (31.43919ms)
+✔ pibo data session store persists monotonic agent observation auto cursors (233.800793ms)
+✔ pibo data migrate sessions-to-v2 rejects a non-legacy source before creating the target (5.679756ms)
+✔ pibo data migrate sessions-to-v2 accepts a valid empty legacy source (24.620805ms)
+✔ pibo data migrate sessions-to-v2 is idempotent and refreshes structured room ids (54.844973ms)
+✔ pibo data migration leaves skipped newer runtime bindings unchanged (42.906891ms)
+✔ closing storage forbids creating a lazy reader and waits for failed worker exit (318.31265ms)
+✔ async output ingest returns compaction enrichments to the live event object (293.30536ms)
+✔ cold startup does not extend the default 500ms RPC queue deadline (513.540591ms)
+✔ slow worker CPU leaves the calling thread responsive and enforces queue counts and bytes (194.685629ms)
+✔ admission bypasses queued background work without changing FIFO within a priority (134.383277ms)
+✔ worker crash and execution deadline release all queued promises with uncertain in-flight state (165.130129ms)
+✔ payload accounting rejects cycles, wide input and oversized UTF-8 strings (12.167521ms)
+✔ large payload compression finishes before the short metadata transaction (28.574167ms)
+✔ chat projections do not overwrite a concurrently advanced runtime binding (27.757724ms)
+✔ atomic worker admissions have one winner, persist after restart and avoid main-thread lock waiting (1486.322248ms)
+✔ room fairness rotates storage admission and reserves control queue space (124.503423ms)
+✔ storage fairness remembers Rooms across drained bursts without delaying control work (47.061386ms)
+✔ payload accounting permits shared acyclic metadata and counts every serialized occurrence (0.380879ms)
+✔ an exited storage worker is replaced instead of disabling durable admission permanently (1726.86162ms)
+ℹ tests 105
+ℹ suites 0
+ℹ pass 105
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19910.318136
+✔ content-bound durable HTTP admission captures the original body before mutable augmenters (565.611957ms)
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+✔ content-bound durable HTTP admission rejects invalid identity without upgrading old receipts (511.847325ms)
+Storage readiness diagnostic {"index":0,"elapsed":262.421703,"storage":{"ready":true,"closed":false,"restarts":{"writer":0,"reader":0},"writer":{"ready":true,"closed":false,"exited":false,"queued":0,"inFlight":false,"pendingBytes":0,"oldestAgeMs":0,"lastResponseAgeMs":24.401679999995395,"completed":1,"rejected":0,"worker":{"pid":90358,"operations":1,"busyRetries":0,"lastOperationMs":0.41254299999854993,"busyTimeoutMs":10},"limits":{"maxPending":128,"admissionWindowMs":1,"reservedControlRequests":8,"reservedControlBytes":262144,"maxPendingBytes":8388608,"maxMessageBytes":4194304,"maxAgeMs":500,"agingMs":100,"startupTimeoutMs":10000}}}}
+Storage readiness diagnostic {"index":1,"elapsed":223.78267200000118,"storage":{"ready":true,"closed":false,"restarts":{"writer":0,"reader":0},"writer":{"ready":true,"closed":false,"exited":false,"queued":0,"inFlight":true,"pendingBytes":145,"oldestAgeMs":222.63483700000506,"lastResponseAgeMs":0.7081239999970421,"completed":0,"rejected":0,"worker":{"pid":90358,"operations":0,"busyRetries":0,"lastOperationMs":0,"busyTimeoutMs":10,"journalMode":{"journal_mode":"wal"},"synchronous":{"synchronous":2},"startupReconciliation":{"examined":0,"reconciled":0,"blockedSuccessorsFailed":0,"ambiguous":0,"errors":0}},"limits":{"maxPending":128,"admissionWindowMs":1,"reservedControlRequests":8,"reservedControlBytes":262144,"maxPendingBytes":8388608,"maxMessageBytes":4194304,"maxAgeMs":500,"agingMs":100,"startupTimeoutMs":10000}}}}
+Storage readiness diagnostic {"index":2,"elapsed":255.84456700000737,"storage":{"ready":true,"closed":false,"restarts":{"writer":0,"reader":0},"writer":{"ready":true,"closed":false,"exited":false,"queued":0,"inFlight":true,"pendingBytes":145,"oldestAgeMs":254.78535200000624,"lastResponseAgeMs":2.189559000005829,"completed":0,"rejected":0,"worker":{"pid":90358,"operations":0,"busyRetries":0,"lastOperationMs":0,"busyTimeoutMs":10,"journalMode":{"journal_mode":"wal"},"synchronous":{"synchronous":2},"startupReconciliation":{"examined":0,"reconciled":0,"blockedSuccessorsFailed":0,"ambiguous":0,"errors":0}},"limits":{"maxPending":128,"admissionWindowMs":1,"reservedControlRequests":8,"reservedControlBytes":262144,"maxPendingBytes":8388608,"maxMessageBytes":4194304,"maxAgeMs":500,"agingMs":100,"startupTimeoutMs":10000}}}}
+✔ K07 HTTP storage readiness diagnostics preserve the unchanged 500ms request budget (1386.840338ms)
+✔ K07 HTTP media upload, scoped preview, admission and retries preserve the same verified bytes (577.869973ms)
+[web-host] contained request failure method=POST path=/api/chat/attachment-resources error=PiboAuthError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/attachment-resources error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/attachment-resources error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=POST path=/api/chat/attachment-resources error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=GET path=/api/chat/attachment-resources/attres_de1435bd-cb98-4ba5-b83a-a5cf9c3c8dda error=PiboAuthError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+[web-host] contained request failure method=GET path=/api/chat/attachment-resources/attres_de1435bd-cb98-4ba5-b83a-a5cf9c3c8dda error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+✔ K07 HTTP media routes preserve login, origin, body bounds and inactive-content download guards (549.368232ms)
+✔ K07 HTTP admission validates scoped providers and stores materialized frozen data without starting a runtime (511.870113ms)
+[web-host] contained request failure method=POST path=/api/chat/message error=PiboWebHttpError response={destroyed=false,writableEnded=false,writableFinished=false,headersSent=false}
+✔ K07 HTTP admission rejects unowned media and authority fields while Core JSON needs no plugin service (487.215486ms)
+✔ versioned durable admission acknowledges before cold runtime dispatch and preserves its receipt (562.075728ms)
+✔ Chat Web reports interrupted FIFO barriers as non-retryable reconciliation conflicts (483.214096ms)
+✔ web startup dispatches a committed command without an HTTP request (848.450963ms)
+✔ clear_queue cancels undispatched durable receipts without cancelling an initializing message (640.503656ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 90931.292969

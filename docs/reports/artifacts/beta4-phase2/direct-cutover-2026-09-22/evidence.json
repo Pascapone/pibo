@@ -1,13 +1,14 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T17:19:08.956933+00:00",
+  "capturedAt": "2026-09-22T19:47:32.483063+00:00",
   "implementationCommits": [
     "09fed1a7e20f106e35c24a65090289e45d821d43",
     "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
     "3b86d389cbf5f47a65d11d57a87478929c8d9d57",
     "08830dfc08e2029746f06bad8337c5f321870399",
     "4578810ee33172d3dba9cbcfc454bdf51062cf77",
-    "72d60f5b720034abd2cc0d394d719736fccdc8ab"
+    "72d60f5b720034abd2cc0d394d719736fccdc8ab",
+    "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
   ],
   "scope": "Direct-controller source/function changes; not full V4 completion",
   "provenanceNotes": [
@@ -16,7 +17,8 @@
     "The captured emitter is the final test-only helper used for the observation batch; earlier attempts and intermediate passes are not all reproduced here.",
     "Batch counts overlap and must not be added as a unique-test total.",
     "No test, resource guard, or phase approval was fabricated or weakened.",
-    "New provider-admission log copies additionally trim trailing horizontal whitespace on failed-assertion pretty-print lines for Git whitespace hygiene; affected file records report the line count. Original host bytes and their SHA-256 provenance remain unchanged."
+    "New provider-admission log copies additionally trim trailing horizontal whitespace on failed-assertion pretty-print lines for Git whitespace hygiene; affected file records report the line count. Original host bytes and their SHA-256 provenance remain unchanged.",
+    "Media-focused05 and subsequent records additionally capture untracked-file SHA-256 values. Older tracked-diff hashes alone do not cover untracked source. Media logs preserve failed startup/semantic assertion attempts; normalized copies retain original-host and copied hashes, with per-file whitespace normalization counts."
   ],
   "checksNotClaimed": {
     "rootTypecheck": "Earlier guarded full compiler attempts were resource-blocked; no whole-project typecheck pass for this candidate.",
@@ -24,8 +26,9 @@
     "candidateInstallation": "Explicitly user-skipped, not passed.",
     "productionDeployment": "Not authorized and not performed.",
     "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open.",
-    "backendContentBindingTypecheck": "Earlier broader backend import graph exhausted384MiB V8 heap (exit134); protocol/provider/draft targets passed, not the full storage/web-app/root graph.",
-    "productiveK07": "Typed JSON provider-pinned admission and canonical history are implemented; actual Composer/freeze/retry, authoritative binary resources, copy/auth/GC, rich history and multi-tab CAS remain open. Module/HTTP checks are not headful or full-product acceptance."
+    "backendContentBindingTypecheck": "Earlier broader backend import graph exhausted384MiB V8 heap (exit134). Narrow resource-store/payload/protocol/provider/draft targets now pass; not full worker/web-app/root compilation.",
+    "productiveK07": "Typed JSON/media admission, scoped binary grants, fake-auth HTTP upload/read and canonical history are implemented. Actual Composer/freeze/retry, browser copy/fork/auth, chunks/GC, rich UI/history and multi-tab CAS remain open. No headful, real-login, native-tool or full-product acceptance.",
+    "mediaDurabilityAndMigration": "Schema16 uses disposable fixtures only; no valuable/live migration. No directory-fsync/power-loss, whole-system retention, streaming/load or payload-root relocation acceptance."
   },
   "pathSubstitutions": {
     "$WORKTREE": "isolated beta4/full-i-20260922 implementation worktree",
@@ -474,6 +477,252 @@
           "fail": 0
         }
       ]
+    },
+    {
+      "id": "cutover-k07-media-store-focused-01",
+      "purpose": "Earlier WIP media foundation:73 focused passes;580-file emit and browser-safe target only; not final media source",
+      "exit": 0,
+      "passedTests": 73,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T17:57:55Z",
+      "ended": "2026-09-22T17:58:32Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-store-focused-01.log",
+          "sha256": "85945beacc608b286acf4ec2f504ab6a27d828c5b2c720baadc456059de82161",
+          "originalHostSha256": "85945beacc608b286acf4ec2f504ab6a27d828c5b2c720baadc456059de82161"
+        },
+        {
+          "file": "cutover-k07-media-store-focused-01.meta",
+          "sha256": "7b67f1e352578fd34e850e2fc4ef11fcf457ba95060aec4ff014361650ec9c6b",
+          "originalHostSha256": "08c83043c8c80fb2b6c4865840ea9fb179c59f1439c4f832c1e1604cfb3be73d"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 73,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-media-admission-focused-02",
+      "purpose": "Narrow helper target,581-file emit and22 artifacts passed; obsolete assertion disallowed Core-managed model paths;90/91 modules; HTTP not reached",
+      "exit": 1,
+      "passedTests": 90,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T18:20:45Z",
+      "ended": "2026-09-22T18:28:08Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-admission-focused-02.log",
+          "sha256": "319eef2a501212bafd901652282c57a543fb16a22e65f6417dd0a0d04db86995",
+          "originalHostSha256": "de283cc7c89c36edcdd44b76b685e317056a007aeebb79946512d4086598ba58",
+          "trailingHorizontalWhitespaceLinesNormalized": 2
+        },
+        {
+          "file": "cutover-k07-media-admission-focused-02.meta",
+          "sha256": "11c2852b02ae095fc3f1bf694f42d6e3528936ba3858c38af08bc9a17dd9b659",
+          "originalHostSha256": "c8e39efe654954cd454bb3cd7fbf82a4635e815acce672d49e6208faaf883516"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 90,
+          "fail": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-media-admission-focused-03",
+      "purpose": "Narrow helper target and581-file emit;91 modules passed; cold-worker HTTP deadline failures; artifacts not rebuilt",
+      "exit": 1,
+      "passedTests": 92,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T18:35:35Z",
+      "ended": "2026-09-22T18:39:21Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-admission-focused-03.log",
+          "sha256": "9cca55bf2040ac338f2554735240c85f832975114365a40b1d3e59952cf1e3a6",
+          "originalHostSha256": "2a02aca4d2f0bfe4fbe22595221e72791aa76576d28b60e39164592e440f2fec",
+          "trailingHorizontalWhitespaceLinesNormalized": 16
+        },
+        {
+          "file": "cutover-k07-media-admission-focused-03.meta",
+          "sha256": "b96609908af1f86c3905b8c4e7e2b151e34bdf28ac1795374bee77e401046c8e",
+          "originalHostSha256": "e3f8a154738dfaf4d76c9d88da8714aa8c06cdb2736026cfc38dcc4bee02a2d0"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 91,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 1,
+          "fail": 8
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-media-startup-diagnostic-01",
+      "purpose": "Resource-store/payload/protocol target and581-file emit passed; one diagnostic covers three sequential HTTP hosts after readiness with unchanged500ms RPC limit; no artifacts",
+      "exit": 0,
+      "passedTests": 1,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T18:46:05Z",
+      "ended": "2026-09-22T18:48:02Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-startup-diagnostic-01.log",
+          "sha256": "fd1554c10500124f3396b72295fb36f6ae8fc04dd975a96587dec01a304277b3",
+          "originalHostSha256": "fd1554c10500124f3396b72295fb36f6ae8fc04dd975a96587dec01a304277b3"
+        },
+        {
+          "file": "cutover-k07-media-startup-diagnostic-01.meta",
+          "sha256": "6dbc6c5e6982a234e03a7c3651d759d8f3d7bb0f85bd114509352a3df46af303",
+          "originalHostSha256": "fe3c84a1fe91911a331faff7a07e8b136f1fd2f817b0bb12b61df32d5befa919"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "HTTP startup diagnostics: three sequential hosts in one test",
+          "pass": 1,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-media-admission-focused-04",
+      "purpose": "Narrow resource-store/payload/protocol/provider/draft types and581-file emit; two old module fixtures issued RPCs before worker readiness; HTTP not reached; no artifact rebuild",
+      "exit": 1,
+      "passedTests": 102,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T18:56:24Z",
+      "ended": "2026-09-22T18:57:30Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-admission-focused-04.log",
+          "sha256": "25350656cdcb68d6ad52bf50c42d22bf26043aa9f8d860cd316c65813dae5d0d",
+          "originalHostSha256": "c9e0b866e4ad7c29c6c27e4138c8cd7da1c795a40a7f49e0abc1682de1927b10"
+        },
+        {
+          "file": "cutover-k07-media-admission-focused-04.meta",
+          "sha256": "92be2be32e5010a1796cdc29cb58fddc44363a8cc4ab863485cf370b439b4359",
+          "originalHostSha256": "0a03d170a7ddc8479ae09ac3ebe2c74ac19152b00368b4c31f7801a0cbef69a0"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 102,
+          "fail": 2
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-media-admission-focused-05",
+      "purpose": "Tests-only pass after explicit fixture readiness and deterministic default500ms cold-start rejection; uses unchanged production source emitted in04; no artifact rebuild",
+      "exit": 0,
+      "passedTests": 116,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T19:18:18Z",
+      "ended": "2026-09-22T19:20:13Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-admission-focused-05.log",
+          "sha256": "8ba36b56970544902ce0da123189ea15af7608a82a894cdfe446ce08178e97f0",
+          "originalHostSha256": "8ba36b56970544902ce0da123189ea15af7608a82a894cdfe446ce08178e97f0"
+        },
+        {
+          "file": "cutover-k07-media-admission-focused-05.meta",
+          "sha256": "c1d88b417dfda80f09e91b8ae9b7cc54c0d2c22f12dc264d480dd3b448a4f1a8",
+          "originalHostSha256": "78d9b2489abb4586432be3cc6daa646894972be56a2abb6b5707d731226c1591"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 105,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 11,
+          "fail": 0
+        }
+      ],
+      "untrackedFileHashesRecorded": true
+    },
+    {
+      "id": "cutover-k07-media-admission-focused-06",
+      "purpose": "Final media backend: narrow resource-store/payload/protocol/provider/draft types,581-file behavioral emit,22 plugin artifacts,164 focused and11 selected HTTP passes; not full worker/web-app/root or productive Composer acceptance",
+      "exit": 0,
+      "passedTests": 175,
+      "sourceHeadAtStart": "df76c5372f90dd96f8f42d81af0dfc84266c615a",
+      "started": "2026-09-22T19:30:32Z",
+      "ended": "2026-09-22T19:36:05Z",
+      "files": [
+        {
+          "file": "cutover-k07-media-admission-focused-06.log",
+          "sha256": "bbcefd326f4fd035d47284b6c1fa5c90080563c93561a81c80210c01bbff5f13",
+          "originalHostSha256": "a5833775cb019e9f5cb29d68e90da3f0258fc38c318445e64cf72b3e92ce5356"
+        },
+        {
+          "file": "cutover-k07-media-admission-focused-06.meta",
+          "sha256": "051779446ad511e63fa2b652dfcef523f8a9e79dfd4a02c0e3fe6274fefdb75f",
+          "originalHostSha256": "752c643a3c97efe58715da4e86622e2bbe393d1dd45fd8dbfdac5ebd7df28d30"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "focused module/worker/draft/provider",
+          "pass": 164,
+          "fail": 0
+        },
+        {
+          "kind": "selected existing HTTP harness",
+          "pass": 11,
+          "fail": 0
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "verifiedSourceCheckpoint": "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b",
+      "sourceEquivalence": "Controller checked tracked-diff and all six untracked-file hashes against this run immediately before staging the source checkpoint."
+    },
+    {
+      "id": "cutover-docs-05",
+      "purpose": "Media-authority/schema16 canonical documentation: strict/core/migration validators, indexes/log and87 documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b",
+      "started": "2026-09-22T19:44:46Z",
+      "ended": "2026-09-22T19:46:32Z",
+      "files": [
+        {
+          "file": "cutover-docs-05.log",
+          "sha256": "13cbeb6669b011874fac336b243876e516f11ab45ed4865900c65bbfe88412fb",
+          "originalHostSha256": "13cbeb6669b011874fac336b243876e516f11ab45ed4865900c65bbfe88412fb"
+        },
+        {
+          "file": "cutover-docs-05.meta",
+          "sha256": "e6721f78af319dcdfeeb2dae32e24483ac1bd008cb4dabac2728035eeab345b7",
+          "originalHostSha256": "bf6213a51ae33adbee535bd76cc9b50fd5b83b8ce037fa137f8fba1d4c7f0661"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "documentation validators/tests",
+          "pass": 87,
+          "fail": 0
+        }
+      ],
+      "untrackedFileHashesRecorded": true
     }
   ]
 }

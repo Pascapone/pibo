@@ -1,0 +1,26 @@
+started=2026-09-22T19:44:46Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ rc=0\;\ for\ script\ in\ docs:indexes:write\ docs:validate\ docs:validate:okf\ docs:validate:migration\ docs:indexes:check\ docs:log:check\ docs:validator:test\ docs:validate:strict\;\ do\ npm\ run\ \"\$script\"\ \|\|\ rc=1\;\ done\;\ exit\ \"\$rc\"
+source=8cefa246f0f7e7a4bb921e98b4349eddfd330e0b
+ M docs/log.md
+ M docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json
+ M docs/specs/data/product-store-history-and-read-models.md
+ M docs/specs/web/composer-delivery-files-and-media.md
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-02.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-02.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-03.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-03.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-04.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-04.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-05.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-05.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-06.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-06.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-startup-diagnostic-01.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-startup-diagnostic-01.meta
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-store-focused-01.log
+?? docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-store-focused-01.meta
+512118fe01dfc0c00c80400022cf87c528fbf3d3f1a22f43c913c00f5d188a85  -
+untracked_files_sha256={"docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-02.log": "319eef2a501212bafd901652282c57a543fb16a22e65f6417dd0a0d04db86995", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-02.meta": "11c2852b02ae095fc3f1bf694f42d6e3528936ba3858c38af08bc9a17dd9b659", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-03.log": "9cca55bf2040ac338f2554735240c85f832975114365a40b1d3e59952cf1e3a6", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-03.meta": "b96609908af1f86c3905b8c4e7e2b151e34bdf28ac1795374bee77e401046c8e", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-04.log": "25350656cdcb68d6ad52bf50c42d22bf26043aa9f8d860cd316c65813dae5d0d", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-04.meta": "92be2be32e5010a1796cdc29cb58fddc44363a8cc4ab863485cf370b439b4359", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-05.log": "8ba36b56970544902ce0da123189ea15af7608a82a894cdfe446ce08178e97f0", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-05.meta": "c1d88b417dfda80f09e91b8ae9b7cc54c0d2c22f12dc264d480dd3b448a4f1a8", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-06.log": "bbcefd326f4fd035d47284b6c1fa5c90080563c93561a81c80210c01bbff5f13", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-admission-focused-06.meta": "051779446ad511e63fa2b652dfcef523f8a9e79dfd4a02c0e3fe6274fefdb75f", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-startup-diagnostic-01.log": "fd1554c10500124f3396b72295fb36f6ae8fc04dd975a96587dec01a304277b3", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-startup-diagnostic-01.meta": "6dbc6c5e6982a234e03a7c3651d759d8f3d7bb0f85bd114509352a3df46af303", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-store-focused-01.log": "85945beacc608b286acf4ec2f504ab6a27d828c5b2c720baadc456059de82161", "docs/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/cutover-k07-media-store-focused-01.meta": "7b67f1e352578fd34e850e2fc4ef11fcf457ba95060aec4ff014361650ec9c6b"}
+exit=0
+ended=2026-09-22T19:46:32Z

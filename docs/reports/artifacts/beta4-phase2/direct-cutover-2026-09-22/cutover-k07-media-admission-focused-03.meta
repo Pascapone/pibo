@@ -1,0 +1,22 @@
+started=2026-09-22T18:35:35Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --types\ node\ --esModuleInterop\ src/attachments/resources.ts\ src/attachments/resource-schema.ts\ src/attachments/message.ts\ src/attachments/server-providers.ts\ src/apps/chat-ui/src/attachments/core-attachment-draft.ts\;\ echo\ \"Browser-safe\ resource\ identities\ and\ protocol/provider/draft\ target\ passed\ \(not\ resource-store/backend/root\ graph\)\"\;\ node\ $RUN/transpile-for-tests.mjs\;\ echo\ \"Artifact\ rebuild\ intentionally\ deferred\ until\ API\ stabilization\;\ prior\ artifacts\ are\ not\ this\ candidate\ build\"\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/attachment-resource-store.test.mjs\ test/attachment-message.test.mjs\ test/data-v2-store.test.mjs\ test/data-v2-ingest-service.test.mjs\ test/pibo-data-session-store.test.mjs\ test/attachment-message-storage.test.mjs\ test/message-command-content-binding.test.mjs\ test/message-command-store.test.mjs\ test/chat-ui-attachment-submission.test.mjs\;\ node\ --test\ --test-concurrency=1\ --test-timeout=300000\ --test-name-pattern=\"\^\(K07\ HTTP\|content-bound\ durable\ HTTP\|versioned\ durable\ admission\|Chat\ Web\ reports\ interrupted\ FIFO\|clear_queue\ cancels\)\"\ test/web-channel.test.mjs
+source=df76c5372f90dd96f8f42d81af0dfc84266c615a
+ M src/apps/chat/data/session-query-service.ts
+ M src/apps/chat/web-app.ts
+ M src/attachments/message.ts
+ M src/data/async-chat-storage.ts
+ M src/data/chat-storage-worker.ts
+ M src/data/payload-store.ts
+ M src/data/schema.ts
+ M test/attachment-message-storage.test.mjs
+ M test/attachment-message.test.mjs
+ M test/web-channel.test.mjs
+?? src/apps/chat/attachment-resource-http.ts
+?? src/attachments/resource-schema.ts
+?? src/attachments/resource-store.ts
+?? src/attachments/resources.ts
+?? test/attachment-resource-store.test.mjs
+43c2698c457c4e93b4ebfc50d74736805acb573159ff0d28e1e077c89c32fcc7  -
+exit=1
+ended=2026-09-22T18:39:21Z

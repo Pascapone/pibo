@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-22T16:51:14Z"
+  at: "2026-09-22T19:37:33Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -20,18 +20,51 @@ sources:
   - id: "provider-admission-source-and-tests"
     resource: "scope:direct-controller checkpoint 72d60f5b720034abd2cc0d394d719736fccdc8ab"
     title: "Pinned typed JSON admission and structured product history"
+  - id: "media-authority-source-and-tests"
+    resource: "scope:direct-controller checkpoint 8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
+    title: "Scoped durable media preparation, retrieval and atomic admission ownership"
 implementation:
   state: "current"
-  baseline_commit: "72d60f5b720034abd2cc0d394d719736fccdc8ab"
+  baseline_commit: "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "98 focused provider/history/binding/draft/store tests and 7 selected HTTP tests passed; counts overlap earlier batches and other named-test evidence remains historical"
-  build_typecheck_package_execution: "protocol/provider/draft target typecheck and 22-plugin artifact build passed on test-only ESM emit; broader backend target and root compiler evidence remain resource-blocked; installation user-skipped"
+  focused_test_execution: "164 focused module/provider/storage/draft tests and 11 selected HTTP tests passed; counts overlap earlier batches and other named-test evidence remains historical"
+  build_typecheck_package_execution: "narrow resource-store/payload/protocol/provider/draft type graph and 22-plugin artifacts passed on test-only ESM emit; full worker/web-app/root compilation remains unpassed; installation user-skipped"
   visual_provider_gateway_pibo2_execution: "unperformed"
 traceability:
-  commit: "72d60f5b720034abd2cc0d394d719736fccdc8ab"
+  commit: "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b"
   requirements:
+    - id: "WEB-COMPOSER-RESOURCES-009"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat/attachment-resource-http.ts"
+          symbol: "handleAttachmentResourceRequest"
+        - path: "src/apps/chat/web-app.ts"
+          symbol: "createChatWebApp"
+        - path: "src/attachments/resource-store.ts"
+          symbol: "AttachmentResourceStore"
+        - path: "src/data/chat-storage-worker.ts"
+          symbol: "execute"
+      tests:
+        - path: "test/web-channel.test.mjs"
+          name: "K07 HTTP media upload, scoped preview, admission and retries preserve the same verified bytes"
+        - path: "test/web-channel.test.mjs"
+          name: "K07 HTTP media routes preserve login, origin, body bounds and inactive-content download guards"
+        - path: "test/attachment-message-storage.test.mjs"
+          name: "worker rejects corrupt or discarded media without admitting a message or consuming its transaction"
+        - path: "test/storage-worker-isolation.test.mjs"
+          name: "cold startup does not extend the default 500ms RPC queue deadline"
+      public:
+        - "POST /api/chat/attachment-resources"
+        - "GET /api/chat/attachment-resources/:id"
+        - "DELETE /api/chat/attachment-resources/:id"
+      failures:
+        - "Scope, frozen media and durable bytes must agree; hashes or client paths do not authorize a resource. Accepted resources cannot be discarded as pending uploads."
+        - "Whole HTTP requests remain bounded to 4 MiB; the separate 15 MiB stored-resource ceiling is not a chunk-upload implementation."
+        - "Core-managed paths deliberately enter persisted model text, not provider inputs or resource snapshots; relocation-stable command materialization is not implemented."
+        - "Composer, copy/fork, multi-tab, real-login and headful acceptance are not established by fixture API tests."
+      confidence: "high"
     - id: "WEB-COMPOSER-ATTACHMENTS-008"
       status: "implemented"
       sources:
@@ -60,7 +93,7 @@ traceability:
           name: "K07 HTTP admission rejects unowned media and authority fields while Core JSON needs no plugin service"
       failures:
         - "Wrong owner, missing selection, artifact drift and ambiguous registration fail closed; plugins cannot replace Core builtins."
-        - "Media has no productive authority resolver in this checkpoint and is rejected; legacy paths cannot bypass typed resource bindings."
+        - "Media requires a matching Core resource grant; legacy or augmentation-injected paths cannot bypass typed bindings."
         - "Composer sending, rich history rendering and headful acceptance are not established by API and module tests."
       confidence: "high"
     - id: "WEB-COMPOSER-CONTENT-007"
@@ -338,7 +371,7 @@ Per-Session composer state, queue/steer delivery, slash/local actions, bounded u
 
 ## Scope
 
-Provider-pinned typed JSON admission is anchored at `72d60f5b720034abd2cc0d394d719736fccdc8ab`, following content binding at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
+Scoped binary-resource admission is anchored at `8cefa246f0f7e7a4bb921e98b4349eddfd330e0b`, following provider-pinned JSON admission at `72d60f5b720034abd2cc0d394d719736fccdc8ab` and content binding at `08830dfc08e2029746f06bad8337c5f321870399`. The remaining Composer/media description and its original package evidence derive from historical refresh `39090b8850758293e69380a52bb7498d7c955bc2` and package parent `ba3c2d6611ce8d234f887135af605837333bf751`; these are not new whole-product acceptance claims.
 
 ### In scope
 
@@ -407,7 +440,7 @@ Opted-in commands store `pibo-content-v1:<request SHA-256>:<effective command SH
 
 The private K07 draft seam's `prepareSubmission` checks the held original snapshot and persists the exact body and independently computed proof **before** a POST. A transaction cannot replace that body, delivery or prepared upload metadata. Write failures publish no new RAM state; reload validates body↔snapshot↔proof consistency. Old stored drafts remain readable without invented proof. `reconcileAcceptance` consumes only matching frozen revisions after a matching server proof and supported receipt-row shape; a receipt ID or POST-echoed fingerprint alone cannot consume. Missing/mismatched proof, rejected/unknown shapes or lookup failures preserve the draft. Every supported durable state, including `failed` and `interrupted`, proves admission when bound; model failure, cancellation or ambiguous execution never authorize an automatic new send. Already-consumed local duplicates consume/notify nothing and are honestly marked weak when no fresh proof is retained.
 
-**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. Typed JSON materialization/admission is implemented below; productive media/Composer wiring and multi-tab persistence CAS remain separate work. The per-instance/reload proof checks do not prevent an unrelated stale tab from overwriting shared storage.
+**Boundary:** this is canonical submission identity, not authorization, provider/schema validation, media-byte/handle validation, evidence that an arbitrary extension field was processed, or exactly-once external effects. The current Composer does not opt in yet. Typed JSON and authorized media admission are implemented below; actual Composer wiring and multi-tab persistence CAS remain separate work. The per-instance/reload proof checks do not prevent an unrelated stale tab from overwriting shared storage.
 
 ### Requirement: WEB-COMPOSER-ATTACHMENTS-008
 
@@ -421,7 +454,19 @@ Schema validation and synchronous v1 validation/serialization run on detached va
 
 Structured snapshots and their byte/refcount ownership belong to [product history](/specs/data/product-store-history-and-read-models.md). Durable admission is independent of model outcome; the existing receipt proof remains readable after provider removal or missing snapshot files. It proves past admission, not present byte availability.
 
-**Current limit:** there is no production media resolver or staged-upload issuer in this checkpoint. Typed media fails with `ATT_BYTES_MISSING`; providers never receive trusted filesystem paths. Actual Composer preparation/retry, secured bytes, copy holders, preview/GC, rich history rendering, auth/logout and multi-tab integration remain open. API/module coverage is not headful acceptance.
+Typed media now resolves through the scoped Core grants below; missing or corrupt bytes fail closed. Providers receive opaque resource references, not filesystem paths. After provider serialization, Core appends a separate `[attached_resources]` block containing its verified managed paths for native file readers. This block is ordinary user content and is persisted with the materialized command/history text. The structured resource snapshot omits paths. Consequently, the effective-command fingerprint is currently host-path-dependent: moving a payload root is not a transparent unchanged-retry or dispatch migration. This is not a filesystem sandbox or a relocation guarantee.
+
+### Requirement: WEB-COMPOSER-RESOURCES-009
+
+Authenticated `POST /api/chat/attachment-resources` accepts same-origin multipart data containing exactly one `file` and exactly one each of `piboSessionId`, `clientTxnId` and `draftResourceId`; unexpected/duplicate fields fail. A persisted, available Pibo Session in a non-archived Room and file-backed storage are required. Preparation never recreates a deleted Session from a stale runtime handle. The response is HTTP 201 with `attachmentVersion: 1` and a descriptor containing an opaque `preparedUploadId`, draft identity, server-derived SHA-256, MIME, byte count, name and prepared/accepted state. No path or payload-store ID is returned in that descriptor.
+
+`GET` and `DELETE /api/chat/attachment-resources/:id` require the same three scope values as query parameters. Knowing an opaque ID, hash or path alone is insufficient. Login grants access to the shared App Context, not a per-user server tenant. GET supports metadata-only `metadata=1`, verified bytes, and raster-only `preview=1`. Reads remain available in archived Rooms; mutations do not. Downloads force `application/octet-stream`, attachment disposition, `nosniff` and no-store headers. Inline preview requires recognized bytes matching the declared image MIME and the existing preview byte bound; HTML/SVG are not served inline. DELETE only discards unaccepted preparation owners; accepted bytes belong to product history.
+
+The whole HTTP body remains limited to 4 MiB. The separate stored-resource limit is 15 MiB, not permission to send a 15 MiB multipart body. Chunk upload, Range serving and streaming are not implemented: verified reads buffer bounded bytes before responding, with no concurrency/throughput acceptance claim. Existing normal-upload, annotation and trace-image counts remain distinct; no total K07 attachment count cap is introduced.
+
+Fresh message admission verifies bound media bytes in the worker before its transaction and rechecks ownership during promotion. Preparation and discard use the existing bounded storage worker; its 500 ms queue/execution limit and 10 s startup budget are unchanged. Admission tests explicitly wait for worker readiness, while a deterministic cold-start test verifies that startup does not extend an RPC deadline. A matching receipt still proves admission, not present media availability or successful model execution. Worker duplicate admission and receipt lookup do not re-read media bodies; a fresh HTTP materialization may fail on a missing file, so receipt lookup remains the reconciliation path.
+
+The [product-store contract](/specs/data/product-store-history-and-read-models.md) owns grant/refcount/schema and deletion semantics. Actual Composer freeze/preparation/retry, browser copy holders, fork transport, rich history rendering, auth/logout and multi-tab integration remain open. Fake-auth API fixtures and direct byte checks are not real-login, native-tool execution or headful acceptance.
 
 ### Requirement: WEB-COMPOSER-DRAFTS-001
 
@@ -526,6 +571,9 @@ upstream/dev refresh source and named-test inspection define the current contrac
 
 **Public surfaces:**
 
+- POST /api/chat/attachment-resources
+- GET /api/chat/attachment-resources/:id
+- DELETE /api/chat/attachment-resources/:id
 - POST /api/chat/sessions/:id/messages
 - POST /api/chat/sessions/:id/actions
 - /api/chat/files/upload
@@ -564,7 +612,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 - Evidence gap: No headful microphone permission, recording, keyboard, file picker/drop, image dialog, or speech validation.
 - Evidence gap: No external media provider path executed.
-- K07 content-bound typed JSON admission and pinned provider validation are implemented, with a private draft/receipt seam. Productive provider-aware Composer mutation/freeze, media authority, bytes/GC/copy/auth, multi-tab CAS and rich UI/history integration remain open; this is not the completed attachment cutover.
+- K07 typed JSON/media admission, pinned provider validation and scoped durable media routes are implemented, with a private draft/receipt seam. Actual provider-aware Composer mutation/freeze/send, chunks/GC/copy/fork/auth, multi-tab CAS and rich UI/history integration remain open; this is not the completed attachment cutover.
 
 ## Reconciled stale claims
 
@@ -576,8 +624,10 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 ## Verification and traceability
 
-- Provider-admission source checkpoint: `72d60f5b720034abd2cc0d394d719736fccdc8ab`, following the unchanged JSON-helper extraction `4578810ee33172d3dba9cbcfc454bdf51062cf77`. `cutover-k07-admission-focused-04` passed 98 focused tests and seven selected HTTP tests. Earlier content-binding batches passed 47 plus five; coverage overlaps and is not a unique-test sum. The entire Web suite was not run.
-- The protocol/provider/draft strict target typecheck passed. Earlier browser-safe binding checks also passed; a broader backend target import graph exhausted a 384 MiB heap (exit 134), and no broader backend or root typecheck pass is claimed. The fresh 577-file ESM emit was behavioral-test input, not a release compiler pass; 22 plugin artifacts rebuilt successfully.
+- Media-authority source checkpoint: `8cefa246f0f7e7a4bb921e98b4349eddfd330e0b`. `cutover-k07-media-admission-focused-06` passed 164 focused module/provider/storage/draft tests and eleven selected HTTP tests, with no failures/skips. Narrow resource-store/payload/protocol/provider/draft types passed, followed by a 581-file behavioral emit and 22 plugin artifacts. This is not full worker/web-app/root compilation, release packaging, installation or productive Composer acceptance.
+- Media attempts 02–04 remain failed evidence: an obsolete model-path assertion, cold-worker HTTP queue deadlines, and two module-fixture startup deadlines. Fixture readiness was made explicit without increasing limits or removing behavioral assertions. A new deterministic test retains default cold-start queue rejection; the no-HTTP startup-dispatch test still makes no HTTP request. Run 05 passed 105 plus eleven tests on prior emitted source; it did not rebuild artifacts.
+- Earlier provider-admission source checkpoint: `72d60f5b720034abd2cc0d394d719736fccdc8ab`, following the unchanged JSON-helper extraction `4578810ee33172d3dba9cbcfc454bdf51062cf77`. `cutover-k07-admission-focused-04` passed 98 focused tests and seven selected HTTP tests. Earlier content-binding batches passed 47 plus five; coverage overlaps and is not a unique-test sum. The entire Web suite was not run.
+- The narrower compiler checks do not replace the blocked broader graphs. Earlier browser-safe binding checks also passed; a broader backend target import graph exhausted a 384 MiB heap (exit 134), and no broader backend or root typecheck pass is claimed. The fresh 577-file ESM emit was behavioral-test input, not a release compiler pass; 22 plugin artifacts rebuilt successfully.
 - Preserved failed attempts exposed an initial media TypeScript inference error, double JSON serialization, typed-error transport loss and an HTTP fixture attempting to mutate a frozen plan. All were corrected before the final bounded pass; failures are not hidden or reclassified as passes.
 - Commands, outputs, failures and source/verification boundaries are preserved in the [bounded evidence collection](/reports/artifacts/beta4-phase2/direct-cutover-2026-09-22/evidence.json). Counts from separate batches overlap.
 - Remaining source/named-test and Docker/typecheck/package claims belong to the historical `39090b8850758293e69380a52bb7498d7c955bc2` authoring package; they are not rerun claims for the current candidate. Candidate installation acceptance is explicitly user-skipped, not passed.

@@ -1,0 +1,15 @@
+This is a focused batch, not a full suite or installation test.
+Narrow resource-store/payload/protocol type graph passed (not full worker/web-app/root)
+{"method":"TypeScript.transpileModule, file-at-a-time (ESM)","emitted":581,"typechecked":false,"releaseBuild":false}
+Storage readiness diagnostic {"index":0,"elapsed":224.87172500000452,"storage":{"ready":true,"closed":false,"restarts":{"writer":0,"reader":0},"writer":{"ready":true,"closed":false,"exited":false,"queued":0,"inFlight":true,"pendingBytes":145,"oldestAgeMs":226.81594600000244,"lastResponseAgeMs":0.9043930000043474,"completed":0,"rejected":0,"worker":{"pid":53076,"operations":0,"busyRetries":0,"lastOperationMs":0,"busyTimeoutMs":10,"journalMode":{"journal_mode":"wal"},"synchronous":{"synchronous":2},"startupReconciliation":{"examined":0,"reconciled":0,"blockedSuccessorsFailed":0,"ambiguous":0,"errors":0}},"limits":{"maxPending":128,"admissionWindowMs":1,"reservedControlRequests":8,"reservedControlBytes":262144,"maxPendingBytes":8388608,"maxMessageBytes":4194304,"maxAgeMs":500,"agingMs":100,"startupTimeoutMs":10000}}}}
+Storage readiness diagnostic {"index":1,"elapsed":223.7239760000084,"storage":{"ready":true,"closed":false,"restarts":{"writer":0,"reader":0},"writer":{"ready":true,"closed":false,"exited":false,"queued":0,"inFlight":false,"pendingBytes":0,"oldestAgeMs":0,"lastResponseAgeMs":7.415204999997513,"completed":1,"rejected":0,"worker":{"pid":53076,"operations":1,"busyRetries":0,"lastOperationMs":0.3464830000011716,"busyTimeoutMs":10},"limits":{"maxPending":128,"admissionWindowMs":1,"reservedControlRequests":8,"reservedControlBytes":262144,"maxPendingBytes":8388608,"maxMessageBytes":4194304,"maxAgeMs":500,"agingMs":100,"startupTimeoutMs":10000}}}}
+Storage readiness diagnostic {"index":2,"elapsed":222.79798999999184,"storage":{"ready":true,"closed":false,"restarts":{"writer":0,"reader":0},"writer":{"ready":true,"closed":false,"exited":false,"queued":0,"inFlight":true,"pendingBytes":145,"oldestAgeMs":221.23035899999377,"lastResponseAgeMs":1.419290000005276,"completed":0,"rejected":0,"worker":{"pid":53076,"operations":0,"busyRetries":0,"lastOperationMs":0,"busyTimeoutMs":10,"journalMode":{"journal_mode":"wal"},"synchronous":{"synchronous":2},"startupReconciliation":{"examined":0,"reconciled":0,"blockedSuccessorsFailed":0,"ambiguous":0,"errors":0}},"limits":{"maxPending":128,"admissionWindowMs":1,"reservedControlRequests":8,"reservedControlBytes":262144,"maxPendingBytes":8388608,"maxMessageBytes":4194304,"maxAgeMs":500,"agingMs":100,"startupTimeoutMs":10000}}}}
+✔ K07 HTTP storage readiness diagnostics preserve the unchanged 500ms request budget (1412.825395ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 69535.378221
