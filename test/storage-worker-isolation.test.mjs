@@ -90,6 +90,24 @@ test('async output ingest returns compaction enrichments to the live event objec
   }
 });
 
+test('cold startup does not extend the default 500ms RPC queue deadline', async () => {
+  const readyGate = new SharedArrayBuffer(4);
+  const client = new BoundedWorkerClient(controlled, { workerOptions: { workerData: { readyGate } } });
+  try {
+    assert.equal(client.status().limits.maxAgeMs, 500);
+    assert.equal(client.status().limits.startupTimeoutMs, 10000);
+    await assert.rejects(client.request({ value: 'must not execute' }), error => error.code === 'storage_deadline' && /before execution/.test(error.message));
+    assert.equal(client.status().ready, false);
+    assert.equal(client.status().closed, false);
+    assert.equal(client.status().inFlight, false);
+    assert.equal(client.status().pendingBytes, 0);
+    Atomics.store(new Int32Array(readyGate), 0, 1); Atomics.notify(new Int32Array(readyGate), 0);
+    await ready(client);
+    assert.equal(await client.request({ value: 'healthy after startup' }), 'healthy after startup');
+    assert.equal(client.status().completed, 1, 'expired work never ran after readiness');
+  } finally { await client.close(); }
+});
+
 test('slow worker CPU leaves the calling thread responsive and enforces queue counts and bytes', async () => {
   const client = new BoundedWorkerClient(controlled, { maxPending: 2, maxPendingBytes: 512, maxMessageBytes: 256, maxAgeMs: 1000 });
   try {

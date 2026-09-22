@@ -3,6 +3,9 @@ import { parentPort, workerData } from "node:worker_threads";
 import { createHash } from "node:crypto";
 import { attachmentJson, readAttachmentMessage, type AttachmentHistorySnapshot } from "../attachments/message.js";
 import { AttachmentDraftError } from "../attachments/errors.js";
+import { AttachmentResourceStore, type PreparedAttachmentResource } from "../attachments/resource-store.js";
+import type { AttachmentResourceScope } from "../attachments/resources.js";
+import type { AttachmentResourceBinding } from "../attachments/message.js";
 import { ChatRoomService } from "../apps/chat/data/room-service.js";
 import { ChatSessionQueryService } from "../apps/chat/data/session-query-service.js";
 import { isPiboRoomArchived } from "../apps/chat/types/rooms.js";
@@ -16,6 +19,8 @@ import { boundedMessageBytes } from "./bounded-worker-client.js";
 import { createMessageContentBinding, type MessageRequestBody } from "../shared/message-content-binding.js";
 
 export type ChatStorageCommand =
+	| { type: "stageAttachment"; prepared: PreparedAttachmentResource; roomId: string }
+	| { type: "discardAttachments"; scope: Pick<AttachmentResourceScope, "sessionId" | "clientTxnId">; bindings: readonly AttachmentResourceBinding[] }
 	| { type: "append"; input: ChatEventAppendInput }
 	| { type: "find"; roomId: string; actorId: string; clientTxnId: string }
 	| { type: "ingestUser"; input: UserMessageAcceptedIngestInput }
@@ -45,6 +50,7 @@ const ingest = new ChatDataIngestService(store);
 const rooms = new ChatRoomService(store);
 const sessions = new ChatSessionQueryService(store);
 const messageCommands = new MessageCommandStore(store);
+const attachmentResources = new AttachmentResourceStore(store);
 // Startup repair is bounded and conservative: terminal evidence may settle a receipt,
 // but ambiguous work is retained and never replayed. A damaged row must not stop the worker.
 let startupReconciliation: ReturnType<MessageCommandStore["reconcileInterrupted"]> | { error: string };
@@ -55,8 +61,22 @@ let operations = 0;
 let busyRetries = 0;
 let lastOperationMs = 0;
 
-function execute(command: ChatStorageCommand): unknown {
+function execute(command: ChatStorageCommand, deadline: number): unknown {
+	const checkBudget = () => { if (performance.now() >= deadline) throw Object.assign(new Error("Storage execution deadline elapsed before commit."), { code: "storage_deadline" }); };
 	switch (command.type) {
+		case "stageAttachment": {
+			const checkScope = () => {
+				checkBudget();
+				const room = rooms.getRoom(command.roomId);
+				if (!room) throw Object.assign(new Error("Room not found"), { code: "room_not_found" });
+				if (isPiboRoomArchived(room)) throw Object.assign(new Error("Archived rooms are read-only"), { code: "room_read_only" });
+				const session = store.db.prepare("SELECT room_id FROM sessions WHERE id=? AND deleted_at IS NULL").get(command.prepared.scope.sessionId) as { room_id: string | null } | undefined;
+				if (!session || session.room_id !== room.id) throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "Attachment Session is unavailable in this room.", retryable: false });
+			};
+			checkScope();
+			return attachmentResources.commitPrepared(command.prepared, checkScope);
+		}
+		case "discardAttachments": return attachmentResources.discard(command.scope, command.bindings);
 		case "cancelPendingCommands": return messageCommands.cancelPending(command.sessionId);
 		case "commandReceiptPage": return {receipts:messageCommands.list(command.sessionId),queue:messageCommands.queueStatus(command.sessionId)};
 		case "commandReceipts": return messageCommands.list(command.sessionId);
@@ -84,8 +104,8 @@ function execute(command: ChatStorageCommand): unknown {
 			const attachments = requestBody ? readAttachmentMessage(requestBody) : undefined;
 			// The structured snapshot comes from captured input, not mutable extension
 			// payloads. Media requires the resource authority, never a caller's path.
-			if (attachments?.resources.length) throw new AttachmentDraftError({ code: "ATT_BYTES_MISSING", message: "Attachment media requires an authorized durable resource.", retryable: false });
-			const snapshot: AttachmentHistorySnapshot | undefined = attachments?.attachments.length ? { formatVersion: 1, attachments: attachments.attachments, providerPins: attachments.pins, resources: [] } : undefined;
+			const resourceScope = { sessionId: command.session.id, clientTxnId: command.input.clientTxnId! };
+			const snapshot: AttachmentHistorySnapshot | undefined = attachments?.attachments.length ? { formatVersion: 1, attachments: attachments.attachments, providerPins: attachments.pins, resources: attachmentResources.snapshotResources(resourceScope, attachments) } : undefined;
 			const snapshotText = snapshot ? attachmentJson(snapshot) : undefined;
 			const snapshotIdentity = snapshotText === undefined ? undefined : { sha256: createHash("sha256").update(snapshotText).digest("hex"), bytes: Buffer.byteLength(snapshotText) };
 			const commandInput = command.durableCommand ? { sessionId:command.session.id,roomId:room.id,text:command.text,delivery:command.durableCommand.delivery,...(contentBinding ? { contentBinding } : {}), ...(snapshotIdentity ? { attachmentSnapshot: snapshotIdentity } : {}) } : undefined;
@@ -96,10 +116,13 @@ function execute(command: ChatStorageCommand): unknown {
 			if (existing && commandInput && !receipt) throw Object.assign(new Error("Transaction belongs to the legacy admission contract."), { code:"command_conflict" });
 			if (existing) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!)!, created: false, receipt };
 			if(command.durableCommand)messageCommands.assertAdmissionUnblocked(command.session.id,command.durableCommand.delivery);
+			if (attachments?.resources.length) attachmentResources.verifyMessage(resourceScope, attachments, checkBudget);
 			const preparedCommand = commandInput ? messageCommands.prepare(commandInput) : undefined;
 			const createdAt = command.input.createdAt ?? new Date().toISOString();
 			const preparedPayload = ingest.prepareUserMessagePayload(command.text, createdAt);
-			const preparedAttachmentPayload = snapshotText === undefined ? undefined : store.payloads.preparePayload({ value: Buffer.from(snapshotText), contentType: "application/json", retentionClass: "chat_attachment", createdAt });
+			const preparedAttachmentPayload = snapshotText === undefined ? undefined : store.payloads.preparePayload({ value: Buffer.from(snapshotText), contentType: "application/json", retentionClass: "chat_attachment", createdAt, privateFile: true, flush: true });
+			if (preparedAttachmentPayload) store.payloads.readPreparedPayloadBytesBounded(preparedAttachmentPayload, 1024 * 1024);
+			checkBudget();
 			return store.transaction(() => {
 				const concurrentReceipt = key && preparedCommand ? messageCommands.find(key, preparedCommand.fingerprint) : undefined;
 				if (concurrentReceipt) return { event: commands.findByClientTxn(room.id, command.input.actorId, command.input.clientTxnId!), created: false, receipt: concurrentReceipt };
@@ -112,7 +135,8 @@ function execute(command: ChatStorageCommand): unknown {
 				if(command.durableCommand)messageCommands.assertAdmissionUnblocked(command.session.id,command.durableCommand.delivery);
 				const event = commands.appendEvent({ ...command.input, createdAt });
 				sessions.upsertSession(command.session, command.durableCommand ? sessions.getSession(command.session.id)?.status ?? "idle" : "idle", command.session.updatedAt, { preserveRuntimeBinding: true });
-				ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, eventId: command.durableCommand?.eventId, legacyEvent: event, preparedPayload, preparedAttachmentPayload });
+				const history = ingest.ingestUserMessageAccepted({ session: command.session, roomId: room.id, actorId: command.input.actorId ?? "", text: command.text, clientTxnId: command.input.clientTxnId, eventId: command.durableCommand?.eventId, legacyEvent: event, preparedPayload, preparedAttachmentPayload });
+				if (attachments?.resources.length) attachmentResources.promote(resourceScope, attachments.resources, history.messageId);
 				const receipt = preparedCommand && command.durableCommand ? messageCommands.insert({ key:key ?? `chat:command:${command.durableCommand.eventId}`, ...preparedCommand,sessionId:command.session.id,roomId:room.id,eventId:command.durableCommand.eventId,streamId:event.streamId,delivery:command.durableCommand.delivery }) : undefined;
 				return { event, created: true, receipt };
 			});
@@ -152,7 +176,7 @@ function attempt(request: Request) {
 	if (performance.now() >= request.deadline) { respond(request, { error: { code: "storage_deadline", message: "Storage execution deadline elapsed before commit." } }); return; }
 	const start = performance.now();
 	try {
-		const value = execute(request.command);
+		const value = execute(request.command, request.deadline);
 		lastOperationMs = performance.now() - start;
 		operations++;
 		boundedMessageBytes(value, request.maxResultBytes);

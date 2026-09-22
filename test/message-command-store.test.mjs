@@ -11,6 +11,7 @@ import { MessageCommandStore } from "../dist/data/message-command-store.js";
 import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
+import { waitForAsyncStorageReady } from "./helpers/storage-ready.mjs";
 
 test("durable commands commit with admission, deduplicate and reject changed payloads", async () => {
 	const root=mkdtempSync(join(tmpdir(),"pibo-commands-"));
@@ -20,6 +21,7 @@ test("durable commands commit with admission, deduplicate and reject changed pay
 	const storage=new AsyncChatStorage(store.path,join(root,"payloads"));
 	const input={roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"actor",clientTxnId:"txn",retentionClass:"chat_message",payload:{type:"user.message.accepted",text:"hello",clientTxnId:"txn"}};
 	try {
+		await waitForAsyncStorageReady(storage);
 		const results=await Promise.all(Array.from({length:10},()=>storage.admit(input,session,"hello",{eventId:"txn",delivery:"queue"})));
 		assert.equal(results.filter(r=>r.created).length,1);
 		assert.equal(new Set(results.map(r=>r.receipt.id)).size,1);
@@ -72,6 +74,7 @@ test("overload rolls back acceptance and a retry keeps its transaction identity"
  const storage=new AsyncChatStorage(store.path,join(root,"payloads"));
  const admit=(id,text="hello")=>storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"actor",clientTxnId:id,retentionClass:"chat_message",payload:{type:"user.message.accepted",text,clientTxnId:id}},session,text,{eventId:id,delivery:"queue"});
  try {
+  await waitForAsyncStorageReady(storage);
   for(let i=0;i<64;i++) await admit(`txn-${i}`);
   await assert.rejects(admit("overflow"),{code:"command_overloaded"});
   assert.equal(Number(store.db.prepare("SELECT count(*) n FROM event_log WHERE type='user.message.accepted'").get().n),64);
@@ -244,6 +247,7 @@ test("bounded startup reconciliation settles supported evidence, retains ambigui
   store.db.prepare("UPDATE message_commands SET state='interrupted',error='expired' WHERE id IN (?,?)").run(evidenced.id,ambiguous.id);
   store.eventLog.appendEvent({sessionId:"one",roomId:"room",topic:"pibo.output",type:"session_error",source:"test",eventId:"evidenced",retentionClass:"audit_event"});
   const storage=new AsyncChatStorage(path,payloadRoot);try{
+   await waitForAsyncStorageReady(storage);
    assert.equal((await storage.commandReceipt(evidenced.id)).state,"failed");assert.equal((await storage.commandReceipt(ambiguous.id)).state,"interrupted");assert.equal((await storage.commandReceipt(successor.id)).state,"failed");
    assert.equal(await storage.claimCommand("must-not-replay",1000),undefined);
   }finally{await storage.close();}
@@ -261,6 +265,7 @@ test("admission behind interrupted FIFO fails atomically while duplicate receipt
  const root=mkdtempSync(join(tmpdir(),"pibo-command-barrier-"));const store=new PiboDataStore(join(root,"data.sqlite"),{payloadRootDir:join(root,"payloads")});const room=new ChatRoomService(store).ensureDefaultRoom();const sessions=new InMemoryPiboSessionStore();const blocked=sessions.create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const other=sessions.create({channel:"test",kind:"chat",profile:"base",metadata:{chatRoomId:room.id}});const storage=new AsyncChatStorage(store.path,join(root,"payloads"));
  const admit=(session,id,text="same".repeat(5000))=>storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"actor",clientTxnId:id,retentionClass:"chat_message",payload:{type:"user.message.accepted",text,clientTxnId:id}},session,text,{eventId:id,delivery:"queue"});
  try{
+  await waitForAsyncStorageReady(storage);
   const first=await admit(blocked,"first");store.db.prepare("UPDATE message_commands SET state='interrupted',error='ambiguous',created_at=? WHERE id=?").run(Date.now()-16*60*1000,first.receipt.id);
   const duplicate=await admit(blocked,"first");assert.equal(duplicate.created,false);assert.equal(duplicate.receipt.id,first.receipt.id);const payloadsBefore=Number(store.db.prepare("SELECT count(*) n FROM payloads").get().n),payloadFilesBefore=readdirSync(join(root,"payloads"),{recursive:true}).length;
   for(const id of ["second","third"]){await assert.rejects(admit(blocked,id),error=>error.code==="command_reconciliation_required"&&error.retryable===false&&error.scope==="session"&&error.blockingCommandId===first.receipt.id);}

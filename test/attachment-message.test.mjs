@@ -124,8 +124,9 @@ test("materialized attachment JSON is canonical across payload object key-order 
 	finally { await lease.release(); }
 });
 
-test("plural media requires Core-resolved references and frozen metadata, never plugin paths", async () => {
-	const f = await attachmentFixture({ provider: { ...coreNoteProvider, type: "fixture/media", serializeForMessage: frozen => ({ kind: "resource-ref", resourceId: frozen.media[1].resourceId }) } });
+test("plural media sends Core-resolved paths to the model but never to the provider", async () => {
+	let providerInput;
+	const f = await attachmentFixture({ provider: { ...coreNoteProvider, type: "fixture/media", serializeForMessage: frozen => { providerInput = frozen; return { kind: "resource-ref", resourceId: frozen.media[1].resourceId }; } } });
 	const lease = await leaseFor(f);
 	try {
 		const body = attachmentBody(); body.attachments[0].type = f.provider.type; body.attachmentProviderPins = [attachmentProviderPin(f.plan, "ps_A", f.provider.type)];
@@ -136,7 +137,10 @@ test("plural media requires Core-resolved references and frozen metadata, never 
 		const resolveResource = (binding, media) => ({ ...media, resourceId: binding.preparedUploadId, name: "file.txt", path: "/core-owned/file.txt" });
 		const result = materializeAttachmentMessage({ ...input, resolveResource });
 		assert.equal(result.resources.length, 2); assert.deepEqual(result.parts, [{ kind: "resource-ref", resourceId: "upload-second" }]);
-		assert.equal(result.modelContext.includes("/core-owned/"), false, "providers receive refs, not trusted paths");
+		assert.equal(JSON.stringify(providerInput).includes("/core-owned/"), false, "providers receive refs, not trusted paths");
+		assert.ok(providerInput.media.every(item => !Object.hasOwn(item, "path")));
+		const modeledResources = JSON.parse(result.modelContext.match(/\[attached_resources\]\n([\s\S]*?)\n\[\/attached_resources\]/)[1]);
+		assert.deepEqual(modeledResources, result.resources, "only Core's resolved paths reach the native file-reader handoff");
 		assert.throws(() => materializeAttachmentMessage({ ...input, resolveResource: (binding, media) => ({ ...resolveResource(binding, media), bytes: 9 }) }), code("ATT_ACCESS_DENIED"));
 	} finally { await lease.release(); await f.host.stop(); }
 });

@@ -347,6 +347,8 @@ import { resolvePluginContributions } from "../../plugins/resolution.js";
 import { catalogPluginServices, PIBO_CHAT_EXTENSION_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboChatExtensionService, type PluginSessionPlanReader } from "../../plugins/product-services.js";
 import { getCoreAttachmentProvider } from "../../attachments/core-providers.js";
 import { readAttachmentMessage, materializeAttachmentMessage } from "../../attachments/message.js";
+import { AttachmentResourceStore } from "../../attachments/resource-store.js";
+import { handleAttachmentResourceRequest } from "./attachment-resource-http.js";
 import { acquireAttachmentProviders, type AttachmentProviderLease } from "../../attachments/server-providers.js";
 import { AttachmentDraftError, isAttachmentErrorCode } from "../../attachments/errors.js";
 import { handlePluginManagementRoute, pluginManagementRoute, pluginManagementRouteRequiresSameOrigin } from "./plugin-management-routes.js";
@@ -4511,9 +4513,11 @@ async function sendChatMessage(input: {
 		: { messageText: text };
 	const fileAttachmentContext = prepareChatFileAttachments({
 		messageText: messageAugmentation.messageText,
-		attachmentPaths: input.body.fileAttachmentPaths,
+		// Typed sends only use the captured resource envelope. A mutable augmenter
+		// must not smuggle a legacy path through this otherwise preserved legacy seam.
+		attachmentPaths: attachmentMessage ? [] : input.body.fileAttachmentPaths,
 	});
-	const materializedAttachments = attachmentMessage ? materializeAttachmentMessage({ message: attachmentMessage, sessionId: selectedSession.id, lookup: attachmentLease!.lookup }) : undefined;
+	const materializedAttachments = attachmentMessage ? materializeAttachmentMessage({ message: attachmentMessage, sessionId: selectedSession.id, lookup: attachmentLease!.lookup, resolveResource: (binding, media) => new AttachmentResourceStore(input.state.dataStore).resolve({ sessionId: selectedSession.id, clientTxnId: clientTxnId! }, binding, media) }) : undefined;
 	const messageText = materializedAttachments?.modelContext ? `${materializedAttachments.modelContext}\n\n${fileAttachmentContext.messageText}` : fileAttachmentContext.messageText;
 	if (attachmentMessage && Object.keys(messageAugmentation.payload ?? {}).some((key) => ["type", "piboSessionId", "roomId", "text", "delivery", "clientTxnId", "attachmentVersion", "attachmentCount", "attachmentSnapshotRef", "attachments", "attachmentProviderPins", "attachmentResources", "attachmentParts", "fileAttachmentPaths", "fileAttachments", "fileAttachmentContext"].includes(key))) {
 		throw new AttachmentDraftError({ code: "ATT_MATERIALIZE_FAILED", message: "Message augmentation conflicts with Core attachment admission fields.", retryable: false });
@@ -4861,6 +4865,23 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 				return responseChatAppShell();
 			}
 
+
+			const attachmentResourcePrefix = `${CHAT_WEB_API_PREFIX}/attachment-resources`;
+			if (url.pathname === attachmentResourcePrefix || url.pathname.startsWith(`${attachmentResourcePrefix}/`)) {
+				if (request.method === "POST") requireSameOriginMultipartRequest(request);
+				if (request.method === "DELETE") requireSameOriginJsonRequest(request);
+				const webSession = await requireSession(request, context);
+				if (!state.asyncStorage) throw new PiboWebHttpError("Attachment resources require file-backed storage", 503);
+				return handleAttachmentResourceRequest({ request, url, prefix: attachmentResourcePrefix, store: state.dataStore, storage: state.asyncStorage,
+					authorizeSession: async (id, mutation) => {
+						const resolved = await resolveAdmissionSession(state.asyncStorage!, context, webSession, defaultProfile, id);
+						if (mutation && isPiboRoomArchived(resolved.room)) throw new PiboWebHttpError("Archived rooms are read-only", 403);
+						// Staging never recreates a deleted Session from a stale runtime handle.
+						if (!state.sessionQuery.getSession(id)) throw new PiboWebHttpError("Attachment Session is unavailable", 404);
+						return { roomId: resolved.room.id };
+					},
+				});
+			}
 
 			if (url.pathname === `${CHAT_WEB_API_PREFIX}/upload` && request.method === "POST") {
 				requireSameOriginMultipartRequest(request);

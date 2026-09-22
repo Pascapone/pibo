@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, rmSync } from "node:fs";
+import { AttachmentResourceStore } from "../dist/attachments/resource-store.js";
+import { mkdtempSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
@@ -10,19 +11,63 @@ import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-se
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { attachmentBody } from "./helpers/attachment-fixture.mjs";
 
-function fixture() {
+import { waitForAsyncStorageReady } from "./helpers/storage-ready.mjs";
+
+async function fixture() {
 	const root = mkdtempSync(join(tmpdir(), "pibo-attachment-history-")); const payloadRootDir = join(root, "payloads");
 	const store = new PiboDataStore(join(root, "data.sqlite"), { payloadRootDir });
 	const room = new ChatRoomService(store).ensureDefaultRoom();
 	const session = new InMemoryPiboSessionStore().create({ channel: "test", kind: "chat", profile: "base", metadata: { chatRoomId: room.id } });
 	let storage = new AsyncChatStorage(store.path, payloadRootDir);
+	try { await waitForAsyncStorageReady(storage); } catch (error) { await storage.close(); store.close(); rmSync(root, { recursive: true, force: true }); throw error; }
 	const body = (txn = "txn") => attachmentBody({ piboSessionId: session.id, clientTxnId: txn });
 	const admit = (requestBody, text = "materialized text") => storage.admit({ roomId: room.id, piboSessionId: session.id, eventType: "user.message.accepted", actorType: "user", actorId: "actor", clientTxnId: requestBody.clientTxnId, retentionClass: "chat_message", payload: { type: "user.message.accepted", text } }, session, text, { eventId: requestBody.clientTxnId, delivery: "queue", requestBody });
-	return { store, room, session, body, admit, payloadRootDir, get storage() { return storage; }, async restart() { await storage.close(); storage = new AsyncChatStorage(store.path, payloadRootDir); }, async close() { await storage.close(); store.close(); rmSync(root, { recursive: true, force: true }); } };
+	return { store, room, session, body, admit, payloadRootDir, get storage() { return storage; }, async restart() { await storage.close(); storage = new AsyncChatStorage(store.path, payloadRootDir); await waitForAsyncStorageReady(storage); }, async close() { await storage.close(); store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
+test("worker media admission promotes one grant atomically, retains it on retry, and deletes it with product history", async () => {
+	const f = await fixture();
+	try {
+		new ChatSessionQueryService(f.store).upsertSession(f.session);
+		const media = new AttachmentResourceStore(f.store); const scope = { sessionId: f.session.id, clientTxnId: "media", draftResourceId: "blob" };
+		const descriptor = await f.storage.stageAttachment(media.prepare(scope, Buffer.from("media bytes"), "text/plain", "example.txt"), f.room.id);
+		const body = f.body("media"); body.attachments[0].type = "pibo.core/file"; body.attachments[0].payload = { name: "example.txt" };
+		body.attachments[0].media = [{ draftResourceId: "blob", mimeType: descriptor.mimeType, bytes: descriptor.bytes }]; body.attachmentResources = [{ draftResourceId: "blob", preparedUploadId: descriptor.preparedUploadId }];
+		const first = await f.admit(body); assert.equal(media.get(scope, descriptor.preparedUploadId).state, "accepted");
+		const message = f.store.messages.listMessages(f.session.id)[0]; const snapshotRef = message.attributes.attachmentSnapshotRef;
+		const snapshot = f.store.payloads.readPayloadJsonBounded(snapshotRef, 1024 * 1024);
+		assert.equal(snapshot.resources[0].sha256, descriptor.sha256); assert.equal(snapshot.resources[0].path, undefined);
+		const grant = f.store.db.prepare("SELECT * FROM attachment_resource_grants").get(); assert.equal(grant.message_id, message.id);
+		const stored = f.store.payloads.getPayload(grant.payload_ref); const path = join(f.payloadRootDir, stored.storagePath);
+		await f.restart(); assert.equal((await f.admit(body)).receipt.id, first.receipt.id); assert.equal(f.store.payloads.getPayload(grant.payload_ref).refCount, 1);
+		await assert.rejects(f.storage.discardAttachments(scope, body.attachmentResources), { code: "ATT_ACCESS_DENIED" });
+		writeFileSync(path, Buffer.alloc(descriptor.bytes));
+		assert.equal((await f.admit(body)).created, false, "existing durable receipt owns a retry, not another media-file read");
+		f.store.db.prepare("DELETE FROM sessions WHERE id=?").run(f.session.id); // mirrors web's identity deletion before history cleanup, fixture only
+		new ChatSessionQueryService(f.store).deleteSessions([f.session.id]);
+		assert.equal(f.store.db.prepare("SELECT count(*) n FROM attachment_resource_grants").get().n, 0);
+		assert.equal(f.store.payloads.getPayload(snapshotRef), undefined); assert.equal(f.store.payloads.getPayload(grant.payload_ref), undefined); assert.equal(existsSync(path), false);
+		assert.deepEqual((await f.storage.commandReceipt(first.receipt.id)).contentBinding, first.receipt.contentBinding);
+	} finally { await f.close(); }
+});
+
+test("worker rejects corrupt or discarded media without admitting a message or consuming its transaction", async () => {
+	const f = await fixture();
+	try {
+		new ChatSessionQueryService(f.store).upsertSession(f.session);
+		const media = new AttachmentResourceStore(f.store); const scope = { sessionId: f.session.id, clientTxnId: "media", draftResourceId: "blob" };
+		const descriptor = await f.storage.stageAttachment(media.prepare(scope, Buffer.from("good"), "text/plain", "file.txt"), f.room.id);
+		const body = f.body("media"); body.attachments[0].media = [{ draftResourceId: "blob", mimeType: "text/plain", bytes: 4 }]; body.attachmentResources = [{ draftResourceId: "blob", preparedUploadId: descriptor.preparedUploadId }];
+		const path = media.resolve(scope, body.attachmentResources[0], body.attachments[0].media[0]).path;
+		writeFileSync(path, "evil"); await assert.rejects(f.admit(body), { code: "ATT_BYTES_MISSING" });
+		assert.equal(f.store.db.prepare("SELECT count(*) n FROM message_commands").get().n, 0); assert.equal(f.store.messages.listMessages(f.session.id).length, 0);
+		writeFileSync(path, "good"); assert.equal(await f.storage.discardAttachments(scope, body.attachmentResources), 1);
+		await assert.rejects(f.admit(body), { code: "ATT_BYTES_MISSING" }); assert.equal(f.store.db.prepare("SELECT count(*) n FROM event_log").get().n, 0);
+	} finally { await f.close(); }
+});
+
 test("structured attachment history survives restart and optional event loss without receipt file reads", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const body = f.body(); const first = await f.admit(body); const message = f.store.messages.listMessages(f.session.id)[0]; const ref = message.attributes.attachmentSnapshotRef;
 		assert.equal(typeof ref, "string"); const metadata = f.store.payloads.getPayload(ref);
@@ -42,7 +87,7 @@ test("structured attachment history survives restart and optional event loss wit
 });
 
 test("attachment snapshot references are acquired once per message and released by product-history deletion", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		await f.admit(f.body("first")); await f.admit(f.body("second"));
 		const [a, b] = f.store.messages.listMessages(f.session.id); assert.equal(a.attributes.attachmentSnapshotRef, b.attributes.attachmentSnapshotRef);
@@ -54,7 +99,7 @@ test("attachment snapshot references are acquired once per message and released 
 });
 
 test("structured snapshot bytes participate in existing per-command and session admission budgets", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const tooLarge = f.body("too-large"); tooLarge.attachments[0].payload.large = "x".repeat(1024 * 1024);
 		await assert.rejects(f.admit(tooLarge), { code: "command_too_large" });
@@ -69,7 +114,7 @@ test("structured snapshot bytes participate in existing per-command and session 
 });
 
 test("canonical attachment snapshots deduplicate key-order variants and never turn raw paths into resources", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const body = f.body(); body.attachments[0].payload.extra = { a: 1, b: 2 }; await f.admit(body);
 		const reordered = structuredClone(body); reordered.attachments[0].payload.extra = { b: 2, a: 1 }; assert.equal((await f.admit(reordered)).created, false);

@@ -1,7 +1,7 @@
 import { Readable, pipeline } from "node:stream";
 import { createHash, randomUUID } from "node:crypto";
 import { createGunzip, gunzipSync, gzipSync } from "node:zlib";
-import { createReadStream, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { piboHomePath } from "../core/pibo-home.js";
@@ -15,6 +15,11 @@ export type PayloadWriteInput = {
 	retentionClass: string;
 	id?: string;
 	createdAt?: string;
+	/** Core media can require raw files; existing semantic identities are never re-encoded. */
+	compress?: boolean;
+	/** Private permissions and file-data flush for newly published owned content. */
+	privateFile?: boolean;
+	flush?: boolean;
 };
 
 export type StoredPayload = {
@@ -38,6 +43,11 @@ export type PreparedPayload = Omit<StoredPayload, "refCount" | "status" | "lastV
 	refCount: 1;
 	status: "staged";
 };
+
+export class PiboPayloadUnavailableError extends Error {
+	readonly code = "storage_payload_unavailable";
+	constructor(cause?: unknown) { super("Payload file is unavailable or changed.", { cause }); this.name = "PiboPayloadUnavailableError"; }
+}
 
 export class PiboPayloadMetadataConflictError extends Error {
 	constructor(
@@ -93,13 +103,13 @@ export class PayloadStore {
 		if (existing) {
 			return { ...existing, refCount: 1, status: "staged" };
 		}
-		const shouldCompress = bytes.byteLength <= MAX_SYNC_PAYLOAD_GZIP_BYTES;
+		const shouldCompress = input.compress !== false && bytes.byteLength <= MAX_SYNC_PAYLOAD_GZIP_BYTES;
 		const encoding = shouldCompress ? "gzip" : "identity";
 		const bytesToStore = shouldCompress ? gzipSync(bytes) : bytes;
 		const compressedByteSize = shouldCompress ? bytesToStore.byteLength : undefined;
 		const relativePath = buildRelativePayloadPath(sha256, contentType, input.retentionClass, encoding);
 		const absolutePath = this.rootDir === ":memory:" ? relativePath : join(this.rootDir, relativePath);
-		writePayloadFile(absolutePath, bytesToStore);
+		writePayloadFile(absolutePath, bytesToStore, input);
 		return {
 			id: input.id ?? `payload_${randomUUID()}`,
 			sha256,
@@ -117,8 +127,21 @@ export class PayloadStore {
 		};
 	}
 
-	/** Links a previously published payload file with only bounded metadata SQL. */
+	/** Publish ownership under a write lock; never link a file already removed by cleanup. */
 	commitPreparedPayload(prepared: PreparedPayload): StoredPayload {
+		return this.withWriteTransaction(() => {
+			try {
+				if (!prepared.storagePath) throw new Error("Prepared payload has no storage path");
+				const path = this.rootDir === ":memory:" ? prepared.storagePath : join(this.rootDir, prepared.storagePath);
+				const stats = statSync(path);
+				const expected = prepared.encoding === "identity" ? prepared.byteSize : prepared.compressedByteSize;
+				if (!stats.isFile() || (expected !== undefined && stats.size !== expected)) throw new Error("Prepared payload file is unavailable or changed");
+			} catch (error) { throw new PiboPayloadUnavailableError(error); }
+			return this.commitPreparedPayloadLocked(prepared);
+		});
+	}
+
+	private commitPreparedPayloadLocked(prepared: PreparedPayload): StoredPayload {
 		const existing = this.findByIdentity(prepared.sha256, prepared.contentType, prepared.retentionClass);
 		if (existing) {
 			this.db.prepare("UPDATE payloads SET ref_count = ref_count + 1 WHERE id = ?").run(existing.id);
@@ -230,6 +253,13 @@ export class PayloadStore {
 		if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RangeError("maxBytes must be a positive safe integer");
 		const payload = this.getPayload(id);
 		if (!payload) throw new Error(`Unknown payload \"${id}\"`);
+		return this.readPreparedPayloadBytesBounded(payload, maxBytes);
+	}
+
+	/** Also verifies a file prepared before its metadata row is committed. */
+	readPreparedPayloadBytesBounded(payload: PreparedPayload | StoredPayload, maxBytes: number): Uint8Array {
+		if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new RangeError("maxBytes must be a positive safe integer");
+		const id = payload.id;
 		if (!payload.storagePath) throw new Error(`Payload \"${id}\" has no storage path`);
 		if (payload.byteSize > maxBytes) throw new RangeError(`Payload \"${id}\" exceeds the ${maxBytes}-byte read limit`);
 		const absolutePath = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
@@ -242,6 +272,17 @@ export class PayloadStore {
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		if (sha256 !== payload.sha256) throw new Error(`Payload \"${id}\" checksum does not match its metadata`);
 		return bytes;
+	}
+
+	/** Internal Core handoff only. Authorization and full-byte verification belong to the caller. */
+	identityFilePath(payload: PreparedPayload | StoredPayload): string {
+		if (this.rootDir === ":memory:" || payload.storageKind !== "file" || payload.encoding !== "identity" || !/^[a-f0-9]{64}$/.test(payload.sha256)) throw new Error("Payload is not a durable identity file");
+		const relative = buildRelativePayloadPath(payload.sha256, payload.contentType, payload.retentionClass, "identity");
+		if (payload.storagePath !== relative) throw new Error("Payload file identity is not canonical");
+		const path = join(this.rootDir, relative);
+		const stats = lstatSync(path);
+		if (!stats.isFile() || stats.isSymbolicLink() || stats.size !== payload.byteSize) throw new Error("Payload identity file is unavailable or changed");
+		return path;
 	}
 
 	readPayloadJsonBounded(id: string, maxBytes: number): PiboJsonValue {
@@ -263,20 +304,43 @@ export class PayloadStore {
 
 	releaseReferences(id: string, count = 1): StoredPayload | undefined {
 		if (!Number.isSafeInteger(count) || count < 1) throw new RangeError("count must be a positive safe integer");
-		const row = this.db.prepare("SELECT * FROM payloads WHERE id = ?").get(id) as PayloadRow | undefined;
-		if (!row) return undefined;
-		if (row.ref_count > count) {
-			this.db.prepare("UPDATE payloads SET ref_count = ref_count - ? WHERE id = ?").run(count, id);
-			return undefined;
+		return this.withWriteTransaction(() => {
+			const row = this.db.prepare("SELECT * FROM payloads WHERE id = ?").get(id) as PayloadRow | undefined;
+			if (!row) return undefined;
+			if (row.ref_count > count) {
+				this.db.prepare("UPDATE payloads SET ref_count = ref_count - ? WHERE id = ?").run(count, id);
+				return undefined;
+			}
+			this.db.prepare("DELETE FROM payloads WHERE id = ?").run(id);
+			return payloadFromRow(row);
+		});
+	}
+
+	/** Ownership is already committed; try every file before reporting partial cleanup. */
+	removeReleasedFiles(payloads: readonly StoredPayload[]): void {
+		const errors: unknown[] = [];
+		for (const payload of payloads) {
+			try { this.removeReleasedFile(payload); } catch (error) { errors.push(error); }
 		}
-		this.db.prepare("DELETE FROM payloads WHERE id = ?").run(id);
-		return payloadFromRow(row);
+		if (errors.length) throw new AggregateError(errors, "Payload ownership was released, but file cleanup was incomplete.");
 	}
 
 	removeReleasedFile(payload: StoredPayload): void {
 		if (payload.storageKind !== "file" || !payload.storagePath) return;
-		const absolutePath = this.rootDir === ":memory:" ? payload.storagePath : join(this.rootDir, payload.storagePath);
-		rmSync(absolutePath, { force: true });
+		this.withWriteTransaction(() => {
+			// A newly committed owner may reuse this semantic identity and file.
+			const current = this.findByIdentity(payload.sha256, payload.contentType, payload.retentionClass);
+			if (current?.storagePath === payload.storagePath) return;
+			const absolutePath = this.rootDir === ":memory:" ? payload.storagePath! : join(this.rootDir, payload.storagePath!);
+			rmSync(absolutePath, { force: true });
+		});
+	}
+
+	private withWriteTransaction<T>(action: () => T): T {
+		if (this.db.isTransaction) return action();
+		this.db.exec("BEGIN IMMEDIATE");
+		try { const result = action(); this.db.exec("COMMIT"); return result; }
+		catch (error) { this.db.exec("ROLLBACK"); throw error; }
 	}
 }
 
@@ -335,17 +399,23 @@ function buildRelativePayloadPath(sha256: string, contentType: string, retention
 }
 
 function extensionForContentType(contentType: string): string {
+	// New raw media files keep a Core-selected suffix usable by native file/image readers.
+	// Existing payloads continue using their persisted storagePath unchanged.
+	const mediaExtensions: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/avif": "avif", "image/bmp": "bmp", "application/pdf": "pdf" };
+	const extension = Object.hasOwn(mediaExtensions, contentType) ? mediaExtensions[contentType] : undefined;
+	if (extension) return extension;
 	if (contentType.includes("json")) return "json";
 	if (contentType.startsWith("text/")) return "txt";
 	return "bin";
 }
 
-function writePayloadFile(path: string, bytes: Uint8Array): void {
+function writePayloadFile(path: string, bytes: Uint8Array, options: Pick<PayloadWriteInput, "privateFile" | "flush"> = {}): void {
 	if (existsSync(path)) return;
-	mkdirSync(dirname(path), { recursive: true });
+	mkdirSync(dirname(path), { recursive: true, ...(options.privateFile ? { mode: 0o700 } : {}) });
 	const tempPath = `${path}.tmp-${randomUUID()}${extname(path)}`;
 	try {
-		writeFileSync(tempPath, bytes);
+		const fd = openSync(tempPath, "wx", options.privateFile ? 0o600 : 0o666);
+		try { writeFileSync(fd, bytes); if (options.flush) fsyncSync(fd); } finally { closeSync(fd); }
 		if (!existsSync(path)) renameSync(tempPath, path);
 	} finally {
 		if (existsSync(tempPath)) rmSync(tempPath, { force: true });

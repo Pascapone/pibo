@@ -1,10 +1,11 @@
 import { CHAT_READ_PROJECTION_SCHEMA, CHAT_NAVIGATION_REVISION_SCHEMA } from "./chat-read-projections.js";
 import { TELEMETRY_MAINTENANCE_SCHEMA } from "./telemetry-maintenance.js";
 import { MESSAGE_COMMAND_SCHEMA } from "./message-command-store.js";
+import { ATTACHMENT_RESOURCE_SCHEMA } from "../attachments/resource-schema.js";
 import { PLUGIN_STORE_SCHEMA } from "../plugins/store-schema.js";
 import type { DatabaseSync } from "node:sqlite";
 
-export const PIBO_DATA_SCHEMA_VERSION = 15;
+export const PIBO_DATA_SCHEMA_VERSION = 16;
 
 const NATIVE_HISTORY_FALLBACK_SCHEMA_VERSION = 5;
 const TERMINAL_MESSAGE_UNREAD_SCHEMA_VERSION = 14;
@@ -919,6 +920,7 @@ function applyPiboDataSchemaInTransaction(
 	}
 	hooks.afterStep?.("runtime-binding-metadata");
 	db.exec(MESSAGE_COMMAND_SCHEMA);
+	db.exec(ATTACHMENT_RESOURCE_SCHEMA);
 	db.exec(PLUGIN_STORE_SCHEMA);
 	db.exec(`PRAGMA user_version = ${PIBO_DATA_SCHEMA_VERSION}`);
 	hooks.afterStep?.("user-version");

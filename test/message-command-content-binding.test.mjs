@@ -11,19 +11,22 @@ import { ChatRoomService } from "../dist/apps/chat/data/room-service.js";
 import { InMemoryPiboSessionStore } from "../dist/sessions/store.js";
 import { createMessageContentBinding } from "../dist/shared/message-content-binding.js";
 
-function fixture() {
+import { waitForAsyncStorageReady } from "./helpers/storage-ready.mjs";
+
+async function fixture() {
 	const root = mkdtempSync(join(tmpdir(), "pibo-command-binding-"));
 	const store = new PiboDataStore(join(root, "data.sqlite"), { payloadRootDir: join(root, "payloads") });
 	const room = new ChatRoomService(store).ensureDefaultRoom();
 	const session = new InMemoryPiboSessionStore().create({ channel: "test", kind: "chat", profile: "base", metadata: { chatRoomId: room.id } });
 	let storage = new AsyncChatStorage(store.path, join(root, "payloads"));
+	try { await waitForAsyncStorageReady(storage); } catch (error) { await storage.close(); store.close(); rmSync(root, { recursive: true, force: true }); throw error; }
 	const body = (txn = "txn") => ({ admissionVersion: 2, contentBindingVersion: 1, piboSessionId: session.id, clientTxnId: txn, text: "plain", delivery: "queue", attachments: [{ id: "a", revision: 1, type: "pibo.core/note", schemaVersion: 1, payload: { text: "frozen" } }] });
 	const admit = (requestBody, text = "materialized text", legacy = false) => storage.admit({ roomId: room.id, piboSessionId: session.id, eventType: "user.message.accepted", actorType: "user", actorId: "actor", clientTxnId: requestBody.clientTxnId, retentionClass: "chat_message", payload: { type: "user.message.accepted", text } }, session, text, { eventId: requestBody.clientTxnId, delivery: requestBody.delivery, ...(legacy ? {} : { requestBody }) });
-	return { store, room, session, body, admit, get storage() { return storage; }, async restart() { await storage.close(); storage = new AsyncChatStorage(store.path, join(root, "payloads")); }, async close() { await storage.close(); store.close(); rmSync(root, { recursive: true, force: true }); } };
+	return { store, room, session, body, admit, get storage() { return storage; }, async restart() { await storage.close(); storage = new AsyncChatStorage(store.path, join(root, "payloads")); await waitForAsyncStorageReady(storage); }, async close() { await storage.close(); store.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
 test("accepted request binding is atomic, server-derived and durable across duplicates and worker restart", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const body = f.body();
 		body.contentBinding = { version: 1, sha256: "f".repeat(64) }; // not authority
@@ -46,7 +49,7 @@ test("accepted request binding is atomic, server-derived and durable across dupl
 });
 
 test("same transaction rejects changed raw content, resource refs, delivery, final text and binding downgrade", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const original = f.body(); const accepted = await f.admit(original);
 		const reordered = Object.fromEntries(Object.entries(original).reverse());
@@ -68,7 +71,7 @@ test("same transaction rejects changed raw content, resource refs, delivery, fin
 });
 
 test("unflagged fingerprints and old receipts remain exact legacy values, never silently upgraded", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const content = { sessionId: f.session.id, roomId: f.room.id, text: "legacy", delivery: "queue" };
 		assert.equal(new MessageCommandStore(f.store).fingerprint(content), createHash("sha256").update(JSON.stringify(content)).digest("hex"));
@@ -82,7 +85,7 @@ test("unflagged fingerprints and old receipts remain exact legacy values, never 
 });
 
 test("receipt binding survives model failure, interrupted execution and loss of the optional event projection", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		const firstBody = f.body("first"); const first = await f.admit(firstBody);
 		new MessageCommandStore(f.store).recordOutput(f.session.id, "first", "session_error");
@@ -108,7 +111,7 @@ test("receipt binding survives model failure, interrupted execution and loss of 
 });
 
 test("capacity rejection leaves no accepted binding and unchanged retry can subsequently succeed", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		for (let i = 0; i < 64; i++) await f.admit(f.body(`full-${i}`));
 		await assert.rejects(f.admit(f.body("overflow")), { code: "command_overloaded" });
@@ -121,7 +124,7 @@ test("capacity rejection leaves no accepted binding and unchanged retry can subs
 });
 
 test("malformed or foreign captured request identity never creates a receipt", async () => {
-	const f = fixture();
+	const f = await fixture();
 	try {
 		for (const changes of [{ contentBindingVersion: 2 }, { piboSessionId: "foreign" }, { clientTxnId: "" }, { delivery: "other" }]) {
 			await assert.rejects(f.admit({ ...f.body(), ...changes }), { code: "command_invalid_content_binding" });

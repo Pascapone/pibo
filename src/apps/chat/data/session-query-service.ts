@@ -3,6 +3,7 @@ import { chatRoomIdFromMetadata } from "../types/rooms.js";
 import type { ChatWebSessionBootstrapIndexResult, ChatWebSessionIndexItem, ChatWebStoredPiboEvent } from "../types/read-model.js";
 import type { PiboSession } from "../../../sessions/store.js";
 import type { PiboDataStore } from "../../../data/pibo-store.js";
+import { AttachmentResourceStore } from "../../../attachments/resource-store.js";
 import type { StoredPayload } from "../../../data/payload-store.js";
 import { sessionFromRow, statusFromOutputEvent, type SessionRow } from "./chat-data-mappers.js";
 import { rootSessionId } from "../../../data/session-store.js";
@@ -104,9 +105,12 @@ export class ChatSessionQueryService {
 	deleteSessions(piboSessionIds: string[]): number {
 		if (!piboSessionIds.length) return 0;
 		const placeholders = piboSessionIds.map(() => "?").join(", ");
-		const payloadReleaseCounts = this.payloadReleaseCounts(placeholders, piboSessionIds);
 		const releasedPayloads: StoredPayload[] = [];
 		const deleted = this.store.transaction(() => {
+			// Count owners under the same write lock as deletion; a concurrent admission
+			// must not insert an uncounted snapshot between inspection and removal.
+			const payloadReleaseCounts = this.payloadReleaseCounts(placeholders, piboSessionIds);
+			releasedPayloads.push(...new AttachmentResourceStore(this.store).releaseSessions(piboSessionIds));
 			this.store.db.prepare(`DELETE FROM observations WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
 			this.store.db.prepare(`DELETE FROM chat_messages WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
 			this.store.db.prepare(`DELETE FROM event_log WHERE session_id IN (${placeholders})`).run(...piboSessionIds);
@@ -118,7 +122,7 @@ export class ChatSessionQueryService {
 			const result = this.store.db.prepare(`UPDATE sessions SET deleted_at = COALESCE(deleted_at, ?) WHERE id IN (${placeholders})`).run(new Date().toISOString(), ...piboSessionIds);
 			return Number(result.changes ?? 0);
 		});
-		for (const payload of releasedPayloads) this.store.payloads.removeReleasedFile(payload);
+		this.store.payloads.removeReleasedFiles(releasedPayloads);
 		return deleted;
 	}
 

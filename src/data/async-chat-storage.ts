@@ -1,4 +1,7 @@
 import type { PiboCompactionStats } from "../core/events.js";
+import type { PreparedAttachmentResource } from "../attachments/resource-store.js";
+import type { AttachmentResourceDescriptor, AttachmentResourceScope } from "../attachments/resources.js";
+import type { AttachmentResourceBinding } from "../attachments/message.js";
 import type { MessageRequestBody } from "../shared/message-content-binding.js";
 import type { DurableMessageQueueHealth, MessageReceipt, MessageCommandClaim, MessageCommandState, MessageCommandStore } from "./message-command-store.js";
 import type { PiboRoom } from "../apps/chat/types/rooms.js";
@@ -67,6 +70,12 @@ export class AsyncChatStorage {
 	admit(input: ChatEventAppendInput, session: PiboSession, text: string, durableCommand?: { eventId: string; delivery: "queue" | "steer"; requestBody?: MessageRequestBody }): Promise<{ event: StoredChatEvent; created: true; receipt?: MessageReceipt } | { event?: StoredChatEvent; created: false; receipt?: MessageReceipt }> {
 		if (durableCommand && Buffer.byteLength(text) > 1024 * 1024) return Promise.reject(Object.assign(new Error("Message exceeds the durable command byte limit."), { code: "command_too_large" }));
 		return this.writer.request({ type: "admit", input, session, text, durableCommand },{fairnessKey:input.roomId,priority:durableCommand?.delivery === "steer" ? "control" : "admission"});
+	}
+	stageAttachment(prepared: PreparedAttachmentResource, roomId: string): Promise<AttachmentResourceDescriptor> {
+		return this.writer.request({ type: "stageAttachment", prepared, roomId }, { priority: "admission", fairnessKey: roomId });
+	}
+	discardAttachments(scope: Pick<AttachmentResourceScope, "sessionId" | "clientTxnId">, bindings: readonly AttachmentResourceBinding[]): Promise<number> {
+		return this.writer.request({ type: "discardAttachments", scope, bindings }, { priority: "control" });
 	}
 	append(input: ChatEventAppendInput): Promise<{ event: StoredChatEvent; created: boolean }> {
 		return this.writer.request({ type: "append", input });

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { request as nodeHttpRequest } from "node:http";
 import { homedir, tmpdir } from "node:os";
@@ -11,6 +12,7 @@ import { ChatReadStateService } from "../dist/apps/chat/data/read-state-service.
 import { ChatSessionQueryService } from "../dist/apps/chat/data/session-query-service.js";
 import { ChatDataIngestService } from "../dist/data/ingest-service.js";
 import { AsyncChatStorage } from "../dist/data/async-chat-storage.js";
+import { waitForAsyncStorageReady } from "./helpers/storage-ready.mjs";
 import { PiboDataStore } from "../dist/data/pibo-store.js";
 import { PiboReliabilityStore } from "../dist/reliability/store.js";
 import { PluginManager } from "../dist/plugins/manager.js";
@@ -8959,6 +8961,7 @@ test("content-bound durable HTTP admission captures the original body before mut
 	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
 	try {
 		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		await waitForChatStorageReady(host);
 		const input = { admissionVersion: 2, contentBindingVersion: 1, piboSessionId: session.id, clientTxnId: "content-bound", text: "original", extensionInput: { value: "frozen" }, contentBinding: { version: 1, sha256: "f".repeat(64) } };
 		const expected = createMessageContentBinding({ sessionId: session.id, delivery: "queue", body: input });
 		const accepted = await send(input); assert.equal(accepted.status, 202);
@@ -8986,6 +8989,7 @@ test("content-bound durable HTTP admission rejects invalid identity without upgr
 	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
 	try {
 		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		await waitForChatStorageReady(host);
 		const input = { admissionVersion: 2, contentBindingVersion: 1, piboSessionId: session.id, clientTxnId: "invalid-bound", text: "body" };
 		for (const changes of [{ contentBindingVersion: 2 }, { clientTxnId: undefined }, { clientTxnId: " padded " }, { piboSessionId: undefined }, { admissionVersion: undefined }]) {
 			assert.equal((await send({ ...input, ...changes })).status, 400);
@@ -9000,11 +9004,102 @@ test("content-bound durable HTTP admission rejects invalid identity without upgr
 	} finally { unblock(); await host.channel.stop?.(); }
 });
 
+// These admission cases exercise cold native runtimes, not storage bootstrap.
+// Wait only for the existing 10s startup contract; every RPC still has its 500ms budget.
+// The separate no-HTTP startup-dispatch test deliberately does not use this helper.
+async function waitForChatStorageReady(host) {
+	const started = performance.now(); let last;
+	while (performance.now() - started < 10000) {
+		const response = await fetch(`${host.baseURL}/api/chat/debug/resources`, { headers: { "x-test-user": "user-1" }, signal: AbortSignal.timeout(2000) });
+		assert.equal(response.status, 200); last = (await response.json()).storage;
+		if (last.writer?.ready && !last.writer.closed) return { storage: last, elapsed: performance.now() - started };
+		await new Promise(resolve => setTimeout(resolve, 25));
+	}
+	assert.fail(`Storage did not become ready within its existing startup budget: ${JSON.stringify(last)}`);
+}
+
+test("K07 HTTP storage readiness diagnostics preserve the unchanged 500ms request budget", async () => {
+	for (let index = 0; index < 3; index++) {
+		const host = await startWebHostChannel({ auth: createFakeAuthService() });
+		try {
+			const readiness = await waitForChatStorageReady(host); console.log("Storage readiness diagnostic", JSON.stringify({ index, elapsed: readiness.elapsed, storage: readiness.storage }));
+			assert.equal(readiness.storage.writer.limits.maxAgeMs, 500); assert.equal(readiness.storage.restarts.writer, 0);
+			const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+			const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+			const accepted = await fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify({ admissionVersion: 2, piboSessionId: session.id, clientTxnId: `ready-${index}`, text: "ready storage, cold runtime" }) });
+			assert.equal(accepted.status, 202, await accepted.clone().text());
+		} finally { await host.channel.stop?.(); }
+	}
+});
+
+test("K07 HTTP media upload, scoped preview, admission and retries preserve the same verified bytes", async () => {
+	let unblock; const blocked = new Promise(resolve => { unblock = resolve; });
+	const host = await startWebHostChannel({ auth: createFakeAuthService(), async emit(event) { await blocked; return { type: "message_queued", piboSessionId: event.piboSessionId, eventId: event.id, text: event.text, queuedMessages: 1 }; } });
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" }; const mediaHeaders = { origin: host.baseURL, "x-test-user": "user-1" };
+	const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jk3cAAAAASUVORK5CYII=", "base64");
+	try {
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		await waitForChatStorageReady(host);
+		const upload = (bytes = png) => { const form = new FormData(); form.set("piboSessionId", session.id); form.set("clientTxnId", "media-txn"); form.set("draftResourceId", "blob"); form.set("file", new Blob([bytes], { type: "image/png" }), "pixel.png"); return fetch(`${host.baseURL}/api/chat/attachment-resources`, { method: "POST", headers: mediaHeaders, body: form }); };
+		const uploaded = await upload(); assert.equal(uploaded.status, 201, await uploaded.clone().text()); const { resource } = await uploaded.json();
+		assert.equal(resource.sha256, createHash("sha256").update(png).digest("hex")); assert.equal(resource.path, undefined);
+		const retry = await upload(); assert.equal(retry.status, 201); assert.equal((await retry.json()).resource.preparedUploadId, resource.preparedUploadId);
+		assert.equal((await upload(Buffer.from("changed"))).status, 409);
+		const scope = new URLSearchParams({ piboSessionId: session.id, clientTxnId: "media-txn", draftResourceId: "blob" });
+		const mediaUrl = `${host.baseURL}/api/chat/attachment-resources/${resource.preparedUploadId}?${scope}`;
+		const preview = await fetch(`${mediaUrl}&preview=1`, { headers }); assert.equal(preview.status, 200); assert.equal(preview.headers.get("content-type"), "image/png"); assert.deepEqual(Buffer.from(await preview.arrayBuffer()), png);
+		const download = await fetch(mediaUrl, { headers }); assert.equal(download.headers.get("content-type"), "application/octet-stream"); assert.match(download.headers.get("content-disposition"), /^attachment;/);
+		await download.arrayBuffer();
+		const wrongScope = new URL(mediaUrl); wrongScope.searchParams.set("clientTxnId", "foreign"); assert.equal((await fetch(wrongScope, { headers })).status, 403);
+		const body = attachmentBody({ piboSessionId: session.id, text: "", clientTxnId: "media-txn" }); body.attachments[0].type = "pibo.core/image"; body.attachments[0].payload = { alt: "pixel" }; body.attachments[0].media = [{ draftResourceId: "blob", mimeType: "image/png", bytes: png.length }]; body.attachmentResources = [{ draftResourceId: "blob", preparedUploadId: resource.preparedUploadId }];
+		const send = value => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(value) });
+		const wrong = structuredClone(body); wrong.attachments[0].media[0].bytes++; assert.equal((await send(wrong)).status, 403);
+		const expected = createMessageContentBinding({ sessionId: session.id, delivery: "queue", body });
+		const accepted = await send(body); assert.equal(accepted.status, 202, await accepted.clone().text()); const first = await accepted.json(); assert.deepEqual(first.receipt.contentBinding, expected);
+		const resourceContext = JSON.parse(first.event.payload.text.match(/\[attached_resources\]\n([\s\S]*?)\n\[\/attached_resources\]/)[1]);
+		assert.match(resourceContext[0].path, /\.png$/); assert.deepEqual(readFileSync(resourceContext[0].path), png); assert.equal(resourceContext[0].sha256, resource.sha256);
+		assert.equal((await send(body)).status, 202); assert.equal((await fetch(mediaUrl, { method: "DELETE", headers })).status, 403, "upload discard must not delete accepted history");
+		const history = new PiboDataStore(host.dataStorePath, { readOnly: true, payloadRootDir: host.dataPayloadRootDir });
+		try {
+			const message = history.messages.listMessages(session.id).find(item => item.role === "user"); const snapshot = history.payloads.readPayloadJsonBounded(message.attributes.attachmentSnapshotRef, 1024 * 1024);
+			assert.equal(snapshot.resources[0].sha256, resource.sha256); assert.equal(snapshot.resources[0].path, undefined); assert.deepEqual(snapshot.attachments, body.attachments);
+			assert.equal(history.db.prepare("SELECT ref_count FROM payloads WHERE retention_class='chat_attachment_media_v1'").get().ref_count, 1);
+			assert.equal(history.db.prepare("SELECT count(*) n FROM message_commands").get().n, 1);
+		} finally { history.close(); }
+		await waitForCondition(() => host.emitted.length === 1, "media message did not reach dispatcher"); assert.match(host.emitted[0].text, /attached_resources/);
+		writeFileSync(resourceContext[0].path, Buffer.alloc(png.length)); // fixture-only post-admission corruption
+		assert.equal((await fetch(mediaUrl, { headers })).status, 404);
+		const receipt = await (await fetch(`${host.baseURL}/api/chat/message-receipts/${first.receipt.id}`, { headers })).json(); assert.deepEqual(receipt.receipt.contentBinding, expected);
+		assert.equal((await send(body)).status, 202, "a same-size storage fault does not cause duplicate admission or receipt file reads");
+	} finally { unblock(); await host.channel.stop?.(); }
+});
+
+test("K07 HTTP media routes preserve login, origin, body bounds and inactive-content download guards", async () => {
+	const host = await startWebHostChannel({ auth: createFakeAuthService() });
+	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
+	try {
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		await waitForChatStorageReady(host);
+		const form = (bytes = Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>") ) => { const data = new FormData(); data.set("piboSessionId", session.id); data.set("clientTxnId", "guard-txn"); data.set("draftResourceId", "blob"); data.set("file", new Blob([bytes], { type: "image/svg+xml" }), "drawing.svg"); return data; };
+		const endpoint = `${host.baseURL}/api/chat/attachment-resources`; const uploadHeaders = { origin: host.baseURL, "x-test-user": "user-1" };
+		assert.equal((await fetch(endpoint, { method: "POST", headers: { origin: host.baseURL }, body: form() })).status, 401);
+		assert.equal((await fetch(endpoint, { method: "POST", headers: { ...uploadHeaders, origin: "https://untrusted.invalid" }, body: form() })).status, 403);
+		const forged = form(); forged.set("path", "/etc/passwd"); assert.equal((await fetch(endpoint, { method: "POST", headers: uploadHeaders, body: forged })).status, 400);
+		assert.equal((await fetch(endpoint, { method: "POST", headers: uploadHeaders, body: form(Buffer.alloc(4 * 1024 * 1024)) })).status, 413, "4 MiB still bounds the entire multipart request");
+		const uploaded = await fetch(endpoint, { method: "POST", headers: uploadHeaders, body: form() }); assert.equal(uploaded.status, 201, await uploaded.clone().text()); const { resource } = await uploaded.json();
+		const url = `${endpoint}/${resource.preparedUploadId}?${new URLSearchParams({ piboSessionId: session.id, clientTxnId: "guard-txn", draftResourceId: "blob" })}`;
+		assert.equal((await fetch(url)).status, 401); assert.equal((await fetch(`${url}&preview=1`, { headers })).status, 415);
+		const download = await fetch(url, { headers }); assert.equal(download.status, 200); assert.equal(download.headers.get("content-type"), "application/octet-stream"); assert.equal(download.headers.get("x-content-type-options"), "nosniff"); await download.arrayBuffer();
+		const deleted = await fetch(url, { method: "DELETE", headers }); assert.equal(deleted.status, 200); assert.equal((await deleted.json()).removed, 1);
+		assert.equal((await fetch(url, { method: "DELETE", headers })).status, 200); assert.equal((await fetch(url, { headers })).status, 404);
+	} finally { await host.channel.stop?.(); }
+});
+
 test("K07 HTTP admission validates scoped providers and stores materialized frozen data without starting a runtime", async () => {
 	const f = await attachmentFixture();
 	let unblock; const blocked = new Promise(resolve => { unblock = resolve; });
 	const reads = []; let disabled = false; const extensions = new PiboChatExtensionRegistry();
-	extensions.registerMessageAugmenter(({ messageText, body }) => { if (body.attachmentVersion) body.attachments[0].payload.text = "mutated extension input"; return { messageText }; });
+	extensions.registerMessageAugmenter(({ messageText, body }) => { if (body.attachmentVersion) { body.attachments[0].payload.text = "mutated extension input"; body.fileAttachmentPaths = ["/not-an-accepted-upload"]; } return { messageText }; });
 	const host = await startWebHostChannel({ auth: createFakeAuthService(), getService(id) {
 		if (id === PLUGIN_HOST_SERVICE) return f.host;
 		if (id === PIBO_CHAT_EXTENSION_SERVICE) return extensions;
@@ -9014,11 +9109,12 @@ test("K07 HTTP admission validates scoped providers and stores materialized froz
 	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) });
 	try {
 		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json();
+		await waitForChatStorageReady(host);
 		const body = attachmentBody({ piboSessionId: session.id, text: "", clientTxnId: "k07-provider", attachmentProviderPins: [attachmentProviderPin(attachmentPlan(f.host, session.id), session.id, f.provider.type)] }); body.attachments[0].type = f.provider.type;
 		const expected = createMessageContentBinding({ sessionId: session.id, delivery: "queue", body });
 		const accepted = await send(body); assert.equal(accepted.status, 202); const first = await accepted.json();
 		assert.deepEqual(first.receipt.contentBinding, expected);
-		assert.equal(first.event.payload.attachmentCount, 1); assert.equal(first.event.payload.attachments, undefined, "optional event projection does not duplicate the structured snapshot"); assert.match(first.event.payload.text, /frozen note/); assert.doesNotMatch(first.event.payload.text, /mutated extension/);
+		assert.equal(first.event.payload.attachmentCount, 1); assert.equal(first.event.payload.attachments, undefined, "optional event projection does not duplicate the structured snapshot"); assert.match(first.event.payload.text, /frozen note/); assert.doesNotMatch(first.event.payload.text, /mutated extension|not-an-accepted-upload/); assert.equal(first.event.payload.fileAttachmentPaths, undefined, "mutable augmenters cannot bypass typed resource authority with legacy paths");
 		const history = new PiboDataStore(host.dataStorePath, { readOnly: true, payloadRootDir: host.dataPayloadRootDir });
 		let snapshotRef;
 		try {
@@ -9051,7 +9147,7 @@ test("K07 HTTP admission rejects unowned media and authority fields while Core J
 	const headers = { "content-type": "application/json", origin: host.baseURL, "x-test-user": "user-1" };
 	const send = body => fetch(`${host.baseURL}/api/chat/message`, { method: "POST", headers, body: JSON.stringify(body) });
 	try {
-		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json(); const body = attachmentBody({ piboSessionId: session.id, text: "", clientTxnId: "k07-core" });
+		const { session } = await (await fetch(`${host.baseURL}/api/chat/session`, { headers })).json(); await waitForChatStorageReady(host); const body = attachmentBody({ piboSessionId: session.id, text: "", clientTxnId: "k07-core" });
 		const image = structuredClone(body); image.clientTxnId = "k07-image"; image.attachments[0].type = "pibo.core/image"; image.attachments[0].payload = { alt: "image" }; image.attachments[0].media = [{ draftResourceId: "blob", mimeType: "image/png", bytes: 4 }]; image.attachmentResources = [{ draftResourceId: "blob", preparedUploadId: "/untrusted/path" }];
 		const missing = await send(image); assert.equal(missing.status, 404); assert.equal((await missing.json()).code, "ATT_BYTES_MISSING");
 		for (const patch of [{ role: "system" }, { piboSessionId: "ps_foreign" }, { path: "/untrusted/path" }]) {
@@ -9074,6 +9170,7 @@ test("versioned durable admission acknowledges before cold runtime dispatch and 
 	}});
 	try {
 		const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers:{"x-test-user":"user-1"}})).json();
+		await waitForChatStorageReady(host);
 		const input={admissionVersion:2,piboSessionId:session.id,text:"durable cold message",clientTxnId:"durable-cold-id"};
 		const send=body=>fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers:{"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"},body:JSON.stringify(body),signal:AbortSignal.timeout(2000)});
 		const accepted=await send(input);assert.equal(accepted.status,202);
@@ -9100,6 +9197,7 @@ test("Chat Web reports interrupted FIFO barriers as non-retryable reconciliation
  let unblock;const blocked=new Promise(resolve=>{unblock=resolve;});const host=await startWebHostChannel({auth:createFakeAuthService(),async emit(){await blocked;return {type:"message_queued"};}});const headers={"content-type":"application/json",origin:host.baseURL,"x-test-user":"user-1"};
  try{
   const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers})).json();const send=id=>fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers,body:JSON.stringify({admissionVersion:2,piboSessionId:session.id,text:"duplicate content",clientTxnId:id})});
+  await waitForChatStorageReady(host);
   const firstResponse=await send("barrier-first");assert.equal(firstResponse.status,202);const first=await firstResponse.json();await waitForCondition(()=>host.emitted.length===1,"first command did not enter dispatch");
   const db=new DatabaseSync(host.dataStorePath);try{db.prepare("UPDATE message_commands SET state='interrupted',owner=NULL,lease_until=0,error='fixture interruption' WHERE id=?").run(first.receipt.id);}finally{db.close();}
   const rejected=await send("barrier-second");assert.equal(rejected.status,409);assert.equal(rejected.headers.get("retry-after"),null);const body=await rejected.json();assert.equal(body.code,"command_reconciliation_required");assert.equal(body.retryable,false);assert.equal(body.scope,"session");assert.equal(body.blockingCommandId,first.receipt.id);assert.match(body.error,/previous interrupted message requires review/i);
@@ -9111,10 +9209,12 @@ test("web startup dispatches a committed command without an HTTP request", async
  const storageDir=mkdtempSync(join(tmpdir(),"pibo-command-startup-"));
  const sessions=new InMemoryPiboSessionStore();
  const storage=new AsyncChatStorage(join(storageDir,"pibo-chat-v2.sqlite"),join(storageDir,"payloads"));
- const room=await storage.resolveRoom();
- const session=sessions.create({channel:"pibo.chat-web",kind:"chat",profile:"default",metadata:{chatRoomId:room.id}});
- await storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"user-1",clientTxnId:"restart-txn",retentionClass:"chat_message",payload:{type:"user.message.accepted",text:"restart",clientTxnId:"restart-txn"}},session,"restart",{eventId:"restart-txn",delivery:"queue"});
- await storage.close();
+ try {
+  await waitForAsyncStorageReady(storage);
+  const room=await storage.resolveRoom();
+  const session=sessions.create({channel:"pibo.chat-web",kind:"chat",profile:"default",metadata:{chatRoomId:room.id}});
+  await storage.admit({roomId:room.id,piboSessionId:session.id,eventType:"user.message.accepted",actorType:"user",actorId:"user-1",clientTxnId:"restart-txn",retentionClass:"chat_message",payload:{type:"user.message.accepted",text:"restart",clientTxnId:"restart-txn"}},session,"restart",{eventId:"restart-txn",delivery:"queue"});
+ } finally { await storage.close(); }
  const host=await startWebHostChannel({storageDir,sessions,auth:createFakeAuthService()});
  try {await waitForCondition(()=>host.emitted.length===1,"startup did not dispatch durable work",5000);assert.equal(host.emitted[0].id,"restart-txn");assert.equal(host.emitted[0].text,"restart");}
  finally {await host.channel.stop();rmSync(storageDir,{recursive:true,force:true});}
@@ -9131,6 +9231,7 @@ test("clear_queue cancels undispatched durable receipts without cancelling an in
  try {
   const {session}=await(await fetch(`${host.baseURL}/api/chat/session`,{headers})).json();
   const send=async id=>{const response=await fetch(`${host.baseURL}/api/chat/message`,{method:"POST",headers,body:JSON.stringify({admissionVersion:2,piboSessionId:session.id,text:id,clientTxnId:id})});assert.equal(response.status,202);return await response.json();};
+  await waitForChatStorageReady(host);
   const first=await send("clear-first");await waitForCondition(()=>dispatches===1,"first dispatch did not initialize");const second=await send("clear-second");
   const cleared=await fetch(`${host.baseURL}/api/chat/action`,{method:"POST",headers,body:JSON.stringify({piboSessionId:session.id,action:"clear_queue"})});
   assert.equal(cleared.status,200);assert.equal((await cleared.json()).result.cleared,1);

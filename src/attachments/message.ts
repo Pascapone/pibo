@@ -108,9 +108,10 @@ export function materializeAttachmentMessage(input: {
 			throw new AttachmentDraftError({ code: "ATT_MATERIALIZE_FAILED", message: "Provider returned an invalid attachment contribution or an unowned resource reference.", retryable: false });
 		}
 	}
-	return {
-		parts,
-		resources: [...resources.values()],
-		modelContext: parts.length ? `[attached_content]\n${attachmentJson(parts)}\n[/attached_content]` : "",
-	};
+	const resolvedResources = [...resources.values()];
+	const content = parts.length ? `[attached_content]\n${attachmentJson(parts)}\n[/attached_content]` : "";
+	// Preserve the exact JSON-only materialization. Only Core-resolved media adds
+	// this user-content block; providers never receive or nominate these paths.
+	const resourceContext = resolvedResources.length ? `\n[attached_resources]\n${attachmentJson(resolvedResources)}\n[/attached_resources]` : "";
+	return { parts, resources: resolvedResources, modelContext: `${content}${resourceContext}` };
 }
