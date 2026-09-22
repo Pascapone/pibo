@@ -221,6 +221,14 @@ export type PiProviderOAuthAccess = {
  * service. The access object itself exposes no list function; store
  * enumeration (`listPiCredentials`) is unaffected by this shape.
  *
+ * Real authority (G1): the effective scope is the whole shared pi store
+ * keyed by provider id — adapter-shared in effect. The store implements no
+ * runtime-instance isolation and the binding performs no caller
+ * authorization, so no instance isolation is claimed. Failed reads degrade
+ * to absence (pi additionally serves stale snapshots on read failure);
+ * crash/mid-write atomicity is claimed only for the `PiboFileCredentialStore`
+ * fallback (tmp-file + rename), not audited for pi's own modify path.
+ *
  * Absence (no entry, or an entry that resolves to nothing usable) returns
  * `undefined`/`false` without throwing. Failed store READS surface as
  * absence too: pi's store read swallows IO errors into an empty/stale

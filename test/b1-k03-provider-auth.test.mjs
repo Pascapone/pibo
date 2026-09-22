@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+	PiboFileCredentialStore,
 	bindPiProviderApiKeyAccess,
 	bindPiProviderOAuthAccess,
 	deletePiCredential,
@@ -301,4 +302,37 @@ test("b1-k03 unconfigured bindings fail BASE transcription as not configured wit
 		(error) => error instanceof PiboTranscriptionError && error.code === "not_configured",
 	);
 	assert.equal(requested, false);
+});
+
+test("b1-k03 file store degrades malformed auth.json to absence without throwing", async (t) => {
+	// Disk-fault remainder, concrete: the bundled file-backed store maps
+	// unreadable state to absence, never to a throw or invented credential.
+	// Direct store use keeps this deterministic (no pi snapshot cache).
+	const dir = mkdtempSync(join(tmpdir(), "pibo-b1-k03-corrupt-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const authPath = join(dir, "auth.json");
+	writeFileSync(authPath, "{not valid json", "utf8");
+	const store = new PiboFileCredentialStore(authPath);
+	assert.equal(await store.read(API_KEY_PROVIDER), undefined);
+	assert.deepEqual(await store.list(), []);
+});
+
+test("b1-k03 file store degrades an unreadable auth path to absence without throwing", async (t) => {
+	// EISDIR fails readFile for every user (chmod-based cases do not fail
+	// for root), so this pins the no-throw absence mapping deterministically.
+	const dir = mkdtempSync(join(tmpdir(), "pibo-b1-k03-eisdir-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const authPath = join(dir, "auth.json");
+	mkdirSync(authPath);
+	const store = new PiboFileCredentialStore(authPath);
+	assert.equal(await store.read(API_KEY_PROVIDER), undefined);
+	assert.deepEqual(await store.list(), []);
+});
+
+test("b1-k03 oauth binding never pairs another provider entry to the bound id", async (t) => {
+	await writePiCredential(API_KEY_PROVIDER, { type: "api_key", key: API_KEY_FIXTURE });
+	t.after(() => deletePiCredential(API_KEY_PROVIDER));
+	const access = bindPiProviderOAuthAccess("b1-k03-scope-oauth-other");
+	assert.equal(await access.getAuth(), undefined);
+	assert.equal(await access.isConfigured(), false);
 });
