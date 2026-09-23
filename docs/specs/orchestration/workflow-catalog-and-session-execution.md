@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-23T17:40:35Z"
+  at: "2026-09-23T17:58:49Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Workflow catalog and Session-native integration"
@@ -208,7 +208,7 @@ Full Workflow backend/API/store/UI ownership remains open: disabling the plugin 
 
 # Verification and traceability
 
-Current paths and the new plugin-served read contract are traced to `e0906db3839b9cf13940f4833f2ff2d31323ccb5`. For that checkpoint, four new real-artifact extension tests plus 13 selected Workflow tests passed (17/17), all six modified source entrypoints passed a targeted TypeScript check, and 22 plugin artifacts built. The Workflow backend artifact was 22,440 bytes with nine esbuild inputs and no `web-app.ts` or `core/web-product.ts` input; source-matched single-file emits were checked separately, not treated as a root compiler pass. A root TypeScript check and larger regressions were stopped by bounded host memory/IO pressure and have no pass result. The existing SDK-browser-boundary test also fails against an unchanged earlier `src/plugins/sdk.ts` browser-safe attachment-types export; it is not waived or counted green.
+Current paths and the new plugin-served read contract are traced to `e0906db3839b9cf13940f4833f2ff2d31323ccb5`. For that checkpoint, four new real-artifact extension tests plus 13 selected Workflow tests passed (17/17), all six modified source entrypoints passed a targeted TypeScript check, and 22 plugin artifacts built. The Workflow backend artifact was 22,440 bytes with nine esbuild inputs and no `web-app.ts` or `core/web-product.ts` input; source-matched single-file emits were checked separately, not treated as a root compiler pass. A root TypeScript check and larger regressions were stopped by bounded host memory/IO pressure and have no pass result. At `e0906db3`, the existing SDK-browser-boundary test still failed against an unchanged earlier `src/plugins/sdk.ts` neutral attachment-types export; it was not waived or counted green. A later test-only correction at `029e5073` permits only that exact import-free contract while retaining the Node/Core/registry ban; all 26 manifest tests passed at that checkpoint. This does not turn the earlier failed run into a pass.
 
 The earlier integration evidence at `7ec71c2cca2108423002be0e7330d2a20c4c5b67` remains historical for this pilot: source checks/typechecks, a 20-test focused matrix and the complete root suite passed then (see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md)). The still earlier isolated suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped. Those results do not establish a full compiler, product-browser, installed candidate or deployment acceptance of the current branch.
 
