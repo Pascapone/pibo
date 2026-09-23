@@ -424,7 +424,7 @@ async function readGatewaySafetyStatus(target: GatewayTarget): Promise<GatewaySa
 	}
 }
 
-function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): void {
+function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus, readOnly = false): void {
 	console.log(`${target === "web" ? "Production" : "Dev"} gateway status`);
 	console.log(`  reachable: ${status.reachable ? "yes" : "no"}`);
 	console.log(`  mode: ${status.mode}`);
@@ -471,7 +471,7 @@ function printSafetyStatus(target: GatewayTarget, status: GatewaySafetyStatus): 
 		for(const scope of durable.affectedScopes??[])console.log(`    affected session=${scope.sessionId??"unknown"} room=${scope.roomId??"unknown"} blocker=${scope.blockingCommandId??"unknown"} successors=${scope.blockedSuccessors??0}`);
 		for(const reason of durable.degradedReasons??[])console.log(`    degraded: ${reason}`);
 	}
-	console.log("  next: pibo debug message-queue");
+	console.log(readOnly ? `  next: pibo gateway ${target} doctor` : "  next: pibo debug message-queue");
 }
 
 function managerRequiresShell(command: string): boolean {
@@ -498,18 +498,19 @@ async function waitForManagedGatewayHealth(target: GatewayTarget): Promise<Gatew
 	return undefined;
 }
 
-async function runManagedGatewayCommand(target: GatewayTarget, command: string | undefined, args: string[], argv = process.argv): Promise<boolean> {
+async function runManagedGatewayCommand(target: GatewayTarget, command: string | undefined, args: string[], argv = process.argv, readOnly = false): Promise<boolean> {
 	if (command === "status" || command === "doctor") {
 		const status = await readGatewaySafetyStatus(target);
-		if(args.includes("--json"))console.log(JSON.stringify({...status,nextCommands:[`pibo gateway ${target} doctor`,`pibo debug message-queue`]},null,2));
-		else printSafetyStatus(target, status);
+		if(args.includes("--json"))console.log(JSON.stringify({...status,nextCommands:readOnly?[`pibo gateway ${target} doctor`]:[`pibo gateway ${target} doctor`,`pibo debug message-queue`]},null,2));
+		else printSafetyStatus(target, status, readOnly);
 		if (target === "web" && !args.includes("--json")) {
 			const active = checkActiveWork(status, target);
 			if (active.unsafe) {
 				console.log("  restart safety: blocked");
 				for (const reason of active.reasons) console.log(`    - ${reason}`);
 			} else console.log("  restart safety: idle");
-			printRestartApproval(status);
+			if (readOnly) console.log("  operator surface: read-only; restart is unavailable in this installation");
+			else printRestartApproval(status);
 		}
 		if (command === "doctor") {
 			process.exitCode = status.reachable
@@ -603,14 +604,21 @@ async function runManagedGatewayCommand(target: GatewayTarget, command: string |
 	return false;
 }
 
-export async function runGatewayCli(argv = process.argv): Promise<void> {
+export async function runGatewayCli(argv = process.argv, options: { readOnly?: true } = {}): Promise<void> {
 	const args = argv.slice(2);
 	const subcommand = args[1];
 	const hasForceFlag = args.includes("--force");
+	// The installed executable shares the status parser but cannot expose this
+	// module's separate dev/operator start, stop, restart or backup actions.
+	if (options.readOnly && (!(subcommand === "web" || subcommand === "dev")
+		|| (args[2] !== "status" && args[2] !== "doctor")
+		|| args.slice(3).some((arg) => arg !== "--json") || args.slice(3).length > 1)) {
+		throw new Error("Installed gateway operator supports read-only web/dev status and doctor only.");
+	}
 
 	if (subcommand === "web" || subcommand === "dev") {
 		if (args.slice(2).some((arg) => arg === "--help" || arg === "-h")) { printGatewayHelp(); return; }
-		const handled = await runManagedGatewayCommand(subcommand, args[2], args.slice(3), argv);
+		const handled = await runManagedGatewayCommand(subcommand, args[2], args.slice(3), argv, options.readOnly === true);
 		if (!handled) { console.error(`Unknown gateway ${subcommand} subcommand: ${args[2] ?? ""}`); printGatewayHelp(); process.exitCode = 1; }
 		return;
 	}

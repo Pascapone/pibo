@@ -26,6 +26,7 @@ function rootHelp(composition: PiboExecutableComposition): string {
 		"Usage: pibo <command>",
 		"",
 		"Commands:",
+		"  gateway      Inspect gateway status and health (read-only)",
 		`  gateway:web  ${composition.gatewayDescription ?? "Start the plugin-free Web Gateway and Chat app"}`,
 		"",
 		"Options:",
@@ -33,8 +34,8 @@ function rootHelp(composition: PiboExecutableComposition): string {
 		"  -V, --version  Show the package version",
 		"",
 		composition.bootstrapPluginSources?.length
-			? `Run \`pibo gateway:web --help\` for gateway options. This composition activates ${composition.bootstrapPluginSources.length} packaged plugins on first startup.`
-			: "Run `pibo gateway:web --help` for gateway options. Feature tools, runtime adapters, and feature views are delivered by separate plugin packages.",
+			? `Run pibo gateway --help to inspect or pibo gateway:web --help to start. This composition activates ${composition.bootstrapPluginSources.length} packaged plugins on first startup.`
+			: "Run pibo gateway --help to inspect or pibo gateway:web --help to start. Feature tools, runtime adapters, and feature views are delivered by separate plugin packages.",
 	].join("\n");
 }
 
@@ -52,6 +53,50 @@ function gatewayHelp(composition: PiboExecutableComposition): string {
 		"  --cutover-plan <path>  Apply an exact prepared Pibo 4 cutover before startup",
 		"  -h, --help             Show this help",
 	].join("\n");
+}
+
+function gatewayOperatorHelp(target?: "web" | "dev", command?: "status" | "doctor"): string {
+	if (target && command) return [
+		`Usage: pibo gateway ${target} ${command} [--json]`,
+		"",
+		command === "status" ? "Inspect gateway state without changing it." : "Check gateway health without changing it.",
+		"",
+		"Options:",
+		"  --json      Print bounded status and next commands as JSON",
+		"  -h, --help  Show this help",
+	].join("\n");
+	if (target) return [
+		`Usage: pibo gateway ${target} <command>`,
+		"",
+		"Commands:",
+		`  status  Inspect the ${target === "web" ? "production" : "dev"} gateway`,
+		`  doctor  Check the ${target === "web" ? "production" : "dev"} gateway health`,
+		"",
+		`Next: pibo gateway ${target} status --help`,
+	].join("\n");
+	return [
+		"Usage: pibo gateway <target>",
+		"",
+		"Targets:",
+		"  web  Inspect the production gateway",
+		"  dev  Inspect the dev gateway",
+		"",
+		"Next: pibo gateway web --help",
+	].join("\n");
+}
+
+/** Keep the installed operator surface read-only even though the dev CLI's
+ * gateway module also contains start/restart/stop operations. Validate before
+ * importing it: invalid or discovery commands cannot reach its side effects. */
+function gatewayOperatorArgs(args: string[]): { help?: string; run?: true } {
+	const [target, command, ...options] = args;
+	if (target === undefined || target === "--help" || target === "-h") return { help: gatewayOperatorHelp() };
+	if (target !== "web" && target !== "dev") throw new Error(`Unknown gateway target '${target}'; run pibo gateway --help.`);
+	if (command === undefined || command === "--help" || command === "-h") return { help: gatewayOperatorHelp(target) };
+	if (command !== "status" && command !== "doctor") throw new Error(`Installed gateway ${target} supports read-only status and doctor only; run pibo gateway ${target} --help.`);
+	if (options.length === 1 && (options[0] === "--help" || options[0] === "-h")) return { help: gatewayOperatorHelp(target, command) };
+	if (options.length > 1 || (options.length === 1 && options[0] !== "--json")) throw new Error(`Unknown gateway ${target} ${command} option; run pibo gateway ${target} ${command} --help.`);
+	return { run: true };
 }
 
 function optionValue(args: string[], index: number, name: string): { value: string; nextIndex: number } | undefined {
@@ -126,6 +171,15 @@ export async function runPiboCoreCli(argv = process.argv, composition: PiboExecu
 	}
 	if (command === "--version" || command === "-V") {
 		console.log(packageVersion());
+		return;
+	}
+	if (command === "gateway") {
+		const operator = gatewayOperatorArgs(argv.slice(3));
+		if (operator.help) { console.log(operator.help); return; }
+		// No product initialization on inspection; the existing gateway CLI owns
+		// status parsing and output. A strict allowlist above prevents mutation.
+		const { runGatewayCli } = await import("../gateway/cli.js");
+		await runGatewayCli(argv, { readOnly: true });
 		return;
 	}
 	if (command !== "gateway:web") {

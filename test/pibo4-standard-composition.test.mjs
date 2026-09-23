@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import test from "node:test";
 import { standardPluginCoordinates } from "../dist/plugins/default-packages.js";
 import { assertStandardPluginComposition } from "../scripts/pibo4-composition-check.mjs";
+
+const execFileAsync = promisify(execFile);
 
 // Canonical Pibo Standard composition: every default package as one packed
 // plugin coordinate, in default-packages.ts descriptor order. This literal
@@ -45,6 +49,17 @@ test("built Standard package set matches the canonical composition exactly", asy
 	assert.equal(set.core, "@pasko70/pibo");
 	assert.equal(set.standard, "@pasko70/pibo-standard");
 	assert.equal(assertStandardPluginComposition(set.plugins, EXPECTED_STANDARD_PLUGINS), 22);
+});
+
+test("staged Standard CLI prefers its bundled exact-version Core and 22 plugins over a parent workspace", async () => {
+	// Direct staged-output smoke, not an npm installation test. A parent may
+	// also have @pasko70/pibo installed at an unrelated older version.
+	const { stdout } = await execFileAsync(process.execPath, ["dist/pibo4-standard-package/bin/pibo.js", "--help"], {
+		cwd: process.cwd(), encoding: "utf8", timeout: 15_000,
+	});
+	assert.match(stdout, /Pibo Standard\n/);
+	assert.match(stdout, /This composition activates 22 packaged plugins/);
+	assert.match(stdout, /gateway\s+Inspect gateway status and health \(read-only\)/);
 });
 
 test("built Candidate assembly carries one artifact per canonical plugin package", async () => {
