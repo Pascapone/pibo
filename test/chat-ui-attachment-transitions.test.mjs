@@ -75,6 +75,22 @@ assert.deepEqual(duplicate.result,{consumed:[],duplicate:true}); assert.equal(du
 `);
 });
 
+test("provider-pinned update rejects same-revision id reissue under a different type or schema", async () => {
+	await scenario(`
+let state=transition(null,'ps_test',{kind:'add',input},options);
+const id=state.result;
+state=transition(state.text,'ps_test',{kind:'remove',id});
+state=transition(state.text,'ps_test',{kind:'add',input:{...input,type:'example/other',schemaVersion:2,payload:{value:1}}},options);
+assert.equal(state.result,id,'the pilot permits reissue after removal');
+const unchanged=state.text;
+assert.throws(()=>transition(state.text,'ps_test',{kind:'update',id,expectedRevision:1,expectedType:'pibo.core/note',expectedSchemaVersion:1,next:{payload:{text:'wrong type'}}}),{code:'ATT_STALE_REVISION'});
+assert.throws(()=>transition(state.text,'ps_test',{kind:'update',id,expectedRevision:1,expectedType:'example/other',expectedSchemaVersion:1,next:{payload:{text:'wrong schema'}}}),{code:'ATT_STALE_REVISION'});
+assert.equal(state.text,unchanged);
+const accepted=transition(state.text,'ps_test',{kind:'update',id,expectedRevision:1,expectedType:'example/other',expectedSchemaVersion:2,next:{payload:{value:2}}});
+assert.equal(accepted.view.records[0].payload.value,2);
+`);
+});
+
 test("memory byte seam is immutable and detached without claiming IndexedDB durability", async () => {
 	await scenario(`
 const {blobs,copy}=createMemoryAttachmentStores('owner');

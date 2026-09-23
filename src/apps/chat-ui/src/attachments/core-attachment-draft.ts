@@ -205,7 +205,7 @@ export type CoreAttachmentDraftStoreOptions = {
  * Network work and provider hooks must finish before constructing a command. */
 export type CoreAttachmentDraftCommand =
 	| { kind: "add"; input: AttachmentInput }
-	| { kind: "update"; id: AttachmentId; expectedRevision: number; next: AttachmentEditableState }
+	| { kind: "update"; id: AttachmentId; expectedRevision: number; next: AttachmentEditableState; expectedType?: string; expectedSchemaVersion?: number }
 	| { kind: "remove"; id: AttachmentId }
 	| { kind: "freeze"; clientTxnId: string; text: string }
 	| { kind: "accept"; snapshot: AttachmentSendSnapshot; receipt: AttachmentAcceptanceReceipt }
@@ -690,7 +690,7 @@ export class CoreAttachmentDraftStore {
 		if (!command || typeof command !== "object" || Array.isArray(command)) throw invalidJson("Draft command must be an object.");
 		switch (command.kind) {
 			case "add": return this.addSync(command.input);
-			case "update": return this.updateSync(command.id, command.expectedRevision, command.next);
+			case "update": return this.updateSync(command.id, command.expectedRevision, command.next, command.expectedType, command.expectedSchemaVersion);
 			case "remove": return this.removeSync(command.id);
 			case "freeze": return this.freezeForSend(command.clientTxnId, command.text);
 			case "accept": return this.applyAcceptance(command.snapshot, command.receipt);
@@ -774,7 +774,7 @@ export class CoreAttachmentDraftStore {
 		this.updateSync(id, expectedRevision, next);
 	}
 
-	private updateSync(id: AttachmentId, expectedRevision: number, next: AttachmentEditableState): void {
+	private updateSync(id: AttachmentId, expectedRevision: number, next: AttachmentEditableState, expectedType?: string, expectedSchemaVersion?: number): void {
 		const record = this.records.find((candidate) => candidate.envelope.id === id);
 		if (!record || record.envelope.revision !== expectedRevision) {
 			throw new AttachmentDraftError({
@@ -784,6 +784,10 @@ export class CoreAttachmentDraftStore {
 					: `Attachment ${id} is unknown in this session.`,
 				retryable: false,
 			});
+		}
+		if ((expectedType !== undefined && record.envelope.type !== expectedType)
+			|| (expectedSchemaVersion !== undefined && record.envelope.schemaVersion !== expectedSchemaVersion)) {
+			throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: `Attachment ${id} has a different type or schema; reload before editing.`, retryable: false });
 		}
 		if (!next || typeof next !== "object" || Array.isArray(next)) {
 			throw new AttachmentDraftError({

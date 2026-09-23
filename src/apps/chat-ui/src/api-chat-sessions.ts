@@ -1,4 +1,8 @@
 import type { MessageReceipt } from "../../../data/message-command-store.js";
+import { AttachmentDraftError } from "../../../attachments/errors.js";
+import { readAttachmentMessage } from "../../../attachments/message.js";
+import { captureMessageRequestBody, createMessageContentBinding, sameMessageContentBinding } from "../../../shared/message-content-binding.js";
+import type { AttachmentPreparedSubmission } from "./attachments/core-attachment-draft.js";
 import { requestJson } from "./api-http";
 import type { BootstrapData, ChatSessionPage, CreateSessionData, ModelProfile, NavigationData, PiboRoom, PiboSession } from "./types";
 
@@ -187,6 +191,37 @@ export async function postMessage(
 			...(webAnnotationIds.length ? { webAnnotationIds } : {}),
 			...(fileAttachmentPaths.length ? { fileAttachmentPaths } : {}),
 		}),
+	}).then((result) => {
+		const receipt = result && typeof result === "object" && "receipt" in result ? result.receipt : undefined;
+		if (!receipt || typeof receipt !== "object" || !("id" in receipt) || typeof receipt.id !== "string") throw new Error("Durable message receipt was missing from the response.");
+		return result;
+	}).catch((error: unknown) => {
+		const detail = error && typeof error === "object" ? error as { status?: number; data?: { acceptanceUnknown?: boolean } } : undefined;
+		if (!detail?.status || detail.data?.acceptanceUnknown) {
+			throw Object.assign(new Error("Message acceptance is unknown. Retry the unchanged message to check the same transaction; it will not create a second dispatch."), { acceptanceUnknown: true, cause: error });
+		}
+		throw error;
+	});
+}
+
+/** The caller supplies the original submission read back from its durable
+ * draft. This function rechecks its local binding but cannot prove storage
+ * provenance; only a separately fetched server receipt may consume drafts.
+ * Legacy postMessage remains unchanged. */
+export async function postPreparedAttachmentMessage(prepared: AttachmentPreparedSubmission): Promise<unknown> {
+	let body: ReturnType<typeof captureMessageRequestBody>;
+	try {
+		body = captureMessageRequestBody(prepared.body);
+		if (!readAttachmentMessage(body) || body.fileAttachmentPaths !== undefined) throw new Error("Not a typed attachment body.");
+		const binding = createMessageContentBinding({
+			sessionId: body.piboSessionId as string, delivery: body.delivery as "queue" | "steer", body,
+		});
+		if (!sameMessageContentBinding(binding, prepared.contentBinding)) throw new Error("Stored content binding differs from the typed body.");
+	} catch {
+		throw new AttachmentDraftError({ code: "ATT_ACCEPTANCE_UNKNOWN", message: "Only the original locally prepared typed request can be sent. Reload its frozen body.", retryable: false });
+	}
+	return requestJson("/api/chat/message", {
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 	}).then((result) => {
 		const receipt = result && typeof result === "object" && "receipt" in result ? result.receipt : undefined;
 		if (!receipt || typeof receipt !== "object" || !("id" in receipt) || typeof receipt.id !== "string") throw new Error("Durable message receipt was missing from the response.");
