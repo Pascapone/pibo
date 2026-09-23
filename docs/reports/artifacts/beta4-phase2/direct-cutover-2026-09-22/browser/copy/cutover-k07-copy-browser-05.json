@@ -1,0 +1,135 @@
+{
+  "targetId": "3A98A120327BFFCC5B82E8957DD5FF65",
+  "url": "http://127.0.0.1:45127/",
+  "console": [
+    {
+      "type": "log",
+      "args": [
+        "Removing",
+        0,
+        "browser-use highlight elements"
+      ]
+    },
+    {
+      "type": "log",
+      "args": [
+        "Removing",
+        0,
+        "browser-use highlight elements"
+      ]
+    }
+  ],
+  "exceptions": [],
+  "network": [
+    {
+      "url": "http://127.0.0.1:45127/bundle.js",
+      "status": 200,
+      "mimeType": "text/javascript"
+    }
+  ],
+  "document": {
+    "url": "http://127.0.0.1:45127/",
+    "origin": "http://127.0.0.1:45127",
+    "ready": "complete",
+    "scripts": [
+      "http://127.0.0.1:45127/bundle.js"
+    ]
+  },
+  "bundle": {
+    "status": 200,
+    "bytes": 121696,
+    "sha256": "876a1510ef565d6f24357c7c302311472234b26f32f5f9ee7711b1350baf9e8e"
+  },
+  "summary": {
+    "kind": "real-browser-persistence-modules-only",
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+    "pass": 21,
+    "fail": 0,
+    "results": [
+      {
+        "name": "cas-scope-capture",
+        "pass": true
+      },
+      {
+        "name": "atomic-bytes-and-immutable-owner",
+        "pass": true
+      },
+      {
+        "name": "frozen-holders-and-consumption",
+        "pass": true
+      },
+      {
+        "name": "clear-tombstone-no-aba",
+        "pass": true
+      },
+      {
+        "name": "explicit-legacy-custody-race",
+        "pass": true
+      },
+      {
+        "name": "same-owner-custody-and-text-restore-cas",
+        "pass": true
+      },
+      {
+        "name": "corrupt-legacy-and-backup-fail-closed",
+        "pass": true
+      },
+      {
+        "name": "text-restore-does-not-invent-deleted-bytes",
+        "pass": true
+      },
+      {
+        "name": "corrupt-text-preserved",
+        "pass": true
+      },
+      {
+        "name": "injected-write-abort-not-real-quota",
+        "pass": true
+      },
+      {
+        "name": "additive-v2-upgrade",
+        "pass": true
+      },
+      {
+        "name": "blocked-upgrade-is-not-late-success",
+        "pass": true
+      },
+      {
+        "name": "closed-byte-facade-hides-pending-read",
+        "pass": true
+      },
+      {
+        "name": "versionchange-closes-owner-facade",
+        "pass": true
+      },
+      {
+        "name": "independent-copy-staging-and-cross-session-paste",
+        "pass": true
+      },
+      {
+        "name": "copy-cas-tombstones-and-stale-source",
+        "pass": true
+      },
+      {
+        "name": "copy-rollback-preserves-old-copy-and-bytes",
+        "pass": true
+      },
+      {
+        "name": "copy-paste-rejects-stale-missing-and-foreign-owner",
+        "pass": true
+      },
+      {
+        "name": "copy-revision-exhaustion-preserves-row",
+        "pass": true
+      },
+      {
+        "name": "two-real-tabs-one-copy-cas-winner",
+        "pass": true
+      },
+      {
+        "name": "two-real-tabs-one-cas-winner",
+        "pass": true
+      }
+    ]
+  }
+}

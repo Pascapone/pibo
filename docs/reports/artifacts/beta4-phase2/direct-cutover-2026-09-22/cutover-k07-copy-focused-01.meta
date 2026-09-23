@@ -1,0 +1,13 @@
+started=2026-09-23T12:15:51Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=384\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --types\ node\ --esModuleInterop\ src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts\ test/fixtures/attachments/browser-persistence-lab.ts\;\ echo\ Narrow\ copy/draft/browser\ fixture\ types\ passed\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/chat-ui-attachment-transitions.test.mjs\ test/chat-ui-core-attachment-pilot.test.mjs\ test/chat-ui-attachment-submission.test.mjs\;\ node\ --input-type=module\ --eval\ \'import\ \{build\}\ from\ \"esbuild\"\;\ await\ build\(\{entryPoints:\[\"test/fixtures/attachments/browser-persistence-lab.ts\"\]\,bundle:true\,platform:\"browser\"\,format:\"esm\"\,outfile:\"$RUN/browser-persistence/copy-bundle.js\"\,sourcemap:\"external\"\}\)\;\ console.log\(\"Owned\ copy\ module\ fixture\ bundle\ emitted\;\ not\ application\ build\"\)\'
+source=316098986b309c32474785d80ad4e8a2f9fc61c2
+ M src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-persistence.ts
+ M test/chat-ui-attachment-transitions.test.mjs
+ M test/fixtures/attachments/browser-persistence-lab.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts
+5f3632a2d04f15297227f29bf8101be7444c5a167b1aea1b96d679e1275b6e04  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts": "f621d527bc18a79ce957f92c9049c8c7f1fad044f61e8909815c732a79d1e2fc"}
+exit=2
+ended=2026-09-23T12:15:56Z

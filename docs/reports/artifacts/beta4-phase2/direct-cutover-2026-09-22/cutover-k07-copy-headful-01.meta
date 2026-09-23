@@ -1,0 +1,13 @@
+started=2026-09-23T12:20:29Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\ PIBO_BROWSER_USE_CHROME_USER_DATA_DIR=$OPERATOR_HOME/tools/browser-use/home/auth-pool/pibo-chat/slot-001\;\ node\ $RUN/browser-persistence/copy/validate.mjs\ cutover-k07-copy-headful-01\ 18
+source=316098986b309c32474785d80ad4e8a2f9fc61c2
+ M src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-persistence.ts
+ M test/chat-ui-attachment-transitions.test.mjs
+ M test/fixtures/attachments/browser-persistence-lab.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts
+5f3632a2d04f15297227f29bf8101be7444c5a167b1aea1b96d679e1275b6e04  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts": "cbd9a565431b61d031ec35d6fbe7f38dd95d6e01c2f9fc194d84c437241b3d34"}
+exit=1
+ended=2026-09-23T12:20:44Z

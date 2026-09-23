@@ -1,0 +1,33 @@
+This is a focused batch, not a full suite or installation test.
+harness_sha256 validate.mjs 193bfc4c1e58f34dafa9c41394d5eb2e1f7ea7e0a0c4d3094d21d1962ebbe509
+harness_sha256 server.mjs 031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe
+harness_sha256 index.html a2829ce42f76011f2a9bbaa2776a0d2064cd674e36509edb400704b8c3a1ab6f
+harness_sha256 browser-shell.sh 5f05b8c8e237ad26908885b23b77ecb38ea104799808af034cd1250e544c9f9e
+harness_sha256 bundle.js 422aa2b3df5db760827a75e0cbce2491a8283d8326f64fdde600ede0cdfc7523
+browser-use open http://127.0.0.1:45127/
+url: http://127.0.0.1:45127/
+
+pibo browser-use: started Chrome profile "PIBo" ($OPERATOR_HOME/tools/browser-use/home/auth-pool/pibo-chat/slot-001/Default) on CDP port 51207.
+
+node:internal/errors:986
+  const err = new Error(message);
+              ^
+
+Error: Command failed: bash $RUN/browser-persistence/copy/browser-shell.sh wait selector button
+$RUN/browser-persistence/copy/browser-shell.sh: line 13: browser-use: command not found
+
+    at genericNodeError (node:internal/errors:986:15)
+    at wrappedFn (node:internal/errors:540:14)
+    at ChildProcess.exithandler (node:child_process:417:12)
+    at ChildProcess.emit (node:events:514:28)
+    at maybeClose (node:internal/child_process:1141:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:306:5) {
+  code: 127,
+  killed: false,
+  signal: null,
+  cmd: 'bash $RUN/browser-persistence/copy/browser-shell.sh wait selector button',
+  stdout: '',
+  stderr: '$RUN/browser-persistence/copy/browser-shell.sh: line 13: browser-use: command not found\n'
+}
+
+Node.js v24.21.0

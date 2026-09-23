@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-22T21:37:40.361925+00:00",
+  "capturedAt": "2026-09-23T12:43:18.997689+00:00",
   "implementationCommits": [
     "09fed1a7e20f106e35c24a65090289e45d821d43",
     "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
@@ -9,7 +9,8 @@
     "4578810ee33172d3dba9cbcfc454bdf51062cf77",
     "72d60f5b720034abd2cc0d394d719736fccdc8ab",
     "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b",
-    "7b64d34b378f713932ab4841e19d5ed240178a09"
+    "7b64d34b378f713932ab4841e19d5ed240178a09",
+    "df94a3a5cff2c944f81db64fd982109c0aba6556"
   ],
   "scope": "Direct-controller source/function changes; not full V4 completion",
   "provenanceNotes": [
@@ -20,7 +21,8 @@
     "No test, resource guard, or phase approval was fabricated or weakened.",
     "New provider-admission log copies additionally trim trailing horizontal whitespace on failed-assertion pretty-print lines for Git whitespace hygiene; affected file records report the line count. Original host bytes and their SHA-256 provenance remain unchanged.",
     "Media-focused05 and subsequent records additionally capture untracked-file SHA-256 values. Older tracked-diff hashes alone do not cover untracked source. Media logs preserve failed startup/semantic assertion attempts; normalized copies retain original-host and copied hashes, with per-file whitespace normalization counts.",
-    "Browser foundation records distinguish pure/module checks, real headed native-IDB module cases and product acceptance. Final served bundle and screenshots are byte-identical artifacts; harness/log/technical text copies are path-redacted with original-host and copied hashes. Earlier failed infrastructure run and intermediate WIP passes are preserved, not added as unique coverage."
+    "Browser foundation records distinguish pure/module checks, real headed native-IDB module cases and product acceptance. Final served bundle and screenshots are byte-identical artifacts; harness/log/technical text copies are path-redacted with original-host and copied hashes. Earlier failed infrastructure run and intermediate WIP passes are preserved, not added as unique coverage.",
+    "Copy module evidence preserves failed targeted types and a Browser Use executable failure. The two \"headful\"-named copy runs were NOT headed; actual user-agent reports HeadlessChrome. Final exact served bundle, harness and screenshot are retained with SHA provenance; earlier bundles are not archived in full."
   ],
   "checksNotClaimed": {
     "rootTypecheck": "Earlier guarded full compiler attempts were resource-blocked; no whole-project typecheck pass for this candidate.",
@@ -29,16 +31,17 @@
     "productionDeployment": "Not authorized and not performed.",
     "fullCutover": "CLI delivery, remaining legacy/plugin/Workflow cuts and productive attachment wiring remain open.",
     "backendContentBindingTypecheck": "Earlier broader backend import graph exhausted384MiB V8 heap (exit134). Narrow resource-store/payload/protocol/provider/draft targets now pass; not full worker/web-app/root compilation.",
-    "productiveK07": "Typed JSON/media admission, scoped grants/history and private transactional browser draft/receipt/CAS repositories are implemented. Native-IDB real-tab module behavior is verified. Actual Composer/provider/freeze/retry, independent copy/fork/auth, chunks/GC and rich UI/history remain open; no real App login, native-tool or full-product acceptance.",
+    "productiveK07": "Server typed JSON/media admission, private browser draft/copy CAS and independent copy/paste are implemented. Productive provider-aware Composer/freeze/stage/send/reconcile/copy UI, chunks/GC, fork/history/auth and rich UI remain open. Final copy verification is HeadlessChrome module evidence only.",
     "mediaDurabilityAndMigration": "Schema16 uses disposable fixtures only; no valuable/live migration. No directory-fsync/power-loss, whole-system retention, streaming/load or payload-root relocation acceptance.",
-    "browserFoundation": "Headed Chrome/module CAS is not integrated Composer UI, real App auth/logout, actual quota exhaustion, physical/power-loss durability, independent-copy CAS or valuable-data migration. Only disposable uniquely named fixture DBs were used; copied profile state was not treated as empty."
+    "browserFoundation": "Headed Chrome/module CAS is not integrated Composer UI, real App auth/logout, actual quota exhaustion, physical/power-loss durability, independent-copy CAS or valuable-data migration. Only disposable uniquely named fixture DBs were used; copied profile state was not treated as empty.",
+    "copyAcceptance": "Private 26 module tests and 21 native-IDB HeadlessChrome module cases are not full app typecheck, headful product UI, real App auth/logout, live migration, actual quota exhaustion, provider selection or installed-candidate acceptance."
   },
   "pathSubstitutions": {
     "$WORKTREE": "isolated beta4/full-i-20260922 implementation worktree",
     "$RUN": "host-owned full-completion control/evidence directory",
     "$REPOSITORY": "original repository checkout",
     "$OPERATOR_HOME": "existing operator Pibo Home, used only by supported browser tooling",
-    "$OWNED_PREVIEW": "disposable module Preview control home"
+    "$OWNED_PREVIEW": "disposable copy-module Preview control home"
   },
   "batches": [
     {
@@ -1014,6 +1017,446 @@
           "trailingHorizontalWhitespaceLinesNormalized": 1
         }
       ],
+      "testGroups": [
+        {
+          "kind": "documentation validators/tests",
+          "pass": 87,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-copy-focused-01",
+      "purpose": "First narrow typecheck failed on legacy-copy timestamp inference; no tests ran",
+      "exit": 2,
+      "passedTests": 0,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:15:51Z",
+      "ended": "2026-09-23T12:15:56Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-focused-01.log",
+          "sha256": "596dd961dd538ca72717ecbfe4636f88fe38eb15eb9ac01d3b6d29ae3053f368",
+          "originalHostSha256": "596dd961dd538ca72717ecbfe4636f88fe38eb15eb9ac01d3b6d29ae3053f368"
+        },
+        {
+          "file": "cutover-k07-copy-focused-01.meta",
+          "sha256": "55a08ec7579428856e72d779da2caf66caee5aa0740beb79e2fffef2af2e1c49",
+          "originalHostSha256": "f6b15fc822891f556e5ca1a0236de63818791a217678fa2bac102fbf1ee6cadf",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": []
+    },
+    {
+      "id": "cutover-k07-copy-focused-02",
+      "purpose": "Second narrow typecheck failed on intentional legacy cast; no tests ran",
+      "exit": 2,
+      "passedTests": 0,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:16:19Z",
+      "ended": "2026-09-23T12:16:23Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-focused-02.log",
+          "sha256": "6a8aab1a364b77b4073f5f80fa149c9183a4dc3a52c3b023c0f22c43866add69",
+          "originalHostSha256": "6a8aab1a364b77b4073f5f80fa149c9183a4dc3a52c3b023c0f22c43866add69"
+        },
+        {
+          "file": "cutover-k07-copy-focused-02.meta",
+          "sha256": "697949b683e8a20556e972a7921d6871673d6401ff69a93a9426f349a7879ef0",
+          "originalHostSha256": "5aa8b5422259346d4fc5c14b1cb20dd1c5cacfa0706e066d33fa08995ea07f0b",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": []
+    },
+    {
+      "id": "cutover-k07-copy-focused-03",
+      "purpose": "WIP narrow types and 25 overlapping module tests; first owned browser bundle",
+      "exit": 0,
+      "passedTests": 25,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:16:50Z",
+      "ended": "2026-09-23T12:17:02Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-focused-03.log",
+          "sha256": "aaf5030e4c62696708717958537b62160e5338bd3ae3a9b12d4eb3e177a9d889",
+          "originalHostSha256": "aaf5030e4c62696708717958537b62160e5338bd3ae3a9b12d4eb3e177a9d889"
+        },
+        {
+          "file": "cutover-k07-copy-focused-03.meta",
+          "sha256": "2daef9d105b3425ee3c86743663fb46fff6aa9f438075b863104f47e7775046f",
+          "originalHostSha256": "b3954365f041eb3d18648dc46ad814474c120db61982fa79719e3195c70b4231",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "pure/core/submission/copy module tests",
+          "pass": 25,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-copy-focused-04",
+      "purpose": "WIP narrow types and 25 overlapping module tests; extra real-tab copy race bundle",
+      "exit": 0,
+      "passedTests": 25,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:25:07Z",
+      "ended": "2026-09-23T12:25:18Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-focused-04.log",
+          "sha256": "2c7a93dc2622928915e35de073f90283ed78f3d043d82080adac1a5f20099981",
+          "originalHostSha256": "2c7a93dc2622928915e35de073f90283ed78f3d043d82080adac1a5f20099981"
+        },
+        {
+          "file": "cutover-k07-copy-focused-04.meta",
+          "sha256": "36716ccf79e84a80cccd54beb402f14b607cb5b47a55b06b0ff9556744a8897e",
+          "originalHostSha256": "f0e8f935ede8b27ec6ecca522ed3883581d0466b7b35c6b576725f8412f90bfe",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "pure/core/submission/copy module tests",
+          "pass": 25,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-copy-focused-05",
+      "purpose": "WIP narrow types and 25 overlapping module tests; legacy non-JSON values introduced",
+      "exit": 0,
+      "passedTests": 25,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:28:59Z",
+      "ended": "2026-09-23T12:29:10Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-focused-05.log",
+          "sha256": "7fc7f7ef78269b07442abe235901743405c289c34098154da0d76aa58eb3f021",
+          "originalHostSha256": "7fc7f7ef78269b07442abe235901743405c289c34098154da0d76aa58eb3f021"
+        },
+        {
+          "file": "cutover-k07-copy-focused-05.meta",
+          "sha256": "eb02f174fef553c40edcfd3a006b886813b2ec5442cbb55bbf33b6a029997446",
+          "originalHostSha256": "26840246d24396fb972fd0c4de4b2100174997936731fd05a4af2cdd577c6a17",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "pure/core/submission/copy module tests",
+          "pass": 25,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-copy-focused-06",
+      "purpose": "Final copy code: narrow copy/draft/fixture typecheck, 26 pure/module tests and owned test-only browser fixture bundle",
+      "exit": 0,
+      "passedTests": 26,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:36:09Z",
+      "ended": "2026-09-23T12:36:21Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-focused-06.log",
+          "sha256": "bb137ffcb6c003b1b3c8b0bc600ff373d329b2b0bd100b200f0ee48e3f2eefc2",
+          "originalHostSha256": "bb137ffcb6c003b1b3c8b0bc600ff373d329b2b0bd100b200f0ee48e3f2eefc2"
+        },
+        {
+          "file": "cutover-k07-copy-focused-06.meta",
+          "sha256": "ea93aafc9ebc3967943f663b102bba431db6359962bd70d019cf42f6ced70b4a",
+          "originalHostSha256": "90e8f09c207df5be84bd6eed3e97556ee81fa0aff9f4f976ff89ad6238574fed",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "pure/core/submission/copy module tests",
+          "pass": 26,
+          "fail": 0
+        }
+      ],
+      "verifiedSourceCheckpoint": "df94a3a5cff2c944f81db64fd982109c0aba6556",
+      "sourceEquivalence": "Controller compared HEAD tracked-diff SHA-256 and the new untracked-file SHA-256 against both final run metadata immediately before selectively staging and committing source df94a3a5."
+    },
+    {
+      "id": "cutover-k07-copy-headful-01",
+      "purpose": "Browser Use CLI executable unavailable on second invocation; no module cases ran; headful label never proved headed",
+      "exit": 1,
+      "passedTests": 0,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:20:29Z",
+      "ended": "2026-09-23T12:20:44Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-headful-01.log",
+          "sha256": "87755a880d4eb985bb3d081461e4c203d83e4d74ee90e4b8449dd669d4f2bcb6",
+          "originalHostSha256": "95537a293188f80e55872cd49d40afca6556bc1af484aba055ff43b8239a509d",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "cutover-k07-copy-headful-01.meta",
+          "sha256": "5fb2ec11bd5a0db8a1e5f68d8b9ac89498db509d0b03299c9b06869d92a799eb",
+          "originalHostSha256": "b184e14824649377973ec88950b15f7971f43f7d86edc83e5915a65b8393946a",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "executedModuleCases": 0
+    },
+    {
+      "id": "cutover-k07-copy-headful-02",
+      "purpose": "WIP 18 real native-IDB cases; User-Agent says HeadlessChrome despite misleading label",
+      "exit": 0,
+      "passedTests": 18,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:22:29Z",
+      "ended": "2026-09-23T12:23:44Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-headful-02.log",
+          "sha256": "9ec2c9c6210e4dfabda02e543c76e3bd40c92a157693f87fe56332bb04155d41",
+          "originalHostSha256": "e20da984894a7ebb868303d3deaecd0c0c267091cbef654b6273eb6ff1890d94",
+          "trailingHorizontalWhitespaceLinesNormalized": 7
+        },
+        {
+          "file": "cutover-k07-copy-headful-02.meta",
+          "sha256": "31cf5a51cca0b705f49d20869e372618219b6a989757fea7dd209986e9185ddb",
+          "originalHostSha256": "6450db15e137d6445eb33b69f54d28c3fbbc364096d61987fda7e3f2148f9280",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-headful-02-technical.json",
+          "sha256": "43bd88239689ae02f2cde6bd088ce23fab92e682a5ce5a5121e126b9f4a1e690",
+          "originalHostSha256": "43bd88239689ae02f2cde6bd088ce23fab92e682a5ce5a5121e126b9f4a1e690"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-headful-02.json",
+          "sha256": "347038a7890348007a0e01914e84dd80e54fab0d466048246a50e50a892c7a2b",
+          "originalHostSha256": "347038a7890348007a0e01914e84dd80e54fab0d466048246a50e50a892c7a2b"
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "actual HeadlessChrome native-IDB module cases, including separate tab when named",
+          "pass": 18,
+          "fail": 0
+        }
+      ],
+      "servedBundleSha256": "422aa2b3df5db760827a75e0cbce2491a8283d8326f64fdde600ede0cdfc7523"
+    },
+    {
+      "id": "cutover-k07-copy-browser-03",
+      "purpose": "WIP 19 real HeadlessChrome/native-IDB module cases including separate-tab copy CAS",
+      "exit": 0,
+      "passedTests": 19,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:25:59Z",
+      "ended": "2026-09-23T12:27:15Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-browser-03.log",
+          "sha256": "669fbd004f002f2cb9c7498d8ede5a2e933c1a674cc116ab7b598c82807faf3f",
+          "originalHostSha256": "604b84bd5f8430ad80099ad27f3b23e07bc10f3a7bc8bc869dede09abe8610ba",
+          "trailingHorizontalWhitespaceLinesNormalized": 7
+        },
+        {
+          "file": "cutover-k07-copy-browser-03.meta",
+          "sha256": "c878007f23f14a8a38bf7ecc51f1822465c1ebca295b50ce57aab761fae16c70",
+          "originalHostSha256": "20338ff1249934d94b5c172c08cd94f73469ed81be0f23611e1fa9a34492d8d7",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-03-technical.json",
+          "sha256": "a74d5495149618620ee4367bda9b40ae9715f8e8efd3c60fdf75416a489572f8",
+          "originalHostSha256": "a74d5495149618620ee4367bda9b40ae9715f8e8efd3c60fdf75416a489572f8"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-03.json",
+          "sha256": "d39efecd5ee4af9b227d1f8d7e7fba76d7f1dcdebb2ce3f2c37db27100ce263c",
+          "originalHostSha256": "d39efecd5ee4af9b227d1f8d7e7fba76d7f1dcdebb2ce3f2c37db27100ce263c"
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "actual HeadlessChrome native-IDB module cases, including separate tab when named",
+          "pass": 19,
+          "fail": 0
+        }
+      ],
+      "servedBundleSha256": "1f81a5243378ac378c5636416438accfd30dc29ca8be9b2dc953a0ec40bf8346"
+    },
+    {
+      "id": "cutover-k07-copy-browser-04",
+      "purpose": "WIP 19 real HeadlessChrome/native-IDB module cases with legacy structured clone preservation",
+      "exit": 0,
+      "passedTests": 19,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:29:21Z",
+      "ended": "2026-09-23T12:30:36Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-browser-04.log",
+          "sha256": "7d41280b190e305f49d25c9d663959add69e9ffdf0b822a700cfc84aad16faf2",
+          "originalHostSha256": "907c37a3ba5891e1da3c76ac94e6b96e854c9500343b1a62d065bdf8030a0777",
+          "trailingHorizontalWhitespaceLinesNormalized": 7
+        },
+        {
+          "file": "cutover-k07-copy-browser-04.meta",
+          "sha256": "a0e4cce26c9a4b402b479544b057dad861d58c79c70b871f415122a3db393eec",
+          "originalHostSha256": "4d30903737f8cedbc81f3a944a54080094a8f547d2a94585b76ebec10f820c24",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-04-technical.json",
+          "sha256": "d4029b30141fbb875bcfc91425f98e334ed1750b9167e72c06d68ae27e8a2d55",
+          "originalHostSha256": "d4029b30141fbb875bcfc91425f98e334ed1750b9167e72c06d68ae27e8a2d55"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-04.json",
+          "sha256": "cc36af29652ce62166f81b50ea9af19e965d038c5a7c072b4e163cadd7c66a48",
+          "originalHostSha256": "cc36af29652ce62166f81b50ea9af19e965d038c5a7c072b4e163cadd7c66a48"
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "actual HeadlessChrome native-IDB module cases, including separate tab when named",
+          "pass": 19,
+          "fail": 0
+        }
+      ],
+      "servedBundleSha256": "1b4429fd2294c2b2541d517a4d3ca769676a6d1d8167b069f360693a65eeb11c"
+    },
+    {
+      "id": "cutover-k07-copy-browser-05",
+      "purpose": "Final source: 21 HeadlessChrome/native-IDB module cases including separate-tab copy CAS, exact scope, failure and revision-limit cases; not product UI",
+      "exit": 0,
+      "passedTests": 21,
+      "sourceHeadAtStart": "316098986b309c32474785d80ad4e8a2f9fc61c2",
+      "started": "2026-09-23T12:36:31Z",
+      "ended": "2026-09-23T12:37:46Z",
+      "files": [
+        {
+          "file": "cutover-k07-copy-browser-05.log",
+          "sha256": "38c246114c146e782623d4eadd6908d08a050d3bf33f48178d56a00fd871d0fb",
+          "originalHostSha256": "766309511490189ba41a838033d468d281bba9f486021f820aa91b5f4d1a23f2",
+          "trailingHorizontalWhitespaceLinesNormalized": 7
+        },
+        {
+          "file": "cutover-k07-copy-browser-05.meta",
+          "sha256": "c9521d0e457f40f59e415f5361df1dccc51ab04f17c0e84d680b917bb64e8791",
+          "originalHostSha256": "6bfe0e81b739cdc1a7ffff6c3172e55ca414d24fe1bf509238aa782e80493567",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05-technical.json",
+          "sha256": "8603f91aca21998b885c2dca5da7978834e6ea73e186fed23bfcba0352d22e5b",
+          "originalHostSha256": "8603f91aca21998b885c2dca5da7978834e6ea73e186fed23bfcba0352d22e5b"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05.json",
+          "sha256": "686d611bc554d964813cab638cc2098c201aa62c9a339235f85b5a6a4fbb6d0b",
+          "originalHostSha256": "686d611bc554d964813cab638cc2098c201aa62c9a339235f85b5a6a4fbb6d0b"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05-harness/validate.mjs",
+          "sha256": "b6e5bd4a1197cc21d2a1d8370b46d311338dd5f87bc2ed5244c9e435eb85f9fb",
+          "originalHostSha256": "b6e5bd4a1197cc21d2a1d8370b46d311338dd5f87bc2ed5244c9e435eb85f9fb"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05-harness/server.mjs",
+          "sha256": "031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe",
+          "originalHostSha256": "031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05-harness/index.html",
+          "sha256": "a2829ce42f76011f2a9bbaa2776a0d2064cd674e36509edb400704b8c3a1ab6f",
+          "originalHostSha256": "a2829ce42f76011f2a9bbaa2776a0d2064cd674e36509edb400704b8c3a1ab6f"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05-harness/browser-shell.sh",
+          "sha256": "7cd7f3a7431f982c0fdf32a57cd965a791a5270142eb9619a8ea02c9efc8c70a",
+          "originalHostSha256": "ee39e2d79dbcc677344138202ce57fec0b1d27c35f278b17eca8a2be0c183364"
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05-harness/bundle.js",
+          "sha256": "876a1510ef565d6f24357c7c302311472234b26f32f5f9ee7711b1350baf9e8e",
+          "originalHostSha256": "876a1510ef565d6f24357c7c302311472234b26f32f5f9ee7711b1350baf9e8e",
+          "byteIdentical": true
+        },
+        {
+          "file": "browser/copy/cutover-k07-copy-browser-05.png",
+          "sha256": "20270cad5683db2c0345451e496175e5d3da0767559af440daadb9958d9cd659",
+          "originalHostSha256": "20270cad5683db2c0345451e496175e5d3da0767559af440daadb9958d9cd659",
+          "byteIdentical": true
+        },
+        {
+          "file": "browser/copy/cleanup.log",
+          "sha256": "205504e12d8e8d74379ee014ecf45f6e8c8ba00d6061ff599f24a6673164bd29",
+          "originalHostSha256": "165493663205c480d399d529aef2f281c7c7826410eaaa8fbbcb5e7bb95fd215"
+        },
+        {
+          "file": "browser/copy/preview.json",
+          "sha256": "f21f092d5bd42631018bc927c7ca10d53e21af02f84745dca62c0aa82a13ab2d",
+          "originalHostSha256": "f5016c87d7bf0ff0bc722c423c7b66bceb2386971db1a08485ae7e96a2ae2463"
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "actual HeadlessChrome native-IDB module cases, including separate tab when named",
+          "pass": 21,
+          "fail": 0
+        }
+      ],
+      "servedBundleSha256": "876a1510ef565d6f24357c7c302311472234b26f32f5f9ee7711b1350baf9e8e",
+      "fixtureScope": "Exact final harness and served bundle captured, one static loopback module fixture, only uniquely named disposable pibo-k07-fixture-* IDB databases. Preview registry and synthetic Session were confined to an owned temporary home; browser lease was stateful and NOT an empty profile.",
+      "browserMode": "HeadlessChrome/153 confirmed from User-Agent; screenshot is a static module fixture, not headful UI or product acceptance.",
+      "resourceCleanup": "Supported Browser Use scoped close returned no active session, owned browser slot released without delete-profile, isolated managed Preview removed after auto-stop. No manual process kill.",
+      "verifiedSourceCheckpoint": "df94a3a5cff2c944f81db64fd982109c0aba6556",
+      "sourceEquivalence": "Controller compared HEAD tracked-diff SHA-256 and the new untracked-file SHA-256 against both final run metadata immediately before selectively staging and committing source df94a3a5."
+    },
+    {
+      "id": "cutover-docs-07",
+      "purpose": "Copy canonical documentation: strict/core/migration/index/log validation and 87 documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "df94a3a5cff2c944f81db64fd982109c0aba6556",
+      "started": "2026-09-23T12:41:47Z",
+      "ended": "2026-09-23T12:42:59Z",
+      "files": [
+        {
+          "file": "cutover-docs-07.log",
+          "sha256": "b17b5eff65d22faef8ac1c3f788abe8ac3c9934bbd4f36ee35bae894455a36d0",
+          "originalHostSha256": "b17b5eff65d22faef8ac1c3f788abe8ac3c9934bbd4f36ee35bae894455a36d0"
+        },
+        {
+          "file": "cutover-docs-07.meta",
+          "sha256": "cf47c35972be7236513f6677563106f7ad2c0e3ddba17be6687c81945fd6a929",
+          "originalHostSha256": "26f7bcd2daf6ea4fcbdd89cf41728b630bbd0e6ced60036dde2ed3cec2424218",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "untrackedFileHashesRecorded": true,
       "testGroups": [
         {
           "kind": "documentation validators/tests",

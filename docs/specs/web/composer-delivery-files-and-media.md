@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-22T21:27:01Z"
+  at: "2026-09-23T12:39:00Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -26,18 +26,47 @@ sources:
   - id: "browser-draft-source-and-tests"
     resource: "scope:direct-controller checkpoint 7b64d34b378f713932ab4841e19d5ed240178a09"
     title: "Private transactional browser drafts, explicit legacy custody and real-browser module verification"
+  - id: "browser-copy-source-and-tests"
+    resource: "scope:direct-controller checkpoint df94a3a5cff2c944f81db64fd982109c0aba6556"
+    title: "Private owner-scoped copy CAS, independent bytes and cross-Pibo-Session insertion"
 implementation:
   state: "current"
-  baseline_commit: "7b64d34b378f713932ab4841e19d5ed240178a09"
+  baseline_commit: "df94a3a5cff2c944f81db64fd982109c0aba6556"
   package: "WP-06+07-WEB"
   package_parent: "ba3c2d6611ce8d234f887135af605837333bf751"
   source_evidence: "performed"
-  focused_test_execution: "Browser foundation: 25 pure/module tests and 15 headed native-IndexedDB module cases passed; earlier media checkpoint: 164 module and 11 HTTP tests. Batches overlap and are not unique-coverage totals."
-  build_typecheck_package_execution: "Narrow browser persistence/fixture types and owned browser fixture bundle passed; earlier media types, behavioral emit and 22 artifacts remain scoped to their checkpoint. No full application/root compiler or installation pass."
-  visual_provider_gateway_pibo2_execution: "Headed Browser Use/CDP module fixture only, including separate-tab CAS; no Chat UI, real App authentication, provider, gateway or Pibo2 acceptance."
+  focused_test_execution: "Private copy checkpoint: 26 focused module tests and 21 real-browser HeadlessChrome/native-IndexedDB cases; earlier draft foundation: 25 modules and 15 headed browser cases. These overlap and are not unique-coverage totals."
+  build_typecheck_package_execution: "Narrow browser copy/draft/fixture type graph and owned browser fixture bundle passed. Earlier media types, behavioral emit and 22 artifacts remain scoped to their checkpoint. No full application/root compiler or installation pass."
+  visual_provider_gateway_pibo2_execution: "Headed browser proof covers the earlier draft module foundation only; copy module cases ran in HeadlessChrome. No integrated Chat UI, real App auth, provider, gateway or Pibo2 acceptance."
 traceability:
-  commit: "7b64d34b378f713932ab4841e19d5ed240178a09"
+  commit: "df94a3a5cff2c944f81db64fd982109c0aba6556"
   requirements:
+    - id: "WEB-COMPOSER-COPY-011"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts"
+          symbol: "readCopyBufferState"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-persistence.ts"
+          symbol: "openAttachmentStores"
+        - path: "src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts"
+          symbol: "openIndexedAttachmentDraft"
+      tests:
+        - path: "test/chat-ui-attachment-transitions.test.mjs"
+          name: "copy byte ids fail closed on collisions and legacy structured values do not gain typed authority"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "independent-copy-staging-and-cross-session-paste"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "copy-cas-tombstones-and-stale-source"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "copy-paste-rejects-stale-missing-and-foreign-owner"
+        - path: "test/fixtures/attachments/browser-persistence-lab.ts"
+          name: "two-real-tabs-one-copy-cas-winner"
+      failures:
+        - "Copy replacement and clear use one per-owner monotonic revision and retain tombstones; stale writers cannot replace the last confirmed copy."
+        - "Source identity/content and byte scope are checked transactionally; cross-Session paste mints new draft and byte identities. Missing bytes, owner mismatch, aborts and revision exhaustion fail without partial publication."
+        - "Old untyped copy values retain exact structured-cloneable payloads and duplicate holders, but cannot acquire an invented provider type/schema or be pasted as typed content."
+        - "This private browser repository does not establish productive copy UI, provider validation before staging, Composer sending, real App auth, visual acceptance or full V4 completion."
+      confidence: "high"
     - id: "WEB-COMPOSER-STORAGE-010"
       status: "implemented"
       sources:
@@ -64,7 +93,7 @@ traceability:
         - "Stale entry revisions fail without overwriting newer state; aborted writes publish no successful result; corrupt source and retained backup text are not replaced."
         - "Legacy custody is explicit and globally first-wins for one source key, not proof of original authorship or an automatic login fallback."
         - "Closing a facade hides pending results without erasing the old owner's data; clearOwner is active-state reset, not logout or account erasure."
-        - "Private native-IndexedDB module evidence does not establish Composer wiring, independent-copy CAS, actual quota exhaustion, real App auth or full-product acceptance."
+        - "Private native-IndexedDB draft evidence does not establish Composer wiring, actual quota exhaustion, real App auth or full-product acceptance; independent-copy semantics have a separate private requirement."
       confidence: "high"
     - id: "WEB-COMPOSER-RESOURCES-009"
       status: "implemented"
@@ -497,7 +526,7 @@ The whole HTTP body remains limited to 4 MiB. The separate stored-resource limit
 
 Fresh message admission verifies bound media bytes in the worker before its transaction and rechecks ownership during promotion. Preparation and discard use the existing bounded storage worker; its 500 ms queue/execution limit and 10 s startup budget are unchanged. Admission tests explicitly wait for worker readiness, while a deterministic cold-start test verifies that startup does not extend an RPC deadline. A matching receipt still proves admission, not present media availability or successful model execution. Worker duplicate admission and receipt lookup do not re-read media bodies; a fresh HTTP materialization may fail on a missing file, so receipt lookup remains the reconciliation path.
 
-The [product-store contract](/specs/data/product-store-history-and-read-models.md) owns grant/refcount/schema and deletion semantics. Actual Composer freeze/preparation/retry, browser copy holders, fork transport, rich history rendering, auth/logout and multi-tab integration remain open. Fake-auth API fixtures and direct byte checks are not real-login, native-tool execution or headful acceptance.
+The [product-store contract](/specs/data/product-store-history-and-read-models.md) owns grant/refcount/schema and deletion semantics. Private browser copy holders/CAS exist below; actual Composer freeze/preparation/retry, productive copy/fork UI, rich history rendering, auth/logout and integrated multi-tab behavior remain open. Fake-auth API fixtures and direct byte checks are not real-login, native-tool execution or headful acceptance.
 
 ### Requirement: WEB-COMPOSER-STORAGE-010
 
@@ -505,13 +534,25 @@ The private browser attachment repository uses `pibo-attachments-v1` database ve
 
 `openIndexedAttachmentDraft` captures plain-data commands and new byte arrays before waiting. Each mutation reads the current row, compares its expected safe-integer storage revision, runs the existing engine/serializer on a transaction-local scratch store, and commits the row plus associated byte changes in one IndexedDB transaction. `writerEpoch` is diagnostic; the row revision supplies CAS. A stale caller receives `ATT_STALE_REVISION` rather than overwriting newer state. No arbitrary provider or network await occurs inside that transaction; asynchronous provider work must precede a data-only command. The existing public `add`, `update` and `remove` APIs retain Promise rejection behavior despite the new private synchronous dispatcher.
 
-New byte acquisition is atomic with a new draft record and MUST match its owner, Pibo Session, draft identity, MIME and size. Blob IDs are immutable: a collision cannot replace another row. Add/freeze checks byte availability. Frozen snapshots retain their byte holders after edits/removal; consume/release deletes only bytes no longer held by persisted owner drafts, open snapshots or the existing copy buffer. Admission reconciliation does not require local bytes still to exist. The unchanged per-blob limit is 15 MiB, not a new total attachment or storage quota. This does not yet implement independent copy bytes or copy-buffer CAS.
+New byte acquisition is atomic with a new draft record and MUST match its owner, Pibo Session, draft identity, MIME and size. Blob IDs are immutable: a collision cannot replace another row. Add/freeze checks byte availability. Frozen snapshots retain their byte holders after edits/removal; consume/release deletes only bytes no longer held by persisted owner drafts, open snapshots or the existing copy buffer. Admission reconciliation does not require local bytes still to exist. The unchanged per-blob limit is 15 MiB, not a new total attachment or storage quota. Independently owned copy bytes and copy-buffer CAS are specified separately below.
 
-Success is returned only after transaction completion. Abort/error becomes `ATT_STORAGE_FAILED` unless a more specific attachment error applies; a blocked upgrade fails without later silently upgrading after the caller abandoned it. Version changes close the connection. Explicit `close()` prevents subsequent reads/writes and hides pending old-owner results even when an already-started transaction committed. It does not erase data. `clearOwner()` explicitly clears active drafts/bytes/copy, retaining draft tombstones with advanced revisions to prevent stale absent-state writes. It retains legacy custody, exact text backups and original localStorage: it is neither logout nor account/browser erasure.
+Success is returned only after transaction completion. Abort/error becomes `ATT_STORAGE_FAILED` unless a more specific attachment error applies; a blocked upgrade fails without later silently upgrading after the caller abandoned it. Version changes close the connection. Explicit `close()` prevents subsequent reads/writes and hides pending old-owner results even when an already-started transaction committed. It does not erase data. `clearOwner()` explicitly clears active drafts/bytes/copy, retaining draft tombstones with advanced revisions to prevent stale absent-state writes. It retains legacy custody, exact text backups and original localStorage: it is neither logout nor account/browser erasure. The copy row receives an advanced revision tombstone even if absent; a corrupt row fails the entire reset closed. A caller must reload its copy revision after reset.
 
 There is no automatic unowned-localStorage fallback. `adoptLegacy` requires explicit custody confirmation, an absent entry and a globally first-wins claim for the legacy source key. The claim contains metadata, while exact original text is backed up under `[ownerUserId, sourceKey]` and round-trip checked atomically with the draft row. Foreign claimants are denied before reading that legacy content. The original localStorage string remains unchanged, and custody never invents proof of original authorship. Backup reads recheck owner, Pibo Session, key and a digest of the exact retained string. `restoreLegacyText` uses CAS and permits only an absent or explicitly cleared draft. It restores metadata/proofs, not deleted binary bytes; a later freeze still fails when required bytes are absent. A new login for the same owner may reopen the same Pibo Session. Copying into a different Pibo Session is not legacy restoration.
 
-**Evidence boundary:** the private facade is not yet the productive Composer owner. Fifteen headed Chrome/native-IndexedDB module cases include a separate-tab CAS race, disposable version-2 upgrade, blocked upgrade, injected write abort, custody/recovery races, corrupt-state preservation and close guards. Injected abort is not actual quota exhaustion. Only uniquely named owned fixture databases were opened; no application/default database or valuable copied data was upgraded. This does not establish real App authentication, integrated logout, Composer editing/sending, independent copy/fork, retention/GC or product UI acceptance.
+**Evidence boundary:** the private facade is not yet the productive Composer owner. Fifteen headed Chrome/native-IndexedDB module cases include a separate-tab CAS race, disposable version-2 upgrade, blocked upgrade, injected write abort, custody/recovery races, corrupt-state preservation and close guards. Injected abort is not actual quota exhaustion. Only uniquely named owned fixture databases were opened; no application/default database or valuable copied data was upgraded. This does not establish real App authentication, integrated logout, Composer editing/sending, retention/GC or product UI acceptance.
+
+### Requirement: WEB-COMPOSER-COPY-011
+
+The private browser copy buffer retains at most one confirmed entry per owner. Its version-3 database stores a monotonically increasing **in-row** revision; `stage(expectedRevision, entry)` and `clear(expectedRevision)` serialize through an IndexedDB readwrite transaction and fail with `ATT_STALE_REVISION` on a changed row. Clear writes a tombstone, never an ABA-prone bare delete. `clearOwner()` tombstones the copy row too, even if no row existed. Copy state is not a substitute for product history, a server resource grant or the Composer's existing upload list.
+
+Staging captures plain typed input before the first asynchronous wait. It compares an existing **live** source draft's exact owner, Pibo Session, record ID, record revision, provider type, schema version, canonical payload and ordered media against that input. For each media descriptor it verifies the owner/Session/draft/MIME/size/actual stored bytes and makes a fresh independently owned immutable blob under a copy-holder identity. Copy row, byte acquisitions and cleanup of the replaced holder commit atomically; cleanup consults all transaction-current persisted draft, snapshot and copy holders. A failed write/byte collision cannot publish half a copy. Copying does not grant provider validity: productive callers must consult the selected browser provider outside the transaction, and the server independently revalidates pins/resources on message admission.
+
+`pasteCopy(targetDraftExpectedRevision, copyExpectedRevision)` verifies both revisions in one readwrite transaction, refuses empty/cleared or legacy untyped rows, creates a **new** target-Pibo-Session attachment ID and distinct byte IDs under its new draft, and commits all target state and bytes together. It never carries source-scoped blob IDs or past server grants to a new Session. Source removal or copy clear after a committed paste cannot revoke its independent bytes. Model/provider outcome and product-history fork behavior are unrelated. A missing holder byte fails `ATT_BYTES_MISSING`; changed state fails `ATT_STALE_REVISION`; exhaustion fails `ATT_LIMIT_EXCEEDED`. `close()` hides results of old-owner operations without erasing their committed state.
+
+Historical version-2 copy rows remain readable as `legacy`, with their structured-cloneable (possibly non-JSON) payload and duplicate media holders intact. This does **not** assign a type/schema or authorize typed paste; explicit replacement/clear under revision 1 is required. Corrupt owner/holder metadata fails closed. The in-memory test adapter covers byte scope but lacks the durable source-record/holder scan; it is not parity or cross-tab evidence.
+
+**Evidence boundary:** the final copy-focused batch passed narrow copy/draft/fixture types and 26 overlapping pure/module tests. The final static module lab passed 21 Chrome 153 native-IndexedDB cases, including actual two-tab copy CAS, independent cross-Session bytes/paste, rollback, legacy structured-value retention, foreign-owner and failure/limit cases. Its UA explicitly reports **HeadlessChrome**, so neither this nor earlier misnamed copy-headful labels are headful evidence. A previous 15-case **headed** batch belongs to the earlier draft foundation, not this copy source. Only uniquely named disposable fixture databases were touched. There is no productive Composer copy button, browser/provider integration, real App auth/logout, end-to-end typed send, visual-product acceptance, actual quota exhaustion or installation proof.
 
 ### Requirement: WEB-COMPOSER-DRAFTS-001
 
@@ -657,7 +698,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 - Evidence gap: No headful microphone permission, recording, keyboard, file picker/drop, image dialog, or speech validation.
 - Evidence gap: No external media provider path executed.
-- K07 typed JSON/media admission, pinned provider validation, scoped durable media routes and private draft/receipt/CAS repositories are implemented. Actual provider-aware Composer mutation/freeze/send, chunks/GC/independent-copy/fork/auth and rich UI/history integration remain open. Module-level real-tab CAS is not integrated Composer acceptance or the completed attachment cutover.
+- K07 typed JSON/media admission, pinned provider validation, scoped durable media routes and private draft/copy/receipt/CAS repositories are implemented. Actual provider-aware Composer mutation/freeze/send, chunks/GC/productive-copy/fork/auth and rich UI/history integration remain open. Module-level real-tab CAS is not integrated Composer acceptance or the completed attachment cutover.
 
 ## Reconciled stale claims
 
@@ -669,6 +710,7 @@ Local/slash commands depend on registered capabilities. Attachments and media AP
 
 ## Verification and traceability
 
+- Private copy source checkpoint: `df94a3a5cff2c944f81db64fd982109c0aba6556`. Final `cutover-k07-copy-focused-06` passed narrow copy/draft/browser-fixture types, 26 pure/module tests and an owned esbuild module fixture bundle. `cutover-k07-copy-browser-05` passed 21 **HeadlessChrome** native-IndexedDB cases via Browser Use/CDP, including a genuine second-tab copy CAS. CDP verified the served bundle SHA-256 and reported no uncaught exceptions. Tracked-diff and the new untracked source-file hash matched both final runs immediately before staging. First two targeted type attempts failed and were fixed; an early Browser Use run failed because its tool executable was unavailable in a second child invocation. Intermediate copy runs are WIP, not unique coverage; their `headful` label was inaccurate because the user agent says HeadlessChrome. Final copy module/browser verification is not a full Chat UI, real login, productive provider, installation or release compiler pass.
 - Browser-foundation source checkpoint: `7b64d34b378f713932ab4841e19d5ed240178a09`. `cutover-k07-browser-state-focused-03` passed narrow persistence/fixture types and 25 pure/module tests, then built the owned browser fixture. `cutover-k07-browser-headful-03` passed 15 native-IndexedDB cases through headed Chrome 153, Browser Use interaction and CDP evidence, including a separate-tab CAS race. The served bundle hash matched the fixture build; console/network/exception results, exact harness and screenshot are retained. Tracked-diff and all five untracked source/test hashes matched both final runs immediately before the source commit. Extracted add/update/remove bodies were separately checked unchanged.
 - Earlier browser-focused batches passed the same 25-test group and are not added as unique coverage. Headful attempt 01 failed in Browser Use element-index handling before any module case ran; attempt 02 passed ten cases on earlier source. Both remain evidence, not final-source acceptance. No full application compiler, real App login, physical quota exhaustion, product UI, valuable-data migration or installation acceptance follows from these module checks.
 - Media-authority source checkpoint: `8cefa246f0f7e7a4bb921e98b4349eddfd330e0b`. `cutover-k07-media-admission-focused-06` passed 164 focused module/provider/storage/draft tests and eleven selected HTTP tests, with no failures/skips. Narrow resource-store/payload/protocol/provider/draft types passed, followed by a 581-file behavioral emit and 22 plugin artifacts. This is not full worker/web-app/root compilation, release packaging, installation or productive Composer acceptance.

@@ -1,0 +1,234 @@
+This is a focused batch, not a full suite or installation test.
+harness_sha256 validate.mjs b6e5bd4a1197cc21d2a1d8370b46d311338dd5f87bc2ed5244c9e435eb85f9fb
+harness_sha256 server.mjs 031fd8bde583161834f78d60e0e91458fc863d06ed00bc61fb2a94793b0e24fe
+harness_sha256 index.html a2829ce42f76011f2a9bbaa2776a0d2064cd674e36509edb400704b8c3a1ab6f
+harness_sha256 browser-shell.sh ee39e2d79dbcc677344138202ce57fec0b1d27c35f278b17eca8a2be0c183364
+harness_sha256 bundle.js 876a1510ef565d6f24357c7c302311472234b26f32f5f9ee7711b1350baf9e8e
+browser-use open http://127.0.0.1:45127/
+url: http://127.0.0.1:45127/
+
+browser-use wait selector button
+selector: button
+found: True
+
+browser-use state
+viewport: 1920x1080
+page: 1920x1080
+scroll: (0, 0)
+K07 owned copy-persistence fixtures
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[72]<button />
+	Run persistence fixtures
+Ready. No application database will be opened.
+
+browser-use state
+viewport: 1920x1080
+page: 1920x1080
+scroll: (0, 0)
+K07 owned copy-persistence fixtures
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[72]<button />
+	Run persistence fixtures
+Ready. No application database will be opened.
+
+browser-use click 111 155
+clicked_coordinate: {'x': 111, 'y': 155}
+
+{
+  "kind": "real-browser-persistence-modules-only",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+  "pass": 21,
+  "fail": 0,
+  "results": [
+    {
+      "name": "cas-scope-capture",
+      "pass": true
+    },
+    {
+      "name": "atomic-bytes-and-immutable-owner",
+      "pass": true
+    },
+    {
+      "name": "frozen-holders-and-consumption",
+      "pass": true
+    },
+    {
+      "name": "clear-tombstone-no-aba",
+      "pass": true
+    },
+    {
+      "name": "explicit-legacy-custody-race",
+      "pass": true
+    },
+    {
+      "name": "same-owner-custody-and-text-restore-cas",
+      "pass": true
+    },
+    {
+      "name": "corrupt-legacy-and-backup-fail-closed",
+      "pass": true
+    },
+    {
+      "name": "text-restore-does-not-invent-deleted-bytes",
+      "pass": true
+    },
+    {
+      "name": "corrupt-text-preserved",
+      "pass": true
+    },
+    {
+      "name": "injected-write-abort-not-real-quota",
+      "pass": true
+    },
+    {
+      "name": "additive-v2-upgrade",
+      "pass": true
+    },
+    {
+      "name": "blocked-upgrade-is-not-late-success",
+      "pass": true
+    },
+    {
+      "name": "closed-byte-facade-hides-pending-read",
+      "pass": true
+    },
+    {
+      "name": "versionchange-closes-owner-facade",
+      "pass": true
+    },
+    {
+      "name": "independent-copy-staging-and-cross-session-paste",
+      "pass": true
+    },
+    {
+      "name": "copy-cas-tombstones-and-stale-source",
+      "pass": true
+    },
+    {
+      "name": "copy-rollback-preserves-old-copy-and-bytes",
+      "pass": true
+    },
+    {
+      "name": "copy-paste-rejects-stale-missing-and-foreign-owner",
+      "pass": true
+    },
+    {
+      "name": "copy-revision-exhaustion-preserves-row",
+      "pass": true
+    },
+    {
+      "name": "two-real-tabs-one-copy-cas-winner",
+      "pass": true
+    },
+    {
+      "name": "two-real-tabs-one-cas-winner",
+      "pass": true
+    }
+  ]
+}
+browser-use state
+viewport: 1905x1080
+page: 1905x1497
+scroll: (0, 0)
+Persistence fixtures PASS
+Module validation only: no Chat backend, authentication, Composer, provider or native-tool acceptance. Each test uses a unique disposable database. The second tab tests actual cross-tab CAS.
+[72]<button disabled=true />
+	Run persistence fixtures
+{
+  "kind": "real-browser-persistence-modules-only",
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+  "pass": 21,
+  "fail": 0,
+  "results": [
+    {
+      "name": "cas-scope-capture",
+      "pass": true
+    },
+    {
+      "name": "atomic-bytes-and-immutable-owner",
+      "pass": true
+    },
+    {
+      "name": "frozen-holders-and-consumption",
+      "pass": true
+    },
+    {
+      "name": "clear-tombstone-no-aba",
+      "pass": true
+    },
+    {
+      "name": "explicit-legacy-custody-race",
+      "pass": true
+    },
+    {
+      "name": "same-owner-custody-and-text-restore-cas",
+      "pass": true
+    },
+    {
+      "name": "corrupt-legacy-and-backup-fail-closed",
+      "pass": true
+    },
+    {
+      "name": "text-restore-does-not-invent-deleted-bytes",
+      "pass": true
+    },
+    {
+      "name": "corrupt-text-preserved",
+      "pass": true
+    },
+    {
+      "name": "injected-write-abort-not-real-quota",
+      "pass": true
+    },
+    {
+      "name": "additive-v2-upgrade",
+      "pass": true
+    },
+    {
+      "name": "blocked-upgrade-is-not-late-success",
+      "pass": true
+    },
+    {
+      "name": "closed-byte-facade-hides-pending-read",
+      "pass": true
+    },
+    {
+      "name": "versionchange-closes-owner-facade",
+      "pass": true
+    },
+    {
+      "name": "independent-copy-staging-and-cross-session-paste",
+      "pass": true
+    },
+    {
+      "name": "copy-cas-tombstones-and-stale-source",
+      "pass": true
+    },
+    {
+      "name": "copy-rollback-preserves-old-copy-and-bytes",
+      "pass": true
+    },
+    {
+      "name": "copy-paste-rejects-stale-missing-and-foreign-owner",
+      "pass": true
+    },
+    {
+      "name": "copy-revision-exhaustion-preserves-row",
+      "pass": true
+    },
+    {
+      "name": "two-real-tabs-one-copy-cas-winner",
+      "pass": true
+    },
+    {
+      "name": "two-real-tabs-one-cas-winner",
+      "pass": true
+    }
+  ]
+}
+
+browser-use screenshot $RUN/browser-persistence/copy/cutover-k07-copy-browser-05.png
+saved: $RUN/browser-persistence/copy/cutover-k07-copy-browser-05.png
+size: 106453
+
+PASS: 21 real-browser module cases, including separate-tab CAS; no application/authentication/Composer acceptance.

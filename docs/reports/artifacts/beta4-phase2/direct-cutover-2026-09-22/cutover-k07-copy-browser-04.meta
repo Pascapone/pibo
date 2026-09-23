@@ -1,0 +1,13 @@
+started=2026-09-23T12:29:21Z
+cwd=$WORKTREE
+command=bash -c export\ NODE_OPTIONS=--max-old-space-size=384\;\ node\ $RUN/browser-persistence/copy/validate.mjs\ cutover-k07-copy-browser-04\ 19
+source=316098986b309c32474785d80ad4e8a2f9fc61c2
+ M src/apps/chat-ui/src/attachments/core-attachment-indexed-draft.ts
+ M src/apps/chat-ui/src/attachments/core-attachment-persistence.ts
+ M test/chat-ui-attachment-transitions.test.mjs
+ M test/fixtures/attachments/browser-persistence-lab.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts
+f95e3a9117ca6b02ebe00ecf501d0e2dddd4cc1866ef1d934c3a5dd084dab182  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts": "e26c3dd3b3be7be458225d3c7ee8b2bea3e280a1c85ad178affb867e37d6bc8b"}
+exit=0
+ended=2026-09-23T12:30:36Z
