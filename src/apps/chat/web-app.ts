@@ -344,7 +344,7 @@ export { CHAT_WEB_API_PREFIX } from "./chat-api-routes.js";
 
 import type { PluginManager } from "../../plugins/manager.js";
 import { resolvePluginContributions } from "../../plugins/resolution.js";
-import { catalogPluginServices, PIBO_CHAT_EXTENSION_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboChatExtensionService, type PluginSessionPlanReader } from "../../plugins/product-services.js";
+import { catalogPluginServices, PIBO_CHAT_EXTENSION_SERVICE, PLUGIN_HOST_SERVICE, PLUGIN_MANAGEMENT_SERVICE, PLUGIN_SESSION_PLAN_SERVICE, type PiboChatExtensionService, type PiboWorkflowCatalogQuery, type PluginSessionPlanReader } from "../../plugins/product-services.js";
 import { getCoreAttachmentProvider } from "../../attachments/core-providers.js";
 import { readAttachmentMessage, materializeAttachmentMessage } from "../../attachments/message.js";
 import { AttachmentResourceStore } from "../../attachments/resource-store.js";
@@ -4636,7 +4636,7 @@ async function sendChatMessage(input: {
 }
 
 
-export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
+export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp & { workflowCatalogQuery(): PiboWorkflowCatalogQuery } {
 	ensurePrivateChatUploadDirectory();
 	const defaultProfile = options.defaultProfile ?? "base";
 	const dataStore = createDataStore(options);
@@ -4716,10 +4716,30 @@ export function createChatWebApp(options: ChatWebAppOptions = {}): PiboWebApp {
 		});
 	};
 
-	const application:PiboWebApp = {
+	const application: PiboWebApp & { workflowCatalogQuery(): PiboWorkflowCatalogQuery } = {
 		name: CHAT_WEB_APP_NAME,
 		mountPath: CHAT_WEB_MOUNT_PATH,
 		apiPrefix: CHAT_WEB_API_PREFIX,
+		workflowCatalogQuery(): PiboWorkflowCatalogQuery {
+			// Expose only borrowed catalog stores. Validation still runs against
+			// the full Core state; never pass that state through the plugin seam.
+			const fullServices = getWorkflowCatalogServices();
+			return {
+				state: {
+					workflowDraftStore: state.workflowDraftStore,
+					workflowPublishedVersionStore: state.workflowPublishedVersionStore,
+					workflowArchiveStore: state.workflowArchiveStore,
+					workflowTombstoneStore: state.workflowTombstoneStore,
+				},
+				services: {
+					validateDefinition: (definition, input) => fullServices.validateDefinition(definition, { ...input, state }),
+					summarizeDiagnostics: fullServices.summarizeDiagnostics,
+					runDraftValidation: (_queryState, context, webSession, record, trigger) =>
+						fullServices.runDraftValidation(state, context, webSession, record, trigger),
+					serializeDraft: fullServices.serializeDraft,
+				},
+			};
+		},
 		initialize(context) {
 			ensureCustomAgentProfiles(state,context);
 			ensureEventIndexing(state,context);

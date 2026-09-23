@@ -6,6 +6,7 @@ import type { PluginHost } from "./host.js";
 import type { PluginInstallation, PluginJsonObject } from "./manifest.js";
 import type { PiboWebAppContext, PiboWebSession } from "../web/types.js";
 import type { PiboRoom, PiboRoomNode } from "../apps/chat/types/rooms.js";
+import type { WorkflowCatalogServices, WorkflowCatalogState } from "../apps/chat/workflow-catalog.js";
 
 /** Stable services provided by the product composition through the plugin host. */
 export const PLUGIN_HOST_SERVICE = "pibo.plugins.host";
@@ -15,8 +16,16 @@ export const PIBO_PRODUCT_OPTIONS_SERVICE = "pibo.product.options";
 export const PIBO_LOOP_SERVICE = "pibo.loops.service";
 export const PIBO_USER_RESOURCES_SERVICE = "pibo.user-resources.service";
 export const PIBO_CHAT_EXTENSION_SERVICE = "pibo.chat.extensions";
+export const PIBO_WORKFLOW_CATALOG_QUERY_SERVICE = "pibo.workflows.catalog-query";
 export const PIBO_MESSAGE_PREFLIGHT_SERVICE = "pibo.message-preflight";
 export const PIBO_DATA_STORE_SERVICE = "pibo.data.store";
+
+/** Borrowed, narrow read-model projection. Core retains store lifecycle and
+ * validation until workflow ownership itself is cut over. */
+export type PiboWorkflowCatalogQuery = {
+	state: WorkflowCatalogState;
+	services: WorkflowCatalogServices<WorkflowCatalogState>;
+};
 
 export type PiboChatRoomActions = {
 	getRoom(id: string): PiboRoom | undefined;
