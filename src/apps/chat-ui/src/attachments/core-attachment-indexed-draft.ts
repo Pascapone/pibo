@@ -14,7 +14,11 @@ import {
 	ATTACHMENT_DRAFT_STORE_NAME, ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_COPY_STORE_NAME,
 	ATTACHMENT_LEGACY_CLAIM_STORE_NAME, ATTACHMENT_LEGACY_BACKUP_STORE_NAME, type IndexedDbFactory, type AttachmentDraftRow,
 } from "./core-attachment-database";
-import { ATTACHMENT_BLOB_MAX_BYTES, collectBlobHolders, readStoredBlobHolders, type StoredDraftBlob } from "./core-attachment-persistence";
+import { ATTACHMENT_BLOB_MAX_BYTES, collectBlobHolders, createBlobId, readStoredBlobHolders, type StoredDraftBlob } from "./core-attachment-persistence";
+import {
+	assertCopyRevision, copyHolderDraftId, readCopyBufferState, rebaseCopyMedia, requireScopedCopyBlob,
+	type CopyBufferEntry,
+} from "./core-attachment-copy-state";
 
 export type IndexedAttachmentDraftSnapshot = {
 	revision: number;
@@ -175,6 +179,43 @@ export async function openIndexedAttachmentDraft(options: {
 			});
 			// Logout may have closed this adapter while its old-owner transaction
 			// completed. Keep its data, but never publish that view to a new login.
+			active();
+			return outcome;
+		},
+		/** Re-acquire independently owned copy bytes under NEW target-session/draft
+		 * identities, in the same transaction as adding the target draft. Legacy
+		 * untyped copy rows cannot invent a provider type/schema for replay. */
+		async pasteCopy(expectedRevision: number, expectedCopyRevision: number): Promise<{ result: string; current: IndexedAttachmentDraftSnapshot }> {
+			active(); checkExpected(expectedRevision); checkExpected(expectedCopyRevision);
+			const outcome = await transact(db, [ATTACHMENT_DRAFT_STORE_NAME, ATTACHMENT_COPY_STORE_NAME, ATTACHMENT_BLOB_STORE_NAME], "readwrite", async ([drafts, copies, bytes]) => {
+				active();
+				const current = await readRow(drafts);
+				compare(current, expectedRevision);
+				const copy = readCopyBufferState(await request(copies.get(ownerUserId)), ownerUserId);
+				assertCopyRevision(copy, expectedCopyRevision);
+				const entry: CopyBufferEntry | undefined = copy.entry;
+				if (!entry) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "No typed copy is available for insertion.", retryable: false });
+				const media = rebaseCopyMedia(entry.media, createBlobId);
+				const next = transitionCoreAttachmentDraft(current?.rawText ?? null, sessionId,
+					{ kind: "add", input: { sessionId, type: entry.type, schemaVersion: entry.schemaVersion, payload: entry.payload, media } });
+				const staged: StoredDraftBlob[] = [];
+				for (let index = 0; index < entry.media.length; index++) {
+					const sourceMedia = entry.media[index]!;
+					const blob = requireScopedCopyBlob(await request(bytes.get(sourceMedia.draftResourceId)) as StoredDraftBlob | undefined,
+						ownerUserId, entry.sourceSessionId, copyHolderDraftId(entry.copyId), sourceMedia, ATTACHMENT_BLOB_MAX_BYTES);
+					staged.push({ ...blob, blobId: media[index]!.draftResourceId, sessionId, draftId: next.result, createdAt: new Date().toISOString(), data: blob.data.slice(0) });
+				}
+				for (const blob of staged) {
+					try { await request(bytes.add(blob)); }
+					catch (error) {
+						if (error instanceof DOMException && error.name === "ConstraintError") throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Pasted byte identity collided; the target draft was not changed.", retryable: false });
+						throw error;
+					}
+				}
+				const row = rowFor(next.text, nextAttachmentRevision(expectedRevision));
+				await request(drafts.put(row));
+				return { result: next.result, current: { revision: row.revision, writerEpoch, view: next.view } };
+			});
 			active();
 			return outcome;
 		},

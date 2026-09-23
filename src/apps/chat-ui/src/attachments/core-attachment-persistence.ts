@@ -23,6 +23,12 @@ import { AttachmentDraftError } from "../../../../attachments/errors.js";
 import type { AttachmentDraftMedia, CoreAttachmentDraftStorage } from "./core-attachment-draft";
 import { readCoreAttachmentDraft } from "./core-attachment-transitions";
 import {
+	assertCopyRevision, captureCopyInput, copyBufferRow, copyHolderDraftId, copyStateMedia,
+	readCopyBufferState, rebaseCopyMedia, requireScopedCopyBlob, sameCopyContent,
+	type AttachmentCopyBuffer, type CopyBufferEntry, type CopyBufferState,
+} from "./core-attachment-copy-state";
+export type { AttachmentCopyBuffer, CopyBufferEntry, CopyBufferInput, CopyBufferState, LegacyCopyBufferEntry } from "./core-attachment-copy-state";
+import {
 	ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_BLOB_INDEX_NAME, ATTACHMENT_COPY_STORE_NAME,
 	ATTACHMENT_BLOB_OWNER_INDEX, ATTACHMENT_DRAFT_STORE_NAME, ATTACHMENT_DRAFT_OWNER_INDEX,
 	checkAttachmentDraftRow, nextAttachmentRevision, type AttachmentDraftRow,
@@ -55,24 +61,6 @@ export type AttachmentBlobStore = {
 	getBlob(blobId: string): Promise<{ mimeType: string; data: Uint8Array } | undefined>;
 	deleteBlob(blobId: string): Promise<boolean>;
 	listBlobs(sessionId: string, draftId?: string): Promise<DraftBlobRecord[]>;
-};
-
-export type CopyBufferEntry = {
-	ownerUserId: string;
-	copyId: string;
-	stagedAt: string;
-	sourceSessionId: string;
-	sourceDraftId: string;
-	sourceRevision: number;
-	payload: unknown;
-	media: AttachmentDraftMedia[];
-};
-
-export type AttachmentCopyBuffer = {
-	readonly ownerUserId: string;
-	stage(entry: { copyId: string; sourceSessionId: string; sourceDraftId: string; sourceRevision: number; payload: unknown; media: AttachmentDraftMedia[] }): Promise<void>;
-	load(): Promise<CopyBufferEntry | undefined>;
-	clear(): Promise<void>;
 };
 
 export type BlobHolderKind = "draft" | "snapshot" | "copy";
@@ -134,14 +122,8 @@ export async function readStoredBlobHolders(drafts: IDBObjectStore, copies: IDBO
 		});
 		for (const id of holders.held) held.add(id);
 	}
-	const copy = await requestToPromise(copies.get(ownerUserId)) as CopyBufferEntry | undefined;
-	if (copy) {
-		if (copy.ownerUserId !== ownerUserId || !Array.isArray(copy.media)
-			|| copy.media.some((media) => !media || typeof media.draftResourceId !== "string" || !media.draftResourceId)) {
-			throw storageFailed("Stored copy buffer holders could not be read.");
-		}
-		for (const id of mediaBlobIds(copy.media)) held.add(id);
-	}
+	const copy = readCopyBufferState(await requestToPromise(copies.get(ownerUserId)), ownerUserId);
+	for (const id of mediaBlobIds(copyStateMedia(copy))) held.add(id);
 	return held;
 }
 
@@ -216,7 +198,7 @@ export function createLocalStorageDraftTextStorage(ownerUserId: string): CoreAtt
 	};
 }
 
-function createBlobId(): string {
+export function createBlobId(): string {
 	const random = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
 		? crypto.randomUUID()
 		: `fallback-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffffff).toString(36)}`;
@@ -250,6 +232,8 @@ function assertBlobInput(input: { sessionId: string; draftId: string; mimeType: 
  * clearOwner resets active drafts/bytes/copy only: custody text backups and
  * legacy localStorage remain. It is NOT an account/browser-erasure API and
  * must not be used on logout; close() hides the active connection instead.
+ * Invalid copy rows fail the whole reset closed; even an absent copy receives
+ * a revision-1 tombstone, so callers must reload before staging again.
  */
 export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserId: string, databaseName?: string): Promise<{ blobs: AttachmentBlobStore; copy: AttachmentCopyBuffer; close(): void; clearOwner(): Promise<void> }> {
 	if (!ownerUserId) throw storageFailed("Draft blob storage requires an owner user id.");
@@ -322,36 +306,57 @@ export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserI
 			});
 		},
 	};
+	// Cleanup is in the same transaction as replacement. Legacy rows never
+	// established independent byte ownership, so their source bytes are not GC'd here.
+	const releaseCopyBytes = async (previous: CopyBufferState, bytes: IDBObjectStore, drafts: IDBObjectStore, copies: IDBObjectStore) => {
+		if (!previous.entry?.media.length) return;
+		const entry = previous.entry;
+		const held = await readStoredBlobHolders(drafts, copies, ownerUserId);
+		for (const media of entry.media) if (!held.has(media.draftResourceId)) {
+			const blob = await requestToPromise(bytes.get(media.draftResourceId)) as StoredDraftBlob | undefined;
+			if (blob?.ownerUserId === ownerUserId && blob.sessionId === entry.sourceSessionId && blob.draftId === copyHolderDraftId(entry.copyId)) await requestToPromise(bytes.delete(blob.blobId));
+		}
+	};
 	const copy: AttachmentCopyBuffer = {
 		ownerUserId,
-		stage: async (entry) => {
-			if (!entry.copyId || !entry.sourceSessionId || !entry.sourceDraftId) {
-				throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Copy entries require copy, session, and draft ids.", retryable: false });
-			}
-			await withStores([ATTACHMENT_COPY_STORE_NAME], "readwrite", async ([store]) => {
-				await requestToPromise(store.put({
-					ownerUserId,
-					copyId: entry.copyId,
-					stagedAt: new Date().toISOString(),
-					sourceSessionId: entry.sourceSessionId,
-					sourceDraftId: entry.sourceDraftId,
-					sourceRevision: entry.sourceRevision,
-					payload: entry.payload,
-					media: entry.media,
-				} satisfies CopyBufferEntry));
+		stage: async (expectedRevision, value) => {
+			const input = captureCopyInput(value); // before the first IDB wait
+			return withStores([ATTACHMENT_COPY_STORE_NAME, ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_DRAFT_STORE_NAME], "readwrite", async ([copies, bytes, drafts]) => {
+				const current = readCopyBufferState(await requestToPromise(copies.get(ownerUserId)), ownerUserId);
+				assertCopyRevision(current, expectedRevision);
+				const rawSource = await requestToPromise(drafts.get([ownerUserId, input.sourceSessionId])) as AttachmentDraftRow | undefined;
+				if (!rawSource) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Copy source draft is no longer available.", retryable: false });
+				const sourceView = readCoreAttachmentDraft(checkAttachmentDraftRow(rawSource, ownerUserId, input.sourceSessionId).rawText, input.sourceSessionId);
+				const source = sourceView.records.find((record) => record.envelope.id === input.sourceDraftId);
+				if (!source || source.envelope.revision !== input.sourceRevision || source.envelope.type !== input.type
+					|| source.envelope.schemaVersion !== input.schemaVersion || !sameCopyContent(source.payload, input.payload)
+					|| !sameCopyContent(source.media ?? [], input.media)) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Copy source changed; reload before staging it.", retryable: false });
+				const entry: CopyBufferEntry = { ...input, ownerUserId, stagedAt: new Date().toISOString(), media: rebaseCopyMedia(input.media, createBlobId) };
+				for (let index = 0; index < input.media.length; index++) {
+					const media = input.media[index]!;
+					const source = requireScopedCopyBlob(await requestToPromise(bytes.get(media.draftResourceId)) as StoredDraftBlob | undefined, ownerUserId, input.sourceSessionId, input.sourceDraftId, media, ATTACHMENT_BLOB_MAX_BYTES);
+					try {
+						await requestToPromise(bytes.add({ ...source, blobId: entry.media[index]!.draftResourceId, draftId: copyHolderDraftId(entry.copyId), createdAt: entry.stagedAt, data: source.data.slice(0) } satisfies StoredDraftBlob));
+					} catch (error) {
+						if (error instanceof DOMException && error.name === "ConstraintError") throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Copy byte identity collided; reload and retry without replacing existing bytes.", retryable: false });
+						throw error;
+					}
+				}
+				const row = copyBufferRow(ownerUserId, current, entry);
+				await requestToPromise(copies.put(row));
+				await releaseCopyBytes(current, bytes, drafts, copies);
+				return readCopyBufferState(row, ownerUserId);
 			});
 		},
-		load: async () => {
-			return withStores([ATTACHMENT_COPY_STORE_NAME], "readonly", async ([store]) => {
-				const found = await requestToPromise(store.get(ownerUserId) as IDBRequest<CopyBufferEntry | undefined>);
-				return found ?? undefined;
-			});
-		},
-		clear: async () => {
-			await withStores([ATTACHMENT_COPY_STORE_NAME], "readwrite", async ([store]) => {
-				await requestToPromise(store.delete(ownerUserId));
-			});
-		},
+		load: async () => withStores([ATTACHMENT_COPY_STORE_NAME], "readonly", async ([store]) => readCopyBufferState(await requestToPromise(store.get(ownerUserId)), ownerUserId)),
+		clear: async (expectedRevision) => withStores([ATTACHMENT_COPY_STORE_NAME, ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_DRAFT_STORE_NAME], "readwrite", async ([copies, bytes, drafts]) => {
+			const current = readCopyBufferState(await requestToPromise(copies.get(ownerUserId)), ownerUserId);
+			assertCopyRevision(current, expectedRevision);
+			const row = copyBufferRow(ownerUserId, current, null);
+			await requestToPromise(copies.put(row));
+			await releaseCopyBytes(current, bytes, drafts, copies);
+			return readCopyBufferState(row, ownerUserId);
+		}),
 	};
 	return {
 		blobs,
@@ -369,7 +374,8 @@ export async function openAttachmentStores(factory: IndexedDbFactory, ownerUserI
 				for (const row of rows) {
 					if (row.ownerUserId === ownerUserId) await requestToPromise(blobStore.delete(row.blobId));
 				}
-				await requestToPromise(copyStore.delete(ownerUserId));
+				const copy = readCopyBufferState(await requestToPromise(copyStore.get(ownerUserId)), ownerUserId);
+				await requestToPromise(copyStore.put(copyBufferRow(ownerUserId, copy, null)));
 			});
 		},
 	};
@@ -395,13 +401,22 @@ export function revokeBlobPreviewUrl(url: string): void {
 }
 
 /**
- * In-memory stores implementing the same seams. Used by Node tests; NOT a
- * durability claim.
+ * In-memory byte-scope model for Node tests. It does not own the persisted
+ * draft index: unlike IndexedDB stage it cannot check source-record freshness
+ * or scan other drafts for holders. Browser tests cover those guarantees; this
+ * helper is NOT a durability or full parity claim.
  */
 export function createMemoryAttachmentStores(ownerUserId: string): { blobs: AttachmentBlobStore & { blobs: Map<string, StoredDraftBlob> }; copy: AttachmentCopyBuffer } {
 	if (!ownerUserId) throw storageFailed("Draft blob storage requires an owner user id.");
 	const blobs = new Map<string, StoredDraftBlob>();
-	let copyEntry: CopyBufferEntry | undefined;
+	let copyState: CopyBufferState = { revision: 0 };
+	const releaseCopyBytes = (previous: CopyBufferState) => {
+		if (!previous.entry) return;
+		for (const media of previous.entry.media) {
+			const blob = blobs.get(media.draftResourceId);
+			if (blob?.ownerUserId === ownerUserId && blob.sessionId === previous.entry.sourceSessionId && blob.draftId === copyHolderDraftId(previous.entry.copyId)) blobs.delete(blob.blobId);
+		}
+	};
 	return {
 		blobs: {
 			ownerUserId,
@@ -440,15 +455,29 @@ export function createMemoryAttachmentStores(ownerUserId: string): { blobs: Atta
 		},
 		copy: {
 			ownerUserId,
-			stage: async (entry) => {
-				if (!entry.copyId || !entry.sourceSessionId || !entry.sourceDraftId) {
-					throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Copy entries require copy, session, and draft ids.", retryable: false });
-				}
-				copyEntry = structuredClone({ ownerUserId, copyId: entry.copyId, stagedAt: new Date().toISOString(), sourceSessionId: entry.sourceSessionId, sourceDraftId: entry.sourceDraftId, sourceRevision: entry.sourceRevision, payload: entry.payload, media: entry.media });
+			stage: async (expectedRevision, value) => {
+				const input = captureCopyInput(value);
+				assertCopyRevision(copyState, expectedRevision);
+				const entry: CopyBufferEntry = { ...input, ownerUserId, stagedAt: new Date().toISOString(), media: rebaseCopyMedia(input.media, createBlobId) };
+				const acquired = input.media.map((media, index) => {
+					const source = requireScopedCopyBlob(blobs.get(media.draftResourceId), ownerUserId, input.sourceSessionId, input.sourceDraftId, media, ATTACHMENT_BLOB_MAX_BYTES);
+					const blobId = entry.media[index]!.draftResourceId;
+					if (blobs.has(blobId)) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Copy byte identity already exists.", retryable: false });
+					return { ...source, blobId, draftId: copyHolderDraftId(entry.copyId), createdAt: entry.stagedAt, data: source.data.slice(0) };
+				});
+				const next = readCopyBufferState(copyBufferRow(ownerUserId, copyState, entry), ownerUserId);
+				for (const blob of acquired) blobs.set(blob.blobId, blob);
+				releaseCopyBytes(copyState);
+				copyState = next;
+				return structuredClone(copyState);
 			},
-			load: async () => copyEntry ? structuredClone(copyEntry) : undefined,
-			clear: async () => {
-				copyEntry = undefined;
+			load: async () => structuredClone(copyState),
+			clear: async (expectedRevision) => {
+				assertCopyRevision(copyState, expectedRevision);
+				const next = readCopyBufferState(copyBufferRow(ownerUserId, copyState, null), ownerUserId);
+				releaseCopyBytes(copyState);
+				copyState = next;
+				return structuredClone(copyState);
 			},
 		},
 	};

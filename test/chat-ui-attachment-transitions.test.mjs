@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 const {CoreAttachmentDraftStore} = await import('./src/apps/chat-ui/src/attachments/core-attachment-draft.ts');
 const {transitionCoreAttachmentDraft: transition, readCoreAttachmentDraft: read} = await import('./src/apps/chat-ui/src/attachments/core-attachment-transitions.ts');
 const {createMemoryAttachmentStores,createLocalStorageDraftTextStorage,deleteUnheldBlobs} = await import('./src/apps/chat-ui/src/attachments/core-attachment-persistence.ts');
+const {rebaseCopyMedia, readCopyBufferState} = await import('./src/apps/chat-ui/src/attachments/core-attachment-copy-state.ts');
 const input = {sessionId:'ps_test',type:'pibo.core/note',schemaVersion:1,payload:{text:'original'}};
 const options = {createId:()=> 'att_fixed',now:()=> 'clock'};
 function memory() { let raw=null; return {readText:()=>raw,writeText:(_key,text)=>{raw=text},removeText:()=>{raw=null},raw:()=>raw}; }
@@ -82,11 +83,28 @@ await blobs.putBlob({sessionId:'ps_test',draftId:'att',mimeType:'image/png',data
 bytes[0]=9; const loaded=await blobs.getBlob('blob'); loaded.data[0]=8;
 assert.deepEqual([...(await blobs.getBlob('blob')).data],[1,2,3]);
 await assert.rejects(blobs.putBlob({sessionId:'ps_other',draftId:'att',mimeType:'image/png',data:bytes,blobId:'blob'}),{code:'ATT_STALE_REVISION'});
-const entry={copyId:'copy',sourceSessionId:'ps_test',sourceDraftId:'att',sourceRevision:1,payload:{value:1},media:[]};
-await copy.stage(entry); entry.payload.value=9; const copied=await copy.load(); copied.payload.value=8;
-assert.equal((await copy.load()).payload.value,1);
+const entry={copyId:'copy',sourceSessionId:'ps_test',sourceDraftId:'att',sourceRevision:1,type:'pibo.core/file',schemaVersion:1,payload:{value:1},media:[{draftResourceId:'blob',mimeType:'image/png',bytes:3}]};
+const staged=await copy.stage(0,entry); entry.payload.value=9; const copied=await copy.load(); copied.entry.payload.value=8;
+assert.equal((await copy.load()).entry.payload.value,1); assert.equal(staged.revision,1);
+const independent=staged.entry.media[0].draftResourceId; assert.notEqual(independent,'blob');
+assert.deepEqual([...(await blobs.getBlob(independent)).data],[1,2,3]);
+await assert.rejects(copy.stage(0,entry),{code:'ATT_STALE_REVISION'});
 const result=await deleteUnheldBlobs(blobs,['missing','blob'],new Set(['blob']));
 assert.deepEqual(result,{deleted:[],keptHeld:['blob']});
+await blobs.deleteBlob('blob'); assert.deepEqual([...(await blobs.getBlob(independent)).data],[1,2,3]);
+const cleared=await copy.clear(1); assert.equal(cleared.revision,2); assert.equal(await blobs.getBlob(independent),undefined);
+await assert.rejects(copy.stage(0,{...entry,media:[]}),{code:'ATT_STALE_REVISION'});
+`);
+});
+
+test("copy byte ids fail closed on collisions and legacy structured values do not gain typed authority", async () => {
+	await scenario(`
+assert.throws(()=>rebaseCopyMedia([{draftResourceId:'source',mimeType:'image/png',bytes:1}],()=> 'source'),{code:'ATT_STALE_REVISION'});
+const legacy={ownerUserId:'owner',copyId:'old',sourceSessionId:'ps_test',sourceDraftId:'att',sourceRevision:1,stagedAt:'clock',
+  payload:new Uint8Array([1,2]),media:[{draftResourceId:'source',mimeType:'image/png',bytes:1},{draftResourceId:'source',mimeType:'image/png',bytes:1}]};
+const loaded=readCopyBufferState(legacy,'owner'); assert.equal(loaded.revision,1); assert.deepEqual(loaded.legacy,legacy);
+assert.equal(loaded.entry,undefined);
+assert.throws(()=>readCopyBufferState(legacy,'foreign'),{code:'ATT_STORAGE_FAILED'});
 `);
 });
 

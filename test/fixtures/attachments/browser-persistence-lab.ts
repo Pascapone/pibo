@@ -229,11 +229,18 @@ async function runCases() {
 	await run("additive-v2-upgrade", async (name) => {
 		const old = await version2(name);
 		const blob = { blobId: "old", ownerUserId: "owner", sessionId: "ps_fixture", draftId: "att_old", mimeType: "image/png", size: 2, createdAt: "clock", data: new Uint8Array([3, 4]).buffer };
-		const copy = { ownerUserId: "owner", copyId: "old-copy", stagedAt: "clock", sourceSessionId: "ps_fixture", sourceDraftId: "att_old", sourceRevision: 1, payload: { text: "old copy" }, media: [] };
+		const oldMedia = { draftResourceId: "old", mimeType: "image/png", bytes: 2 };
+		const copy = { ownerUserId: "owner", copyId: "old-copy", stagedAt: "clock", sourceSessionId: "ps_fixture", sourceDraftId: "att_old", sourceRevision: 1, payload: new Uint8Array([8, 9]), media: [oldMedia, oldMedia] };
 		try { await tx(old, [ATTACHMENT_BLOB_STORE_NAME, ATTACHMENT_COPY_STORE_NAME], "readwrite", async ([blobs, copies]) => { await req(blobs.add(blob)); await req(copies.add(copy)); }); }
 		finally { old.close(); }
 		const draft = await openDraft(name), stores = await openAttachmentStores(indexedDB, "owner", name);
-		try { equal((await draft.load()).revision, 0); equal([...(await stores.blobs.getBlob("old"))!.data], [3, 4]); equal(await stores.copy.load(), copy); }
+		try {
+			equal((await draft.load()).revision, 0); equal([...(await stores.blobs.getBlob("old"))!.data], [3, 4]);
+			equal(await stores.copy.load(), { revision: 1, legacy: copy });
+			equal(await stores.blobs.deleteBlob("old"), false);
+			await rejects(draft.pasteCopy(0, 1), "ATT_STALE_REVISION");
+			equal((await stores.copy.clear(1)).revision, 2); equal(await stores.blobs.deleteBlob("old"), true);
+		}
 		finally { draft.close(); stores.close(); }
 	});
 	await run("blocked-upgrade-is-not-late-success", async (name) => {
@@ -265,6 +272,113 @@ async function runCases() {
 			const row = await tx(upgraded, [ATTACHMENT_DRAFT_STORE_NAME], "readonly", async ([store]) => req(store.get(["owner", "ps_fixture"]))); equal(row.revision, 1);
 		} finally { draft.close(); upgraded?.close(); }
 	});
+	await run("independent-copy-staging-and-cross-session-paste", async (name) => {
+		const draft = await openDraft(name), target = await openDraft(name, "owner", "ps_target"), stores = await openAttachmentStores(indexedDB, "owner", name);
+		try {
+			const source = await draft.execute(0, image("ps_fixture", ["source-media"]), [{ blobId: "source-media", mimeType: "image/png", data: new Uint8Array([42]) }]);
+			const sourceRecord = source.current.view.records[0];
+			const input = { copyId: "copy-one", sourceSessionId: "ps_fixture", sourceDraftId: source.result,
+				sourceRevision: 1, type: sourceRecord.envelope.type, schemaVersion: 1, payload: sourceRecord.payload, media: sourceRecord.media! };
+			const pending = stores.copy.stage(0, input);
+			(input.payload as { title: string }).title = "mutated after capture";
+			const staged = await pending;
+			equal(staged.revision, 1); assert(staged.entry); equal(staged.entry.payload, { title: "fixture" });
+			const copyBlob = staged.entry.media[0].draftResourceId;
+			assert(copyBlob !== "source-media", "copy did not rebase its bytes");
+			await draft.execute(source.current.revision, { kind: "remove", id: source.result });
+			equal(await stores.blobs.getBlob("source-media"), undefined);
+			equal([...(await stores.blobs.getBlob(copyBlob))!.data], [42]);
+			const pasted = await target.pasteCopy(0, 1); equal(pasted.current.revision, 1);
+			equal(pasted.current.view.records[0].envelope.sessionId, "ps_target");
+			const targetBlob = pasted.current.view.records[0].media![0].draftResourceId;
+			assert(targetBlob !== copyBlob && targetBlob !== "source-media");
+			await stores.copy.clear(1); equal(await stores.blobs.getBlob(copyBlob), undefined);
+			equal([...(await stores.blobs.getBlob(targetBlob))!.data], [42]);
+			const frozen = await target.execute(pasted.current.revision, { kind: "freeze", clientTxnId: "copied", text: "" });
+			equal(frozen.result.attachments[0].media![0].draftResourceId, targetBlob);
+		} finally { draft.close(); target.close(); stores.close(); }
+	});
+	await run("copy-cas-tombstones-and-stale-source", async (name) => {
+		const draft = await openDraft(name), a = await openAttachmentStores(indexedDB, "owner", name), b = await openAttachmentStores(indexedDB, "owner", name);
+		try {
+			const result = await draft.execute(0, note("ps_fixture"));
+			const value = { copyId: "one", sourceSessionId: "ps_fixture", sourceDraftId: result.result, sourceRevision: 1,
+				type: "pibo.core/note", schemaVersion: 1, payload: { text: "kept" }, media: [] };
+			await rejects(a.copy.stage(0, { ...value, payload: { text: "forged" } }), "ATT_STALE_REVISION");
+			const outcomes = await Promise.allSettled([a.copy.stage(0, value), b.copy.stage(0, { ...value, copyId: "two" })]);
+			equal(outcomes.filter((item) => item.status === "fulfilled").length, 1);
+			equal((outcomes.find((item) => item.status === "rejected") as PromiseRejectedResult).reason.code, "ATT_STALE_REVISION");
+			const cleared = await b.copy.clear(1); equal(cleared.revision, 2);
+			equal(await b.copy.load(), { revision: 2 });
+			await rejects(a.copy.stage(0, value), "ATT_STALE_REVISION");
+			await rejects(a.copy.stage(1, value), "ATT_STALE_REVISION");
+			await draft.execute(1, { kind: "remove", id: result.result });
+			await rejects(a.copy.stage(2, value), "ATT_STALE_REVISION");
+			equal((await a.copy.load()).revision, 2);
+		} finally { draft.close(); a.close(); b.close(); }
+	});
+	await run("copy-rollback-preserves-old-copy-and-bytes", async (name) => {
+		const draft = await openDraft(name), stores = await openAttachmentStores(indexedDB, "owner", name);
+		const original = IDBObjectStore.prototype.put;
+		try {
+			const source = await draft.execute(0, image("ps_fixture", ["source"]), [{ blobId: "source", mimeType: "image/png", data: new Uint8Array([1]) }]);
+			const value = { copyId: "copy", sourceSessionId: "ps_fixture", sourceDraftId: source.result, sourceRevision: 1,
+				type: "pibo.core/image", schemaVersion: 1, payload: source.current.view.records[0].payload, media: source.current.view.records[0].media! };
+			const first = await stores.copy.stage(0, value); const retainedId = first.entry!.media[0].draftResourceId;
+			try {
+				IDBObjectStore.prototype.put = function (...args: Parameters<typeof original>) { if (this.name === ATTACHMENT_COPY_STORE_NAME) throw new DOMException("fixture write abort", "QuotaExceededError"); return original.apply(this, args); };
+				await rejects(stores.copy.stage(1, { ...value, copyId: "replacement" }), "ATT_STORAGE_FAILED");
+			} finally { IDBObjectStore.prototype.put = original; }
+			equal((await stores.copy.load()).revision, 1); equal((await stores.copy.load()).entry!.media[0].draftResourceId, retainedId);
+			equal([...(await stores.blobs.getBlob(retainedId))!.data], [1]);
+			const scoped = await stores.blobs.listBlobs("ps_fixture", "pibo.copy-holder.replacement"); equal(scoped, []);
+		} finally { IDBObjectStore.prototype.put = original; draft.close(); stores.close(); }
+	});
+	await run("copy-paste-rejects-stale-missing-and-foreign-owner", async (name) => {
+		const draft = await openDraft(name), target = await openDraft(name, "owner", "ps_target"), foreign = await openDraft(name, "foreign", "ps_target");
+		const stores = await openAttachmentStores(indexedDB, "owner", name), foreignStores = await openAttachmentStores(indexedDB, "foreign", name), db = await openAttachmentDatabase(indexedDB, name);
+		try {
+			const source = await draft.execute(0, image("ps_fixture", ["scoped"]), [{ blobId: "scoped", mimeType: "image/png", data: new Uint8Array([4]) }]);
+			const value = { copyId: "owned", sourceSessionId: "ps_fixture", sourceDraftId: source.result, sourceRevision: 1,
+				type: "pibo.core/image", schemaVersion: 1, payload: source.current.view.records[0].payload, media: source.current.view.records[0].media! };
+			await rejects(foreignStores.copy.stage(0, value), "ATT_STALE_REVISION"); equal((await foreignStores.copy.load()).revision, 0);
+			await rejects(foreign.pasteCopy(0, 0), "ATT_STALE_REVISION"); equal((await foreign.load()).revision, 0);
+			const first = await stores.copy.stage(0, value);
+			await rejects(target.pasteCopy(0, 0), "ATT_STALE_REVISION"); equal((await target.load()).revision, 0);
+			await stores.copy.clear(first.revision);
+			await rejects(target.pasteCopy(0, first.revision), "ATT_STALE_REVISION");
+			const next = await stores.copy.stage(2, value); assert(next.entry);
+			await tx(db, [ATTACHMENT_BLOB_STORE_NAME], "readwrite", async ([bytes]) => { await req(bytes.delete(next.entry!.media[0].draftResourceId)); });
+			await rejects(target.pasteCopy(0, next.revision), "ATT_BYTES_MISSING");
+			equal((await target.load()).revision, 0); equal((await stores.copy.load()).revision, next.revision);
+		} finally { draft.close(); target.close(); foreign.close(); stores.close(); foreignStores.close(); db.close(); }
+	});
+	await run("copy-revision-exhaustion-preserves-row", async (name) => {
+		const draft = await openDraft(name), stores = await openAttachmentStores(indexedDB, "owner", name), db = await openAttachmentDatabase(indexedDB, name);
+		try {
+			const source = await draft.execute(0, note("ps_fixture"));
+			const row = { formatVersion: 1, ownerUserId: "owner", revision: Number.MAX_SAFE_INTEGER, updatedAt: "fixture", entry: null };
+			await tx(db, [ATTACHMENT_COPY_STORE_NAME], "readwrite", async ([copies]) => { await req(copies.put(row)); });
+			await rejects(stores.copy.clear(Number.MAX_SAFE_INTEGER), "ATT_LIMIT_EXCEEDED");
+			await rejects(stores.copy.stage(Number.MAX_SAFE_INTEGER, { copyId: "new", sourceSessionId: "ps_fixture", sourceDraftId: source.result,
+				sourceRevision: 1, type: "pibo.core/note", schemaVersion: 1, payload: { text: "kept" }, media: [] }), "ATT_LIMIT_EXCEEDED");
+			equal(await tx(db, [ATTACHMENT_COPY_STORE_NAME], "readonly", async ([copies]) => req(copies.get("owner"))), row);
+		} finally { draft.close(); stores.close(); db.close(); }
+	});
+	await run("two-real-tabs-one-copy-cas-winner", async (name) => {
+		const draft = await openDraft(name), stores = await openAttachmentStores(indexedDB, "owner", name);
+		try {
+			const source = await draft.execute(0, note("ps_fixture"));
+			const value = { copyId: "copy", sourceSessionId: "ps_fixture", sourceDraftId: source.result, sourceRevision: 1,
+				type: "pibo.core/note", schemaVersion: 1, payload: { text: "kept" }, media: [] };
+			const remote = await callPeer("copyInit", { databaseName: name }); assert(remote.ok); equal(remote.revision, 0);
+			const main = stores.copy.stage(0, value).then(() => ({ ok: true }), (error) => ({ ok: false, code: error.code }));
+			const secondary = callPeer("copyStage", { value: { ...value, copyId: "remote" }, expectedRevision: 0 });
+			const outcomes = await Promise.all([main, secondary]); equal(outcomes.filter((item) => item.ok).length, 1);
+			equal((outcomes.find((item) => !item.ok) as { code: string }).code, "ATT_STALE_REVISION");
+			equal((await stores.copy.load()).revision, 1);
+		} finally { await callPeer("close"); draft.close(); stores.close(); }
+	});
 	await run("two-real-tabs-one-cas-winner", async (name) => {
 		const parent = await openDraft(name);
 		try {
@@ -287,6 +401,7 @@ if (location.pathname === "/peer") {
 	document.body.innerHTML = "<h1>Owned second-tab fixture</h1><p>No application database is opened here.</p>";
 	const expectedNonce = new URLSearchParams(location.search).get("nonce");
 	let draft: Awaited<ReturnType<typeof openDraft>> | undefined;
+	let stores: Awaited<ReturnType<typeof openAttachmentStores>> | undefined;
 	window.addEventListener("message", async (event) => {
 		if (event.source !== window.opener || event.origin !== location.origin || event.data?.nonce !== expectedNonce) return;
 		const { operation, id } = event.data;
@@ -294,7 +409,9 @@ if (location.pathname === "/peer") {
 		try {
 			if (operation === "init") { draft = await openDraft(safeName(event.data.databaseName)); result = { ok: true, revision: (await draft.load()).revision }; }
 			else if (operation === "execute") { await draft!.execute(0, event.data.command); result = { ok: true }; }
-			else if (operation === "close") { draft?.close(); result = { ok: true }; }
+			else if (operation === "copyInit") { stores = await openAttachmentStores(indexedDB, "owner", safeName(event.data.databaseName)); result = { ok: true, revision: (await stores.copy.load()).revision }; }
+			else if (operation === "copyStage") { const staged = await stores!.copy.stage(event.data.expectedRevision, event.data.value); result = { ok: true, revision: staged.revision }; }
+			else if (operation === "close") { draft?.close(); stores?.close(); result = { ok: true }; }
 			else throw new Error("Unknown fixture operation");
 		} catch (error) { result = { ok: false, code: (error as any).code, error: String(error) }; }
 		window.opener.postMessage({ nonce: expectedNonce, id, result }, location.origin);
