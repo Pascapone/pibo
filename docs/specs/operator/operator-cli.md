@@ -9,7 +9,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai/codex"
-  at: "2026-09-08T18:25:04Z"
+  at: "2026-09-23T16:01:23Z"
 sources:
   - id: "foundation-source-and-tests"
     resource: "scope:upstream/dev refresh 39090b8850758293e69380a52bb7498d7c955bc2"
@@ -22,7 +22,7 @@ implementation:
   focused_test_execution: "performed in owned Docker after authoring; see implementation report"
   build_and_typecheck_execution: "performed in owned Docker after authoring; see implementation report"
 traceability:
-  commit: "e6a0957d288ac37b0f9c5077ae742a8001bb6a74"
+  commit: "d5b770bc0acab08415fd412eba6aa2653faa9003"
   requirements:
     - id: "OP-CLI-001"
       status: "implemented"
@@ -36,8 +36,6 @@ traceability:
           name: "pibo without args prints compact discovery"
         - path: test/resources-cli.test.mjs
           name: "root discovery includes resources and resources help exposes only immediate actions"
-        - path: test/cli-ui-session-app.test.mjs
-          name: "pibo tui:sessions command help and root discovery describe the new UI without hiding existing TUI commands"
       public:
         - "pibo"
         - "src/bin/pibo.ts"
@@ -165,6 +163,32 @@ traceability:
         - "Mutation is dry-run by default, exact-command, transactionally fenced, and refuses live leases."
         - "Replay is unsupported and never executes a durable command."
       confidence: high
+    - id: "OP-CLI-007"
+      status: "implemented"
+      sources:
+        - path: src/core/executable-cli.ts
+          symbol: runPiboCoreCli
+        - path: src/gateway/cli.ts
+          symbol: runGatewayCli
+        - path: scripts/build-pibo4-standard.mjs
+          symbol: installedPackageRoot
+      tests:
+        - path: test/core-cli-discovery-lazy.test.mjs
+          name: "installed Core gateway discovery stays lazy and non-mutating"
+        - path: test/gateway-operator-readonly.test.mjs
+          name: "read-only gateway mode rejects mutation before dispatch"
+        - path: test/pibo4-standard-composition.test.mjs
+          name: "staged Standard CLI prefers its bundled exact-version Core and 22 plugins over a parent workspace"
+        - path: test/gateway-restart-approval.test.mjs
+          name: "ordinary production restart remains blocked for active work"
+      public:
+        - "packaged pibo gateway web|dev status|doctor [--json]"
+        - "packaged pibo gateway:web"
+      failures:
+        - "Packaged operator dispatch rejects start, stop, restart and unsupported flags before gateway mutation."
+        - "Operator text and JSON status omit restart advice; direct legacy gateway lifecycle keeps its existing safety policy."
+        - "Standard validates bundled exact package identities and versions rather than accepting a different parent-workspace Core."
+      confidence: high
 ---
 # Operator CLI Discovery, Dispatch, Errors, and Domain Commands
 
@@ -191,15 +215,15 @@ This specification describes implemented behavior at the traceability commit. It
 
 ### Commands
 
-- Registered root surface: auth, mcp, tools, pi-packages, debug, data, gateway, compute, resources, preview, setup, skills, cron, loop, ralph, vscode, config, profile, tui, tui:routed, tui:sessions, router, gateway:web, client. Root discovery currently prints all except compatibility router.
+- Registered legacy root surface: auth, mcp, tools, pi-packages, debug, data, gateway, compute, resources, preview, setup, skills, cron, loop, ralph, vscode, config, profile, tui, tui:routed, tui:sessions, router, gateway:web, client. Legacy root discovery currently prints all except compatibility router. The packaged V4 Core and Standard root exposes `gateway web|dev status|doctor [--json]` as a separate read-only operator branch; the direct `gateway:web` server entrypoint remains separate.
 
 ### Apis
 
-- Installed bin src/bin/pibo.ts invokes runPiboCli; domain CLIs receive normalized argv. No network API is owned.
+- The legacy bin `src/bin/pibo.ts` invokes `runPiboCli`; packaged Core and Standard delegate their guarded operator branch from `runPiboCoreCli` to `runGatewayCli(argv, { readOnly: true })`. Domain status and health are owned by Gateway; no network API is owned here.
 
 ### State
 
-- Help and version paths, including nested gateway lifecycle help, return without initialization or lifecycle side effects. Other commands initialize private PIBO_HOME; config/profile and each feature retain their own stores. pibo data inventory is read-only; migrate sessions-to-v2 is idempotent but writes its explicit target.
+- Help and version paths, including nested gateway lifecycle help, return without initialization or lifecycle side effects. Packaged Core/Standard read-only gateway discovery and inspection do not create Pibo Home. Other legacy commands initialize private PIBO_HOME; config/profile and each feature retain their own stores. `pibo data inventory` is read-only; `migrate sessions-to-v2` is idempotent but writes its explicit target.
 
 ### Lifecycle
 
@@ -230,7 +254,7 @@ The upstream/dev refresh implementation and named tests provide the current sour
 #### Acceptance
 
 - Source: `src/bin/pibo.ts` — `runPiboCli`; `src/cli.ts` — `runPiboCli`
-- Tests: `test/mcp-cli.test.mjs` — “pibo without args prints compact discovery”; `test/resources-cli.test.mjs` — “root discovery includes resources and resources help exposes only immediate actions”; `test/cli-ui-session-app.test.mjs` — “pibo tui:sessions command help and root discovery describe the new UI without hiding existing TUI commands”
+- Tests: `test/mcp-cli.test.mjs` — “pibo without args prints compact discovery”; `test/resources-cli.test.mjs` — “root discovery includes resources and resources help exposes only immediate actions”
 - Failure/security boundary: Compatibility entrypoints remain callable even when discovery omissions exist; root dispatch must not claim absent registrations.
 - Confidence: **high**
 
@@ -304,6 +328,12 @@ Reconciliation requires one exact `cmd_...` identity and defaults to dry-run. Dr
 
 The production procedure is in [Agent Runtime Operations](/project/agent-runtime-operations.md#recover-an-interrupted-durable-message-queue).
 
+### Requirement: OP-CLI-007: Packaged Core and Standard expose only read-only gateway operations
+
+The packaged V4 Core and Standard CLI use shallow, lazy `gateway` → `web|dev` → `status|doctor` discovery. An exact `status` or `doctor` command optionally accepts only `--json`. This branch rejects mutation and unsupported arguments before importing or calling the gateway manager. Operator text and JSON status avoid restart/force recommendations even when active work exists. The separate `gateway:web` server entrypoint and legacy dev CLI retain their existing behavior and production restart-safety fences; this branch does not make them read-only.
+
+Standard first resolves its own bundled, exact-version Core and 22 plugin packages, rather than letting an older parent workspace package take precedence; package identity and version mismatches still fail. Staged Core/Standard binaries passed read-only status and no-home-creation smokes, and the 27-tarball Candidate manifest is content-addressed. These are built-output and focused-test observations, **not** a candidate installation, full compiler, authenticated product, production restart or deployment acceptance. Installation was explicitly skipped.
+
 ## Interfaces and ownership
 
 **Capability IDs:** pibo.operator.cli, pibo.operator.data-resources
@@ -342,7 +372,7 @@ Related concepts:
 ## Known limits
 
 - Root discovery omits the registered compatibility router command.
-- No single test proves registration/discovery parity across the whole root surface.
+- No single test proves registration/discovery parity across the whole legacy root surface. The earlier TUI discovery test path no longer exists at the current traceability commit and is not offered as current evidence. V4 packaged operator help/status has bounded focused coverage, not complete domain coverage, an installed consumer test, or full root TypeScript compilation.
 - Shared CliError adoption and JSON error shape are incomplete across domain CLIs.
 - The synthesis assigns debug-cli tests here although debug behavior belongs to SPC-OP-002; use them only for root dispatch/discovery traces.
 
@@ -355,7 +385,7 @@ Related concepts:
 
 ## Verification and traceability
 
-All source and named-test references are bound to upstream/dev refresh commit `39090b8850758293e69380a52bb7498d7c955bc2`. The traceability commit is evidence authority; it does not imply that a test, build, package, Docker, deployment-pool, browser/CDP, headful, PTY, gateway-restart, real-host/provider, Windows, or Pibo2 path passed. Focused execution and build/typecheck/package results are recorded in the implementation report.
+Legacy source and named-test references originate from the upstream/dev refresh `39090b8850758293e69380a52bb7498d7c955bc2`; this concept's current traceability commit `d5b770bc0acab08415fd412eba6aa2653faa9003` also contains the packaged read-only branch. At that source commit, bounded batches passed 42 operator/gateway-safety tests and five Standard composition tests; Core/Standard builders emitted packages and the Candidate assembly produced 27 content-addressed tarballs. The isolated built-output status smoke did not create Pibo Home. The narrower 43-case final source batch includes one overlapping Standard case; do not sum these counts as unique tests. Root TypeScript compilation hit the bounded heap limit, while package installation was user-skipped. The traceability commit does not imply authenticated product, headful browser, installed consumer, migration, production restart, publication or deployment acceptance.
 
 Later validation commands:
 
