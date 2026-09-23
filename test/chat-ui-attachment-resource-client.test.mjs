@@ -81,6 +81,9 @@ test("staging checks server-derived hash and metadata, preserving retry scope on
  await assert.rejects(stageFrozenAttachmentResources({draft:owner,snapshot,fetchImpl:async()=>{throw Error('offline')}}),{code:'ATT_STORAGE_FAILED'});
  await assert.rejects(stageFrozenAttachmentResources({draft:owner,snapshot,fetchImpl:async()=>new Response('not JSON',{status:201})}),{code:'ATT_STORAGE_FAILED'});
  await assert.rejects(stageFrozenAttachmentResources({draft:owner,snapshot,fetchImpl:async()=>Response.json({code:'ATT_STALE_REVISION',error:'different bytes'},{status:409})}),{code:'ATT_STALE_REVISION'});
+ for(const [status,code] of [[400,'ATT_INVALID_JSON'],[403,'ATT_ACCESS_DENIED'],[404,'ATT_BYTES_MISSING'],[409,'ATT_STALE_REVISION'],[413,'ATT_LIMIT_EXCEEDED']]) {
+  await assert.rejects(stageFrozenAttachmentResources({draft:owner,snapshot,fetchImpl:async()=>new Response('not JSON',{status})}),error=>error.code===code&&error.retryable===false);
+ }
  assert.equal(calls,4);
  `);
 });

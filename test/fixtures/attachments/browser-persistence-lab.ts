@@ -9,6 +9,9 @@ import {
 	attachmentIdbRequest as req, attachmentIdbTransaction as tx,
 } from "../../../src/apps/chat-ui/src/attachments/core-attachment-database";
 import { CORE_ATTACHMENT_DRAFT_STORAGE_PREFIX } from "../../../src/apps/chat-ui/src/attachments/core-attachment-draft";
+import { prepareTypedIndexedSubmission } from "../../../src/apps/chat-ui/src/attachments/core-attachment-prepare-client";
+import { reconcileIndexedAcceptance } from "../../../src/apps/chat-ui/src/attachments/core-attachment-receipts";
+import { coreNoteProvider } from "../../../src/attachments/core-providers";
 
 const PREFIX = "pibo-k07-fixture-";
 function assert(value: unknown, message = "assertion failed"): asserts value { if (!value) throw new Error(message); }
@@ -145,6 +148,35 @@ async function runCases() {
 			await rejects(draft.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_BYTES_MISSING");
 			draft.close(); await rejects(draft.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_ACCESS_DENIED");
 		} finally { draft.close(); foreignOwner.close(); foreignSession.close(); }
+	});
+	await run("indexed-typed-prepare-and-receipt-cas", async (name) => {
+		const a = await openDraft(name), b = await openDraft(name);
+		try {
+			const added = await a.execute(0, note("ps_fixture"));
+			const lookup = (type: string, scope: { sessionId: string }) => scope.sessionId === "ps_fixture" && type === "pibo.core/note" ? coreNoteProvider : undefined;
+			const input = { draft: a, expectedRevision: added.current.revision, lookup, getPin: () => undefined,
+				scope: { sessionId: "ps_fixture" }, clientTxnId: "txn", text: "", delivery: "queue" as const, stageResources: async () => [] };
+			const prepared = await prepareTypedIndexedSubmission(input);
+			assert(!prepared.reused); equal((await b.load()).view.preparedSubmissions.txn.body.attachmentVersion, 1);
+			const retry = await prepareTypedIndexedSubmission({ ...input, expectedRevision: 0,
+				stageResources: async () => { throw new Error("Never re-stage a committed body"); } });
+			assert(retry.reused); equal(retry.prepared.contentBinding, prepared.prepared.contentBinding);
+			const receipt = (snapshot: typeof prepared.snapshot, proof: typeof prepared.prepared.contentBinding) => ({
+				id: "r_accepted", sessionId: "ps_fixture", eventId: snapshot.clientTxnId, streamId: 1, state: "failed", contentBinding: proof,
+			});
+			await rejects(reconcileIndexedAcceptance({ draft: a, snapshot: prepared.snapshot, providerScope: { sessionId: "ps_fixture" },
+				query: { async findByClientTxnId() { return receipt(prepared.snapshot, { version: 1, sha256: "0".repeat(64) }); } } }), "ATT_ACCEPTANCE_UNKNOWN");
+			const current = await b.load();
+			await b.execute(current.revision, { kind: "update", id: added.result, expectedRevision: 1, next: { payload: { text: "new" } } });
+			const first = await reconcileIndexedAcceptance({ draft: a, snapshot: prepared.snapshot, providerScope: { sessionId: "ps_fixture" },
+				query: { async findByClientTxnId() { return receipt(prepared.snapshot, prepared.prepared.contentBinding); } } });
+			equal(first.consumed, []); equal(((await a.load()).view.records[0].payload as { text: string }).text, "new");
+			const loaded = await a.load();
+			const second = await prepareTypedIndexedSubmission({ ...input, expectedRevision: loaded.revision, clientTxnId: "txn2" });
+			const consumed = await reconcileIndexedAcceptance({ draft: b, snapshot: second.snapshot, providerScope: { sessionId: "ps_fixture" },
+				query: { async findByClientTxnId() { return receipt(second.snapshot, second.prepared.contentBinding); } } });
+			equal(consumed.consumed, [added.result]); equal((await a.load()).view.records.length, 0);
+		} finally { a.close(); b.close(); }
 	});
 	await run("clear-tombstone-no-aba", async (name) => {
 		const draft = await openDraft(name), stores = await openAttachmentStores(indexedDB, "owner", name);

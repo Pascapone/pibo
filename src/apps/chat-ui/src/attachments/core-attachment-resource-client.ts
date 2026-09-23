@@ -68,14 +68,18 @@ export async function stageFrozenAttachmentResources(input: {
 		catch { fail("ATT_STORAGE_FAILED", "Attachment preparation response is unknown; retry the same scoped bytes."); }
 		let body: unknown;
 		try { body = await response.json(); }
-		catch { fail("ATT_STORAGE_FAILED", "Attachment preparation response was unreadable; retry the same scoped bytes."); }
+		catch { body = undefined; }
 		if (response.status !== 201 || !response.ok) {
 			const issue = body && typeof body === "object" ? body as { code?: unknown; error?: unknown } : {};
 			if (isAttachmentErrorCode(issue.code)) {
 				throw new AttachmentDraftError({ code: issue.code, message: typeof issue.error === "string" ? issue.error : "Attachment preparation was rejected.", retryable: issue.code === "ATT_STORAGE_FAILED" });
 			}
-			fail("ATT_STORAGE_FAILED", "Attachment preparation was not acknowledged; retry the same scoped bytes.");
+			const code = response.status === 400 ? "ATT_INVALID_JSON" : response.status === 403 ? "ATT_ACCESS_DENIED"
+				: response.status === 404 ? "ATT_BYTES_MISSING" : response.status === 409 ? "ATT_STALE_REVISION"
+				: response.status === 413 ? "ATT_LIMIT_EXCEEDED" : "ATT_STORAGE_FAILED";
+			throw new AttachmentDraftError({ code, message: `Attachment preparation returned HTTP ${response.status}; retry only when storage is unavailable.`, retryable: code === "ATT_STORAGE_FAILED" });
 		}
+		if (body === undefined) fail("ATT_STORAGE_FAILED", "Attachment preparation response was unreadable; retry the same scoped bytes.");
 		const value = body && typeof body === "object" && !Array.isArray(body) ? body as { attachmentVersion?: unknown; resource?: unknown } : {};
 		const resource = value.resource && typeof value.resource === "object" && !Array.isArray(value.resource) ? value.resource as Partial<AttachmentResourceDescriptor> : {};
 		const expectedHash = hex(await crypto.subtle.digest("SHA-256", byteCopy));

@@ -139,11 +139,50 @@ function checkedPin(type: string, scope: AttachmentProviderScope, getPin: PinLoo
 	return { type: pin.type, pluginId: pin.pluginId, contributionId: pin.contributionId, revision: pin.revision, contentHash: pin.contentHash };
 }
 
-/** Preflight selected providers and snapshot pins outside IDB. A second lookup
- * after commit detects removal/reselection before any caller may use the
- * returned frozen snapshot. On drift the snapshot remains local/unaccepted;
- * reloading and refreezing the same transaction is permitted only for the
- * unchanged send value, never by splicing new pins into an old prepared body. */
+/** Validate a bound frozen value using only the selected Pibo Session's
+ * current provider authority. The returned assertion rechecks executable and
+ * pin identity after each network boundary, never inside an IDB transaction. */
+export function preflightFrozenProviderPins(input: {
+	snapshot: Pick<AttachmentSendSnapshot, "sessionId" | "attachments">;
+	lookup: AttachmentProviderLookup;
+	scope: AttachmentProviderScope;
+	getPin: PinLookup;
+}): { pins: AttachmentProviderPin[]; assertCurrent(): void } {
+	if (input.snapshot.sessionId !== input.scope.sessionId || !Array.isArray(input.snapshot.attachments)) {
+		throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "Frozen attachments belong to another Pibo Session.", retryable: false });
+	}
+	const providers = createProviderRegistryClient(input.lookup, input.scope);
+	const pins = new Map<string, AttachmentProviderPin>();
+	const executables = new Map<string, K07AttachmentProvider>();
+	for (const record of input.snapshot.attachments) {
+		const type = record.type;
+		const provider = providers.require(type);
+		const earlier = executables.get(type);
+		if (earlier && earlier !== provider) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider implementation changed during freeze.", retryable: false });
+		executables.set(type, provider);
+		providers.validatePayload(type, record.schemaVersion, cloneJson(record.payload));
+		const pin = checkedPin(type, input.scope, input.getPin);
+		if (pin) {
+			const old = pins.get(type);
+			if (old && !sameAttachmentProviderPin(old, pin)) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider selection changed during freeze.", retryable: false });
+			pins.set(type, pin);
+		}
+	}
+	const assertCurrent = () => {
+		for (const [type, provider] of executables) {
+			if (providers.require(type) !== provider) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider implementation changed after freeze.", retryable: false });
+			const pin = pins.get(type);
+			if (pin) {
+				const after = checkedPin(type, input.scope, input.getPin);
+				if (!after || !sameAttachmentProviderPin(pin, after)) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider selection changed after freeze; do not send this transaction.", retryable: false });
+			}
+		}
+	};
+	return { pins: [...pins.values()], assertCurrent };
+}
+
+/** Preflight selected providers outside IDB. Never splice new pins into an
+ * existing prepared body; retry its original captured request unchanged. */
 export async function freezeWithProviderPins(input: ProviderCommandContext & {
 	expectedRevision: number;
 	getPin: PinLookup;
@@ -155,40 +194,16 @@ export async function freezeWithProviderPins(input: ProviderCommandContext & {
 	if (typeof input.text !== "string") throw invalidJson("Frozen message text must be a string.");
 	const current = await input.draft.load();
 	if (current.revision !== input.expectedRevision) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Draft changed before provider validation; reload before freezing.", retryable: false });
-	const providers = createProviderRegistryClient(input.lookup, input.scope);
-	const pins = new Map<string, AttachmentProviderPin>();
-	const executables = new Map<string, K07AttachmentProvider>();
-	for (const record of current.view.records) {
-		const type = record.envelope.type;
-		const provider = providers.require(type);
-		const earlier = executables.get(type);
-		if (earlier && earlier !== provider) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider implementation changed during freeze.", retryable: false });
-		executables.set(type, provider);
-		providers.validatePayload(type, record.envelope.schemaVersion, cloneJson(record.payload));
-		const pin = checkedPin(type, input.scope, input.getPin);
-		if (pin) {
-			const old = pins.get(type);
-			if (old && !sameAttachmentProviderPin(old, pin)) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider selection changed during freeze.", retryable: false });
-			pins.set(type, pin);
-		}
-		// Serialization is deliberately server-only at admission: the browser
-		// still has draft IDs, while the server passes verified resource refs.
-	}
-	const result = await input.draft.execute(input.expectedRevision, { kind: "freeze", clientTxnId: input.clientTxnId, text: input.text });
 	const original = current.view.records.map((record) => ({ id: record.envelope.id, revision: record.envelope.revision,
 		type: record.envelope.type, schemaVersion: record.envelope.schemaVersion, payload: record.payload,
 		...(record.media !== undefined ? { media: record.media } : {}) }));
+	const authority = preflightFrozenProviderPins({ snapshot: { sessionId: input.scope.sessionId, attachments: original },
+		lookup: input.lookup, scope: input.scope, getPin: input.getPin });
+	const result = await input.draft.execute(input.expectedRevision, { kind: "freeze", clientTxnId: input.clientTxnId, text: input.text });
 	if (result.result.sessionId !== input.scope.sessionId || result.result.text !== input.text
 		|| canonicalJson(original) !== canonicalJson(result.result.attachments)) {
 		throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Frozen content changed after provider validation; do not send this transaction.", retryable: false });
 	}
-	for (const [type, provider] of executables) {
-		if (providers.require(type) !== provider) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider implementation changed after freeze.", retryable: false });
-		const pin = pins.get(type);
-		if (pin) {
-			const after = checkedPin(type, input.scope, input.getPin);
-			if (!after || !sameAttachmentProviderPin(pin, after)) throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Provider selection changed after freeze; do not send this transaction.", retryable: false });
-		}
-	}
-	return { snapshot: result.result, pins: [...pins.values()], revision: result.current.revision };
+	authority.assertCurrent();
+	return { snapshot: result.result, pins: authority.pins, revision: result.current.revision };
 }
