@@ -103,8 +103,18 @@ test('config validation is finite JSON, validates transformed values, and fails 
 });
 
 test('SDK browser boundary contains no Node, harness or old registry import', () => {
+	// The public attachment contract is a deliberately neutral exception to
+	// the old blanket types.js ban. Verify the exact target itself remains
+	// import-free before permitting its SDK re-exports.
+	const attachments = readFileSync(new URL('../src/attachments/types.ts', import.meta.url), 'utf8');
+	assert.match(attachments, /^export const ATTACHMENT_PROVIDER_KIND = /m);
+	assert.match(attachments, /^export const ATTACHMENT_PROVIDER_RESOURCE_KIND = /m);
+	assert.doesNotMatch(attachments, /\b(?:import\s*(?:\(|[^;\n]*\bfrom\b)|export\s*[^;\n]*\bfrom\b|require\s*\()/);
 	for (const file of ['sdk', 'manifest', 'contributions', 'scope']) {
 		const source = readFileSync(new URL(`../src/plugins/${file}.ts`, import.meta.url), 'utf8');
-		assert.doesNotMatch(source, /from\s+["'](?:node:|@earendil|.*\/core\/|.*\/registry|.*\/types\.js)/);
+		for (const match of source.matchAll(/from\s+["']([^"']+)["']/g)) {
+			if (file === 'sdk' && match[1] === '../attachments/types.js') continue;
+			assert.doesNotMatch(match[0], /from\s+["'](?:node:|@earendil|.*\/core\/|.*\/registry|.*\/types\.js)/);
+		}
 	}
 });
