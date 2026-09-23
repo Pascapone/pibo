@@ -133,32 +133,34 @@ test("indexed receipt reconciliation accepts only independently matched durable 
  `);
 });
 
-test("verbatim stored body is sent and only a separately fetched receipt consumes a typed draft", async () => {
+test("fresh typed send posts only the re-read immutable body and consumes from independent receipt", async () => {
  await scenario(`
- const {draft,input,result}=await prepared();let stages=0,posts=0;
- const sent=await deliverTypedIndexedAttachments({...input,expectedRevision:0,stageResources:async()=>{stages++;return []},
+ const draft=indexed();const added=await draft.execute(0,{kind:'add',input:{sessionId,type:'pibo.core/note',schemaVersion:1,payload:{text:'note'}}});
+ let stages=0,posts=0;
+ const sent=await deliverTypedIndexedAttachments({draft,expectedRevision:added.current.revision,lookup,scope,getPin:()=>undefined,
+  clientTxnId:'txn',text:'',delivery:'queue',stageResources:async()=>{stages++;return []},
   postPrepared:async body=>{posts++;assert.deepEqual(body,(await draft.load()).view.preparedSubmissions.txn);
    assert.equal(body.body.attachments[0].payload.text,'note');return {receipt:{id:'echo-must-not-prove'}}},
-  query:{async findByClientTxnId(){return receipt(result,'running')}}});
- assert.equal(stages,0);assert.equal(posts,1);assert.equal(sent.consumed.length,1);
+  query:{async findByClientTxnId(){return {id:'receipt',sessionId,eventId:'txn',streamId:1,state:'running',contentBinding:(await draft.load()).view.preparedSubmissions.txn.contentBinding}}}});
+ assert.equal(stages,1);assert.equal(posts,1);assert.equal(sent.consumed.length,1);
  assert.equal((await draft.load()).view.records.length,0);
  `);
 });
 
-test("unknown POST reconciles without a second POST, while missing independent proof keeps unchanged retry", async () => {
+test("unchanged retry queries admission first, even after provider drift; absent proof retains original", async () => {
  await scenario(`
- const a=await prepared();let calls=0;
+ const a=await prepared();let posts=0;
+ const recovered=await deliverTypedIndexedAttachments({...a.input,expectedRevision:0,lookup:()=>undefined,
+  postPrepared:async()=>{posts++;throw Error('must not POST an accepted retry')},query:{async findByClientTxnId(){return receipt(a.result)}}});
+ assert.equal(posts,0);assert.equal(recovered.consumed.length,1);
+ const b=await prepared();let stages=0,receipts=0;
  const unknown=Object.assign(new Error('lost response'),{acceptanceUnknown:true});
- const recovered=await deliverTypedIndexedAttachments({...a.input,expectedRevision:0,
-  postPrepared:async()=>{calls++;throw unknown},query:{async findByClientTxnId(){return receipt(a.result)}}});
- assert.equal(calls,1);assert.equal(recovered.consumed.length,1);
- const b=await prepared();let stages=0;let receipts=0;
  const base={...b.input,expectedRevision:0,stageResources:async()=>{stages++;return []},
-  query:{async findByClientTxnId(){receipts++;return receipts===1?undefined:receipt(b.result)}}};
- await assert.rejects(deliverTypedIndexedAttachments({...base,postPrepared:async()=>{throw unknown}}),e=>e===unknown);
+  query:{async findByClientTxnId(){receipts++;return receipts<=2?undefined:receipt(b.result)}}};
+ await assert.rejects(deliverTypedIndexedAttachments({...base,postPrepared:async()=>{posts++;throw unknown}}),e=>e===unknown);
  assert.equal((await b.draft.load()).view.records.length,1);
- const retry=await deliverTypedIndexedAttachments({...base,postPrepared:async body=>{assert.deepEqual(body,(await b.draft.load()).view.preparedSubmissions.txn)}});
- assert.equal(retry.consumed.length,1);assert.equal(stages,0);
+ const retry=await deliverTypedIndexedAttachments({...base,postPrepared:async()=>{posts++;throw Error('must not duplicate') }});
+ assert.equal(retry.consumed.length,1);assert.equal(stages,0);assert.equal(posts,1);
  `);
 });
 

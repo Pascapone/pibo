@@ -35,6 +35,7 @@ function skillSuggestionId(index: number): string {
 
 export type ComposerProps = {
 	sessionId: string | null;
+	ownerUserId?: string;
 	disabled?: boolean;
 	commands: ComposerCommand[];
 	skills: Array<{ name: string; description?: string; path?: string }>;
@@ -42,6 +43,9 @@ export type ComposerProps = {
 	focusSignal: number;
 	selectedWebAnnotations: WebAnnotationMessageAttachment[];
 	selectedUploadAttachments: UploadedChatAttachment[];
+	structuredAttachments?: readonly { id: string; title: string }[];
+	onAddStructuredNote?: (text: string) => Promise<void>;
+	onDetachStructuredAttachment?: (id: string) => Promise<void>;
 	onValueChange: (value: string) => void;
 	onCommand: (text: string) => Promise<boolean>;
 	onDetachWebAnnotation: (annotationId: string) => void;
@@ -58,6 +62,7 @@ function boundedUiText(value: string, max: number): string {
 
 export function Composer({
 	sessionId,
+	ownerUserId,
 	disabled = false,
 	commands,
 	skills,
@@ -65,6 +70,9 @@ export function Composer({
 	focusSignal,
 	selectedWebAnnotations,
 	selectedUploadAttachments,
+	structuredAttachments = [],
+	onAddStructuredNote,
+	onDetachStructuredAttachment,
 	onValueChange,
 	onCommand,
 	onDetachWebAnnotation,
@@ -82,6 +90,7 @@ export function Composer({
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const clipboardUploadButtonRef = useRef<HTMLButtonElement>(null);
+	const structuredNoteToggleRef = useRef<HTMLButtonElement>(null);
 	const activeCommandRef = useRef<HTMLButtonElement>(null);
 	const activeSkillRef = useRef<HTMLButtonElement>(null);
 	const historyNavRef = useRef<{ entries: string[]; index: number; draft: string } | null>(null);
@@ -100,6 +109,11 @@ export function Composer({
 	const [cursorPos, setCursorPos] = useState(0);
 	const [dismissedSuggestionKeys, setDismissedSuggestionKeys] = useState<string[]>([]);
 	const [uploading, setUploading] = useState(false);
+	const [structuredNoteOpen, setStructuredNoteOpen] = useState(false);
+	const [structuredNoteText, setStructuredNoteText] = useState("");
+	const [structuredNotePending, setStructuredNotePending] = useState(false);
+	const [structuredNoteError, setStructuredNoteError] = useState<string | null>(null);
+	useEffect(() => { setStructuredNoteOpen(false); setStructuredNoteText(""); setStructuredNoteError(null); }, [sessionId, ownerUserId]);
 	const [previewAttachment, setPreviewAttachment] = useState<UploadedChatAttachment | null>(null);
 	const [uploadStatus, setUploadStatus] = useState<{ message: string; copyText?: string; error: boolean } | null>(null);
 	const [pendingClipboardImage, setPendingClipboardImage] = useState<ClipboardImageUpload | null>(null);
@@ -444,7 +458,7 @@ export function Composer({
 	const dispatchText = async (candidate: string) => {
 		if (inputHookPending.current || inputHookAbort.signal.aborted) return;
 		let text = candidate.trim();
-		if (!text) return;
+		if (!text && !structuredAttachments.length) return;
 		inputHookPending.current = true;
 		try {
 			if (sessionId && pluginContext?.host.plan.piboSessionId === sessionId) {
@@ -453,7 +467,7 @@ export function Composer({
 				text = transformed.value.trim();
 			}
 			inputHookAbort.signal.throwIfAborted();
-			if (!text) return;
+			if (!text && !structuredAttachments.length) return;
 			if (text.split(/\s+/)[0] === "/upload") { openUploadDialog(); return; }
 			if (text.startsWith("/") && (await onCommand(text))) {
 				if (!inputHookAbort.signal.aborted && latestValueRef.current === candidate) {
@@ -601,7 +615,7 @@ export function Composer({
 		}
 		if (disabled || transcribing) return;
 		const text = value.trim();
-		if (!text) return;
+		if (!text && !structuredAttachments.length) return;
 		if (filteredSkills.length) {
 			insertSkill(filteredSkills[Math.min(activeSkillIndex, filteredSkills.length - 1)].name);
 			return;
@@ -620,7 +634,7 @@ export function Composer({
 			ref={composerRootRef}
 			data-pibo-debug="composer"
 			data-pibo-session-id={sessionId ?? undefined}
-			data-pibo-state={disabled ? "disabled" : value ? "non-empty" : "empty"}
+			data-pibo-state={disabled ? "disabled" : value || structuredAttachments.length ? "non-empty" : "empty"}
 			className="relative p-3 bg-[#151f24] border-t border-slate-800 max-[980px]:p-2 @max-[420px]:p-2"
 		>
 			<input
@@ -731,6 +745,25 @@ export function Composer({
 					onIndexChange={() => {}}
 				/>
 			) : null}
+			{onAddStructuredNote ? (
+				<div className="mb-2 rounded-sm border border-slate-800 bg-[#0e1116] px-2.5 py-1.5" data-pibo-debug="composer-structured-attachments" data-structured-attachment-count={structuredAttachments.length}>
+					<div className="flex items-center justify-between gap-2">
+						<div className="text-[11px] font-bold uppercase tracking-wider text-[#11a4d4]">Structured attachments</div>
+						<button ref={structuredNoteToggleRef} type="button" disabled={disabled || structuredNotePending} aria-expanded={structuredNoteOpen} aria-controls="composer-structured-note-editor" onClick={() => setStructuredNoteOpen((current) => !current)} className="text-[11px] text-slate-400 hover:text-[#11a4d4] disabled:opacity-50">{structuredNoteOpen ? "Cancel note" : "Add note"}</button>
+					</div>
+					{structuredAttachments.length ? <div className="mt-1.5 flex flex-wrap gap-1.5">{structuredAttachments.map((attachment) => (
+						<div key={attachment.id} className="inline-flex max-w-80 items-center gap-1 rounded-sm border border-[#11a4d4]/50 bg-[#11a4d4]/10 px-2 py-1 text-[11px] text-slate-200">
+							<span className="min-w-0 truncate">{boundedUiText(attachment.title, 100)}</span>
+							<button type="button" disabled={disabled || structuredNotePending || !onDetachStructuredAttachment} onClick={() => { if (onDetachStructuredAttachment) void onDetachStructuredAttachment(attachment.id).catch((error) => setStructuredNoteError(error instanceof Error ? error.message : String(error))); }} aria-label={`Remove structured attachment ${boundedUiText(attachment.title, 100)}`} className="shrink-0 rounded-sm p-0.5 text-[#11a4d4] hover:bg-slate-800 hover:text-slate-100 disabled:opacity-50"><X size={11} /></button>
+						</div>
+					))}</div> : null}
+					{structuredNoteOpen ? <div id="composer-structured-note-editor" role="region" aria-label="Structured note editor" className="mt-2 flex flex-col gap-2">
+						<textarea autoFocus aria-label="Structured note text" value={structuredNoteText} maxLength={2000} rows={2} disabled={disabled || structuredNotePending} onChange={(event) => setStructuredNoteText(event.target.value)} className="w-full resize-y rounded-sm border border-slate-700 bg-[#151f24] px-2 py-1 text-xs text-slate-100 outline-none focus:border-[#11a4d4] disabled:opacity-50" />
+						<button type="button" disabled={disabled || structuredNotePending || !structuredNoteText.trim()} onClick={() => { setStructuredNotePending(true); setStructuredNoteError(null); void onAddStructuredNote(structuredNoteText.trim()).then(() => { setStructuredNoteText(""); setStructuredNoteOpen(false); window.requestAnimationFrame(() => structuredNoteToggleRef.current?.focus()); }).catch((error) => setStructuredNoteError(error instanceof Error ? error.message : String(error))).finally(() => setStructuredNotePending(false)); }} className="self-end rounded-sm bg-[#11a4d4] px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50">Save note</button>
+					</div> : null}
+					{structuredNoteError ? <div role="alert" className="mt-1 text-xs text-red-300">{structuredNoteError}</div> : null}
+				</div>
+			) : null}
 			{selectedUploadAttachments.length ? (
 				<div className="mb-2 rounded-sm border border-slate-800 bg-[#0e1116] px-2.5 py-1.5" data-pibo-debug="composer-upload-attachments" data-upload-attachment-count={selectedUploadAttachments.length}>
 					<div className="mb-1.5 flex items-center justify-between gap-2">
@@ -813,7 +846,7 @@ export function Composer({
 					ref={inputRef}
 					data-pibo-debug="composer-input"
 					data-pibo-session-id={sessionId ?? undefined}
-					data-pibo-state={disabled ? "disabled" : value ? "non-empty" : "empty"}
+					data-pibo-state={disabled ? "disabled" : value || structuredAttachments.length ? "non-empty" : "empty"}
 					rows={1}
 					value={value}
 					disabled={disabled}

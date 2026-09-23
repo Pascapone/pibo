@@ -24,6 +24,8 @@ export type ComposerSendPlan = {
 	text: string;
 	webAnnotationIds: string[];
 	fileAttachmentPaths: string[];
+	/** SHA-256 of the owner-scoped live structured value; absent for legacy. */
+	attachmentIntent?: string;
 	clientTxnId: string;
 	delivery: ChatMessageDelivery;
 	optimisticEvent: ChatWebStoredEvent<ComposerUserMessagePayload>;
@@ -99,6 +101,7 @@ export function createComposerSendPlan({
 	text,
 	selectedWebAnnotations,
 	selectedUploadAttachments,
+	attachmentIntent,
 	eventSequence,
 	now,
 	clientTxnId,
@@ -108,6 +111,7 @@ export function createComposerSendPlan({
 	text: string;
 	selectedWebAnnotations: readonly ComposerWebAnnotationRef[];
 	selectedUploadAttachments: readonly ComposerUploadAttachmentRef[];
+	attachmentIntent?: string;
 	eventSequence: number;
 	now: string;
 	clientTxnId: string;
@@ -135,7 +139,7 @@ export function createComposerSendPlan({
 			source: "user",
 		},
 	};
-	return { piboSessionId, text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery, optimisticEvent };
+	return { piboSessionId, text, webAnnotationIds, fileAttachmentPaths, ...(attachmentIntent ? { attachmentIntent } : {}), clientTxnId, delivery, optimisticEvent };
 }
 
 export function withComposerSendDelivery(plan: ComposerSendPlan, delivery: ChatMessageDelivery): ComposerSendPlan {
@@ -172,24 +176,27 @@ export function appendComposerOptimisticEvent(
 
 
 const pendingTransactionKey = "pibo.chat.pending-message-transaction.v2";
-type PendingTransaction = Pick<ComposerSendPlan, "piboSessionId" | "text" | "webAnnotationIds" | "fileAttachmentPaths" | "clientTxnId" | "delivery">;
+type PendingTransaction = Pick<ComposerSendPlan, "piboSessionId" | "text" | "webAnnotationIds" | "fileAttachmentPaths" | "clientTxnId" | "delivery"> & { attachmentIntent?: string };
 
 export function readPendingMessageTransaction(): PendingTransaction | null {
  try {
   const value: unknown = JSON.parse(window.sessionStorage.getItem(pendingTransactionKey) ?? "null");
   if (!value || typeof value !== "object") return null;
   const row = value as PendingTransaction;
-  return typeof row.piboSessionId === "string" && typeof row.text === "string" && typeof row.clientTxnId === "string" && (row.delivery === "queue" || row.delivery === "steer") && Array.isArray(row.webAnnotationIds) && row.webAnnotationIds.every(id => typeof id === "string") && Array.isArray(row.fileAttachmentPaths) && row.fileAttachmentPaths.every(path => typeof path === "string") ? row : null;
+  return typeof row.piboSessionId === "string" && typeof row.text === "string" && typeof row.clientTxnId === "string" && (row.delivery === "queue" || row.delivery === "steer") && Array.isArray(row.webAnnotationIds) && row.webAnnotationIds.every(id => typeof id === "string") && Array.isArray(row.fileAttachmentPaths) && row.fileAttachmentPaths.every(path => typeof path === "string") && (row.attachmentIntent === undefined || typeof row.attachmentIntent === "string" && /^sha256:[0-9a-f]{64}$/.test(row.attachmentIntent)) ? row : null;
  } catch { return null; }
 }
 
 export function rememberPendingMessageTransaction(plan: PendingTransaction | null): void {
  try {
   if (!plan) window.sessionStorage.removeItem(pendingTransactionKey);
-  else { const { piboSessionId, text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery } = plan; window.sessionStorage.setItem(pendingTransactionKey, JSON.stringify({piboSessionId,text,webAnnotationIds,fileAttachmentPaths,clientTxnId,delivery})); }
+  else { const { piboSessionId, text, webAnnotationIds, fileAttachmentPaths, clientTxnId, delivery, attachmentIntent } = plan; window.sessionStorage.setItem(pendingTransactionKey, JSON.stringify({piboSessionId,text,webAnnotationIds,fileAttachmentPaths,clientTxnId,delivery,...(attachmentIntent ? {attachmentIntent} : {})})); }
  } catch { /* In-memory identity still protects retries if browser storage is unavailable. */ }
 }
 
-export function samePendingMessageIntent(prior: PendingTransaction | null, input: Pick<PendingTransaction,"piboSessionId"|"text"|"webAnnotationIds"|"fileAttachmentPaths">): boolean {
- return prior !== null && prior.piboSessionId === input.piboSessionId && prior.text === input.text && JSON.stringify(prior.webAnnotationIds) === JSON.stringify(input.webAnnotationIds) && JSON.stringify(prior.fileAttachmentPaths) === JSON.stringify(input.fileAttachmentPaths);
+export function samePendingMessageIntent(prior: PendingTransaction | null, input: Pick<PendingTransaction,"piboSessionId"|"text"|"webAnnotationIds"|"fileAttachmentPaths"|"attachmentIntent">): boolean {
+ return prior !== null && prior.piboSessionId === input.piboSessionId && prior.text === input.text
+  && prior.attachmentIntent === input.attachmentIntent
+  && JSON.stringify(prior.webAnnotationIds) === JSON.stringify(input.webAnnotationIds)
+  && JSON.stringify(prior.fileAttachmentPaths) === JSON.stringify(input.fileAttachmentPaths);
 }

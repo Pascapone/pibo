@@ -3,7 +3,8 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { flushSync } from "react-dom";
 import { RefreshCw, X } from "lucide-react";
-import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postRoom, postSession } from "./api-chat-sessions";
+import { getBootstrap, getNavigation, getSessionPage, markRoomRead, markSessionRead, patchRoom, patchRoomOrder, patchSession, patchSessionOrder, postAction, postMessage, postPreparedAttachmentMessage, postRoom, postSession } from "./api-chat-sessions";
+import type { AttachmentPreparedSubmission } from "./attachments/core-attachment-draft";
 import { navigateToChatRoute, type ChatAppRoute, type NavigationOptions } from "./app-routes";
 import { downloadChatFile, type ChatDownloadProgress } from "./api-chat-files";
 import { fetchSignalStatuses, fetchSignalTree, subscribeSignalStatuses, subscribeSignalTree } from "./api-trace-signals";
@@ -1426,6 +1427,8 @@ export function App({ route }: { route: ChatAppRoute }) {
 		onError: (_error, _variables, context) => restoreBootstrapSnapshot(context?.snapshot),
 	});
 
+	const typedSendScopeRef = useRef({ selectedPiboSessionId, selectedRoomId, ownerUserId: bootstrap?.identity?.userId });
+	typedSendScopeRef.current = { selectedPiboSessionId, selectedRoomId, ownerUserId: bootstrap?.identity?.userId };
 	const sendMessageMutation = useMutation({
 		mutationFn: ({ piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery }: { piboSessionId: string; text: string; clientTxnId: string; roomId?: string; webAnnotationIds?: readonly string[]; fileAttachmentPaths?: readonly string[]; delivery?: "queue" | "steer" }) =>
 			postMessage(piboSessionId, text, clientTxnId, roomId, webAnnotationIds, fileAttachmentPaths, delivery),
@@ -2276,6 +2279,14 @@ export function App({ route }: { route: ChatAppRoute }) {
 									await loadBootstrap(selectedPiboSessionId, showArchivedRef.current, selectedRoomId ?? undefined, { force: true });
 									setError(null);
 								} catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); throw caught; }
+							}}
+							onSendPrepared={async (prepared: AttachmentPreparedSubmission, expectedOwnerUserId: string) => {
+								const scope = typedSendScopeRef.current;
+								if (!scope.ownerUserId || scope.ownerUserId !== expectedOwnerUserId || !scope.selectedPiboSessionId
+									|| prepared.body.piboSessionId !== scope.selectedPiboSessionId || (prepared.body.roomId ?? undefined) !== (scope.selectedRoomId || undefined)) {
+									throw new Error("Login owner or Pibo Session changed before typed message delivery.");
+								}
+								await postPreparedAttachmentMessage(prepared);
 							}}
 							onError={setError}
 						/>}

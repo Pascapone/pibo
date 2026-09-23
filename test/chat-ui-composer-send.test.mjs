@@ -157,3 +157,26 @@ async function runComposerSendScenario() {
 test("chat composer send helpers plan optimistic queued messages and overlays", async () => {
 	await assert.doesNotReject(runComposerSendScenario());
 });
+
+test("pending typed intent distinguishes note, owner and legacy wire shapes across reload", async () => {
+ await execFileAsync(process.execPath,["--import","tsx","--input-type=module","--eval",`
+ import assert from 'node:assert/strict';
+ import {createComposerSendPlan,readPendingMessageTransaction,rememberPendingMessageTransaction,samePendingMessageIntent} from './src/apps/chat-ui/src/composer-send.ts';
+ import {structuredComposerIntent} from './src/apps/chat-ui/src/attachments/core-attachment-composer-intent.ts';
+ const store=new Map();globalThis.window={sessionStorage:{getItem:key=>store.get(key)??null,setItem:(key,value)=>store.set(key,value),removeItem:key=>store.delete(key)}};
+ const note=text=>({envelope:{id:'att_1',revision:1,type:'pibo.core/note',schemaVersion:1},payload:{text}});
+ const a=structuredComposerIntent([note('old')],'alice');const b=structuredComposerIntent([note('new')],'alice');
+ assert.match(a,/^sha256:[0-9a-f]{64}$/);assert.notEqual(a,b);
+ assert.notEqual(a,structuredComposerIntent([note('old')],'bob'));
+ const base={piboSessionId:'ps_1',text:'message',selectedWebAnnotations:[],selectedUploadAttachments:[],eventSequence:1,now:'2026-09-23T00:00:00Z',clientTxnId:'txn'};
+ const typed=createComposerSendPlan({...base,attachmentIntent:a});rememberPendingMessageTransaction(typed);
+ const restored=readPendingMessageTransaction();assert.equal(restored.attachmentIntent,a);
+ const intent={piboSessionId:'ps_1',text:'message',webAnnotationIds:[],fileAttachmentPaths:[]};
+ assert.equal(samePendingMessageIntent(restored,{...intent,attachmentIntent:a}),true);
+ assert.equal(samePendingMessageIntent(restored,{...intent,attachmentIntent:b}),false);
+ assert.equal(samePendingMessageIntent(restored,intent),false);
+ store.set('pibo.chat.pending-message-transaction.v2',JSON.stringify({...intent,clientTxnId:'legacy',delivery:'queue'}));
+ const legacy=readPendingMessageTransaction();assert.equal(samePendingMessageIntent(legacy,intent),true);
+ assert.equal(samePendingMessageIntent(legacy,{...intent,attachmentIntent:a}),false);
+ `],{cwd:process.cwd(),timeout:30000,maxBuffer:1024*1024});
+});

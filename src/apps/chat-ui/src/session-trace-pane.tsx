@@ -1,6 +1,7 @@
 import { withMessageReceipts } from "./tracing/message-receipts";
 import {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -23,6 +24,14 @@ import type {
 import type { SlashCommand } from "./chat-commands";
 import type { ChatSessionViewId, ChatSessionViewProps, ToolDisplayMode } from "./session-views/types";
 import { getMessageReceipts, getSessionForkCandidates, getSessionStatus, type ChatMessageDelivery } from "./api-chat-sessions";
+import { BrowserPluginContext } from "./plugins/browser-host";
+import { useIndexedComposerAttachments } from "./attachments/use-indexed-attachments";
+import { deliverTypedIndexedAttachments } from "./attachments/core-attachment-delivery-client";
+import { addWithProvider } from "./attachments/core-attachment-provider-commands";
+import { structuredComposerIntent } from "./attachments/core-attachment-composer-intent";
+import { createMessageReceiptsQuery } from "./attachments/core-attachment-receipts";
+import type { AttachmentPreparedSubmission } from "./attachments/core-attachment-draft";
+import { AttachmentDraftError } from "../../../attachments/errors";
 import { adjacentMessageDeliveryChoice } from "./message-delivery-keyboard";
 import { uploadChatFiles } from "./api-chat-files";
 import { getLoopSessionGoal } from "./api-loops";
@@ -148,6 +157,7 @@ export function SessionTracePane({
   onRefreshTrace,
   onRefreshBootstrap,
   onSend,
+  onSendPrepared,
   onError,
   desktopActiveTool = null,
   desktopToolHosts,
@@ -205,6 +215,7 @@ export function SessionTracePane({
     clientTxnId?: string,
     delivery?: ChatMessageDelivery,
   ) => Promise<void>;
+  onSendPrepared: (prepared: AttachmentPreparedSubmission, expectedOwnerUserId: string) => Promise<unknown>;
   onError: (message: string | null) => void;
   desktopActiveTool?: DesktopSessionTool | null;
   desktopToolHosts?: Partial<Record<DesktopSessionTool, Element | null>>;
@@ -235,6 +246,18 @@ export function SessionTracePane({
   const queueButtonRef = useRef<HTMLButtonElement>(null);
   const steerButtonRef = useRef<HTMLButtonElement>(null);
   const selectedBackendPiboSessionId = selectedSessionBackendId(selectedPiboSessionId);
+  const ownerUserId = bootstrap.identity?.userId;
+  const pluginContext = useContext(BrowserPluginContext);
+  const typedAttachments = useIndexedComposerAttachments(ownerUserId, selectedBackendPiboSessionId);
+  const composerOwnerRef = useRef(ownerUserId);
+  useEffect(() => {
+    if (composerOwnerRef.current === ownerUserId) return;
+    composerOwnerRef.current = ownerUserId;
+    setPendingSendPlan(null);
+    retrySendPlanRef.current = null;
+    rememberPendingMessageTransaction(null);
+    composerDraftRef.current = createComposerDraftTracker(composerText);
+  }, [ownerUserId, composerText]);
   useEffect(() => {
     if (
       composerDraftSessionRef.current === selectedPiboSessionId
@@ -402,6 +425,37 @@ export function SessionTracePane({
     createUploadAttachmentId,
   );
 
+  const structuredAttachments = typedAttachments.loaded?.view.records.map((record) => ({
+    id: record.envelope.id as string,
+    title: record.envelope.type === "pibo.core/note" && typeof (record.payload as { text?: unknown }).text === "string"
+      ? (record.payload as { text: string }).text : record.envelope.type,
+  })) ?? [];
+  const addStructuredNote = async (text: string) => {
+    const sessionId = selectedBackendPiboSessionId;
+    const draft = typedAttachments.draft;
+    const host = pluginContext?.host;
+    if (!ownerUserId || !sessionId || !draft || !host || host.plan.piboSessionId !== sessionId) {
+      throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "The session's structured attachment draft or provider is not ready.", retryable: true });
+    }
+    const loaded = await typedAttachments.reload();
+    if (!loaded) throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "The structured attachment owner changed.", retryable: false });
+    await addWithProvider({ draft, expectedRevision: loaded.revision,
+      lookup: host.lookupAttachmentProvider.bind(host), scope: { sessionId }, type: "pibo.core/note", schemaVersion: 1, source: { text } });
+    typedAttachments.assertCurrent(ownerUserId, sessionId, draft);
+    await typedAttachments.reload();
+  };
+  const detachStructuredAttachment = async (id: string) => {
+    const sessionId = selectedBackendPiboSessionId;
+    const draft = typedAttachments.draft;
+    if (!ownerUserId || !sessionId || !draft) throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "The structured attachment owner changed.", retryable: false });
+    const loaded = await typedAttachments.reload();
+    const record = loaded?.view.records.find((item) => item.envelope.id === id);
+    if (!loaded || !record) throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Structured attachment changed; reload before removing.", retryable: false });
+    await draft.execute(loaded.revision, { kind: "remove", id: record.envelope.id });
+    typedAttachments.assertCurrent(ownerUserId, sessionId, draft);
+    await typedAttachments.reload();
+  };
+
   const rawCurrentTraceView = useCurrentSessionTrace({
     selectedPiboSessionId: selectedBackendPiboSessionId,
     baseTraceView,
@@ -537,13 +591,58 @@ export function SessionTracePane({
     );
     retrySendPlanRef.current = sendPlan;
     rememberPendingMessageTransaction(sendPlan);
-    await onSend(
-      sendPlan.text,
-      sendPlan.webAnnotationIds,
-      sendPlan.fileAttachmentPaths,
-      sendPlan.clientTxnId,
-      delivery,
-    );
+    const sessionId = sendPlan.piboSessionId;
+    const draft = typedAttachments.draft;
+    if (ownerUserId && selectedBackendPiboSessionId === sessionId && !draft) {
+      throw new AttachmentDraftError({ code: "ATT_STORAGE_FAILED", message: typedAttachments.error ?? "Attachment draft is opening; retry the unchanged send after it loads.", retryable: true });
+    }
+    const loaded = draft ? await typedAttachments.reload() : undefined;
+    const bound = Boolean(loaded && (loaded.view.openSnapshots.some((entry) => entry.clientTxnId === sendPlan.clientTxnId)
+      || Object.hasOwn(loaded.view.preparedSubmissions, sendPlan.clientTxnId)
+      || loaded.view.acceptedTransactions.includes(sendPlan.clientTxnId)));
+    const currentIntent = structuredComposerIntent(loaded?.view.records ?? [], ownerUserId);
+    if (!bound && currentIntent !== sendPlan.attachmentIntent) {
+      throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "Structured attachments changed before send; review them and retry.", retryable: false });
+    }
+    const typed = Boolean(bound || loaded?.view.records.length);
+    if (!typed && sendPlan.text === "") {
+      throw new AttachmentDraftError({ code: "ATT_STALE_REVISION", message: "The structured attachment was removed before this empty-text send; review and retry.", retryable: false });
+    }
+    if (typed) {
+      if (!draft || !loaded || !ownerUserId || selectedBackendPiboSessionId !== sessionId) {
+        throw new AttachmentDraftError({ code: "ATT_ACCESS_DENIED", message: "Typed attachment owner or Pibo Session changed.", retryable: false });
+      }
+      if (sendPlan.fileAttachmentPaths.length) {
+        throw new AttachmentDraftError({ code: "ATT_INVALID_JSON", message: "Typed attachments cannot be sent together with legacy uploaded paths. Detach the legacy uploads first.", retryable: false });
+      }
+      if (!loaded.view.acceptedTransactions.includes(sendPlan.clientTxnId)) {
+        const host = pluginContext?.host;
+        if (!host || host.plan.piboSessionId !== sessionId) {
+          throw new AttachmentDraftError({ code: "ATT_PROVIDER_MISSING", message: "Attachment providers for this Pibo Session are not ready.", retryable: true });
+        }
+        await deliverTypedIndexedAttachments({
+          draft, expectedRevision: loaded.revision,
+          lookup: host.lookupAttachmentProvider.bind(host), getPin: host.getAttachmentProviderPin.bind(host),
+          scope: { sessionId }, clientTxnId: sendPlan.clientTxnId, text: sendPlan.text, delivery,
+          ...(selectedRoomId ? { roomId: selectedRoomId } : {}), webAnnotationIds: sendPlan.webAnnotationIds,
+          query: createMessageReceiptsQuery({ sessionId, fetchJson: () => getMessageReceipts(sessionId) }),
+          postPrepared: (prepared) => onSendPrepared(prepared, ownerUserId),
+          beforePost: () => typedAttachments.assertCurrent(ownerUserId, sessionId, draft),
+        });
+        void typedAttachments.reload().catch(() => undefined);
+      }
+      // Admission is durable here; a background bootstrap refresh is not
+      // allowed to roll back the original typed send or consume twice.
+      void onRefreshBootstrap().catch((caught) => onError(errorMessage(caught)));
+    } else {
+      await onSend(
+        sendPlan.text,
+        sendPlan.webAnnotationIds,
+        sendPlan.fileAttachmentPaths,
+        sendPlan.clientTxnId,
+        delivery,
+      );
+    }
     retrySendPlanRef.current = null;
     rememberPendingMessageTransaction(null);
     composerDraftRef.current = settleComposerDraftSend(composerDraftRef.current, sendPlan.clientTxnId);
@@ -585,14 +684,22 @@ export function SessionTracePane({
 
   const handleComposerSend = async (text: string) => {
     if (composerDisabled || !selectedPiboSessionId) return;
+    // Do not replace a recovered typed retry identity while its draft is still
+    // opening: an empty transient view cannot describe that prepared body.
+    if (ownerUserId && selectedBackendPiboSessionId === selectedPiboSessionId && !typedAttachments.draft) {
+      onError(typedAttachments.error ?? "Attachment draft is opening; retry the unchanged send after it loads.");
+      return;
+    }
+    const attachmentIntent = structuredComposerIntent(typedAttachments.loaded?.view.records ?? [], ownerUserId);
     const sendPlan = createComposerSendPlan({
       piboSessionId: selectedPiboSessionId,
       text,
+      attachmentIntent,
       selectedWebAnnotations,
       selectedUploadAttachments,
       eventSequence: liveEventSeqRef.current++,
       now: new Date().toISOString(),
-      clientTxnId: samePendingMessageIntent(retrySendPlanRef.current, { piboSessionId: selectedPiboSessionId, text, webAnnotationIds: selectedWebAnnotations.map(a => a.id), fileAttachmentPaths: selectedUploadAttachments.map(a => a.path) }) ? retrySendPlanRef.current!.clientTxnId : createClientTxnId(),
+      clientTxnId: samePendingMessageIntent(retrySendPlanRef.current, { piboSessionId: selectedPiboSessionId, text, attachmentIntent, webAnnotationIds: selectedWebAnnotations.map(a => a.id), fileAttachmentPaths: selectedUploadAttachments.map(a => a.path) }) ? retrySendPlanRef.current!.clientTxnId : createClientTxnId(),
     });
     composerDraftRef.current = beginComposerDraftSend(composerDraftRef.current, sendPlan);
     if (canSteer) {
@@ -939,6 +1046,7 @@ export function SessionTracePane({
       containerResponsive={containerResponsive}
       composerProps={{
         sessionId: selectedPiboSessionId,
+        ownerUserId,
         disabled: composerDisabled,
         commands,
         skills,
@@ -946,6 +1054,9 @@ export function SessionTracePane({
         focusSignal: composerFocusSignal,
         selectedWebAnnotations,
         selectedUploadAttachments,
+        structuredAttachments,
+        onAddStructuredNote: ownerUserId && selectedBackendPiboSessionId ? addStructuredNote : undefined,
+        onDetachStructuredAttachment: detachStructuredAttachment,
         onValueChange: updateTrackedComposerText,
         onCommand,
         onDetachWebAnnotation: detachWebAnnotationAttachment,

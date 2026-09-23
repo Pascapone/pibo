@@ -132,7 +132,7 @@ export function SessionTraceLayout({
         )}
         {runtimeRequestPanel}
         {shouldRenderSessionComposer({ hideComposer, auxiliaryPanel }) ? (
-          <Composer {...composerProps} />
+          <Composer key={`${composerProps.ownerUserId ?? "no-owner"}:${composerProps.sessionId ?? "no-session"}`} {...composerProps} />
         ) : null}
       </TerminalFileDropTarget>
 
