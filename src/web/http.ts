@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { gzipSync } from "node:zlib";
-
-export const MAX_WEB_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
+import { MAX_WEB_REQUEST_BODY_BYTES } from "../shared/web-body-limit.js";
+export { MAX_WEB_REQUEST_BODY_BYTES } from "../shared/web-body-limit.js";
 const MIN_COMPRESS_RESPONSE_BYTES = 1024;
 const MAX_SYNC_GZIP_RESPONSE_BYTES = 64 * 1024;
 const INTERNAL_SOCKET_PEER_HEADER = "x-pibo-socket-peer";
