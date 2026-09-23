@@ -6,6 +6,7 @@ const execute = promisify(execFile);
 const prelude = `
 import assert from 'node:assert/strict';
 import {prepareTypedIndexedSubmission} from './src/apps/chat-ui/src/attachments/core-attachment-prepare-client.ts';
+import {deliverTypedIndexedAttachments} from './src/apps/chat-ui/src/attachments/core-attachment-delivery-client.ts';
 import {reconcileIndexedAcceptance} from './src/apps/chat-ui/src/attachments/core-attachment-receipts.ts';
 import {readCoreAttachmentDraft,transitionCoreAttachmentDraft} from './src/apps/chat-ui/src/attachments/core-attachment-transitions.ts';
 import {coreNoteProvider} from './src/attachments/core-providers.ts';
@@ -129,6 +130,35 @@ test("indexed receipt reconciliation accepts only independently matched durable 
  const state=await draft.load();assert.equal(state.view.records.length,0);assert.equal(state.view.openSnapshots.length,0);
  const duplicate=await reconcileIndexedAcceptance({draft,snapshot:result.snapshot,providerScope:scope,query:{async findByClientTxnId(){throw Error('no duplicate lookup')}}});
  assert.equal(duplicate.duplicate,true);assert.equal(duplicate.weakBinding,true);assert.equal(notices,1);
+ `);
+});
+
+test("verbatim stored body is sent and only a separately fetched receipt consumes a typed draft", async () => {
+ await scenario(`
+ const {draft,input,result}=await prepared();let stages=0,posts=0;
+ const sent=await deliverTypedIndexedAttachments({...input,expectedRevision:0,stageResources:async()=>{stages++;return []},
+  postPrepared:async body=>{posts++;assert.deepEqual(body,(await draft.load()).view.preparedSubmissions.txn);
+   assert.equal(body.body.attachments[0].payload.text,'note');return {receipt:{id:'echo-must-not-prove'}}},
+  query:{async findByClientTxnId(){return receipt(result,'running')}}});
+ assert.equal(stages,0);assert.equal(posts,1);assert.equal(sent.consumed.length,1);
+ assert.equal((await draft.load()).view.records.length,0);
+ `);
+});
+
+test("unknown POST reconciles without a second POST, while missing independent proof keeps unchanged retry", async () => {
+ await scenario(`
+ const a=await prepared();let calls=0;
+ const unknown=Object.assign(new Error('lost response'),{acceptanceUnknown:true});
+ const recovered=await deliverTypedIndexedAttachments({...a.input,expectedRevision:0,
+  postPrepared:async()=>{calls++;throw unknown},query:{async findByClientTxnId(){return receipt(a.result)}}});
+ assert.equal(calls,1);assert.equal(recovered.consumed.length,1);
+ const b=await prepared();let stages=0;let receipts=0;
+ const base={...b.input,expectedRevision:0,stageResources:async()=>{stages++;return []},
+  query:{async findByClientTxnId(){receipts++;return receipts===1?undefined:receipt(b.result)}}};
+ await assert.rejects(deliverTypedIndexedAttachments({...base,postPrepared:async()=>{throw unknown}}),e=>e===unknown);
+ assert.equal((await b.draft.load()).view.records.length,1);
+ const retry=await deliverTypedIndexedAttachments({...base,postPrepared:async body=>{assert.deepEqual(body,(await b.draft.load()).view.preparedSubmissions.txn)}});
+ assert.equal(retry.consumed.length,1);assert.equal(stages,0);
  `);
 });
 
