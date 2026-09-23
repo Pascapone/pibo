@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-09-23T12:43:18.997689+00:00",
+  "capturedAt": "2026-09-23T15:07:26.227203+00:00",
   "implementationCommits": [
     "09fed1a7e20f106e35c24a65090289e45d821d43",
     "a1ccc8d9c2410720ef6c1c2b13e2dab51e8991cb",
@@ -10,7 +10,8 @@
     "72d60f5b720034abd2cc0d394d719736fccdc8ab",
     "8cefa246f0f7e7a4bb921e98b4349eddfd330e0b",
     "7b64d34b378f713932ab4841e19d5ed240178a09",
-    "df94a3a5cff2c944f81db64fd982109c0aba6556"
+    "df94a3a5cff2c944f81db64fd982109c0aba6556",
+    "eef1c51850cde5a14ca4f480819fa80be6a45930"
   ],
   "scope": "Direct-controller source/function changes; not full V4 completion",
   "provenanceNotes": [
@@ -22,7 +23,8 @@
     "New provider-admission log copies additionally trim trailing horizontal whitespace on failed-assertion pretty-print lines for Git whitespace hygiene; affected file records report the line count. Original host bytes and their SHA-256 provenance remain unchanged.",
     "Media-focused05 and subsequent records additionally capture untracked-file SHA-256 values. Older tracked-diff hashes alone do not cover untracked source. Media logs preserve failed startup/semantic assertion attempts; normalized copies retain original-host and copied hashes, with per-file whitespace normalization counts.",
     "Browser foundation records distinguish pure/module checks, real headed native-IDB module cases and product acceptance. Final served bundle and screenshots are byte-identical artifacts; harness/log/technical text copies are path-redacted with original-host and copied hashes. Earlier failed infrastructure run and intermediate WIP passes are preserved, not added as unique coverage.",
-    "Copy module evidence preserves failed targeted types and a Browser Use executable failure. The two \"headful\"-named copy runs were NOT headed; actual user-agent reports HeadlessChrome. Final exact served bundle, harness and screenshot are retained with SHA provenance; earlier bundles are not archived in full."
+    "Copy module evidence preserves failed targeted types and a Browser Use executable failure. The two \"headful\"-named copy runs were NOT headed; actual user-agent reports HeadlessChrome. Final exact served bundle, harness and screenshot are retained with SHA provenance; earlier bundles are not archived in full.",
+    "The Composer verification source is eef1c518: final narrow types, 28 selected tests and a Vite build are source-equivalent. A fresh HeadlessChrome component fixture used native IndexedDB; its local send records only an event and never POSTs. Its served bundle hash matches the archived emitted bytes. X11/headed product validation was unavailable; no real-App-auth, production media UI or full-root compilation claim is made."
   ],
   "checksNotClaimed": {
     "rootTypecheck": "Earlier guarded full compiler attempts were resource-blocked; no whole-project typecheck pass for this candidate.",
@@ -1457,6 +1459,363 @@
         }
       ],
       "untrackedFileHashesRecorded": true,
+      "testGroups": [
+        {
+          "kind": "documentation validators/tests",
+          "pass": 87,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-final-focused-01",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 1,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:56:22Z",
+      "ended": "2026-09-23T14:56:25Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-final-focused-01.log",
+          "sha256": "491687a97c0244036b741528b492437bbc0435cd8f62bf8646787fa06723e670",
+          "originalHostSha256": "491687a97c0244036b741528b492437bbc0435cd8f62bf8646787fa06723e670"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-final-focused-01.meta",
+          "sha256": "58d0f5992f2a148b1de85233f47683fd81804ae5871b49637a33b16d7ae2ee7b",
+          "originalHostSha256": "a416914048dd7098bda88f493429a61bd5e30a33f301d2eca243425b2d1a6466",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-final-focused-02",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 28,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:56:49Z",
+      "ended": "2026-09-23T14:57:35Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-final-focused-02.log",
+          "sha256": "039052257074a78beed07037866936762aed156c68d67ad27805a1f80c446cbc",
+          "originalHostSha256": "ce01a97befb9996ce0e8d4ba113dab6125240660fc29e3adc32e735e088600d7",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-final-focused-02.meta",
+          "sha256": "9f5d2fbb65b7ce13dab3d29e6edbf7275fe4a833bcabc25d1d680027e7f3b07e",
+          "originalHostSha256": "e2888d9529f5d95d5c8475c07cf78478ad160672e24663b003bd4c87d8b121e7",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
+      "sourceEquivalentToCommit": "eef1c51850cde5a14ca4f480819fa80be6a45930",
+      "sourceEquivalence": "Formerly tracked pre-commit git diff --binary hash and all five previously untracked file SHA-256 values match the published source commit.",
+      "testGroups": [
+        {
+          "kind": "narrow Chat UI and fixture types",
+          "pass": 1,
+          "fail": 0
+        },
+        {
+          "kind": "selected overlapping module tests",
+          "pass": 28,
+          "fail": 0
+        },
+        {
+          "kind": "Chat UI Vite build and standalone fixture bundle",
+          "pass": 2,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-fixture-build-01",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:27:07Z",
+      "ended": "2026-09-23T14:27:29Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-fixture-build-01.log",
+          "sha256": "ae0c86506e7090754ffe3edf406d5b89e512e65d896b4824f7b21de7b46c5e31",
+          "originalHostSha256": "ae0c86506e7090754ffe3edf406d5b89e512e65d896b4824f7b21de7b46c5e31"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-fixture-build-01.meta",
+          "sha256": "4c8ec47116026c7ffd6dacf5b020e06f991aa1a1aa7f1ebd131733fe3119c8b2",
+          "originalHostSha256": "709cb536f1006fb45db18ddd4d6c567e8e5ec4d8dd5496e1cc6d1368bd13ddee",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-live-focused-01",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 26,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:39:14Z",
+      "ended": "2026-09-23T14:39:54Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-live-focused-01.log",
+          "sha256": "20a23149d63f81e57ca273f8c4f07e6b5ab089bbcdf3bf606838c68787533fe2",
+          "originalHostSha256": "4f984f21939cfff32daa120fb1417b0f13398feec31bbbc9e7413ebcae508e3b",
+          "trailingHorizontalWhitespaceLinesNormalized": 1,
+          "trailingBlankLinesNormalized": 1
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-live-focused-01.meta",
+          "sha256": "7e131bff3f1eb512122a484fc7bf8820358801d37b14b9f43cd3878c011a269a",
+          "originalHostSha256": "aed7ac7d9ffb77e5eb2bb5df0ebb2bac8d3886bc6d880106f0e716afdc11c39e",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-live-focused-02",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 28,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:46:58Z",
+      "ended": "2026-09-23T14:47:39Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-live-focused-02.log",
+          "sha256": "16bdc53e24aa1a22a8b22e26da605ea49eed403d4d32e0f31603847ee18f15d8",
+          "originalHostSha256": "8433ba97c3cb3c054627b56212f85cedea0d4e7767566aefb5e2cbef54a2dbd1",
+          "trailingHorizontalWhitespaceLinesNormalized": 1,
+          "trailingBlankLinesNormalized": 1
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-live-focused-02.meta",
+          "sha256": "21ed2bdd4f04c6c09e792a998c14000223fc21c9857cffab2c55314c43be88fe",
+          "originalHostSha256": "0737de40b93831ab60199036a49b22ba34979f53e30ca6d3ade6439d1ec17e16",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-visual-bundle-02",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:40:50Z",
+      "ended": "2026-09-23T14:40:57Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-visual-bundle-02.log",
+          "sha256": "eec281d13faa530b14a6fbb82ebdb6d475f0c5ca061105d13e66a81b58662026",
+          "originalHostSha256": "eec281d13faa530b14a6fbb82ebdb6d475f0c5ca061105d13e66a81b58662026"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-visual-bundle-02.meta",
+          "sha256": "47bd118874ca6f230c088a4e81cb741580f9d73133dcf63695afe3c713c5fee5",
+          "originalHostSha256": "4ed63b6f2b7b940cc2804e6f52701bf63e37d004073690c5f019e85a3529c416",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-visual-bundle-03",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 134,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:48:24Z",
+      "ended": "2026-09-23T14:48:47Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-visual-bundle-03.log",
+          "sha256": "5dbd6edbd2b7b09f215ae67318c1bd86bf1848302c31550cd4091b02e2a87b2d",
+          "originalHostSha256": "20131a5e5af660ac24af70cf244fdca3021742b16509915da852e7b11389a588",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-visual-bundle-03.meta",
+          "sha256": "8f0348d68a9bb09ea15d0fcfd7913086b1aea532531c954edf3f36d7c2a9f4d2",
+          "originalHostSha256": "d1d4790de4ae775ae7ab525f0ea9c6c5fc12774d1e0e75d4919d746ebb96a68e",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-visual-bundle-04",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:49:08Z",
+      "ended": "2026-09-23T14:49:28Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-visual-bundle-04.log",
+          "sha256": "e977750ceade0fa18f1028bd1f9200602f8c9c697512c6da9d246219bc3e198b",
+          "originalHostSha256": "e977750ceade0fa18f1028bd1f9200602f8c9c697512c6da9d246219bc3e198b"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-visual-bundle-04.meta",
+          "sha256": "8ab63ef16af2f54178d09f9835e68986cc6349911819c7c521bbdd0b11253f64",
+          "originalHostSha256": "89cb18a1874479ccf1d0e00549da2989500b59dedfc126889e26490d5864fea7",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-wiring-focused-01",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 2,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:20:00Z",
+      "ended": "2026-09-23T14:20:04Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-wiring-focused-01.log",
+          "sha256": "48e1c35ac4b21c7598481db3135495aa05a2f00cd57294aec39e6d2b0585c0c9",
+          "originalHostSha256": "48e1c35ac4b21c7598481db3135495aa05a2f00cd57294aec39e6d2b0585c0c9"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-wiring-focused-01.meta",
+          "sha256": "0bb9cd9fbba844f440d061cab406f967f0d37c101ba570980eb6a1a4484b480c",
+          "originalHostSha256": "2ac7cbe5f4059d075552ccaa1755097356d5a103e4ec9de29886b1c856711ef1",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-wiring-focused-02",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 2,
+      "passedTests": 0,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:20:24Z",
+      "ended": "2026-09-23T14:20:52Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-wiring-focused-02.log",
+          "sha256": "36502d22767f7693d436d829b6ca4e6077c7789c2f728ac232142c9c5ed4d24d",
+          "originalHostSha256": "36502d22767f7693d436d829b6ca4e6077c7789c2f728ac232142c9c5ed4d24d"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-wiring-focused-02.meta",
+          "sha256": "3898bc5950696ba552d6fdab3400e4bac2c19416bd19a7ece4c4e8e8d06f1402",
+          "originalHostSha256": "e195a5f5150e491c2fb982a0c2e83c0ac054879905d5fa76bea55240f8a0f615",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-wiring-focused-03",
+      "purpose": "Bounded Composer source/fixture verification; intermediate and failed attempts remain distinct, not cumulative",
+      "exit": 0,
+      "passedTests": 19,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "started": "2026-09-23T14:21:25Z",
+      "ended": "2026-09-23T14:21:57Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-k07-composer-wiring-focused-03.log",
+          "sha256": "5ef18c99aaef23e282b022852368e2d525047a4276c8165dac4fbefa3a160daf",
+          "originalHostSha256": "5ef18c99aaef23e282b022852368e2d525047a4276c8165dac4fbefa3a160daf"
+        },
+        {
+          "file": "composer/logs/cutover-k07-composer-wiring-focused-03.meta",
+          "sha256": "c2e657c811b8978434c5e92f63c508fb0aafd7020b7f7057d44c634f97a9a63d",
+          "originalHostSha256": "6a67c3410db67244e31e53e4c132020319b9496f6357f49efe3ae5b28fcaab9d",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ]
+    },
+    {
+      "id": "cutover-k07-composer-browser-headless-01",
+      "purpose": "Static Composer component, real native IndexedDB note, notes-only local send, focus restoration and 390px mobile layout; no backend POST or authentication",
+      "exit": 0,
+      "passedTests": 1,
+      "sourceHeadAtStart": "55395cce4bc27831f911fee872234e862170783c",
+      "sourceEquivalentToCommit": "eef1c51850cde5a14ca4f480819fa80be6a45930",
+      "started": "2026-09-23T14:57:35Z",
+      "ended": "2026-09-23T15:05:18.056293+00:00",
+      "browser": "HeadlessChrome 153, NOT headed or integrated product acceptance",
+      "servedBundleSha256": "c8c6f2c110903e60b05ca68237b5bcefc31b9f00d8a972e30ec837a573193a79",
+      "files": [
+        {
+          "file": "composer/browser/index.html",
+          "sha256": "816deaf93e821732ecdc666cdebfd5199a311e7f8899cde36df74ff01b0eb50b",
+          "originalHostSha256": "816deaf93e821732ecdc666cdebfd5199a311e7f8899cde36df74ff01b0eb50b"
+        },
+        {
+          "file": "composer/browser/server.mjs",
+          "sha256": "6b188aca9709b86be09b348a696184a7351ea36fad161ac8d522cc982d7a3337",
+          "originalHostSha256": "6b188aca9709b86be09b348a696184a7351ea36fad161ac8d522cc982d7a3337"
+        },
+        {
+          "file": "composer/browser/inspect-mobile.mjs",
+          "sha256": "38c7a48ff877a2b3e063769fc2e8ef598d6e8b793d2f52fc6f6af5d7b72c4005",
+          "originalHostSha256": "38c7a48ff877a2b3e063769fc2e8ef598d6e8b793d2f52fc6f6af5d7b72c4005"
+        },
+        {
+          "file": "composer/browser/bundle.js",
+          "sha256": "c8c6f2c110903e60b05ca68237b5bcefc31b9f00d8a972e30ec837a573193a79",
+          "originalHostSha256": "c8c6f2c110903e60b05ca68237b5bcefc31b9f00d8a972e30ec837a573193a79"
+        },
+        {
+          "file": "composer/browser/app.css",
+          "sha256": "d0055fe953f0ba1c7bd653e2d29f81ef118b871a76aa7918dab08ebb6b41306c",
+          "originalHostSha256": "d0055fe953f0ba1c7bd653e2d29f81ef118b871a76aa7918dab08ebb6b41306c"
+        },
+        {
+          "file": "composer/browser/mobile-headless-module.png",
+          "sha256": "444f4fa9e62af61777a371419f2b0bb053b3dd8fcb146b8cde01df0b6c17759c",
+          "originalHostSha256": "444f4fa9e62af61777a371419f2b0bb053b3dd8fcb146b8cde01df0b6c17759c"
+        },
+        {
+          "file": "composer/browser/mobile-technical.json",
+          "sha256": "0c4bf900579e367ea16b4d59062a0595a67d61095c2bcb849021841438d9c7fa",
+          "originalHostSha256": "0c4bf900579e367ea16b4d59062a0595a67d61095c2bcb849021841438d9c7fa"
+        },
+        {
+          "file": "composer/browser/cleanup.log",
+          "sha256": "c8d8fa17da11f8bb1bc114a374fe012674c915b60abb7b552f773aeceaf80ff7",
+          "originalHostSha256": "c8d8fa17da11f8bb1bc114a374fe012674c915b60abb7b552f773aeceaf80ff7"
+        }
+      ],
+      "testGroups": [
+        {
+          "kind": "static component fixture with native IndexedDB",
+          "pass": 1,
+          "fail": 0
+        }
+      ]
+    },
+    {
+      "id": "cutover-docs-08",
+      "purpose": "Composer canonical specification/log and evidence bundle: core, strict, migration, indexes, log and 87 documentation tests",
+      "exit": 0,
+      "passedTests": 87,
+      "sourceHeadAtStart": "eef1c51850cde5a14ca4f480819fa80be6a45930",
+      "started": "2026-09-23T15:05:32Z",
+      "ended": "2026-09-23T15:06:54Z",
+      "files": [
+        {
+          "file": "composer/logs/cutover-docs-08.log",
+          "sha256": "80191cdf34584d0a33c8ec460c617cd05fff5d79560d3d716af0444dc5e33169",
+          "originalHostSha256": "80191cdf34584d0a33c8ec460c617cd05fff5d79560d3d716af0444dc5e33169"
+        },
+        {
+          "file": "composer/logs/cutover-docs-08.meta",
+          "sha256": "a88c9448e3eb09a4b2ac4f660e5dd79e2536dbe3d9f1168709997bba827d7921",
+          "originalHostSha256": "471133e8903df593ed4d810cd0e7131e1685fa29442ce1de35dbbac9af54bf66",
+          "trailingHorizontalWhitespaceLinesNormalized": 1
+        }
+      ],
       "testGroups": [
         {
           "kind": "documentation validators/tests",

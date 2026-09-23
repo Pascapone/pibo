@@ -1,0 +1,2 @@
+This is a focused batch, not a full suite or installation test.
+error TS5025: Unknown compiler option '--noUncheckedSideEffects'. Did you mean 'noUncheckedSideEffectImports'?

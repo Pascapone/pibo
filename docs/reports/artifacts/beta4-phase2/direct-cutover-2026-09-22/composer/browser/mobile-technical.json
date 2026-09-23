@@ -1,0 +1,61 @@
+{
+  "target": {
+    "id": "C84824898458472F0BA35B6439F9777B",
+    "url": "http://127.0.0.1:36015/"
+  },
+  "technical": {
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+    "viewport": {
+      "width": 390,
+      "height": 844,
+      "devicePixelRatio": 1
+    },
+    "document": {
+      "scrollWidth": 390,
+      "clientWidth": 390
+    },
+    "root": {
+      "x": 17,
+      "y": 159,
+      "width": 356,
+      "height": 128,
+      "right": 373
+    },
+    "panel": {
+      "x": 25,
+      "y": 168,
+      "width": 340,
+      "height": 63,
+      "right": 365
+    },
+    "send": {
+      "x": 325,
+      "y": 239,
+      "width": 40,
+      "height": 40,
+      "right": 365
+    },
+    "background": "rgb(21, 31, 36)",
+    "probe": {
+      "ready": true,
+      "count": 1,
+      "sent": [
+        {
+          "text": "",
+          "count": 1
+        }
+      ],
+      "failure": "",
+      "databaseName": "pibo-attachments-composer-ui-79b3d06d-a331-4d4d-b0fc-8df6af276ed3"
+    }
+  },
+  "served": {
+    "status": 200,
+    "sha256": "c8c6f2c110903e60b05ca68237b5bcefc31b9f00d8a972e30ec837a573193a79"
+  },
+  "exceptions": [],
+  "inputs": {
+    "bundleSha256": "c8c6f2c110903e60b05ca68237b5bcefc31b9f00d8a972e30ec837a573193a79",
+    "cssSha256": "d0055fe953f0ba1c7bd653e2d29f81ef118b871a76aa7918dab08ebb6b41306c"
+  }
+}

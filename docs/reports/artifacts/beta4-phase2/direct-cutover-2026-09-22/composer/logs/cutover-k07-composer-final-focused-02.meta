@@ -1,0 +1,21 @@
+started=2026-09-23T14:56:49Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=768\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --noUncheckedSideEffectImports\ false\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --jsx\ react-jsx\ --types\ node\,vite/client\ --esModuleInterop\ src/apps/chat-ui/src/App.tsx\ src/apps/chat-ui/src/session-trace-pane.tsx\ src/apps/chat-ui/src/composer-send.ts\ src/apps/chat-ui/src/attachments/core-attachment-delivery-client.ts\ test/fixtures/attachments/composer-structured-lab.tsx\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/chat-ui-composer-send.test.mjs\ test/chat-ui-attachment-indexed-delivery.test.mjs\ test/chat-ui-attachment-owner.test.mjs\ test/chat-ui-attachment-submission.test.mjs\ test/chat-ui-upload-attachments.test.mjs\ test/chat-ui-attachment-provider-commands.test.mjs\ test/chat-ui-message-delivery-keyboard.test.mjs\;\ npm\ run\ --silent\ chat-ui:build\;\ node\ --input-type=module\ --eval\ \'import\ \{build\}\ from\ \"esbuild\"\;await\ build\(\{entryPoints:\[\"test/fixtures/attachments/composer-structured-lab.tsx\"\]\,bundle:true\,platform:\"browser\"\,format:\"esm\"\,jsx:\"automatic\"\,loader:\{\".css\":\"empty\"\}\,outfile:\"$RUN/browser-persistence/composer/bundle.js\"\}\)\;console.log\(\"Final\ static\ Composer\ module\ fixture\ bundle\;\ no\ integrated\ App\ acceptance\"\)\'\;\ cp\ dist/apps/chat-ui/assets/app-\*.css\ $RUN/browser-persistence/composer/app.css
+source=55395cce4bc27831f911fee872234e862170783c
+ M src/apps/chat-ui/src/App.tsx
+ M src/apps/chat-ui/src/attachments/core-attachment-delivery-client.ts
+ M src/apps/chat-ui/src/composer-send.ts
+ M src/apps/chat-ui/src/composer/Composer.tsx
+ M src/apps/chat-ui/src/session-trace-layout.tsx
+ M src/apps/chat-ui/src/session-trace-pane.tsx
+ M test/chat-ui-attachment-indexed-delivery.test.mjs
+ M test/chat-ui-composer-send.test.mjs
+?? src/apps/chat-ui/src/attachments/core-attachment-composer-intent.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-owner.ts
+?? src/apps/chat-ui/src/attachments/use-indexed-attachments.ts
+?? test/chat-ui-attachment-owner.test.mjs
+?? test/fixtures/attachments/composer-structured-lab.tsx
+d12ab7ba2dc6e55549659e10e0932f51573792fa4f683ac1c35e931b8eacb114  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-composer-intent.ts": "d1c98743040e01ef8b26308262513c0f68e58d7631fb171bcb3cbdba9cdf3cc5", "src/apps/chat-ui/src/attachments/core-attachment-owner.ts": "f75e4504297fe3818210c7914b8c36efa0a9e6cdcf932f221467ca639cc867cb", "src/apps/chat-ui/src/attachments/use-indexed-attachments.ts": "49565d7444674b2019713b10143c52401d992a02ca4f55c17e34d1d1948e303e", "test/chat-ui-attachment-owner.test.mjs": "03f93bd4f9a2bf896116306c208adf0223f54c57d2046fb36b6823a38fbb84d5", "test/fixtures/attachments/composer-structured-lab.tsx": "a5c386a995f06510b700fbbdba9d3f5083c44cdbdaff0b7d1f6a136443383322"}
+exit=0
+ended=2026-09-23T14:57:35Z

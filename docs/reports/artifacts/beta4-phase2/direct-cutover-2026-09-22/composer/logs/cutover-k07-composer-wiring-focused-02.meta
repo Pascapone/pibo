@@ -1,0 +1,15 @@
+started=2026-09-23T14:20:24Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=768\ GOMAXPROCS=2\;\ node\ node_modules/typescript/bin/tsc\ --ignoreConfig\ --noEmit\ --skipLibCheck\ --strict\ --target\ ES2023\ --module\ ESNext\ --moduleResolution\ Bundler\ --jsx\ react-jsx\ --types\ node\ --esModuleInterop\ src/apps/chat-ui/src/session-trace-pane.tsx\ src/apps/chat-ui/src/App.tsx\ src/apps/chat-ui/src/attachments/core-attachment-owner.ts\ src/apps/chat-ui/src/attachments/use-indexed-attachments.ts\;\ echo\ Narrow\ frontend\ types\ passed\;\ node\ --test\ --test-concurrency=1\ --test-timeout=180000\ test/chat-ui-attachment-owner.test.mjs\ test/chat-ui-attachment-indexed-delivery.test.mjs\ test/chat-ui-composer-send.test.mjs\ test/chat-ui-attachment-submission.test.mjs\ test/chat-ui-upload-attachments.test.mjs
+source=55395cce4bc27831f911fee872234e862170783c
+ M src/apps/chat-ui/src/App.tsx
+ M src/apps/chat-ui/src/attachments/core-attachment-delivery-client.ts
+ M src/apps/chat-ui/src/composer/Composer.tsx
+ M src/apps/chat-ui/src/session-trace-pane.tsx
+?? src/apps/chat-ui/src/attachments/core-attachment-owner.ts
+?? src/apps/chat-ui/src/attachments/use-indexed-attachments.ts
+?? test/chat-ui-attachment-owner.test.mjs
+99623d3a7b63e83ec24658511126734b3b0fc4f32fc3bc97dfa52c4a1c451d6c  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-owner.ts": "f75e4504297fe3818210c7914b8c36efa0a9e6cdcf932f221467ca639cc867cb", "src/apps/chat-ui/src/attachments/use-indexed-attachments.ts": "b0999c199d8644a431f757977dca5d8753842e58ecedfce9c89cdfbd6f7503c9", "test/chat-ui-attachment-owner.test.mjs": "03f93bd4f9a2bf896116306c208adf0223f54c57d2046fb36b6823a38fbb84d5"}
+exit=2
+ended=2026-09-23T14:20:52Z

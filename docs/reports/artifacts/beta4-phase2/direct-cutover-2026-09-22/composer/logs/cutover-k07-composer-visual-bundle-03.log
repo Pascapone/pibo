@@ -1,0 +1,20 @@
+This is a focused batch, not a full suite or installation test.
+
+<--- Last few GCs --->
+
+[83032:0x2b01b000]    14623 ms: Scavenge (interleaved) 507.3 (512.7) -> 506.0 (516.7) MB, pooled: 0 MB, 2.68 / 0.00 ms  (average mu = 0.274, current mu = 0.268) allocation failure;
+[83032:0x2b01b000]    14828 ms: Mark-Compact (reduce) 509.9 (518.2) -> 508.2 (512.2) MB, pooled: 0 MB, 180.96 / 0.00 ms  (+ 0.1 ms in 54 steps since start of marking, biggest step 0.0 ms, walltime since start of marking 189 ms) (average mu = 0.213, curren
+FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0x931db0  [node]
+ 2: 0x75968e node::OOMErrorHandler(char const*, v8::OOMDetails const&) [node]
+ 3: 0xc70d60  [node]
+ 4: 0xc70e4f  [node]
+ 5: 0xf14725  [node]
+ 6: 0xf14752  [node]
+ 7: 0xf14a4a  [node]
+ 8: 0xf2574a  [node]
+ 9: 0xf29af0  [node]
+10: 0x19c77d1  [node]
+bash: line 1: 83032 Aborted                 (core dumped) node node_modules/typescript/bin/tsc --ignoreConfig --noEmit --skipLibCheck --strict --noUncheckedSideEffectImports false --target ES2023 --module ESNext --moduleResolution Bundler --jsx react-jsx --types node,vite/client --esModuleInterop test/fixtures/attachments/composer-structured-lab.tsx

@@ -1,0 +1,20 @@
+started=2026-09-23T14:40:50Z
+cwd=$WORKTREE
+command=bash -c set\ -e\;\ export\ NODE_OPTIONS=--max-old-space-size=512\ GOMAXPROCS=2\;\ node\ --input-type=module\ --eval\ \'import\ \{build\}\ from\ \"esbuild\"\;await\ build\(\{entryPoints:\[\"test/fixtures/attachments/composer-structured-lab.tsx\"\]\,bundle:true\,platform:\"browser\"\,format:\"esm\"\,jsx:\"automatic\"\,loader:\{\".css\":\"empty\"\}\,outfile:\"$RUN/browser-persistence/composer/bundle.js\"\}\)\;console.log\(\"Owned\ Composer\ UI\ component\ fixture\ emitted\;\ no\ backend\ or\ auth\"\)\'\;\ cp\ dist/apps/chat-ui/assets/app-\*.css\ $RUN/browser-persistence/composer/app.css
+source=55395cce4bc27831f911fee872234e862170783c
+ M src/apps/chat-ui/src/App.tsx
+ M src/apps/chat-ui/src/attachments/core-attachment-delivery-client.ts
+ M src/apps/chat-ui/src/composer-send.ts
+ M src/apps/chat-ui/src/composer/Composer.tsx
+ M src/apps/chat-ui/src/session-trace-layout.tsx
+ M src/apps/chat-ui/src/session-trace-pane.tsx
+ M test/chat-ui-composer-send.test.mjs
+?? src/apps/chat-ui/src/attachments/core-attachment-composer-intent.ts
+?? src/apps/chat-ui/src/attachments/core-attachment-owner.ts
+?? src/apps/chat-ui/src/attachments/use-indexed-attachments.ts
+?? test/chat-ui-attachment-owner.test.mjs
+?? test/fixtures/attachments/composer-structured-lab.tsx
+e48637e098749450cd0da6d47dcfa7ebb3de898f7cd3d540675eb016508622ec  -
+untracked_files_sha256={"src/apps/chat-ui/src/attachments/core-attachment-composer-intent.ts": "d1c98743040e01ef8b26308262513c0f68e58d7631fb171bcb3cbdba9cdf3cc5", "src/apps/chat-ui/src/attachments/core-attachment-owner.ts": "f75e4504297fe3818210c7914b8c36efa0a9e6cdcf932f221467ca639cc867cb", "src/apps/chat-ui/src/attachments/use-indexed-attachments.ts": "49565d7444674b2019713b10143c52401d992a02ca4f55c17e34d1d1948e303e", "test/chat-ui-attachment-owner.test.mjs": "03f93bd4f9a2bf896116306c208adf0223f54c57d2046fb36b6823a38fbb84d5", "test/fixtures/attachments/composer-structured-lab.tsx": "2037370308037d78dca0a8ac7fb88cdc09e393f2ceb443af345e4f8b879d5e74"}
+exit=0
+ended=2026-09-23T14:40:57Z

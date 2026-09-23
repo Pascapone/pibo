@@ -1,0 +1,117 @@
+This is a focused batch, not a full suite or installation test.
+OKF strict validation: PASS
+Markdown paths: 869 (git)
+Ledger records: 869
+States: conformant=709 reserved=112 pending=0 host-exception=48
+Errors: 0; warnings: 0
+OKF core validation: PASS
+Markdown paths: 821 (git)
+Errors: 0; warnings: 0
+OKF migration validation: PASS
+Markdown paths: 869 (git)
+Ledger records: 869
+States: conformant=709 reserved=112 pending=0 host-exception=48
+Errors: 0; warnings: 0
+OKF index check: PASS
+Managed indexes: 111; drift: 0
+OKF log check: PASS
+OKF strict validation: PASS
+Markdown paths: 869 (git)
+Ledger records: 869
+States: conformant=709 reserved=112 pending=0 host-exception=48
+Errors: 0; warnings: 0
+✔ repository guidance preserves the five-root OKF topology (5.602599ms)
+✔ documentation profile pins verified OKF provenance without claiming byte identity (2.036306ms)
+✔ specification skills preserve native frontmatter and emit current OKF contracts (7.08928ms)
+✔ profile, templates, and canonical skill expose every approved concept type (6.221293ms)
+✔ concept templates use canonical domain-owned specification paths (2.184378ms)
+✔ profile documents the shared requirement-ID grammar without requiring REQ (2.360978ms)
+✔ migration plan records bounded standing authority for trivial validator and profile corrections (1.74634ms)
+✔ host exceptions use exact path-specific role reasons (5.755039ms)
+✔ plan and evidence producers follow the corrected nested paths (4.65564ms)
+✔ documentation package scripts expose core, migration, strict, index, and log checks (1.376864ms)
+✔ closed foundation relocations preserve the three unchanged source bodies byte for byte (12.694258ms)
+✔ retired Foundation documents record changed bodies instead of claiming current byte preservation (10.037264ms)
+✔ the current WSL guide records rewritten lineage instead of claiming byte preservation (7.627427ms)
+✔ accepted historical plan bodies remain byte-preserved after upstream refresh (8.963363ms)
+✔ generated root navigation links the ledger-owned active migration plan (1.822508ms)
+✔ strict mode accepts a complete five-root Pibo profile fixture (32.820771ms)
+✔ core mode is ledger-independent and tolerates unknown metadata, missing reserved files, and broken links (13.142821ms)
+✔ core mode reports only core concept and present-reserved structure failures (14.220673ms)
+✔ core frontmatter parsing treats LF, CRLF, lone CR, and mixed line endings equivalently (55.427648ms)
+✔ frontmatter splitting preserves exact body bytes and exact delimiter rules (0.45242ms)
+✔ root and reserved indexes plus log helpers accept every Markdown line ending form (1.783672ms)
+✔ strict validation and index generation load conformant metadata with every line ending form (132.595783ms)
+✔ index generation rejects missing exact closing delimiters in every line ending form without writes (12.790332ms)
+✔ migration mode rejects an unlisted Markdown addition (14.486685ms)
+✔ migration mode ignores indexed Markdown paths removed by a rename (33.508879ms)
+✔ migration mode rejects duplicate ownership (13.797849ms)
+✔ migration mode rejects provisional authority values (12.598989ms)
+✔ migration mode validates source ownership, destinations, and truthful states (19.100326ms)
+✔ migration mode rejects malformed relocated lineage without a real base commit (19.452765ms)
+✔ migration mode binds every pending body to its Git base bytes (645.044526ms)
+✔ complete reachable history rejects merged alternate ledger introductions hidden by path simplification (172.240833ms)
+✔ complete reachable history rejects zero committed ledger introductions (82.050066ms)
+✔ ledger introduction history requires a regular Git blob (122.617008ms)
+✔ editing relocated lineage hashes cannot bless bytes absent from the declared base (158.113589ms)
+✔ pending validation fails deterministically when ledger introduction has no parent (86.591042ms)
+✔ strict mode rejects pending entries without weakening concept checks (17.643136ms)
+✔ strict mode rejects missing internal links and declared source paths (19.201117ms)
+✔ strict mode permits only exact immutable deprecated historical link exceptions (13.379675ms)
+✔ nested preserved bodies allow only exact hash-bound raw dot-segment targets observed missing inside docs (52.31551ms)
+✔ preserved-body declarations cannot suppress escapes, invalid encoding, external, broad, directory, or traversal targets (14.860749ms)
+✔ strict mode rejects mutable, current, undeclared, broad, and stale preserved-link exceptions (25.944924ms)
+✔ strict mode enforces filenames, actors, and Specification traceability (13.713953ms)
+✔ strict mode accepts approved requirement-ID forms with tests or an inspected-source follow-up (74.611861ms)
+✔ strict mode rejects malformed explicit Requirement heading IDs (70.530987ms)
+✔ strict mode treats only explicit Requirement headings as formal requirements (73.016113ms)
+✔ strict mode rejects every raw HTML comment delimiter outside Specification fences (72.819091ms)
+✔ Specification scanning follows CommonMark fenced-code opener and closer rules (446.795756ms)
+✔ Specification scanning treats lone CR and mixed CommonMark line endings identically (542.335086ms)
+✔ strict mode requires exactly one explicit body heading for each traced requirement (74.465262ms)
+✔ strict mode rejects a fake traceability commit (20.536272ms)
+✔ strict mode rejects escaped, absolute, dotted, globbed, and post-commit evidence paths (67.865558ms)
+✔ strict mode rejects directory and symlink evidence at the checked commit (65.060295ms)
+✔ batched commit file lookup matches per-path git evidence checks (95.270358ms)
+✔ strict mode rejects unnamed tests, empty trace strings, missing body IDs, and unbound body requirements (59.207276ms)
+✔ strict mode rejects bare, lowercase, unprefixed, and malformed requirement IDs (19.282661ms)
+✔ strict mode requires immutable manifest registration for stable evidence (11.913686ms)
+✔ migration mode requires conformant evidence index coverage and immutable registration (41.2701ms)
+✔ migration and index generation require every ancestor index for a deep conformant concept (13.433913ms)
+✔ ledger leaf and parent symlinks fail structurally before validator or generator reads (22.307007ms)
+✔ ledger control reads reject unsafe parents, non-regular leaves, and escapes without parsing (38.521783ms)
+✔ evidence-manifest leaf and parent symlinks fail structurally before reads (24.044866ms)
+✔ ledger stable reads reject deterministic leaf changes at inspect, open, and read phases (33.899433ms)
+✔ ledger stable reads reject deterministic parent changes at inspect, open, and read phases (31.636392ms)
+✔ evidence-manifest stable reads reject alternate leaf objects at every phase without parsing them (32.544262ms)
+✔ stable control reads preserve ordinary uncommitted ledger and manifest authoring (14.541078ms)
+✔ stable control reads close opened descriptors after an injected operation failure (11.069219ms)
+✔ migration mode rejects host Markdown symlinks and non-files before reads (53.250051ms)
+✔ migration mode checks reserved log structure (12.228997ms)
+✔ migration mode enforces the seven resolved-plan decision keys (17.630673ms)
+✔ index generation is sorted, removes stale entries, is byte-stable, and never recreates README (6.909164ms)
+✔ profile validation and standalone index generation reject metadata structure injection without writing (47.342651ms)
+✔ index generation preflights every managed index before any write (2.824449ms)
+✔ index preflight rejects malformed, mistyped, and unowned direct Markdown globally (14.201671ms)
+✔ index preflight rejects every reserved-file state mutation before any write (21.87961ms)
+✔ index preflight rejects global ownership, existence, file-type, and nested metadata failures without writing (12.852327ms)
+✔ index generation omits only exact pending Markdown records (3.970313ms)
+✔ managed index targets reject symlinks and non-regular files without external writes (3.172917ms)
+✔ managed index targets reject symlinked parents without external writes (2.256267ms)
+✔ index preflight rejects a missing managed ledger target before writing (1.989384ms)
+✔ generated index metadata is rendered as visible plain text (34.368057ms)
+✔ profile and index preflight reject invisible or direction-spoofing Unicode metadata (118.186194ms)
+✔ profile and index preflight reject every visually blank filler in root and direct metadata (167.728566ms)
+✔ visible Unicode metadata remains valid in root navigation and direct concepts (13.770973ms)
+✔ log checker validates deterministic reserved structure without writing prose (1.63203ms)
+✔ OKF core requires normative date-grouped log entries without profile-only fields (49.331275ms)
+✔ OKF core ignores fenced pseudo-entries using CommonMark fence rules (0.242631ms)
+✔ OKF core accepts valid log entries with LF, CRLF, lone CR, and mixed line endings (0.097122ms)
+ℹ tests 87
+ℹ suites 0
+ℹ pass 87
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5057.411066

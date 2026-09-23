@@ -1,0 +1,9 @@
+Browser closed
+Released pibo-chat-slot-002
+slot002 released; prior CLI target unexpectedly used existing HeadlessChrome slot001 (not headed acceptance).
+Browser closed
+pv-0d7cf89a90de79996e	removed
+Owned static composer Preview removed by CLI; no gateway restart, deployment, candidate backend, or profile deletion. Headful browser unavailable: X11 server absent; final visual evidence is HeadlessChrome component fixture only.
+Browser closed
+pv-1cb7290e6b7b35346d	removed
+Final source-matched fixture Preview and isolated browser closed through CLI; no deployment or candidate backend.

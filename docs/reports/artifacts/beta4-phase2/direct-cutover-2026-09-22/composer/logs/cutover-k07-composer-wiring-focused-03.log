@@ -1,0 +1,29 @@
+This is a focused batch, not a full suite or installation test.
+Narrow frontend types passed
+✔ data-only indexed adapter prepares immutable typed body before any POST and reuses it on unchanged retry (461.205804ms)
+✔ a prepared transaction cannot be silently replaced by new text, delivery, annotations or room (347.370765ms)
+✔ invalid typed metadata fails before staging and prototype-named transactions remain exact own keys (349.090141ms)
+✔ untransportable bytes and noncanonical MIME fail before any snapshot or provider callback (349.13634ms)
+✔ failed staging retains an open frozen snapshot, retrying same txn without replacing it (347.524184ms)
+✔ CAS conflict during staging retains original and a later retry prepares the bound snapshot despite live edits (342.597765ms)
+✔ indexed receipt reconciliation accepts only independently matched durable receipts, then CAS-consumes once (351.477532ms)
+✔ verbatim stored body is sent and only a separately fetched receipt consumes a typed draft (344.110938ms)
+✔ unknown POST reconciles without a second POST, while missing independent proof keeps unchanged retry (345.162078ms)
+✔ provider notice failures after durable acceptance are reported, never reclassified as unknown (381.285775ms)
+✔ receipt transport failure and cross-tab revision race preserve the frozen transaction (356.408643ms)
+✔ login/session ownership closes previous drafts and never publishes a late open (341.012664ms)
+✔ prepared wire body is persisted before send, immutable across reload and storage-failure atomic (222.551564ms)
+✔ a matched receipt ID or echoed fingerprint cannot consume missing or different local content (258.573818ms)
+✔ all admitted command states consume matching revisions once, independently of model outcome (232.435673ms)
+✔ submission must contain the bound snapshot and corrupted persisted proofs fail closed (253.957366ms)
+✔ chat composer send helpers plan optimistic queued messages and overlays (276.824439ms)
+✔ chat upload attachment helpers preserve per-session selection behavior (331.03047ms)
+✔ composer rejects overflow before starting the upload request (2.292342ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6077.647504

@@ -1,0 +1,6 @@
+This is a focused batch, not a full suite or installation test.
+src/apps/chat-ui/src/attachments/use-indexed-attachments.ts(43,50): error TS18048: 'failure' is possibly 'undefined'.
+src/apps/chat-ui/src/attachments/use-indexed-attachments.ts(43,84): error TS18048: 'failure' is possibly 'undefined'.
+src/apps/chat-ui/src/components/FolderPickerDialog.tsx(4,8): error TS2882: Cannot find module or type declarations for side-effect import of './folder-picker.css'.
+src/apps/chat-ui/src/renderMetrics.ts(6,19): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/apps/shared/MarkdownEditor.tsx(61,8): error TS2882: Cannot find module or type declarations for side-effect import of '@mdxeditor/editor/style.css'.
