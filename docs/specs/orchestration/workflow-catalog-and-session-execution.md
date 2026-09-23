@@ -7,7 +7,7 @@ status: "stable"
 authority: "normative"
 generated:
   by: "openai-codex/gpt-5.6-sol"
-  at: "2026-09-05T10:32:00Z"
+  at: "2026-09-23T17:40:35Z"
 sources:
   - resource: "scope:Integrated implementation and tests at traceability.commit"
     title: "Workflow catalog and Session-native integration"
@@ -19,7 +19,7 @@ implementation:
   build_typecheck_execution: "source checks and all typechecks passed after final integration"
   browser_execution: "headed manual editor Room selection, real provider run, canonical inspection, pending explanation reload, Workflow Session, Room, and desktop/mobile acceptance passed"
 traceability:
-  commit: "7ec71c2cca2108423002be0e7330d2a20c4c5b67"
+  commit: "e0906db3839b9cf13940f4833f2ff2d31323ccb5"
   requirements:
     - id: "ORCH-WFP-001"
       status: "implemented"
@@ -115,6 +115,30 @@ traceability:
       failures:
         - "Unknown, cross-Session, expired, replayed, unregistered, unoffered, or schema-invalid actions fail without resuming the Run."
       confidence: "high"
+    - id: "ORCH-WFP-005"
+      status: "implemented"
+      sources:
+        - path: "src/apps/chat/workflow-catalog-api.ts"
+          symbol: "handleWorkflowCatalogReadApiRequest"
+        - path: "src/plugins/packaged-workflows.ts"
+          symbol: "setupWorkflows"
+        - path: "src/plugins/default-packages.ts"
+          symbol: "workflowsPackageManifest"
+        - path: "src/core/web-product.ts"
+          symbol: "provideCoreWebProduct"
+      tests:
+        - path: "test/workflow-catalog-extension-cutover.test.mjs"
+          name: "workflow catalog and version-list GETs are plugin-served with byte-identical Core fallback"
+        - path: "test/workflow-catalog-extension-cutover.test.mjs"
+          name: "Core Web product provides the narrow workflow query before plugin setup and disposes it"
+        - path: "test/workflow-catalog-extension-cutover.test.mjs"
+          name: "headless workflows installation remains active without the optional catalog query"
+      public: ["GET /api/chat/workflows", "GET /api/chat/workflows/:id/versions", "pibo.workflows.catalog-query"]
+      failures:
+        - "Only exact catalog and version-list GETs are claimed; all mutations, version inspection, other reads, and non-workflow routes keep their Core handlers."
+        - "The optional borrowed service exposes four catalog stores, not Core agent, Session, or lifecycle state; headless activation remains valid."
+        - "Plugin deactivation removes its route without deleting existing Workflow data, but the retained Core fallback means deinstallation does not yet stop the feature."
+      confidence: "high"
 ---
 
 # Scope
@@ -130,10 +154,12 @@ A Workflow-backed conversation is a normal Pibo Session with a Workflow link. Ro
 - A published Workflow can create a normal Session in a selected or default Room and workspace. Creation freezes its Workflow version, effective definition, eligible overrides, and input configuration.
 - Starting a configured Workflow Session is idempotent and records one canonical `pending` Run. It does not start general graph execution. The API returns HTTP 202 for a new record and states: `Workflow run recorded. General graph execution is not connected to this surface; supported manual triggers run from the editor.`
 - Session inspection returns the stored link and available definition snapshot, configuration snapshot, Run, waits, human actions, node attempts, edge transfers, and lifecycle events. It does not fabricate progress from a definition.
+- With the `pibo.workflows` backend active and Chat Web provisioned, the plugin registers first-in-order handlers for the catalog list and version-list GETs through `pibo.chat.extensions`. Core lends the four required store readers and wrapped validation services before setup; the plugin does not receive the complete app state or own store disposal. Headless workflow activation retains its view without this optional query service. Disabling the plugin removes its route, and unchanged Core handlers remain as fallback. This is a plugin-**served** pilot, not full feature ownership: version inspection (including its fresh validation timestamp), mutations, other reads, Workflow execution, stores, and UI remain Core-owned.
 - Workflow catalog and execution facts share `pibo-workflows.sqlite`. Conversation history and runtime bindings remain in the Pibo data store.
 
 # Public HTTP contract
 
+- `GET /api/chat/workflows` and `GET /api/chat/workflows/:id/versions` accept the existing `includeArchived`/`archived` search flags and return the same catalog and version-list JSON with or without the plugin route. This pilot does not change the public routes or storage format.
 - `POST /api/chat/workflow-sessions` accepts `roomId`, `workspace`, `profile`, required `workflowId` and `workflowVersion`, and optional title, inputs, eligible prompt overrides, model, thinking level, and fast mode.
 - `POST /api/chat/workflows/drafts/:draftId/manual-trigger-runs` accepts required `triggerNodeId` and text `input` plus optional `roomId` and `workspace`. An explicit Room requires write permission; without a Room the API uses the default Room. Runtime Sessions inherit the resolved Room workspace unless a valid explicit workspace overrides it.
 - `GET /api/chat/sessions/:piboSessionId/workflow` returns `workflowSession`, available snapshots and Run, and arrays for waits, human actions, node attempts, edge transfers, and lifecycle events. A Session without Workflow linkage returns 404.
@@ -162,6 +188,10 @@ Configured Session snapshots MUST freeze effective definitions and selected asse
 
 Wait tokens and human actions MUST be scoped by Workflow Run and linked Pibo Session. Resolution MUST verify token existence, ownership, pending state, expiry, offered registered action, action kind, and required payload schema before atomically resuming or cancelling the Run.
 
+## Requirement: ORCH-WFP-005: Read-only Workflow catalog dispatch is plugin-served without claiming feature ownership
+
+An active Workflow plugin MAY serve exactly catalog-list and version-list GETs before the retained Core fallback. It MUST use the same builders and validation services, preserve the public responses, and leave every mutation, version inspection and unrelated path to its prior owner. Core provides a pre-activation, optional, narrow query containing only borrowed catalog stores; the returned disposer MUST await service removal. A composition without Chat Web MUST still activate the Workflow view. Deactivation MUST remove the plugin route without deleting data; it is NOT evidence that Workflow functionality is unavailable without the plugin because Core fallback intentionally remains.
+
 # Persistence and migration
 
 `pibo-workflows.sqlite` owns Workflow links, immutable Session snapshots, catalog facts, Runs, lifecycle events, waits, actions, node attempts, edge transfers, checkpoints, wakeups, outputs, and diagnostics. The Pibo data store owns normal Sessions, Room membership, history, and runtime bindings.
@@ -174,11 +204,13 @@ Workflow mutations require authentication and same-origin JSON. Stored and retur
 
 # Known limits
 
-General arbitrary-graph execution, full restart resumption, joins, webhooks, and scheduled Workflow triggers remain gaps in the [runtime follow-up plan](/plans/workflow-trigger-and-runtime-follow-ups.md). Completed headed acceptance covered Workflow Session creation, pending start and reload explanation, inspection, desktop/mobile views, Room workspace editing/inheritance, and real `openai-codex` runs from both a normal Session and the supported manual editor slice. It did not cover headful raw-IR editing, publish, human-action submission, or job controls.
+Full Workflow backend/API/store/UI ownership remains open: disabling the plugin currently falls back to Core for even the two piloted GETs, and no deinstall-stops-feature/reinstall-reuses-data acceptance is claimed. General arbitrary-graph execution, full restart resumption, joins, webhooks, and scheduled Workflow triggers remain gaps in the [runtime follow-up plan](/plans/workflow-trigger-and-runtime-follow-ups.md). Historical headed acceptance at the earlier integrated baseline covered Workflow Session creation, pending start and reload explanation, inspection, desktop/mobile views, Room workspace editing/inheritance, and real `openai-codex` runs; it does not verify this new plugin route, nor headful raw-IR editing, publish, human-action submission, or job controls.
 
 # Verification and traceability
 
-Changed current source contracts and named test locators are bound to final integrated commit `7ec71c2cca2108423002be0e7330d2a20c4c5b67`. After final integration, source checks and all typechecks passed; the added API test “manual editor runs target normal Rooms and persist canonical inspection facts” passed alone, and the focused routed-runtime/UI/manual/header matrix passed 20 tests. The final-code complete root suite also passed; see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md). The earlier complete isolated root suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped, exit 0. All 144 Workflow package tests passed previously, and package source is unchanged.
+Current paths and the new plugin-served read contract are traced to `e0906db3839b9cf13940f4833f2ff2d31323ccb5`. For that checkpoint, four new real-artifact extension tests plus 13 selected Workflow tests passed (17/17), all six modified source entrypoints passed a targeted TypeScript check, and 22 plugin artifacts built. The Workflow backend artifact was 22,440 bytes with nine esbuild inputs and no `web-app.ts` or `core/web-product.ts` input; source-matched single-file emits were checked separately, not treated as a root compiler pass. A root TypeScript check and larger regressions were stopped by bounded host memory/IO pressure and have no pass result. The existing SDK-browser-boundary test also fails against an unchanged earlier `src/plugins/sdk.ts` browser-safe attachment-types export; it is not waived or counted green.
+
+The earlier integration evidence at `7ec71c2cca2108423002be0e7330d2a20c4c5b67` remains historical for this pilot: source checks/typechecks, a 20-test focused matrix and the complete root suite passed then (see the [validation report](/reports/session-native-workflow-transition-validation-2026-09-05.md)). The still earlier isolated suite at `14cbaf0fd04cfa321674b570baeb40e543d957cb` reported 2,744 tests: 2,739 passed, 0 failed, 5 skipped. Those results do not establish a full compiler, product-browser, installed candidate or deployment acceptance of the current branch.
 
 Headful acceptance created a draft in the UI, added and connected manual-trigger and agent nodes, saved text input/output settings, and selected ordinary Room `Session-native QA` with workspace `/tmp/pibo-session-native-workspace`. Actual `openai-codex` execution returned `MANUAL_NATIVE_ROOM_OK` and `/tmp/pibo-session-native-workspace`. Run `wfr_ac3db39f-229f-4082-9485-4f6e6663a8b5` and ordinary agent Session `ps_04559a0b-fac4-4636-979a-addb1ff91fb0` reopened with completed canonical inspection: two node attempts, one edge transfer, immutable executable definition snapshot, and actual output. An empty-directory package install with `npm install --omit=dev` also created and reopened the canonical persistent Workflow service without a workspace-package symlink or retired storage. Gateway deployment and Pibo2 validation are not claimed.
 
