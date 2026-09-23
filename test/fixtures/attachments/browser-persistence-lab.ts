@@ -124,6 +124,28 @@ async function runCases() {
 			equal(duplicate.current.revision, acceptedB.current.revision); assert(duplicate.result.duplicate);
 		} finally { draft.close(); stores.close(); }
 	});
+	await run("frozen-media-exact-scope-read", async (name) => {
+		const draft = await openDraft(name), foreignOwner = await openDraft(name, "foreign"), foreignSession = await openDraft(name, "owner", "ps_other");
+		try {
+			const added = await draft.execute(0, image("ps_fixture", ["stage-bytes"], 3), [{ blobId: "stage-bytes", mimeType: "image/png", data: new Uint8Array([4, 5, 6]) }]);
+			await rejects(draft.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_BYTES_MISSING");
+			const frozen = await draft.execute(added.current.revision, { kind: "freeze", clientTxnId: "txn", text: "frozen" });
+			const detached = await draft.readFrozenMedia("txn", added.result, "stage-bytes");
+			equal([...detached.data], [4, 5, 6]); detached.data[0] = 9;
+			await rejects(draft.readFrozenMedia("other", added.result, "stage-bytes"), "ATT_BYTES_MISSING");
+			await rejects(draft.readFrozenMedia("txn", "other", "stage-bytes"), "ATT_BYTES_MISSING");
+			await rejects(draft.readFrozenMedia("txn", added.result, "other"), "ATT_BYTES_MISSING");
+			await rejects(foreignOwner.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_BYTES_MISSING");
+			await rejects(foreignSession.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_BYTES_MISSING");
+			await rejects(draft.readFrozenMedia(" txn ", added.result, "stage-bytes"), "ATT_INVALID_JSON");
+			await draft.execute(frozen.current.revision, { kind: "remove", id: added.result });
+			equal([...(await draft.readFrozenMedia("txn", added.result, "stage-bytes")).data], [4, 5, 6]);
+			const revision = (await draft.load()).revision;
+			await draft.execute(revision, { kind: "accept", snapshot: frozen.result, receipt: { clientTxnId: "txn", accepted: true } });
+			await rejects(draft.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_BYTES_MISSING");
+			draft.close(); await rejects(draft.readFrozenMedia("txn", added.result, "stage-bytes"), "ATT_ACCESS_DENIED");
+		} finally { draft.close(); foreignOwner.close(); foreignSession.close(); }
+	});
 	await run("clear-tombstone-no-aba", async (name) => {
 		const draft = await openDraft(name), stores = await openAttachmentStores(indexedDB, "owner", name);
 		try {

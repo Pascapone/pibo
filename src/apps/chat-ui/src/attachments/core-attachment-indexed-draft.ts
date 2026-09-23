@@ -4,7 +4,7 @@ import { AttachmentDraftError } from "../../../../attachments/errors.js";
 import { invalidJson, assertJsonValue, isPlainJsonObject } from "../../../../attachments/json.js";
 import { deterministicDigest } from "../../../../shared/deterministic-digest.js";
 import {
-	CORE_ATTACHMENT_DRAFT_STORAGE_PREFIX,
+	CORE_ATTACHMENT_DRAFT_STORAGE_PREFIX, normalizeDraftClientTxnId,
 	type CoreAttachmentDraftCommand, type CoreAttachmentDraftCommandResult, type CoreAttachmentDraftView,
 } from "./core-attachment-draft";
 import { readCoreAttachmentDraft, transitionCoreAttachmentDraft } from "./core-attachment-transitions";
@@ -118,6 +118,33 @@ export async function openIndexedAttachmentDraft(options: {
 			const result = await transact(db, [ATTACHMENT_DRAFT_STORE_NAME], "readonly", async ([store]) => snapshot(await readRow(store), sessionId));
 			active();
 			return result;
+		},
+		/** Read only a byte row still held by this owner's exact frozen Pibo
+		 * Session/transaction/record. Do not use the owner-wide preview getter
+		 * for typed staging. Provider and network work happen after this closes. */
+		async readFrozenMedia(clientTxnId: string, recordId: string, draftResourceId: string): Promise<{ mimeType: string; data: Uint8Array }> {
+			active();
+			const txn = normalizeDraftClientTxnId(clientTxnId);
+			if (txn !== clientTxnId || typeof recordId !== "string" || !recordId || typeof draftResourceId !== "string" || !draftResourceId) {
+				throw invalidJson("Frozen media requires exact transaction, record and resource identities.");
+			}
+			const found = await transact(db, [ATTACHMENT_DRAFT_STORE_NAME, ATTACHMENT_BLOB_STORE_NAME], "readonly", async ([drafts, bytes]) => {
+				active();
+				const view = snapshot(await readRow(drafts), sessionId).view;
+				const frozen = view.openSnapshots.find((entry) => entry.clientTxnId === txn);
+				const record = frozen?.attachments.find((entry) => entry.id === recordId);
+				const media = record?.media?.find((entry) => entry.draftResourceId === draftResourceId);
+				if (!media) throw new AttachmentDraftError({ code: "ATT_BYTES_MISSING", message: "No frozen media is held by this transaction and draft.", retryable: false });
+				const blob = await request(bytes.get(draftResourceId)) as StoredDraftBlob | undefined;
+				if (!blob || blob.ownerUserId !== ownerUserId || blob.sessionId !== sessionId || blob.draftId !== recordId
+					|| blob.mimeType !== media.mimeType || blob.size !== media.bytes || !(blob.data instanceof ArrayBuffer) || blob.data.byteLength !== blob.size
+					|| blob.size > ATTACHMENT_BLOB_MAX_BYTES) {
+					throw new AttachmentDraftError({ code: "ATT_BYTES_MISSING", message: "Frozen bytes are missing or differ from the exact scope.", retryable: false });
+				}
+				return { mimeType: blob.mimeType, data: new Uint8Array(blob.data.slice(0)) };
+			});
+			active();
+			return found;
 		},
 		async execute<C extends CoreAttachmentDraftCommand>(expectedRevision: number, value: C, newBlobs: readonly AttachmentDraftBlobInput[] = []): Promise<{
 			result: CoreAttachmentDraftCommandResult<C>; current: IndexedAttachmentDraftSnapshot;
